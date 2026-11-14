@@ -3503,7 +3503,7 @@ function afAddNode(node) {
   withTablePillboxDocumentMock(function () {
     const saved = global.getComputedStyle;
     global.getComputedStyle = inlineStyleProbe.getComputedStyle;
-    try { injectTablePillboxesForAddedNode(node); } finally { global.getComputedStyle = saved; }
+    try { injectTablePillboxes(node); } finally { global.getComputedStyle = saved; }
   });
 }
 

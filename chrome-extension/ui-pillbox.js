@@ -304,13 +304,17 @@ function createTablePillbox(table) {
   return button;
 }
 
-// The load-time scan runs the same table scan as the added-node pass in
-// content.js. The nomination outcomes go to consumeNominations in content.js,
-// which holds each pending table. A pending table holds a live observer, and
-// this view holds no state of that kind. content.js calls this function once
-// the document has loaded, after it defines consumeNominations.
-function injectTablePillboxes() {
-  const { tables, nominations } = scanTables(document, { isRegistered: DR_MODEL.hasTable });
+// The one table scan: the load-time scan passes the document, and the page
+// observer in content.js passes each added element. The nomination outcomes
+// go to consumeNominations in content.js, which holds each pending table. A
+// pending table holds a live observer, and this view holds no state of that
+// kind. content.js calls this function only after it defines
+// consumeNominations.
+/**
+ * @param {Document|Element} [root] The node whose subtree the scan reads; the document when absent.
+ */
+function injectTablePillboxes(root = document) {
+  const { tables, nominations } = scanTables(root, { isRegistered: DR_MODEL.hasTable });
   tables.forEach(table => {
     if (!DR_MODEL.hasTable(table)) {
       createTablePillbox(table);

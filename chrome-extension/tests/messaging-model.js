@@ -958,7 +958,7 @@ const PENDING_FILL_ROWS = [
 
   withPendingHarness(function ({ observers, timers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxesForAddedNode(lone);
+      injectTablePillboxes(lone);
     });
 
     eq('pending AC1: an empty container registers nothing',
@@ -996,7 +996,7 @@ const PENDING_FILL_ROWS = [
 
   withPendingHarness(function ({ observers, timers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxesForAddedNode(grid.wrapperEl);
+      injectTablePillboxes(grid.wrapperEl);
     });
 
     eq('pending AC1: an empty database query grid registers nothing',
@@ -1048,7 +1048,7 @@ const PENDING_FILL_ROWS = [
 
   withPendingHarness(function ({ observers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxesForAddedNode(grid.wrapperEl);
+      injectTablePillboxes(grid.wrapperEl);
     });
 
     eq('pending AC2: a nest of four qualifying elements carries one observer',
@@ -1063,7 +1063,7 @@ const PENDING_FILL_ROWS = [
     // A second pass over the same empty wrapper holds the record it already
     // has rather than starting a second one.
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxesForAddedNode(grid.wrapperEl);
+      injectTablePillboxes(grid.wrapperEl);
     });
     eq('pending AC2: a second pass over the same empty wrapper adds no second observer',
       observers.length, 1);
@@ -1103,7 +1103,7 @@ const PENDING_FILL_ROWS = [
 
   withPendingHarness(function ({ observers, timers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxesForAddedNode(neverEl);
+      injectTablePillboxes(neverEl);
     });
 
     eq('pending AC3: the container is held as a pending table',
@@ -1172,7 +1172,7 @@ const PENDING_FILL_ROWS = [
 
   withPendingHarness(function ({ observers, timers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxesForAddedNode(grid.wrapperEl);
+      injectTablePillboxes(grid.wrapperEl);
     });
 
     eq('pending registered: the empty wrapper is held as a pending table',
@@ -1230,7 +1230,7 @@ const PENDING_FILL_ROWS = [
 
   withPendingHarness(function ({ observers, timers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxesForAddedNode(rootEl);
+      injectTablePillboxes(rootEl);
     });
 
     eq('pending crowded: the empty root is held as a pending table',
@@ -1282,7 +1282,7 @@ const PENDING_FILL_ROWS = [
 
   withPendingHarness(function ({ observers, timers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxesForAddedNode(grid.wrapperEl);
+      injectTablePillboxes(grid.wrapperEl);
     });
 
     const observer = observers[0];
@@ -3458,7 +3458,7 @@ function issue328SettingsOf(table) {
 (function shapeFingerprint_criterion4_aNewResultSetMovesTheRegistrationOutward() {
   runPressFixture(({ sent }) => {
     const grid = makeDatabaseQueryGrid();
-    withTablePillboxDocumentMock(function () { injectTablePillboxesForAddedNode(grid.wrapperEl); });
+    withTablePillboxDocumentMock(function () { injectTablePillboxes(grid.wrapperEl); });
     eq('fingerprint move: the page registers the scrolling pane alone (precondition)',
       [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl].map((el) => DR_MODEL.hasTable(el)),
       [false, false, true]);
@@ -4762,7 +4762,7 @@ function makePlainBox(child) {
       const savedStyle = global.getComputedStyle;
       global.getComputedStyle = inlineStyleProbe.getComputedStyle;
       try {
-        withTablePillboxDocumentMock(function () { injectTablePillboxesForAddedNode(added); });
+        withTablePillboxDocumentMock(function () { injectTablePillboxes(added); });
         eq(`pending artifact, ${form.name}: the added-node pass holds no pending table`, pendingRoots.has(grid), false);
         eq(`pending artifact, ${form.name}: the added-node pass starts no observer`, observers.length, 0);
 
@@ -4799,7 +4799,7 @@ function makePlainBox(child) {
       const before = DR_MODEL.getRegisteredTables().length;
 
       withPendingHarness(function ({ observers, timers }) {
-        withTablePillboxDocumentMock(function () { injectTablePillboxesForAddedNode(grid); });
+        withTablePillboxDocumentMock(function () { injectTablePillboxes(grid); });
         eq(`pending artifact turn, ${label}: the empty grid is held as a pending table`, pendingRoots.has(grid), true);
         eq(`pending artifact turn, ${label}: one observer watches it`, observers.length, 1);
 

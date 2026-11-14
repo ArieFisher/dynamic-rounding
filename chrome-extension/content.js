@@ -283,9 +283,9 @@ function leftAsWrittenValue(counts = {}) {
     .join(', ');
 }
 
-// The one consumer of the nomination step's per-nest outcomes. Both live
-// scanners route their grid pass through here — the load-time scan in the
-// table pillbox view (injectTablePillboxes) and the added-node pass below — so the
+// The one consumer of the nomination step's per-nest outcomes. The table
+// scan in the table pillbox view (injectTablePillboxes) routes its grid pass
+// through here, for the load-time scan and the added-node pass alike, so the
 // pending record and its clearing sit behind the step's outcome and never in
 // a caller. The step returns outcomes; this is where an outcome becomes a
 // registration or a watch.
@@ -390,20 +390,6 @@ function dropPendingTable(chainRoot) {
   }
   pendingRetestCounts.delete(chainRoot);
   pendingRoots.delete(chainRoot);
-}
-
-// A node added inside a wrapper already in the page re-evaluates the whole
-// nest through its chain root, so a pending table registers once its rows
-// arrive.
-// Extracted as a named function so the detection is unit-testable
-// independently of the live MutationObserver wiring below.
-function injectTablePillboxesForAddedNode(node) {
-  if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
-  const { tables, nominations } = scanTables(node, { isRegistered: DR_MODEL.hasTable });
-  tables.forEach(table => {
-    if (!DR_MODEL.hasTable(table)) createTablePillbox(table);
-  });
-  consumeNominations(nominations);
 }
 
 // The shape fingerprint's read options for one table: the registry's stored
@@ -555,7 +541,10 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
-        injectTablePillboxesForAddedNode(node);
+        // A node added inside a wrapper already in the page re-evaluates the
+        // whole nest through its chain root, so a pending table registers
+        // once its rows arrive.
+        injectTablePillboxes(node);
       }
       for (const node of mutation.removedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;

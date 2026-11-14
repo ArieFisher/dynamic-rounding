@@ -149,7 +149,6 @@ globalThis.syncTablePillbox = syncTablePillbox;
 globalThis.positionTablePillbox = positionTablePillbox;
 globalThis.createTablePillbox = createTablePillbox;
 globalThis.injectTablePillboxes = injectTablePillboxes;
-globalThis.injectTablePillboxesForAddedNode = injectTablePillboxesForAddedNode;
 globalThis.isDataTable = isDataTable;
 // The lens preview's sample pool for one table, built from the two steps
 // extractPreviewSamples runs, so a test reads the pool without the bucketing.

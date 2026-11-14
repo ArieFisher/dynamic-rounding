@@ -2660,12 +2660,12 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 
 // ---------------------------------------------------------------------------
 // MutationObserver added-node path
-// applies the SAME accessibility artifact filter as injectTablePillboxes.
+// applies the SAME accessibility artifact filter as the load-time scan.
 //
 // Kaggle is a React single-page application that renders its Data Explorer
 // grid AFTER load, so detection runs through the
-// MutationObserver added-node handler — extracted here as injectTablePillboxesForAddedNode().
-// These tests drive that function directly with element-node stubs.
+// MutationObserver added-node handler, which passes each added element to
+// injectTablePillboxes. These tests call it directly with element-node stubs.
 // ---------------------------------------------------------------------------
 
 // AC1 (the Kaggle case): an added [role="table"] grid whose ONLY embedded
@@ -2676,7 +2676,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   const grid = asAddedGridNode(makeAriaGrid([artifact1, artifact2]));
 
   withTablePillboxDocumentMock(function() {
-    injectTablePillboxesForAddedNode(grid);
+    injectTablePillboxes(grid);
   });
 
   eq('observer: added grid with only accessibility artifacts gets dr-ext-grid class',
@@ -2692,7 +2692,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   const grid = asAddedGridNode(makeAriaGrid([realTbl]));
 
   withTablePillboxDocumentMock(function() {
-    injectTablePillboxesForAddedNode(grid);
+    injectTablePillboxes(grid);
   });
 
   eq('observer: added grid wrapping a real table does NOT get dr-ext-grid',
@@ -2716,7 +2716,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   };
 
   withTablePillboxDocumentMock(function() {
-    injectTablePillboxesForAddedNode(container);
+    injectTablePillboxes(container);
   });
 
   eq('observer: accessibility artifact <table> in added subtree gets NO table pillbox',
@@ -2736,7 +2736,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   };
 
   withTablePillboxDocumentMock(function() {
-    injectTablePillboxesForAddedNode(container);
+    injectTablePillboxes(container);
   });
 
   eq('observer: real <table> in added subtree gets a table pillbox',

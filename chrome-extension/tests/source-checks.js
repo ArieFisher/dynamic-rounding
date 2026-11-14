@@ -1766,11 +1766,12 @@
       (addedNodePassSrc.includes('GRID_ARIA_SELECTOR') || addedNodePassSrc.includes('role="grid"')),
     false);
   // The step's page-wide entry point is nominateNests, which scanTables
-  // composes. Both scanners act on every outcome, so both call scanTables.
+  // composes. The load-time scan and the added-node pass share one function
+  // in the view, and that function calls scanTables.
   eq('nesting AC6: the load-time scan calls the table scan',
     loadTimeScanSrc !== null && /scanTables\s*\(/.test(loadTimeScanSrc), true);
-  eq('nesting AC6: the added-node pass calls the table scan',
-    addedNodePassSrc !== null && /scanTables\s*\(/.test(addedNodePassSrc), true);
+  eq('nesting AC6: the added-node pass passes each added element to the load-time scan function',
+    addedNodePassSrc !== null && /injectTablePillboxes\s*\(\s*node\s*\)/.test(addedNodePassSrc), true);
 })();
 
 // --- AC7: the living documents and the test page state the rule ---
