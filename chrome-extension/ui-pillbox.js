@@ -178,8 +178,8 @@ function isTablePillboxSpotClipped(table, x, y) {
 
 function windowScrollOffset() {
   return {
-    x: window.scrollX || window.pageXOffset || 0,
-    y: window.scrollY || window.pageYOffset || 0,
+    x: window.scrollX || 0,
+    y: window.scrollY || 0,
   };
 }
 
@@ -273,11 +273,10 @@ function createTablePillbox(table) {
     if (pType === 'touch' || pType === 'pen') {
       if (!button.classList.contains('expanded')) {
         button.classList.add('expanded');
-        scheduleAutoCollapse();
       } else {
         DR_BUS.publish('intent:toggleTable', { table });
-        scheduleAutoCollapse();
       }
+      scheduleAutoCollapse();
     } else {
       DR_BUS.publish('intent:toggleTable', { table });
     }
@@ -348,10 +347,7 @@ function repositionAllTablePillboxes() {
 // element that scrolled and does not bubble, so the scroll listener runs in
 // the capture phase: it runs on a page area's scroll as well as the window's.
 // The browser fires at most one scroll event per scrolling element per frame.
-let _scrollResizeListenersAdded = false;
 function ensureScrollResizeListeners() {
-  if (_scrollResizeListenersAdded) return;
-  _scrollResizeListenersAdded = true;
   window.addEventListener('scroll', repositionAllTablePillboxes, { capture: true, passive: true });
   window.addEventListener('resize', repositionAllTablePillboxes, { passive: true });
 }

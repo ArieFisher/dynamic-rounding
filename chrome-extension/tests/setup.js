@@ -173,12 +173,6 @@ globalThis.TABLE_PILLBOX_COLOR_ON = TABLE_PILLBOX_COLOR_ON;
 globalThis.TABLE_PILLBOX_AUTO_COLLAPSE_MS = TABLE_PILLBOX_AUTO_COLLAPSE_MS;
 globalThis.TABLE_PILLBOX_CLIP_WALK_CAP = TABLE_PILLBOX_CLIP_WALK_CAP;
 globalThis.ensureScrollResizeListeners = ensureScrollResizeListeners;
-// _scrollResizeListenersAdded is a let; expose getter/setter so tests can reset it.
-Object.defineProperty(globalThis, '_scrollResizeListenersAdded', {
-  get() { return _scrollResizeListenersAdded; },
-  set(v) { _scrollResizeListenersAdded = v; },
-  configurable: true,
-});
 // _globalTapCollapseAdded is a let; expose getter/setter so tests can reset it.
 Object.defineProperty(globalThis, '_globalTapCollapseAdded', {
   get() { return _globalTapCollapseAdded; },

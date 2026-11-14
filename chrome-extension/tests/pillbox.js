@@ -971,12 +971,10 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 (function scrollWiring_captureListenerRepositionsEveryTablePillbox() {
   const listeners = [];
   const origAdd = global.window.addEventListener;
-  const origFlag = _scrollResizeListenersAdded;
   const origRegistered = DR_MODEL.getRegisteredTables;
   global.window.addEventListener = (type, handler, options) => {
     listeners.push({ type, handler, options });
   };
-  _scrollResizeListenersAdded = false;
   const tableRect = { top: 200, bottom: 500, left: 100, right: 900, width: 800, height: 300 };
   const table = { getBoundingClientRect() { return tableRect; } };
   const buttonEl = { style: {} };
@@ -1000,7 +998,6 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
       tableRect.top + TABLE_PILLBOX_DOT_OVERLAP_PX - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX);
   } finally {
     global.window.addEventListener = origAdd;
-    _scrollResizeListenersAdded = origFlag;
     DR_MODEL.getRegisteredTables = origRegistered;
     tablePillboxes.delete(table);
     global.window.scrollX = origScrollX;
