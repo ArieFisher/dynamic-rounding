@@ -875,7 +875,6 @@
       sendMessage(tabId, msg, cb) { sentTabMessages.push({ tabId, msg }); if (cb) cb(undefined); },
       onUpdated:   { addListener: () => {} },
       onRemoved:   { addListener: () => {} },
-      onActivated: { addListener: () => {} },
     },
     // Omitted deliberately: background.js guards on chrome.sidePanel, so with
     // it absent the sidebar-open handler never awaits and the tab number is
@@ -1195,7 +1194,6 @@
         sendMessage: (tabId, msg, cb) => { if (cb) cb(undefined); },
         onUpdated:   { addListener: () => {} },
         onRemoved:   { addListener: () => {} },
-        onActivated: { addListener: () => {} },
       },
     };
     new Function('chrome', 'console', messagingCode + '\n' + bgSrc)(
@@ -1226,8 +1224,8 @@
       ['state:sidebarOpened']);
 
     ctx.runtimeSends.length = 0;
-    ctx.listeners.activated({ tabId: 99 });
-    eq('toolbar icon: the sidebar it opens closes when another tab comes to the front',
+    ctx.listeners.updated(PANEL_TAB, { status: 'loading' });
+    eq('toolbar icon: the sidebar it opens closes when that tab navigates',
       ctx.runtimeSends.some(m => m.topic === 'state:boundTabLeft'), true);
   })();
 
@@ -1271,8 +1269,8 @@
     ctx.runtimeSends.length = 0;
     ctx.tabSends.length = 0;
 
-    // Activating a different tab closes the sidebar.
-    ctx.listeners.activated({ tabId: 99 });
+    // Navigating the bound tab closes the sidebar.
+    ctx.listeners.updated(PANEL_TAB, { status: 'loading' });
 
     eq('bg routing: close topic broadcast reaches the sidebar page',
       ctx.runtimeSends.some(m => m.topic === 'state:boundTabLeft'), true);
@@ -1281,18 +1279,8 @@
       false);
   })();
 
-  // The same must hold for the other two close triggers.
-  (function closeOnNavigationAndRemoval() {
-    const navCtx = loadBackground();
-    openPanel(navCtx);
-    navCtx.runtimeSends.length = 0;
-    navCtx.tabSends.length = 0;
-    navCtx.listeners.updated(PANEL_TAB, { status: 'loading' });
-    eq('bg routing: navigating away broadcasts the close topic to the sidebar page',
-      navCtx.runtimeSends.some(m => m.topic === 'state:boundTabLeft'), true);
-    eq('bg routing: navigating away sends nothing into the tab',
-      navCtx.tabSends.some(s => s.msg.topic === 'state:boundTabLeft'), false);
-
+  // The same must hold for the removal trigger.
+  (function closeOnRemoval() {
     // A removed tab: the close must not surface an error. The broadcast is
     // all that goes out, and the stub rejects it, so this pins the
     // service worker's own catch.
@@ -1307,43 +1295,22 @@
     eq('bg routing: closing a removed tab does not throw', threw, false);
   })();
 
-  // --- The page-unload guard: only the sidebar's own tab closes it ---
-  //
-  // The plan's first correction. The worker reads the sending tab's number off
-  // the bus's meta argument and acts only when it matches the tab the sidebar
-  // was opened for. Without the number, a page unload in any tab would close
-  // the sidebar. A message from an extension page reports null, which must not
-  // match either, including when the worker holds no tab number at all.
-  (function pageUnloadClosesOnlyItsOwnTab() {
+  // --- A tab switch and a page unload close the sidebar through one path each:
+  // the sidebar's own switch listener, and the worker's navigation listener.
+  // A second path for either would close the sidebar twice, or in a window
+  // other than the one the switch happened in. ---
+  (function noSecondClosePath() {
     const ctx = loadBackground();
-    const closes = () => ctx.runtimeSends.filter(m => m.topic === 'state:boundTabLeft').length;
-    const unload = (sender) => ctx.listeners.message(
-      { topic: 'state:pageUnloaded' }, sender, () => {});
-
-    // No sidebar open yet: the worker holds no tab number.
-    unload({ tab: { id: 42 } });
-    eq('page unload: a tab unload closes nothing while no sidebar is open', closes(), 0);
-
-    // The case that isolates the null clause. An extension page reports no
-    // tab, and the worker holding no tab number reports none either, so a
-    // guard comparing the two alone would match nothing against nothing and
-    // broadcast the close. An idle restart reaches this state: Chrome clears
-    // the worker's variables while the sidebar stays open.
-    unload({});
-    eq('page unload: an extension page closes nothing while no sidebar is open', closes(), 0);
-
-    openPanel(ctx);
-    ctx.runtimeSends.length = 0;
-
-    unload({ tab: { id: 99 } });
-    eq('page unload: another tab unloading leaves the sidebar open', closes(), 0);
-
-    unload({});
-    eq('page unload: a message from an extension page carries no tab and closes nothing',
-      closes(), 0);
-
-    unload({ tab: { id: PANEL_TAB } });
-    eq('page unload: the sidebar\'s own tab unloading closes it', closes(), 1);
+    eq('bg routing: the worker registers no tab-activation listener',
+      ctx.listeners.activated, undefined);
+    eq('bg routing: the worker source names no tab-activation listener',
+      bgSrc.includes('onActivated'), false);
+    const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+    for (const [name, src] of [['worker', bgSrc], ['sidebar', sidebarSrc],
+        ['content script bundle', contentScriptBundle]]) {
+      eq('bg routing: the ' + name + ' source mentions no page-unload topic',
+        src.includes('state:pageUnloaded'), false);
+    }
   })();
 
   // --- Rule 2: the activation report is not relayed into the tab ---
@@ -2588,8 +2555,6 @@
     bgSrc.includes('chrome.tabs.sendMessage'), false);
   eq('worker on bus: the menu click publishes with an explicit tab number',
     /DR_BUS\.publish\(\s*'intent:menuClicked',\s*\{\},\s*\{\s*tabId:/.test(bgSrc), true);
-  eq('worker on bus: the page-unload subscriber reads the sending tab from meta',
-    /subscribe\(\s*'state:pageUnloaded',\s*\([^)]*meta[^)]*\)/.test(bgSrc), true);
   eq('worker on bus: no re-send of the settings notice',
     bgSrc.includes('settingsChanged'), false);
 })();
@@ -2601,8 +2566,7 @@
     contentSrc.includes('chrome.runtime.sendMessage'), false);
   for (const topic of ['state:tableActivated', 'state:tableSwitched',
       'state:rangeError', 'state:rangeOk',
-      'state:previewSamplesChanged',
-      'state:pageUnloaded']) {
+      'state:previewSamplesChanged']) {
     eq('content on bus: publishes ' + topic,
       contentSrc.includes("publish('" + topic + "'"), true);
   }

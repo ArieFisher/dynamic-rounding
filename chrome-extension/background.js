@@ -93,19 +93,6 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   }
 });
 
-chrome.tabs.onActivated.addListener((activeInfo) => {
-  if (boundTabId !== null && activeInfo.tabId !== boundTabId) {
-    closeSidebarIfOpen();
-  }
-});
-
-// Without the tab check, a page unload in any tab would close the sidebar.
-DR_BUS.subscribe('state:pageUnloaded', (payload, meta) => {
-  if (meta.tabId !== null && meta.tabId === boundTabId) {
-    closeSidebarIfOpen();
-  }
-});
-
 DR_BUS.subscribe('state:sidebarClosed', () => {
   boundTabId = null;
 });
