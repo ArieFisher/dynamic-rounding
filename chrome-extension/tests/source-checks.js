@@ -1206,8 +1206,8 @@
         { id: 'dr-menu-toggle', title: 'Simplify' },
         { id: 'dr-menu-toggle-sidebar', title: 'Simplify and open sidebar' },
       ]);
-    // In the toolbar icon's menu no table sits under the pointer, and Chrome
-    // already offers its own item there that opens the sidebar.
+    // In the toolbar icon's menu no table sits under the pointer, and a click
+    // on the icon opens the sidebar.
     eq('menu items: neither item appears in the toolbar icon menu',
       created.filter((item) => !Array.isArray(item.contexts) ||
         item.contexts.includes('all') || item.contexts.includes('action')).map((item) => item.id),
@@ -1231,16 +1231,21 @@
       ctx.runtimeSends.some(m => m.topic === 'state:boundTabLeft'), true);
   })();
 
-  // Chrome accepts the open only as a direct response to the click, so the
+  // Chrome accepts the open only as a direct response to the click, so each
   // handler must call it before the first await.
-  (function iconClickOpensBeforeAwaiting() {
-    const opens = [];
-    const ctx = loadBackground({
-      sidePanel: { open: (options) => { opens.push(options); return new Promise(() => {}); } },
-    });
-    ctx.listeners.iconClicked({ id: PANEL_TAB });
+  (function clicksOpenBeforeAwaiting() {
+    function opensFor(click) {
+      const opens = [];
+      const ctx = loadBackground({
+        sidePanel: { open: (options) => { opens.push(options); return new Promise(() => {}); } },
+      });
+      click(ctx);
+      return opens;
+    }
     eq('toolbar icon: the click opens the sidebar for that tab before any await',
-      opens, [{ tabId: PANEL_TAB }]);
+      opensFor((ctx) => ctx.listeners.iconClicked({ id: PANEL_TAB })), [{ tabId: PANEL_TAB }]);
+    eq('bg routing: the menu toggle with sidebar opens the sidebar for that tab before any await',
+      opensFor(openPanel), [{ tabId: PANEL_TAB }]);
   })();
 
   // --- The menu toggle with sidebar does both: the same toggle the menu toggle
