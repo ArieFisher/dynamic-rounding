@@ -1747,10 +1747,10 @@ const PENDING_FILL_ROWS = [
 // publish, unlike an EventEmitter with replay or a BehaviorSubject.
 // ---------------------------------------------------------------------------
 (function appModelSelection_busIsStateless_lateSubscriberMissesPastPublish() {
-  const topic = 'state:errorRecorded';
+  const topic = 'state:rangeOk';
   // Publish BEFORE any subscriber of this test attaches — nothing is listening
-  // yet. The toast view's own handler returns early on a payload with no rows.
-  DR_BUS.publish(topic, { errorState: null });
+  // yet.
+  DR_BUS.publish(topic, {});
 
   let received = 'NOT_CALLED';
   const unsubscribe = DR_BUS.subscribe(topic, (payload) => { received = payload; });
@@ -1774,9 +1774,7 @@ const PENDING_FILL_ROWS = [
   // The second topic is state:settingsChanged: the content script holds no
   // subscriber of its own for it, so only the fixture's handlers run here.
   // The test measures the bus's own delivery under a nested publish.
-  // Topic A is state:errorRecorded: the toast view's handler returns early on
-  // a payload with no rows.
-  const TOPIC_A = 'state:errorRecorded';
+  const TOPIC_A = 'state:rangeOk';
   const TOPIC_B = 'state:settingsChanged';
   let counter = 0;
 
@@ -1786,13 +1784,13 @@ const PENDING_FILL_ROWS = [
   const unsubB = DR_BUS.subscribe(TOPIC_B, () => {
     counter++;
     if (counter === 1) {
-      DR_BUS.publish(TOPIC_A, { errorState: null }); // guarded to bounce back to A only once
+      DR_BUS.publish(TOPIC_A, {}); // guarded to bounce back to A only once
     }
   });
 
   let threw = null;
   try {
-    DR_BUS.publish(TOPIC_A, { errorState: null }); // kick off the cycle
+    DR_BUS.publish(TOPIC_A, {}); // kick off the cycle
   } catch (e) {
     threw = e.message;
   } finally {
@@ -3161,7 +3159,8 @@ function issue328SettingsOf(table) {
     DR_MODEL.setActiveTable(g.wrapperEl);
     const recorded = DR_MODEL.getTableFingerprint(g.wrapperEl);
     const scrolledAwayCell = g.dataRowEls()[0].children[1];
-    DR_MODEL.setTableOriginal(g.wrapperEl, scrolledAwayCell, '1,482,391');
+    DR_MODEL.setTableOriginal(g.wrapperEl, scrolledAwayCell,
+      { value: '1,482,391', pieces: [{ text: '1,482,391', written: '1,482,391' }] });
 
     // The scroll: a different set of rows, and fewer of them.
     g.redraw([['West', '7,314'], ['Inland', '2,905']]);
@@ -3193,7 +3192,8 @@ function issue328SettingsOf(table) {
     DR_MODEL.setActiveTable(grid.scrollPaneEl);
     const recorded = DR_MODEL.getTableFingerprint(grid.scrollPaneEl);
     const scrolledAwayCell = grid.scrollRowEls[0].children[1];
-    DR_MODEL.setTableOriginal(grid.scrollPaneEl, scrolledAwayCell, '7,318,204');
+    DR_MODEL.setTableOriginal(grid.scrollPaneEl, scrolledAwayCell,
+      { value: '7,318,204', pieces: [{ text: '7,318,204', written: '7,318,204' }] });
 
     // The scroll: the pane draws a different, shorter set of rows at the same
     // column count.
@@ -3443,7 +3443,8 @@ function issue328SettingsOf(table) {
     registerFingerprintedTable(grid.scrollPaneEl);
     DR_MODEL.setActiveTable(grid.scrollPaneEl);
     const sentinelCell = grid.scrollRowEls[2].children[1];
-    DR_MODEL.setTableOriginal(grid.scrollPaneEl, sentinelCell, '2,140,663');
+    DR_MODEL.setTableOriginal(grid.scrollPaneEl, sentinelCell,
+      { value: '2,140,663', pieces: [{ text: '2,140,663', written: '2,140,663' }] });
     eq('fingerprint originals: the entry holds the sentinel original (precondition)',
       DR_MODEL.hasTableOriginal(grid.scrollPaneEl, sentinelCell), true);
 
@@ -3756,10 +3757,9 @@ function issue328SettingsOf(table) {
 // rendered text, never the originals port — on a rounded grid getText()
 // answers with the ORIGINAL (the engine's contract; see the port-preferring
 // read in makeCellObj), so a capture reading getText() would
-// lie about the screen. (2) The registry stores a cell's original in two
-// shapes (grid: { value, pieces, ... }; native: { html, value, ... });
-// DR_MODEL.getTableOriginalText() resolves the difference in one place and
-// returns plain text for either kind, or undefined when nothing is stored.
+// lie about the screen. (2) The registry stores a cell's original as one
+// record shape ({ value, pieces, pageTitle }); DR_MODEL.getTableOriginalText()
+// returns its value field, or undefined when nothing is stored.
 
 (function captureDisplayedTextRead() {
   // Native cell: the displayed text is the live text — the same read

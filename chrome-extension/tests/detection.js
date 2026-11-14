@@ -4090,6 +4090,8 @@ function cnAdapterCellEls(tableEl) {
       querySelectorAll: () => [],
       readyState: 'complete',
       body: { appendChild() {} },
+      createElement: () => ({}),
+      head: { appendChild() {} },
     };
     const captureChrome = {
       runtime: {

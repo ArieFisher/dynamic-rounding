@@ -506,15 +506,15 @@
 // bus's own guard this would recurse until the real call stack overflows.
 // ---------------------------------------------------------------------------
 (function appModelSettings_busReentrancy_unguardedCycleTerminatesSafely() {
-  const TOPIC_A = 'state:errorRecorded';
+  const TOPIC_A = 'state:rangeOk';
   const TOPIC_B = 'state:settingsChanged';
 
   const unsubA = DR_BUS.subscribe(TOPIC_A, () => { DR_BUS.publish(TOPIC_B, { source: 'page', settings: Object.assign({}, DR_DEFAULTS) }); });
-  const unsubB = DR_BUS.subscribe(TOPIC_B, () => { DR_BUS.publish(TOPIC_A, { errorState: null }); });
+  const unsubB = DR_BUS.subscribe(TOPIC_B, () => { DR_BUS.publish(TOPIC_A, {}); });
 
   let threw = null;
   try {
-    DR_BUS.publish(TOPIC_A, { errorState: null });
+    DR_BUS.publish(TOPIC_A, {});
   } catch (e) {
     threw = e.message;
   } finally {
@@ -533,7 +533,7 @@
   let secondThrew = null;
   const unsubCheck = DR_BUS.subscribe(TOPIC_A, () => {});
   try {
-    DR_BUS.publish(TOPIC_A, { errorState: null });
+    DR_BUS.publish(TOPIC_A, {});
   } catch (e) {
     secondThrew = e.message;
   } finally {

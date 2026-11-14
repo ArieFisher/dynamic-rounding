@@ -178,8 +178,8 @@ function isTablePillboxSpotClipped(table, x, y) {
 
 function windowScrollOffset() {
   return {
-    x: window.scrollX || window.pageXOffset || 0,
-    y: window.scrollY || window.pageYOffset || 0,
+    x: window.scrollX || 0,
+    y: window.scrollY || 0,
   };
 }
 
@@ -273,18 +273,18 @@ function createTablePillbox(table) {
     if (pType === 'touch' || pType === 'pen') {
       if (!button.classList.contains('expanded')) {
         button.classList.add('expanded');
-        scheduleAutoCollapse();
       } else {
         DR_BUS.publish('intent:toggleTable', { table });
-        scheduleAutoCollapse();
       }
+      scheduleAutoCollapse();
     } else {
       DR_BUS.publish('intent:toggleTable', { table });
     }
   });
 
   button.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.stopPropagation(); button.click(); }
+    // The browser fires a click on the button on Enter, so a click call here would press twice.
+    if (e.key === 'Enter') e.stopPropagation();
   });
 
   button.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -348,10 +348,7 @@ function repositionAllTablePillboxes() {
 // element that scrolled and does not bubble, so the scroll listener runs in
 // the capture phase: it runs on a page area's scroll as well as the window's.
 // The browser fires at most one scroll event per scrolling element per frame.
-let _scrollResizeListenersAdded = false;
 function ensureScrollResizeListeners() {
-  if (_scrollResizeListenersAdded) return;
-  _scrollResizeListenersAdded = true;
   window.addEventListener('scroll', repositionAllTablePillboxes, { capture: true, passive: true });
   window.addEventListener('resize', repositionAllTablePillboxes, { passive: true });
 }
@@ -393,6 +390,7 @@ function ensureHighlightStyleInjected() {
 }
 
 function flashActiveTable(table) {
+  ensureHighlightStyleInjected();
   table.classList.remove('dr-ext-active-flash');
   // Force reflow so the animation restarts when re-added.
   void table.offsetWidth;
@@ -410,6 +408,7 @@ function flashActiveTable(table) {
  * row.cells exist only on native tables.
  */
 function flashRangePulse(table, ranges) {
+  ensureHighlightStyleInjected();
   if (!ranges) {
     flashActiveTable(table);
     return;

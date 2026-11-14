@@ -214,7 +214,7 @@ const otherThumb = document.getElementById('otherThumb');
 const trackEl = document.getElementById('dualWrap').querySelector('.dual-track');
 
 let topVal = DR_DEFAULTS.offsetTop;
-let otherVal = DR_DEFAULTS.offsetTop;
+let otherVal = DR_DEFAULTS.offsetOther;
 let coupled = true;
 
 function snap(v) {
