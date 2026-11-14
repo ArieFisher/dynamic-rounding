@@ -769,20 +769,8 @@ function makeWalkEl(opts) {
     // getBoundingClientRect — needed by positionTablePillbox when createTablePillbox
     // fires its deferred setTimeout; return a zero-area rect so the table pillbox hides.
     getBoundingClientRect: function() { return { width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0 }; },
-    // closest() stub: only handles 'table' and '.dr-ext-grid'
-    closest: function(sel) {
-      if (sel === 'table') return null;  // not a <table> ancestor
-      if (sel === '.dr-ext-grid') {
-        // Walk up to see if any ancestor has dr-ext-grid
-        let p = this.parentElement || this.parentNode;
-        while (p && p !== document.body) {
-          if (p.classList && p.classList.contains('dr-ext-grid')) return p;
-          p = p.parentElement || p.parentNode;
-        }
-        return null;
-      }
-      return null;
-    },
+    // closest() stub: no <table> ancestor
+    closest: function() { return null; },
     _display: disp,
   };
   return el;

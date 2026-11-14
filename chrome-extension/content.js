@@ -25,8 +25,8 @@ const IS_CAPTURE_PAGE = !!(typeof document !== 'undefined' && document.documentE
 
 let lastRightClickedElement = null;
 // The active table lives in DR_MODEL. It may hold a <table> element or a
-// div-based grid root — any element carrying class dr-ext-grid or returned by
-// findTargetTable's .handle — so every caller must accept any Element.
+// div-based grid root — any element findTargetTable returns as its .handle —
+// so every caller must accept any Element.
 
 // The controller is the sole subscriber to intent topics. This is where the
 // activate intent turns into a model change.
@@ -182,10 +182,9 @@ function cancelSettleWait(key, waits) {
   waits.delete(key);
 }
 
-// findTargetTable() only returns what it found; it never writes the
-// dr-ext-grid marker or builds the table pillbox. When it finds a grid root for the
-// first time (found.isNew), this caller registers it, which does both.
-function markAndAddTablePillboxIfNewGrid(found) {
+// findTargetTable() only reports what it found and registers nothing. A grid
+// root it finds for the first time (found.isNew) registers here.
+function registerIfNew(found) {
   if (found.isNew) registerDataTable(found.handle);
   return found.handle;
 }
@@ -198,7 +197,7 @@ document.addEventListener('contextmenu', (event) => {
   lastRightClickedElement = event.target;
   const found = findTargetTable(event.target, { isRegistered: DR_MODEL.hasTable });
   if (found) {
-    const table = markAndAddTablePillboxIfNewGrid(found);
+    const table = registerIfNew(found);
     DR_BUS.publish('intent:activateTable', { table });
     DR_LOG.debug(DR_LOG.formatRow('activate'));
     flashActiveTable(table);
@@ -229,7 +228,7 @@ DR_BUS.subscribe('intent:menuClicked', () => {
     DR_LOG.debug(DR_LOG.formatRow('no table found'));
     return;
   }
-  DR_BUS.publish('intent:toggleTable', { table: markAndAddTablePillboxIfNewGrid(found) });
+  DR_BUS.publish('intent:toggleTable', { table: registerIfNew(found) });
 });
 
 // Reconnect: the sidebar reads the active table's settings itself, and the

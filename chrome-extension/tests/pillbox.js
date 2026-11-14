@@ -1920,7 +1920,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 })();
 
 // ---------------------------------------------------------------------------
-// AC1: ARIA grid with ONLY accessibility artifacts → Pass 2 adds dr-ext-grid + table pillbox
+// AC1: ARIA grid with ONLY accessibility artifacts → Pass 2 registers it with a table pillbox
 // ---------------------------------------------------------------------------
 (function pass2aria_AC1_onlyArtifactTables_getsTablePillbox() {
   const artifact1 = makeArtifactEmbeddedTable();
@@ -1938,8 +1938,8 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     injectTablePillboxes();
   });
 
-  eq('pass2-aria: grid with only accessibility artifacts gets dr-ext-grid class',
-    grid.classList.contains('dr-ext-grid'), true);
+  eq('pass2-aria: grid with only accessibility artifacts registers',
+    DR_MODEL.hasTable(grid), true);
   eq('pass2-aria: grid with only accessibility artifacts gets a table pillbox registered',
     tablePillboxes.has(grid), true);
 })();
@@ -1961,8 +1961,8 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     injectTablePillboxes();
   });
 
-  eq('pass2-aria: grid wrapping a real table does NOT get dr-ext-grid class',
-    grid.classList.contains('dr-ext-grid'), false);
+  eq('pass2-aria: grid wrapping a real table does NOT register',
+    DR_MODEL.hasTable(grid), false);
   eq('pass2-aria: grid wrapping a real table does NOT get a table pillbox',
     tablePillboxes.has(grid), false);
 })();
@@ -1985,8 +1985,8 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     injectTablePillboxes();
   });
 
-  eq('pass2-aria: grid with accessibility artifact and real table does NOT get dr-ext-grid',
-    grid.classList.contains('dr-ext-grid'), false);
+  eq('pass2-aria: grid with accessibility artifact and real table does NOT register',
+    DR_MODEL.hasTable(grid), false);
   eq('pass2-aria: grid with accessibility artifact and real table does NOT get a table pillbox',
     tablePillboxes.has(grid), false);
 })();
@@ -2008,18 +2008,17 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     injectTablePillboxes();
   });
 
-  eq('pass2-aria: grid with no embedded tables gets dr-ext-grid class',
-    grid.classList.contains('dr-ext-grid'), true);
+  eq('pass2-aria: grid with no embedded tables registers',
+    DR_MODEL.hasTable(grid), true);
   eq('pass2-aria: grid with no embedded tables gets a table pillbox',
     tablePillboxes.has(grid), true);
 })();
 
 // ---------------------------------------------------------------------------
-// Adversarial: grid already carrying dr-ext-grid is skipped (preserved guard)
+// Adversarial: an already registered grid is skipped (preserved guard)
 // ---------------------------------------------------------------------------
-(function pass2aria_adversarial_alreadyTagged_skipped() {
+(function pass2aria_adversarial_alreadyRegistered_skipped() {
   const grid = makeAriaGrid([]);
-  grid.classList.add('dr-ext-grid'); // pre-tag it (style hook only, not read as state)
   DR_MODEL.registerTable(grid); // the "already found" signal pass 2 checks
 
   withTablePillboxDocumentMock(function() {
@@ -2032,8 +2031,8 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     injectTablePillboxes();
   });
 
-  // Already tagged → skipped → tablePillboxes should NOT have a new entry
-  eq('pass2-aria: already-tagged grid gets no table pillbox again',
+  // Already registered → skipped → tablePillboxes should NOT have a new entry
+  eq('pass2-aria: already registered grid gets no table pillbox again',
     tablePillboxes.has(grid), false);
 })();
 
@@ -2069,7 +2068,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   });
 
   eq('pass2-aria: element with tagName=TABLE is skipped by tagName guard',
-    gridTable.classList.contains('dr-ext-grid'), false);
+    DR_MODEL.hasTable(gridTable), false);
   eq('pass2-aria: element with tagName=TABLE does not get a table pillbox via Pass 2',
     tablePillboxes.has(gridTable), false);
 })();
@@ -2336,7 +2335,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 
   // AC1 (source): contextmenu handler calls flashActiveTable(table) inside
   // the `if (found)` guard. findTargetTable returns { handle, isNew }, so the handler
-  // guards on `found` and derives `table` from markAndAddTablePillboxIfNewGrid(found)
+  // guards on `found` and derives `table` from registerIfNew(found)
   // before flashing it.
   // Pattern: `if (found) { ... flashActiveTable(table) ...` within the handler.
   eq('table-activation AC1 source: contextmenu handler calls flashActiveTable(table)',
@@ -2490,11 +2489,11 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // ---------------------------------------------------------------------------
 // End-to-end double-invocation
 // coverage through the REAL captured content.js listeners — not a direct call
-// to markAndAddTablePillboxIfNewGrid with a hand-built {handle, isNew} object (that is
+// to registerIfNew with a hand-built {handle, isNew} object (that is
 // already covered above, but only exercises the wrapper in isolation).
 //
 // The guard against a second table pillbox lives across two calls (findTargetTable
-// returns isNew; the caller's markAndAddTablePillboxIfNewGrid marks+builds only when
+// returns isNew; the caller's registerIfNew marks+builds only when
 // isNew). This test proves the guard end-to-end: firing the actual
 // captured 'contextmenu' listener twice on the same never-before-seen grid,
 // and then firing the actual captured 'intent:menuClicked' onMessage listener
@@ -2535,7 +2534,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   };
   const clickTarget = {
     nodeType: 1, tagName: 'DIV', parentElement: gridEl, parentNode: gridEl,
-    closest(sel) { return null; }, // first right-click: no <table>/.dr-ext-grid ancestor yet
+    closest(sel) { return null; }, // first right-click: no <table> ancestor
   };
 
   let buttonCreateCount = 0;
@@ -2592,18 +2591,15 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     eq('double-invocation: the bus registered its message listener', messageListeners.length, 1);
     if (typeof contextmenuHandler !== 'function' || messageListeners.length === 0) return;
 
-    // --- First right-click: new grid discovered via walk-up -> marked + widget built ---
+    // --- First right-click: new grid discovered via walk-up -> registered + widget built ---
     contextmenuHandler({ target: clickTarget });
 
-    eq('double-invocation: first contextmenu marks the grid with dr-ext-grid',
-      gridEl.classList.contains('dr-ext-grid'), true);
     eq('double-invocation: first contextmenu builds exactly one table pillbox',
       buttonCreateCount, 1);
 
     // --- Second right-click on the SAME target: findTargetTable resolves
     // this grid via case 2 (the opts.isRegistered walk-up), since it is already
     // registered. ---
-    clickTarget.closest = function(sel) { return sel === '.dr-ext-grid' ? gridEl : null; };
     contextmenuHandler({ target: clickTarget });
 
     eq('double-invocation: second contextmenu on the same grid builds NO second widget',
@@ -2614,7 +2610,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     const beforeMenuClick = sentMessages.length;
     fireMessage({ topic: 'intent:menuClicked' });
 
-    eq('double-invocation: intent:menuClicked on an already-marked grid builds NO widget',
+    eq('double-invocation: intent:menuClicked on an already registered grid builds NO widget',
       buttonCreateCount, 1);
     // Exact sequence, not presence. The right-click above CONNECTED this
     // grid, and the press path, which reads nothing about the sidebar, makes a
@@ -2676,9 +2672,6 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
       ctx.tablePillboxes.has(grid.pinnedPaneEl), false);
     eq('right-click AC1 runtime: the wrapper carries no table pillbox',
       ctx.tablePillboxes.has(grid.wrapperEl), false);
-    eq('right-click AC1 runtime: the grid marker class lands on the scrolling pane alone',
-      [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl]
-        .map((el) => el.classList.contains('dr-ext-grid')), [false, false, true]);
     eq('right-click AC1 runtime: the click reports the table as activated',
       ctx.sentMessages.some((m) => m.topic === 'state:tableActivated'), true);
   });

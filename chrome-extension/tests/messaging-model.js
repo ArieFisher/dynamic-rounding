@@ -1809,8 +1809,7 @@ const PENDING_FILL_ROWS = [
 
 // =============================================================================
 // The registry of found tables, per-cell originals,
-// and the simplified/original flag live in DR_MODEL; the dr-ext-grid marker
-// class becomes a style hook only.
+// and the simplified/original flag live in DR_MODEL.
 // =============================================================================
 
 // --- (a) One restore path: a native table and a grid restore through the

@@ -2123,33 +2123,6 @@
     /DR_BUS\.publish\(\s*'intent:toggleTable'/.test(uiPillboxSrc), true);
 })();
 
-// --- (c) Static lock: no production read of the dr-ext-grid marker class as
-// state — classList.contains/closest('.dr-ext-grid') may appear only as a
-// write (classList.add) or inside a comment discussing the history; a real
-// read call is what this locks out. ---
-(function registrySprint_noMarkerClassReadLock() {
-  const filesToScan = ['content.js', 'ui-pillbox.js', 'lib/dr-table/detect.js'];
-  const readPatterns = [
-    /classList\.contains\(\s*['"]dr-ext-grid['"]\s*\)/g,
-    /\.closest\(\s*['"]\.dr-ext-grid['"]\s*\)/g,
-  ];
-  for (const file of filesToScan) {
-    const src = sourceByName(file);
-    if (src === null) {
-      eq(`registry static lock: ${file} present in manifest`, false, true);
-      continue;
-    }
-    // Strip line comments and block comments before scanning, so a comment
-    // that merely mentions the pattern cannot trip the lock.
-    const withoutComments = src
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/^[ \t]*\/\/.*$/gm, '');
-    const matches = readPatterns.flatMap((re) => withoutComments.match(re) || []);
-    eq(`registry static lock: ${file} has no dr-ext-grid marker-class read`,
-      matches, []);
-  }
-})();
-
 // --- sidebar: the screenshot take never blocks the save ---
 //
 // takeCaptureScreenshot takes its tabs interface as a parameter and answers

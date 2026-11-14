@@ -1460,22 +1460,22 @@ const SEAT_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// content.js markAndAddTablePillboxIfNewGrid — the right-click call-site
-// wrapper. Its createTablePillbox call writes the dr-ext-grid marker and
-// builds the table pillbox, but only for a first-time (isNew) discovery.
+// content.js registerIfNew — the right-click call-site
+// wrapper. It registers the table and builds the table pillbox, but only for
+// a first-time (isNew) discovery.
 // ---------------------------------------------------------------------------
-(function markAndAddTablePillboxIfNewGrid_newGridGetsMarkedAndWidget() {
+(function registerIfNew_newGridRegistersWithTablePillbox() {
   withFindTargetEnv([], function() {
     const savedTablePillboxStyleInjected = tablePillboxStyleInjected;
     const table = makeAriaGrid([makeArtifactEmbeddedTable(), makeArtifactEmbeddedTable()]);
 
-    const handleReturned = markAndAddTablePillboxIfNewGrid({ handle: table, isNew: true });
+    const handleReturned = registerIfNew({ handle: table, isNew: true });
 
-    eq('markAndAddTablePillboxIfNewGrid: returns found.handle',
+    eq('registerIfNew: returns found.handle',
       handleReturned, table);
-    eq('markAndAddTablePillboxIfNewGrid: adds dr-ext-grid to a newly discovered grid',
-      table.classList.contains('dr-ext-grid'), true);
-    eq('markAndAddTablePillboxIfNewGrid: builds the table pillbox for a newly discovered grid',
+    eq('registerIfNew: registers a newly discovered grid',
+      DR_MODEL.hasTable(table), true);
+    eq('registerIfNew: builds the table pillbox for a newly discovered grid',
       tablePillboxes.has(table), true);
 
     cleanupPass1Tables([table]);
@@ -1483,23 +1483,21 @@ const SEAT_ROWS = [
   });
 })();
 
-(function markAndAddTablePillboxIfNewGrid_alreadySeenHandleSkipsMarkAndWidget() {
+(function registerIfNew_alreadySeenHandleSkipsRegistration() {
   withFindTargetEnv([], function() {
     const table = makePass1DataTable();
 
-    markAndAddTablePillboxIfNewGrid({ handle: table, isNew: false });
+    registerIfNew({ handle: table, isNew: false });
 
-    eq('markAndAddTablePillboxIfNewGrid: does not mark an already-seen handle',
-      table.classList.contains('dr-ext-grid'), false);
-    eq('markAndAddTablePillboxIfNewGrid: does not build a widget for an already-seen handle',
+    eq('registerIfNew: does not register an already-seen handle',
+      DR_MODEL.hasTable(table), false);
+    eq('registerIfNew: does not build a widget for an already-seen handle',
       tablePillboxes.has(table), false);
   });
 })();
 
-// createTablePillbox writes the grid marker itself, after the data test
-// passes: a grid that fails the test stays unmarked, and a native table that
-// passes it never carries the grid marker.
-(function createTablePillbox_marksOnlyAGridThatPassesTheDataTest() {
+// registerDataTable registers a table only after the data test passes.
+(function registerDataTable_registersOnlyATableThatPassesTheDataTest() {
   withFindTargetEnv([], function() {
     const savedTablePillboxStyleInjected = tablePillboxStyleInjected;
     const emptyGrid = makeAriaGrid([]);
@@ -1510,14 +1508,14 @@ const SEAT_ROWS = [
     registerDataTable(emptyGrid);
     registerDataTable(nativeTable);
 
-    eq('createTablePillbox: a grid that fails the data test gets no grid marker',
-      emptyGrid.classList.contains('dr-ext-grid'), false);
-    eq('createTablePillbox: a grid that fails the data test gets no table pillbox',
+    eq('registerDataTable: a grid that fails the data test does not register',
+      DR_MODEL.hasTable(emptyGrid), false);
+    eq('registerDataTable: a grid that fails the data test gets no table pillbox',
       tablePillboxes.has(emptyGrid), false);
-    eq('createTablePillbox: a native table gets a table pillbox',
+    eq('registerDataTable: a native table gets a table pillbox',
       tablePillboxes.has(nativeTable), true);
-    eq('createTablePillbox: a native table gets no grid marker',
-      nativeTable.classList.contains('dr-ext-grid'), false);
+    eq('registerDataTable: a native table registers',
+      DR_MODEL.hasTable(nativeTable), true);
 
     cleanupPass1Tables([emptyGrid, nativeTable]);
     tablePillboxStyleInjected = savedTablePillboxStyleInjected;
@@ -2696,7 +2694,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 // ---------------------------------------------------------------------------
 
 // AC1 (the Kaggle case): an added [role="table"] grid whose ONLY embedded
-// <table>s are chart accessibility artifacts → gets dr-ext-grid + a table pillbox.
+// <table>s are chart accessibility artifacts → registers and gets a table pillbox.
 (function observer_AC1_addedGridOnlyArtifactTables_getsTablePillbox() {
   const artifact1 = makeArtifactEmbeddedTable();
   const artifact2 = makeArtifactEmbeddedTable();
@@ -2706,13 +2704,13 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     injectTablePillboxes(grid);
   });
 
-  eq('observer: added grid with only accessibility artifacts gets dr-ext-grid class',
-    grid.classList.contains('dr-ext-grid'), true);
+  eq('observer: added grid with only accessibility artifacts registers',
+    DR_MODEL.hasTable(grid), true);
   eq('observer: added grid with only accessibility artifacts gets a table pillbox',
     tablePillboxes.has(grid), true);
 })();
 
-// AC2: an added grid wrapping a REAL table → observer bows out (no class or table pillbox
+// AC2: an added grid wrapping a REAL table → observer bows out (no registration or table pillbox
 // on the grid itself; the real embedded table is owned by Pass 1).
 (function observer_AC2_addedGridRealTable_bowsOut() {
   const realTbl = makePass1DataTable(); // not an artifact, has .rows for isDataTable
@@ -2722,8 +2720,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     injectTablePillboxes(grid);
   });
 
-  eq('observer: added grid wrapping a real table does NOT get dr-ext-grid',
-    grid.classList.contains('dr-ext-grid'), false);
+  eq('observer: added grid wrapping a real table does NOT register',
+    DR_MODEL.hasTable(grid), false);
   eq('observer: added grid wrapping a real table does NOT get a table pillbox',
     tablePillboxes.has(grid), false);
 

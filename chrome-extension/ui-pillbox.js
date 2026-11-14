@@ -209,7 +209,6 @@ function positionTablePillbox(table, button) {
 let _globalTapCollapseAdded = false;
 
 function createTablePillbox(table) {
-  if (table.tagName !== 'TABLE') table.classList.add('dr-ext-grid');
   ensureTablePillboxStyleInjected();
 
   const button = document.createElement('button');
