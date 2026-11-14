@@ -66,7 +66,6 @@ const DR_BUS = (function () {
     'state:sidebarOpened': { family: STATE_CHANGE, route: ROUTE_TAB },
     'state:boundTabLeft': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:sidebarClosed': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
-    'state:pageUnloaded': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     // The content script's topics for the sidebar. Each takes the
     // extension-pages route: the content script has no chrome.tabs, and the
     // sidebar is an extension page.

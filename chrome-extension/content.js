@@ -237,10 +237,6 @@ DR_BUS.respond('request:activeTable', () => {
 
 DR_BUS.respond('request:captureState', () => buildCaptureStateResponse());
 
-window.addEventListener('pagehide', () => {
-  DR_BUS.publish('state:pageUnloaded', {});
-});
-
 // Apply a table's own settings to it: reset it, then simplify it when its
 // on/off value is on.
 //

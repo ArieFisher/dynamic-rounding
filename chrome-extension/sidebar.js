@@ -99,12 +99,10 @@ function createBoundTab(tabsApi, bus) {
     },
 
     // Close the sidebar when the tab it was opened for stops being the one in
-    // front. The service worker closes it on the ordinary route and misses
-    // two: an idle restart empties the tab number it compares against, and a
-    // sidebar opened from Chrome's own side-panel control never sets it. On
-    // those routes the sidebar would otherwise survive the switch and keep
-    // showing controls for a page the user left. Closing here gives a tab
-    // switch one outcome, whichever route it takes.
+    // front. This is the one close on a tab switch. The service worker holds
+    // no switch listener: an idle restart empties its tab number, and a
+    // sidebar opened from Chrome's own side-panel control never sets it, so
+    // the sidebar's listener is the one that every switch reaches.
     //
     // A side panel belongs to one browser window, and the activation event
     // fires for every window. An activation in another window leaves the
@@ -910,9 +908,7 @@ rangeExprEl.value = '';
 // samples, and the sidebar shows the unbound prompt.
 boundTab.resolve(() => {
   redrawFromActiveTable();
-  // Registered after the tab lookup, for the reason resolve() states. The
-  // service worker closes the sidebar on most tab switches; this covers the
-  // switches it misses, so every switch ends the same way.
+  // Registered after the tab lookup, for the reason resolve() states.
   boundTab.onSwitchAway(() => { window.close(); });
 });
 

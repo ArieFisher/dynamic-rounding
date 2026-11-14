@@ -1465,11 +1465,8 @@ const SINGLE_READ_SAMPLES = {
 
   // --- Leaving the bound tab ---
   //
-  // The service worker closes the sidebar when the tab it was opened for
-  // stops being the front tab, and misses two routes: an idle restart empties
-  // the tab number it compares against, and a sidebar opened from Chrome's
-  // own side-panel control never sets it. On those routes the sidebar closes
-  // itself, so a tab switch has one outcome.
+  // The sidebar's own listener is the one close path on a tab switch: the
+  // service worker holds no switch listener.
   (function closesOnSwitchAway() {
     const tabs = makeTabs([{ id: OWN_TAB, windowId: OWN_WINDOW }]);
     const boundTab = createBoundTab(tabs, makeBus());
