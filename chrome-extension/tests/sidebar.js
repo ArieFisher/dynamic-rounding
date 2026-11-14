@@ -512,23 +512,20 @@
 // bus's own guard this would recurse until the real call stack overflows.
 // ---------------------------------------------------------------------------
 (function appModelSettings_busReentrancy_unguardedCycleTerminatesSafely() {
-  const TOPIC_A = 'state:activeTableChanged';
+  const TOPIC_A = 'state:errorRecorded';
   const TOPIC_B = 'state:settingsChanged';
-  const savedActive = DR_MODEL.getActiveTable();
-  DR_MODEL.setActiveTable(null); // see the note on the guarded cycle above
 
   const unsubA = DR_BUS.subscribe(TOPIC_A, () => { DR_BUS.publish(TOPIC_B, { source: 'page', settings: Object.assign({}, DR_DEFAULTS) }); });
-  const unsubB = DR_BUS.subscribe(TOPIC_B, () => { DR_BUS.publish(TOPIC_A, { table: null }); });
+  const unsubB = DR_BUS.subscribe(TOPIC_B, () => { DR_BUS.publish(TOPIC_A, { errorState: null }); });
 
   let threw = null;
   try {
-    DR_BUS.publish(TOPIC_A, { table: null });
+    DR_BUS.publish(TOPIC_A, { errorState: null });
   } catch (e) {
     threw = e.message;
   } finally {
     unsubA();
     unsubB();
-    DR_MODEL.setActiveTable(savedActive);
   }
 
   eq('DR_BUS reentrancy (unguarded cycle): publish() throws a catchable error instead of crashing with a real stack overflow',
@@ -542,7 +539,7 @@
   let secondThrew = null;
   const unsubCheck = DR_BUS.subscribe(TOPIC_A, () => {});
   try {
-    DR_BUS.publish(TOPIC_A, { table: null });
+    DR_BUS.publish(TOPIC_A, { errorState: null });
   } catch (e) {
     secondThrew = e.message;
   } finally {
@@ -832,7 +829,7 @@
 // ---------------------------------------------------------------------------
 // The context-menu toggle must go through the same controller branch a
 // table pillbox press uses. The right-click that opens the menu already activates
-// the table (the contextmenu handler calls setActiveTable), so with the
+// the table (the contextmenu handler publishes intent:activateTable), so with the
 // sidebar open, the menu toggle on that table must write the table's settings
 // and send them (the settings notice). A menu path that simplified the table
 // directly would leave the settings and the sidebar stale, and the next

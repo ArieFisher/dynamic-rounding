@@ -80,12 +80,8 @@ const DR_MODEL = (function () {
     return { activeTable, errorState: getErrorState() };
   }
 
-  // No production code subscribes to state:activeTableChanged. The sidebar
-  // redraws from state:tableActivated and state:tableSwitched, which the
-  // content script publishes.
   function setActiveTable(table) {
     activeTable = table;
-    DR_BUS.publish('state:activeTableChanged', { table: activeTable });
   }
 
   // --- Error state ---

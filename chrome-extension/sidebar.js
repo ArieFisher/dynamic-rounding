@@ -528,13 +528,13 @@ function currentSettings() {
   const controls = readControls();
   // Always emit concrete numbers — never null/blank — so content.js never falls
   // back to the "offset_other inherits from offset_top" branch. numTop has no
-  // sidebar control; pin it to 1.
+  // sidebar control; it carries the shipped default.
   return Object.assign({ enabled: controls.enabled }, controls.switches, {
     dateGranularity: controls.dateGranularity,
     timeGranularity: controls.timeGranularity,
     offsetTop: topVal,
     offsetOther: otherVal,
-    numTop: 1,
+    numTop: DR_DEFAULTS.numTop,
     rangeExpr: controls.rangeExpr,
   });
 }
