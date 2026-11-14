@@ -1528,10 +1528,10 @@ const PENDING_FILL_ROWS = [
   const modelFieldNames = Array.from(modelSrc.matchAll(/^ {2}(?:let|const)\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm))
     .map((m) => m[1])
     .filter((name) => name !== 'DR_MODEL');
-  eq('static scan: app/model.js declares its six private fields (sanity check on the scan itself)',
+  eq('static scan: app/model.js declares its five private fields (sanity check on the scan itself)',
     modelFieldNames.slice().sort(),
     ['ERROR_ROW_LIMIT', 'errorCount', 'errorRows',
-     'registeredTables', 'activeTable', 'tableRegistry'].sort());
+     'activeTable', 'tableRegistry'].sort());
   const modelFieldWrites = modelFieldNames.filter((name) => {
     const assignRe = new RegExp('\\b' + name + '\\s*=[^=]');
     return assignRe.test(uiPillboxSrcForScan) || assignRe.test(contentSrcForScan);

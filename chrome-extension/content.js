@@ -539,8 +539,8 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
       for (const node of mutation.removedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
         // Find every registered table or grid this removed subtree contains
-        // by walking DR_MODEL's registered tables (the enumerable companion
-        // to its WeakMap registry), which cover both table kinds.
+        // by walking DR_MODEL's registered tables, which cover both table
+        // kinds.
         for (const table of DR_MODEL.getRegisteredTables()) {
           const contained = table === node ||
             (typeof node.contains === 'function' && node.contains(table));
