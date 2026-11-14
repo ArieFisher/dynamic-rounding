@@ -1156,6 +1156,54 @@ const PENDING_FILL_ROWS = [
   });
 })();
 
+// --- A pending table has no longest wait ---
+//
+// The re-apply observer runs a pass once a burst has lasted reapplyMaxWaitMs.
+// A pending table under constant page changes is not re-tested on a timer:
+// every change restarts a full settle delay, however long the burst has run.
+// The clock moves 50 milliseconds per change, to 1500 milliseconds in all, past
+// the longest wait the re-apply observer applies.
+
+(function pendingRetest_aSustainedBurstNeverRunsTheRetest() {
+  const neverEl = makeDgNode('DIV', 'sustained-burst-grid', 'grid', [
+    makeDgRow(0, ['alpha', 'north', 'open']),
+    makeDgRow(1, ['bravo', 'south', 'open']),
+    makeDgRow(2, ['charlie', 'east', 'open']),
+  ]);
+  const stepMs = 50;
+  const changes = 30;
+  const savedNow = Date.now;
+
+  withPendingHarness(function ({ observers, timers }) {
+    withTablePillboxDocumentMock(function () {
+      injectTablePillboxesForAddedNode(neverEl);
+    });
+    const observer = observers[0];
+    const timersBefore = timers.length;
+    let clock = savedNow.call(Date);
+    Date.now = () => clock;
+    try {
+      for (let i = 0; i < changes; i++) {
+        observer.trigger();
+        clock += stepMs;
+      }
+    } finally {
+      Date.now = savedNow;
+    }
+    const waits = timers.slice(timersBefore);
+    eq('pending burst: one timer per change, each a full settle delay',
+      waits.map((timer) => timer.ms), new Array(changes).fill(DR_DETECTION_SETTINGS.settleDelayMs));
+    eq('pending burst: only the last change keeps a live timer',
+      waits.filter((timer) => !timer.cancelled).length, 1);
+    eq('pending burst: no re-test ran during the burst', pendingRetestCounts.get(neverEl), 0);
+    eq('pending burst: the burst is longer than the re-apply longest wait',
+      changes * stepMs > DR_DETECTION_SETTINGS.reapplyMaxWaitMs, true);
+    eq('pending burst: once the page goes quiet, one re-test runs', runPendingRetestTimers(timers), 1);
+    eq('pending burst: that re-test counts as one failed re-test', pendingRetestCounts.get(neverEl), 1);
+    dropPendingTable(neverEl);
+  });
+})();
+
 // --- Adversarial: a re-test that finds the nest registered ends the record ---
 //
 // The vocabulary row states the rule: a re-test that finds the nest already
