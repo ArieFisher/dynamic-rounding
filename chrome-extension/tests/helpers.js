@@ -275,7 +275,27 @@ function makeTablePillboxTestTable(rowsOrCells, extra) {
 }
 
 /**
- * Inject a fake entry into the module-level tablePillboxes WeakMap so that
+ * Tests read and plant a table pillbox's button by table, while the view
+ * holds each button inside a per-table record beside its resize observer.
+ * This reads and writes the button through that record. A planted record
+ * gets an observer stub, so the view's teardown runs on it unchanged.
+ *
+ * @param {WeakMap} views The view's map from table to { button, resizeObserver }.
+ * @returns {{has: Function, get: Function, set: Function, delete: Function}}
+ */
+function tablePillboxButtons(views) {
+  return {
+    has: (table) => views.has(table),
+    get: (table) => (views.has(table) ? views.get(table).button : undefined),
+    set: (table, button) => views.set(table, { button, resizeObserver: { disconnect() {} } }),
+    delete: (table) => views.delete(table),
+  };
+}
+
+const tablePillboxes = tablePillboxButtons(tablePillboxViews);
+
+/**
+ * Inject a fake entry into the table pillbox view's records so that
  * syncTablePillbox can find the button for this table.
  *
  * Returns a minimal button stub that supports setAttribute/getAttribute/classList
@@ -1438,7 +1458,7 @@ function makePositionedAncestor(styleOverrides) {
 //      fixture tables and Pass 2 (GRID_ARIA_SELECTOR) sees an empty list.
 //   2. Temporarily stub document.createElement + document.body.appendChild so
 //      createTablePillbox can run without errors.
-//   3. Reset tablePillboxes / trackedTables for each run by deleting entries we
+//   3. Reset tablePillboxes for each run by deleting entries we
 //      added (WeakMap does not expose a clear(), so we track which table objects
 //      we inserted and delete them by re-using the objects).
 //
@@ -1572,13 +1592,12 @@ function runPass1WithTables(tables) {
   return { tables };
 }
 
-// Helper: clean up tablePillboxes / trackedTables for a list of table objects so
+// Helper: clean up tablePillboxes for a list of table objects so
 // they do not pollute subsequent tests.
 function cleanupPass1Tables(tables) {
   for (const t of tables) {
     if (tablePillboxes.has(t)) {
       tablePillboxes.delete(t);
-      trackedTables.delete(t);
     }
   }
 }
@@ -2097,7 +2116,7 @@ function withRightClickSandbox(run) {
     // the registry and parent-equivalence harnesses above expose theirs.
     eval(contentScriptBundle + `
       globalThis.__rcr_DR_MODEL = DR_MODEL;
-      globalThis.__rcr_tablePillboxes = tablePillboxes;
+      globalThis.__rcr_tablePillboxes = tablePillboxButtons(tablePillboxViews);
       globalThis.__rcr_DR_LOG = DR_LOG;
       globalThis.__rcr_DR_BUS = DR_BUS;
       globalThis.__rcr_holdPendingTable = holdPendingTable;
@@ -2150,7 +2169,6 @@ function dgColumnTexts(rowEls, columnIndex) {
 function forgetRegisteredTable(table) {
   DR_MODEL.unregisterTable(table);
   tablePillboxes.delete(table);
-  trackedTables.delete(table);
 }
 
 // Replace one fixture row's cells, the way a virtualized grid redraws a row.
@@ -3503,7 +3521,7 @@ function afAddNode(node) {
   withTablePillboxDocumentMock(function () {
     const saved = global.getComputedStyle;
     global.getComputedStyle = inlineStyleProbe.getComputedStyle;
-    try { injectTablePillboxesForAddedNode(node); } finally { global.getComputedStyle = saved; }
+    try { injectTablePillboxes(node); } finally { global.getComputedStyle = saved; }
   });
 }
 

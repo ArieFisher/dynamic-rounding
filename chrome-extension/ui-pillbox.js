@@ -42,14 +42,12 @@ const CLIPPING_OVERFLOW = new Set(['hidden', 'scroll', 'auto', 'clip']);
 
 // --- Per-table pillbox infrastructure ---
 
-/** WeakMap from HTMLTableElement → HTMLButtonElement (the table pillbox's button) */
-const tablePillboxes = new WeakMap();
-
-/** A WeakMap cannot be iterated, so repositioning walks this Set. */
-const trackedTables = new Set();
-
-/** WeakMap from HTMLTableElement → ResizeObserver for the table pillbox */
-const tableResizeObservers = new WeakMap();
+/**
+ * WeakMap from a table (a native table or a grid) to its table pillbox's view
+ * record: { button, resizeObserver }, the button element and the observer
+ * that keeps it positioned.
+ */
+const tablePillboxViews = new WeakMap();
 
 // The table pillbox shows the table's on/off value, the same value the
 // sidebar pillbox shows, so the two always agree. The press handler in
@@ -60,9 +58,24 @@ function isTableOn(table) {
 }
 
 function syncTablePillbox(table) {
-  const button = tablePillboxes.get(table);
-  if (!button) return;
-  button.setAttribute('aria-pressed', isTableOn(table) ? 'true' : 'false');
+  const view = tablePillboxViews.get(table);
+  if (!view) return;
+  view.button.setAttribute('aria-pressed', isTableOn(table) ? 'true' : 'false');
+}
+
+// The resize observer goes with the button, so a table the page removed
+// leaves no observer behind.
+/**
+ * @param {Element} table The table whose table pillbox and resize observer this removes.
+ */
+function removeTablePillbox(table) {
+  const view = tablePillboxViews.get(table);
+  if (!view) return;
+  if (view.button.parentElement) {
+    view.button.parentElement.removeChild(view.button);
+  }
+  view.resizeObserver.disconnect();
+  tablePillboxViews.delete(table);
 }
 
 // Every settings write targets the active table, so on each settings notice
@@ -171,6 +184,18 @@ function isTablePillboxSpotClipped(table, x, y) {
   return false;
 }
 
+// The window's scroll offset in pixels, read to turn a window-relative box
+// into page coordinates for an element placed in the page body.
+/**
+ * @returns {{x: number, y: number}}
+ */
+function windowScrollOffset() {
+  return {
+    x: window.scrollX || window.pageXOffset || 0,
+    y: window.scrollY || window.pageYOffset || 0,
+  };
+}
+
 function positionTablePillbox(table, button) {
   const rect = table.getBoundingClientRect();
   const computedStyle = window.getComputedStyle(table);
@@ -187,8 +212,7 @@ function positionTablePillbox(table, button) {
     return;
   }
   button.style.display = '';
-  const scrollX = window.scrollX || window.pageXOffset || 0;
-  const scrollY = window.scrollY || window.pageYOffset || 0;
+  const { x: scrollX, y: scrollY } = windowScrollOffset();
   // Position so the dot's bottom = rect.top + scrollY + TABLE_PILLBOX_DOT_OVERLAP_PX
   // and the dot's right = rect.right + scrollX + TABLE_PILLBOX_DOT_OVERHANG_PX.
   // The button has TABLE_PILLBOX_HIT_PAD_PX padding on every side; with flex-end /
@@ -202,11 +226,26 @@ function positionTablePillbox(table, button) {
   button.style.top  = buttonTop  + 'px';
 }
 
+// The shape fingerprint's read options: the registry's stored
+// pre-simplification text per cell. The recording in createTablePillbox and
+// the comparison in content.js's revalidateTableShape both read through it,
+// so a header cell the extension itself simplified still reads as the text
+// the registry recorded, and the extension's own writes never read as a page
+// change.
+/**
+ * @param {Element} table The registered table whose stored originals the reader returns.
+ * @returns {{originalText: function(Element): (string|undefined)}}
+ */
+function fingerprintReadOpts(table) {
+  return { originalText: (cellEl) => DR_MODEL.getTableOriginalText(table, cellEl) };
+}
+
 /** Guard so the global tap-outside collapse listener is added only once */
 let _globalTapCollapseAdded = false;
 
 function createTablePillbox(table) {
   if (!isDataTable(table)) return;
+  if (table.tagName !== 'TABLE') table.classList.add('dr-ext-grid');
   ensureTablePillboxStyleInjected();
 
   const button = document.createElement('button');
@@ -270,24 +309,18 @@ function createTablePillbox(table) {
 
   button.addEventListener('mousedown', (e) => e.stopPropagation());
 
-  // View-only bookkeeping: the button element, and the reposition-on-scroll
-  // list. DR_MODEL's table registry holds the "found" registration.
-  tablePillboxes.set(table, button);
-  trackedTables.add(table);
+  const resizeObserver = new ResizeObserver(() => {
+    positionTablePillbox(table, button);
+  });
+  resizeObserver.observe(table);
+
+  // View-only bookkeeping. DR_MODEL's table registry holds the "found"
+  // registration, and repositioning walks it.
+  tablePillboxViews.set(table, { button, resizeObserver });
   DR_MODEL.registerTable(table);
   // The shape fingerprint, recorded once per registration. A new registry
   // entry holds no originals, so this read takes the cells as they stand.
-  // revalidateTableShape in content.js compares against it through the same
-  // originalText reader.
-  DR_MODEL.setTableFingerprint(table, readTableFingerprint(table, {
-    originalText: (cellEl) => DR_MODEL.getTableOriginalText(table, cellEl),
-  }));
-
-  const ro = new ResizeObserver(() => {
-    positionTablePillbox(table, button);
-  });
-  ro.observe(table);
-  tableResizeObservers.set(table, ro);
+  DR_MODEL.setTableFingerprint(table, readTableFingerprint(table, fingerprintReadOpts(table)));
 
   // Global tap-outside collapse (added once for all table pillboxes)
   if (!_globalTapCollapseAdded) {
@@ -304,13 +337,17 @@ function createTablePillbox(table) {
   return button;
 }
 
-// The load-time scan runs the same table scan as the added-node pass in
-// content.js. The nomination outcomes go to consumeNominations in content.js,
-// which holds each pending table. A pending table holds a live observer, and
-// this view holds no state of that kind. content.js calls this function once
-// the document has loaded, after it defines consumeNominations.
-function injectTablePillboxes() {
-  const { tables, nominations } = scanTables(document, { isRegistered: DR_MODEL.hasTable });
+// The one table scan: the load-time scan passes the document, and the page
+// observer in content.js passes each added element. The nomination outcomes
+// go to consumeNominations in content.js, which holds each pending table. A
+// pending table holds a live observer, and this view holds no state of that
+// kind. content.js calls this function only after it defines
+// consumeNominations.
+/**
+ * @param {Document|Element} [root] The node whose subtree the scan reads; the document when absent.
+ */
+function injectTablePillboxes(root = document) {
+  const { tables, nominations } = scanTables(root, { isRegistered: DR_MODEL.hasTable });
   tables.forEach(table => {
     if (!DR_MODEL.hasTable(table)) {
       createTablePillbox(table);
@@ -321,16 +358,18 @@ function injectTablePillboxes() {
   consumeNominations(nominations);
 }
 
+// A settings write can register a table that has no table pillbox, so the
+// walk skips a registered table with no button.
 function repositionAllTablePillboxes() {
-  for (const table of trackedTables) {
-    const button = tablePillboxes.get(table);
-    if (button) {
-      positionTablePillbox(table, button);
+  for (const table of DR_MODEL.getRegisteredTables()) {
+    const view = tablePillboxViews.get(table);
+    if (view) {
+      positionTablePillbox(table, view.button);
     }
   }
 }
 
-// Reposition all tracked table pillboxes on scroll/resize. A scroll event fires on the
+// Reposition every table pillbox on scroll/resize. A scroll event fires on the
 // element that scrolled and does not bubble, so the scroll listener runs in
 // the capture phase: it runs on a page area's scroll as well as the window's.
 // The browser fires at most one scroll event per scrolling element per frame.
@@ -431,8 +470,7 @@ function flashRangePulse(table, ranges) {
   }
 
   // Convert to absolute page coordinates so the overlay stays put on scrollable pages.
-  const scrollX = window.scrollX || window.pageXOffset || 0;
-  const scrollY = window.scrollY || window.pageYOffset || 0;
+  const { x: scrollX, y: scrollY } = windowScrollOffset();
   const absTop    = top    + scrollY;
   const absLeft   = left   + scrollX;
   const absWidth  = right  - left;

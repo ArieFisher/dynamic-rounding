@@ -140,9 +140,9 @@ const reapplyTimers = new WeakMap();
 //                      id for the debounced re-test, and its burst's start.
 // pendingRetestCounts: chainRootEl → failed re-tests so far, against
 //                      DR_DETECTION_SETTINGS.pendingRetestCap.
-// pendingRoots is the enumerable companion to the three WeakMaps, the way
-// trackedTables accompanies the registry: the table observer's removal branch
-// walks it to find a pending root inside a removed subtree.
+// pendingRoots is the enumerable companion to the three WeakMaps: the table
+// observer's removal branch walks it to find a pending root inside a removed
+// subtree.
 const pendingObservers = new WeakMap();
 const pendingRetestTimers = new WeakMap();
 const pendingRetestCounts = new WeakMap();
@@ -188,12 +188,9 @@ function cancelSettleWait(key, waits) {
 
 // findTargetTable() only returns what it found; it never writes the
 // dr-ext-grid marker or builds the table pillbox. When it finds a grid root for the
-// first time (found.isNew), this caller does both.
+// first time (found.isNew), this caller has createTablePillbox do both.
 function markAndAddTablePillboxIfNewGrid(found) {
-  if (found.isNew) {
-    found.handle.classList.add('dr-ext-grid');
-    createTablePillbox(found.handle);
-  }
+  if (found.isNew) createTablePillbox(found.handle);
   return found.handle;
 }
 
@@ -315,9 +312,9 @@ function leftAsWrittenValue(counts = {}) {
     .join(', ');
 }
 
-// The one consumer of the nomination step's per-nest outcomes. Both live
-// scanners route their grid pass through here — the load-time scan in the
-// table pillbox view (injectTablePillboxes) and the added-node pass below — so the
+// The one consumer of the nomination step's per-nest outcomes. The table
+// scan in the table pillbox view (injectTablePillboxes) routes its grid pass
+// through here, for the load-time scan and the added-node pass alike, so the
 // pending record and its clearing sit behind the step's outcome and never in
 // a caller. The step returns outcomes; this is where an outcome becomes a
 // registration or a watch.
@@ -347,7 +344,6 @@ function consumeNominations(results) {
 function consumeNomination({ chainRoot, selected, outcome }) {
   if (outcome === 'selected') {
     dropPendingTable(chainRoot);
-    selected.classList.add('dr-ext-grid');
     createTablePillbox(selected);
     return;
   }
@@ -409,29 +405,6 @@ function dropPendingTable(chainRoot) {
   }
   pendingRetestCounts.delete(chainRoot);
   pendingRoots.delete(chainRoot);
-}
-
-// A node added inside a wrapper already in the page re-evaluates the whole
-// nest through its chain root, so a pending table registers once its rows
-// arrive.
-// Extracted as a named function so the detection is unit-testable
-// independently of the live MutationObserver wiring below.
-function injectTablePillboxesForAddedNode(node) {
-  if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
-  const { tables, nominations } = scanTables(node, { isRegistered: DR_MODEL.hasTable });
-  tables.forEach(table => {
-    if (!DR_MODEL.hasTable(table)) createTablePillbox(table);
-  });
-  consumeNominations(nominations);
-}
-
-// The shape fingerprint's read options for one table: the registry's stored
-// pre-simplification text per cell. The recording site (createTablePillbox)
-// passes the same thing, so a header cell the extension itself simplified
-// still reads as the text the registry recorded, and the extension's own
-// writes never read as a page change.
-function fingerprintReadOpts(table) {
-  return { originalText: (cellEl) => DR_MODEL.getTableOriginalText(table, cellEl) };
 }
 
 // Check a registered table's shape against the fingerprint the registry
@@ -509,7 +482,6 @@ function revalidateTableShape(table, opts = {}) {
   let fresh = null;
   for (const { handle, isNew } of findTables(root, { isRegistered: DR_MODEL.hasTable })) {
     if (!isNew) continue;
-    if (handle.tagName !== 'TABLE') handle.classList.add('dr-ext-grid');
     createTablePillbox(handle);
     // createTablePillbox registers only what passes the data test, so the
     // registry records whether this element registered.
@@ -529,8 +501,8 @@ function revalidateTableShape(table, opts = {}) {
 // Discard one table's registration and every per-table resource the
 // extension holds beside it: the table pillbox, the resize observer that keeps the
 // table pillbox positioned, the table's re-apply observer and its pending timer,
-// the view's tracked-table list, and the registry entry with the cell
-// originals inside it. Two callers reach this: the removal
+// and the registry entry with the cell originals inside it. Two callers reach
+// this: the removal
 // observer, for a table the page took out; and the shape-fingerprint
 // mismatch path, for a table whose shape no longer matches the one the
 // registry recorded. Each caller writes its own row.
@@ -544,16 +516,8 @@ function revalidateTableShape(table, opts = {}) {
 // registers a fresh table makes that table active right after, and the
 // sidebar's read, which lands after this handler finishes, reads it.
 function teardownTableEntry(table) {
-  const button = tablePillboxes.get(table);
-  if (button && button.parentElement) {
-    button.parentElement.removeChild(button);
-  }
-  const ro = tableResizeObservers.get(table);
-  if (ro) {
-    ro.disconnect();
-  }
+  removeTablePillbox(table);
   unwatchTable(table);
-  trackedTables.delete(table);
   DR_MODEL.unregisterTable(table);
   if (DR_MODEL.getActiveTable() === table) {
     DR_BUS.publish('intent:activateTable', { table: null });
@@ -574,7 +538,10 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
-        injectTablePillboxesForAddedNode(node);
+        // A node added inside a wrapper already in the page re-evaluates the
+        // whole nest through its chain root, so a pending table registers
+        // once its rows arrive.
+        injectTablePillboxes(node);
       }
       for (const node of mutation.removedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;

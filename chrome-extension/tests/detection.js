@@ -3097,7 +3097,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   const before = DR_MODEL.getRegisteredTables().length;
 
   withTablePillboxDocumentMock(function () {
-    injectTablePillboxesForAddedNode(grid.wrapperEl);
+    injectTablePillboxes(grid.wrapperEl);
   });
 
   const added = DR_MODEL.getRegisteredTables().slice(before);
@@ -3115,7 +3115,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   // no second registration.
   const beforeRediscovery = DR_MODEL.getRegisteredTables().length;
   withTablePillboxDocumentMock(function () {
-    injectTablePillboxesForAddedNode(grid.scrollPaneEl);
+    injectTablePillboxes(grid.scrollPaneEl);
   });
   eq('nesting AC6: a node added inside a registered nest adds no registry entry',
     DR_MODEL.getRegisteredTables().length, beforeRediscovery);
