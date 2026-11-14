@@ -97,6 +97,48 @@
     classes.has('dr-ext-active-flash'), true);
 })();
 
+// Before the first apply on a page nothing else has added the highlight
+// stylesheet, so each flash function adds it itself.
+(function flashAddsHighlightStyleBeforeAnyApply() {
+  function stylesAddedBy(flash) {
+    const saved = {
+      createElement: document.createElement, head: document.head,
+      body: document.body, setTimeout: global.setTimeout,
+    };
+    const appended = [];
+    highlightStyleInjected = false;
+    document.createElement = () => ({ style: {}, addEventListener() {} });
+    document.head = { appendChild: (node) => appended.push(node) };
+    document.body = { appendChild() {} };
+    global.setTimeout = () => 0;
+    try {
+      flash();
+    } finally {
+      document.createElement = saved.createElement;
+      document.head = saved.head;
+      document.body = saved.body;
+      global.setTimeout = saved.setTimeout;
+      highlightStyleInjected = true;
+    }
+    return appended.filter((n) => String(n.textContent).includes('drExtActiveFlash')).length;
+  }
+
+  const wholeTable = {
+    classList: { remove() {}, add() {} },
+    offsetWidth: 0,
+    rows: [],
+  };
+  eq('flash style: flashActiveTable adds the highlight stylesheet on a page with no apply',
+    stylesAddedBy(() => flashActiveTable(wholeTable)), 1);
+
+  const table = makeMergedSpanTable();
+  const shifted = table.rows[2].cells;
+  shifted[0].getBoundingClientRect = () => ({ top: 40, left: 100, right: 200, bottom: 60 });
+  shifted[1].getBoundingClientRect = () => ({ top: 40, left: 200, right: 300, bottom: 60 });
+  eq('flash style: flashRangePulse adds the highlight stylesheet on a page with no apply',
+    stylesAddedBy(() => flashRangePulse(table, [{ rowMin: 2, rowMax: 2, colMin: 1, colMax: 1 }])), 1);
+})();
+
 // --- Helpers ---
 
 // --- AC5: showsSimplified returns false for a fresh table ---
@@ -701,6 +743,32 @@
     global.document.documentElement = origDocEl;
     tablePillboxStyleInjected = true;
   }
+})();
+
+// --- Enter on the table pillbox presses once ---
+// The browser fires a click on a native button on Enter, and the click handler
+// publishes the toggle intent. The stubs do not run that native click, so the
+// test checks that the key handler publishes nothing and calls no click.
+(function tablePillboxEnterKeyAddsNoSecondPress() {
+  const table = makeTablePillboxTestTable([
+    [{ tag: 'td', text: '50,000' }, { tag: 'td', text: '100' }],
+    [{ tag: 'td', text: '200' },    { tag: 'td', text: '300' }],
+  ]);
+  table._cells.forEach((c) => { c.querySelectorAll = () => []; });
+  const buttonEl = createTablePillboxWithSpies(table);
+  let clickCalls = 0;
+  buttonEl.click = () => { clickCalls += 1; };
+  let stopCalls = 0;
+  const published = [];
+  const unsubscribe = DR_BUS.subscribe('intent:toggleTable', ({ table: pressed }) => { published.push(pressed); });
+  try {
+    buttonEl.dispatchEvent({ type: 'keydown', key: 'Enter', stopPropagation() { stopCalls += 1; } });
+  } finally {
+    unsubscribe();
+  }
+  eq('table pillbox: the Enter key handler publishes no toggle', published.length, 0);
+  eq('table pillbox: the Enter key handler calls no click', clickCalls, 0);
+  eq('table pillbox: the Enter key handler keeps the key event off the page', stopCalls, 1);
 })();
 
 // ---------------------------------------------------------------------------
@@ -2392,6 +2460,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // ---------------------------------------------------------------------------
 (function tableContextmenuActivation_runtime() {
   let capturedHandler = null;
+  const addedToHead = [];
   const captureDoc = {
     addEventListener(type, handler) {
       if (type === 'contextmenu') capturedHandler = handler;
@@ -2399,6 +2468,8 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     querySelectorAll: () => [],
     readyState: 'complete',
     body: { appendChild: () => {}, observe: () => {} },
+    createElement: () => ({}),
+    head: { appendChild: (node) => addedToHead.push(node) },
   };
 
   // Track calls to chrome.runtime.sendMessage.
@@ -2458,6 +2529,10 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 
     eq('table-activation AC1 runtime: flashActiveTable adds dr-ext-active-flash to the table',
       flashedClasses.includes('dr-ext-active-flash'),
+      true);
+
+    eq('table-activation AC1 runtime: flashActiveTable adds the highlight stylesheet on the first right-click on a page',
+      addedToHead.some((node) => String(node.textContent).includes('drExtActiveFlash')),
       true);
 
     eq('table-activation AC1 runtime: state:tableActivated sent when right-clicking a table',

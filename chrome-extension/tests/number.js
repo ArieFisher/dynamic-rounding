@@ -2418,9 +2418,10 @@ const LADDER_OPTS = {
     addEventListener: () => {},
     querySelectorAll: () => [],
     readyState: 'complete',
-    // applySidebarRounding's ensureHighlightStyleInjected() needs these —
-    // the reconnect/AC1 tests above never reach that call (no selected
-    // table, so the subscriber's `if (selected)` guard short-circuits).
+    // The range pulse at the end of applySidebarRounding adds the highlight
+    // stylesheet and needs these — the reconnect/AC1 tests above never reach
+    // that call (no active table, so the subscriber's `if (selected)` guard
+    // short-circuits).
     createElement: () => ({ textContent: '', appendChild() {} }),
     head: { appendChild() {} },
     documentElement: { appendChild() {} },

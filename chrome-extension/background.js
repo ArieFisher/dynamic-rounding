@@ -74,7 +74,7 @@ chrome.action.onClicked.addListener((tab) => {
 });
 
 /**
- * @param {number} tabId The tab that reloaded or closed. The function acts only when it is the bound tab.
+ * @param {number} tabId The tab that reloaded or closed. The function publishes the close only when this is the bound tab.
  */
 function closeSidebarIfOpen(tabId) {
   if (tabId !== boundTabId) return;
