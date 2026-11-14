@@ -745,6 +745,32 @@
   }
 })();
 
+// --- Enter on the table pillbox presses once ---
+// The browser fires a click on a native button on Enter, and the click handler
+// publishes the toggle intent. The stubs do not run that native click, so the
+// test checks that the key handler publishes nothing and calls no click.
+(function tablePillboxEnterKeyAddsNoSecondPress() {
+  const table = makeTablePillboxTestTable([
+    [{ tag: 'td', text: '50,000' }, { tag: 'td', text: '100' }],
+    [{ tag: 'td', text: '200' },    { tag: 'td', text: '300' }],
+  ]);
+  table._cells.forEach((c) => { c.querySelectorAll = () => []; });
+  const buttonEl = createTablePillboxWithSpies(table);
+  let clickCalls = 0;
+  buttonEl.click = () => { clickCalls += 1; };
+  let stopCalls = 0;
+  const published = [];
+  const unsubscribe = DR_BUS.subscribe('intent:toggleTable', ({ table: pressed }) => { published.push(pressed); });
+  try {
+    buttonEl.dispatchEvent({ type: 'keydown', key: 'Enter', stopPropagation() { stopCalls += 1; } });
+  } finally {
+    unsubscribe();
+  }
+  eq('table pillbox: the Enter key handler publishes no toggle', published.length, 0);
+  eq('table pillbox: the Enter key handler calls no click', clickCalls, 0);
+  eq('table pillbox: the Enter key handler keeps the key event off the page', stopCalls, 1);
+})();
+
 // ---------------------------------------------------------------------------
 // Visibility gate in positionTablePillbox
 // ---------------------------------------------------------------------------
