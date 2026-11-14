@@ -2361,8 +2361,8 @@ const PENDING_FILL_ROWS = [
 // --- The teardown both the removal observer and the
 // mismatch path run. One function discards a table's registration and every
 // per-table resource the extension holds beside it: the table pillbox, the resize
-// observer, a virtualized grid's re-apply observer and its pending timer, the
-// view's tracked-table list, and the registry entry. The teardown writes no
+// observer, a virtualized grid's re-apply observer and its pending timer, and
+// the registry entry. The teardown writes no
 // row: each caller writes its own. Spec: the shape-fingerprint block in
 // docs/sprint-plans/grid-detection-recovery-v2.md §5. ---
 

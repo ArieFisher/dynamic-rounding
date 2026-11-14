@@ -369,7 +369,7 @@ function repositionAllTablePillboxes() {
   }
 }
 
-// Reposition all tracked table pillboxes on scroll/resize. A scroll event fires on the
+// Reposition every table pillbox on scroll/resize. A scroll event fires on the
 // element that scrolled and does not bubble, so the scroll listener runs in
 // the capture phase: it runs on a page area's scroll as well as the window's.
 // The browser fires at most one scroll event per scrolling element per frame.
