@@ -42,11 +42,7 @@ const CLIPPING_OVERFLOW = new Set(['hidden', 'scroll', 'auto', 'clip']);
 
 // --- Per-table pillbox infrastructure ---
 
-/**
- * WeakMap from a table (a native table or a grid) to its table pillbox's view
- * record: { button, resizeObserver }, the button element and the observer
- * that keeps it positioned.
- */
+// A table (native or grid) → { button, resizeObserver }.
 const tablePillboxViews = new WeakMap();
 
 // The table pillbox shows the table's on/off value, the same value the
@@ -63,11 +59,7 @@ function syncTablePillbox(table) {
   view.button.setAttribute('aria-pressed', isTableOn(table) ? 'true' : 'false');
 }
 
-// The resize observer goes with the button, so a table the page removed
-// leaves no observer behind.
-/**
- * @param {Element} table The table whose table pillbox and resize observer this removes.
- */
+/** @param {Element} table The table whose table pillbox this removes. */
 function removeTablePillbox(table) {
   const view = tablePillboxViews.get(table);
   if (!view) return;
@@ -184,11 +176,6 @@ function isTablePillboxSpotClipped(table, x, y) {
   return false;
 }
 
-// The window's scroll offset in pixels, read to turn a window-relative box
-// into page coordinates for an element placed in the page body.
-/**
- * @returns {{x: number, y: number}}
- */
 function windowScrollOffset() {
   return {
     x: window.scrollX || window.pageXOffset || 0,
@@ -226,16 +213,9 @@ function positionTablePillbox(table, button) {
   button.style.top  = buttonTop  + 'px';
 }
 
-// The shape fingerprint's read options: the registry's stored
-// pre-simplification text per cell. The recording in createTablePillbox and
-// the comparison in content.js's revalidateTableShape both read through it,
-// so a header cell the extension itself simplified still reads as the text
-// the registry recorded, and the extension's own writes never read as a page
-// change.
-/**
- * @param {Element} table The registered table whose stored originals the reader returns.
- * @returns {{originalText: function(Element): (string|undefined)}}
- */
+// The recorded and the compared fingerprint both read the stored originals, so
+// the extension's own writes never read as a page change.
+/** @param {Element} table The registered table whose stored originals the reader returns. */
 function fingerprintReadOpts(table) {
   return { originalText: (cellEl) => DR_MODEL.getTableOriginalText(table, cellEl) };
 }
@@ -337,15 +317,10 @@ function createTablePillbox(table) {
   return button;
 }
 
-// The one table scan: the load-time scan passes the document, and the page
-// observer in content.js passes each added element. The nomination outcomes
-// go to consumeNominations in content.js, which holds each pending table. A
-// pending table holds a live observer, and this view holds no state of that
-// kind. content.js calls this function only after it defines
-// consumeNominations.
-/**
- * @param {Document|Element} [root] The node whose subtree the scan reads; the document when absent.
- */
+// The page observer in content.js passes each added element. The nomination
+// outcomes go to consumeNominations in content.js, which holds each pending
+// table, so content.js calls this only after it defines consumeNominations.
+/** @param {Document|Element} [root] The node whose subtree the scan reads. */
 function injectTablePillboxes(root = document) {
   const { tables, nominations } = scanTables(root, { isRegistered: DR_MODEL.hasTable });
   tables.forEach(table => {

@@ -1158,11 +1158,7 @@ const PENDING_FILL_ROWS = [
 
 // --- A pending table has no longest wait ---
 //
-// The re-apply observer runs a pass once a burst has lasted reapplyMaxWaitMs.
-// A pending table under constant page changes is not re-tested on a timer:
-// every change restarts a full settle delay, however long the burst has run.
-// The clock moves 50 milliseconds per change, to 1500 milliseconds in all, past
-// the longest wait the re-apply observer applies.
+// The burst runs 1500 milliseconds, past the re-apply observer's longest wait.
 
 (function pendingRetest_aSustainedBurstNeverRunsTheRetest() {
   const neverEl = makeDgNode('DIV', 'sustained-burst-grid', 'grid', [

@@ -981,8 +981,6 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   const table = { getBoundingClientRect() { return tableRect; } };
   const buttonEl = { style: {} };
   tablePillboxes.set(table, buttonEl);
-  // A settings write can register a table with no table pillbox; the walk
-  // passes over it. The stub holds the walk to these two tables.
   const tableWithNoPillbox = {};
   DR_MODEL.getRegisteredTables = () => [tableWithNoPillbox, table];
   const origScrollX = global.window.scrollX;

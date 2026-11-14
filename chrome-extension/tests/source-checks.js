@@ -1293,10 +1293,8 @@
     eq('bg routing: closing a removed tab does not throw', threw, false);
   })();
 
-  // --- A tab switch and a page unload close the sidebar through one path each:
-  // the sidebar's own switch listener, and the worker's navigation listener.
-  // A second path for either would close the sidebar twice, or in a window
-  // other than the one the switch happened in. ---
+  // --- A tab switch and a page unload close the sidebar through one path
+  // each: the sidebar's switch listener, and the worker's navigation listener. ---
   (function noSecondClosePath() {
     const ctx = loadBackground();
     eq('bg routing: the worker registers no tab-activation listener',
