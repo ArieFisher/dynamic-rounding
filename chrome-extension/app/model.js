@@ -190,6 +190,13 @@ const DR_MODEL = (function () {
     return Object.assign({}, entry && entry.settings ? entry.settings : DR_DEFAULTS);
   }
 
+  // The on/off value the table pillbox and the sidebar pillbox both show, so
+  // the two always agree. A table that is on with no cell to simplify is on.
+  /** @param {Element} table The table whose on/off value this reads. */
+  function isTableOn(table) {
+    return getTableSettings(table).enabled === true;
+  }
+
   function setTableMaxMagnitude(table, maxMagnitude) {
     _ensureEntry(table).maxMagnitude = maxMagnitude;
   }
@@ -227,6 +234,7 @@ const DR_MODEL = (function () {
     deleteTableOriginal,
     setTableSettings,
     getTableSettings,
+    isTableOn,
     setTableMaxMagnitude,
     getTableMaxMagnitude,
     setTableFingerprint,

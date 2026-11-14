@@ -157,8 +157,8 @@
 // --- Static analysis: all new functions are defined ---
 
 (function tablePillbox_staticAnalysis() {
-  eq('table-pillbox: isTableOn is defined',
-    typeof isTableOn, 'function');
+  eq('table-pillbox: DR_MODEL.isTableOn is defined',
+    typeof DR_MODEL.isTableOn, 'function');
   eq('table-pillbox: syncTablePillbox is defined',
     typeof syncTablePillbox, 'function');
   eq('table-pillbox: positionTablePillbox is defined',

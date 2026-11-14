@@ -151,7 +151,7 @@
     DR_MODEL.hasTableOriginal(table, cell), false);
 })();
 
-// --- AC6: syncTablePillbox sets aria-pressed on the button to match isTableOn ---
+// --- AC6: syncTablePillbox sets aria-pressed on the button to match DR_MODEL.isTableOn ---
 
 (function tablePillbox_syncTablePillbox_ariaFalseWhenNotRounded() {
   const table = makeTablePillboxTestTable([{ tag: 'td', text: '1,000' }]);

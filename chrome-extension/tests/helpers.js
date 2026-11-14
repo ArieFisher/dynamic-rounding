@@ -20,7 +20,7 @@ function withTextPiece(cell) {
 
 // True when the screen shows simplified values: a cell of the table carries
 // the marker class. The table pillbox shows the on/off value instead
-// (isTableOn), so a test of what a pass did to the screen reads this.
+// (DR_MODEL.isTableOn), so a test of what a pass did to the screen reads this.
 function showsSimplified(table) {
   return table.querySelectorAll('.dr-ext-rounded').length > 0;
 }

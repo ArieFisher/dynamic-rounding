@@ -105,7 +105,7 @@ DR_BUS.subscribe('intent:toggleTable', ({ table: pressedTable }) => {
   const target = revalidated.table;
 
   // Rule 1: read the on/off value first.
-  const nextEnabled = !isTableOn(target);
+  const nextEnabled = !DR_MODEL.isTableOn(target);
 
   if (!revalidated.switched && target !== DR_MODEL.getActiveTable()) {
     // Rule 2. Published as an intent rather than written here, so one intent

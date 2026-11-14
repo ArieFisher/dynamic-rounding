@@ -45,18 +45,10 @@ const CLIPPING_OVERFLOW = new Set(['hidden', 'scroll', 'auto', 'clip']);
 // A table (native or grid) → { button, resizeObserver }.
 const tablePillboxViews = new WeakMap();
 
-// The table pillbox shows the table's on/off value, the same value the
-// sidebar pillbox shows, so the two always agree. The press handler in
-// content.js reads this value and writes its opposite. A table that is on
-// with no cell to simplify still shows on.
-function isTableOn(table) {
-  return DR_MODEL.getTableSettings(table).enabled === true;
-}
-
 function syncTablePillbox(table) {
   const view = tablePillboxViews.get(table);
   if (!view) return;
-  view.button.setAttribute('aria-pressed', isTableOn(table) ? 'true' : 'false');
+  view.button.setAttribute('aria-pressed', DR_MODEL.isTableOn(table) ? 'true' : 'false');
 }
 
 /** @param {Element} table The table whose table pillbox this removes. */

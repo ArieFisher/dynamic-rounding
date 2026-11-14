@@ -146,7 +146,6 @@ Object.defineProperty(globalThis, 'highlightStyleInjected', {
   set(v) { highlightStyleInjected = v; },
   configurable: true,
 });
-globalThis.isTableOn = isTableOn;
 globalThis.syncTablePillbox = syncTablePillbox;
 globalThis.positionTablePillbox = positionTablePillbox;
 globalThis.createTablePillbox = createTablePillbox;
