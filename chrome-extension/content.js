@@ -126,18 +126,18 @@ DR_BUS.subscribe('intent:toggleTable', ({ table: pressedTable }) => {
 // reapplyObservers: table → { observer, target }: the MutationObserver and
 //                   the element it watches, a native table itself or a grid's
 //                   scroll container.
-// reapplyTimers:    table → pending setTimeout id for the next pass.
-// reapplyBursts:    table → the clock time the current burst of page edits
-//                   began, which bounds the burst's wait for its pass.
+// reapplyTimers:    table → { id, burstStartMs }: the pending setTimeout id
+//                   for the next pass, and the clock time the current burst
+//                   of page edits began, which bounds the burst's wait.
 const reapplyObservers = new WeakMap();
 const reapplyTimers = new WeakMap();
-const reapplyBursts = new WeakMap();
 
 // Pending table state, keyed by chain root. A chain root whose chain is empty
 // — no element of its nest passes the data test — becomes a pending table:
 // the grid arrived before its rows, and the rows may still arrive.
 // pendingObservers:   chainRootEl → MutationObserver watching the whole subtree.
-// pendingRetestTimers: chainRootEl → pending setTimeout id for the debounced re-test.
+// pendingRetestTimers: chainRootEl → { id, burstStartMs }: the pending setTimeout
+//                      id for the debounced re-test, and its burst's start.
 // pendingRetestCounts: chainRootEl → failed re-tests so far, against
 //                      DR_DETECTION_SETTINGS.pendingRetestCap.
 // pendingRoots is the enumerable companion to the three WeakMaps, the way
@@ -148,6 +148,43 @@ const pendingRetestTimers = new WeakMap();
 const pendingRetestCounts = new WeakMap();
 const pendingRoots = new Set();
 
+// The changes both observers watch: rows arrive as added nodes, and a cell
+// filled in place changes text alone.
+const OBSERVED_CHANGES = { childList: true, characterData: true, subtree: true };
+
+/**
+ * One page change: restart the key's wait, then run the action once the page
+ * has been quiet for the settle delay. With a longest wait, the action also
+ * runs once a burst has lasted that long from its first change.
+ * @param {Element} key - The element whose changes the wait covers.
+ * @param {WeakMap} waits - key → { id, burstStartMs }: the pending setTimeout id and the clock time of the burst's first change.
+ * @param {function(Element): void} action - Runs with the key after the wait.
+ * @param {number} [maxWaitMs] - The longest wait in milliseconds; absent means no longest wait.
+ */
+function restartSettleWait(key, waits, action, maxWaitMs) {
+  const now = Date.now();
+  const previous = waits.get(key);
+  if (previous) clearTimeout(previous.id);
+  const burstStartMs = previous ? previous.burstStartMs : now;
+  const untilLongest = maxWaitMs === undefined ? Infinity : burstStartMs + maxWaitMs - now;
+  const wait = Math.max(0, Math.min(DR_DETECTION_SETTINGS.settleDelayMs, untilLongest));
+  const id = setTimeout(() => {
+    waits.delete(key);
+    action(key);
+  }, wait);
+  waits.set(key, { id, burstStartMs });
+}
+
+/**
+ * Cancel a key's wait. Safe on a key that holds none.
+ * @param {Element} key - The element whose wait to cancel.
+ * @param {WeakMap} waits - key → { id, burstStartMs }, as restartSettleWait holds it.
+ */
+function cancelSettleWait(key, waits) {
+  const previous = waits.get(key);
+  if (previous) clearTimeout(previous.id);
+  waits.delete(key);
+}
 
 // findTargetTable() only returns what it found; it never writes the
 // dr-ext-grid marker or builds the table pillbox. When it finds a grid root for the
@@ -343,20 +380,11 @@ function holdPendingTable(chainRoot) {
     return;
   }
   if (typeof MutationObserver === 'undefined') return;
-  // childList and characterData both, subtree wide: rows arrive as added
-  // nodes, and a cell filled in place changes text alone. The debounce copies
-  // the re-apply observer's: each mutation cancels the pending timer and
-  // schedules a fresh one, so a burst of rows costs one re-test.
-  const observer = new MutationObserver(() => {
-    const pending = pendingRetestTimers.get(chainRoot);
-    if (pending !== undefined) clearTimeout(pending);
-    const timerId = setTimeout(() => {
-      pendingRetestTimers.delete(chainRoot);
-      retestPendingTable(chainRoot);
-    }, DR_DETECTION_SETTINGS.settleDelayMs);
-    pendingRetestTimers.set(chainRoot, timerId);
-  });
-  observer.observe(chainRoot, { childList: true, characterData: true, subtree: true });
+  // No longest wait: a pending table under constant page changes waits for
+  // the page to go quiet, and the re-test cap bounds only the failed re-tests.
+  const observer = new MutationObserver(
+    () => restartSettleWait(chainRoot, pendingRetestTimers, retestPendingTable));
+  observer.observe(chainRoot, OBSERVED_CHANGES);
   pendingObservers.set(chainRoot, observer);
   pendingRetestCounts.set(chainRoot, 0);
   pendingRoots.add(chainRoot);
@@ -373,11 +401,7 @@ function retestPendingTable(chainRoot) {
 // failed-re-test count, and the root's membership in the enumerable set.
 // Safe on a root that holds no record.
 function dropPendingTable(chainRoot) {
-  const timerId = pendingRetestTimers.get(chainRoot);
-  if (timerId !== undefined) {
-    clearTimeout(timerId);
-    pendingRetestTimers.delete(chainRoot);
-  }
+  cancelSettleWait(chainRoot, pendingRetestTimers);
   const observer = pendingObservers.get(chainRoot);
   if (observer) {
     observer.disconnect();
@@ -1058,8 +1082,6 @@ function registryAdapter(table) {
 // cap (reapplyCellCap) takes no observer, and a pass that finds its table
 // above the cap stops the observer.
 
-const OBSERVED_CHANGES = { childList: true, characterData: true, subtree: true };
-
 // Start watching a table after its first simplification. The first
 // simplification's own writes are done by then, so they run no pass.
 function watchTable(table, adapter, cellCount) {
@@ -1082,12 +1104,7 @@ function observeTable(table) {
 // Stop watching a table: its pending timer, its burst, and its observer.
 // Safe on a table that holds none.
 function unwatchTable(table) {
-  const pending = reapplyTimers.get(table);
-  if (pending !== undefined) {
-    clearTimeout(pending);
-    reapplyTimers.delete(table);
-  }
-  reapplyBursts.delete(table);
+  cancelSettleWait(table, reapplyTimers);
   const watcher = reapplyObservers.get(table);
   if (watcher) {
     watcher.observer.disconnect();
@@ -1095,16 +1112,9 @@ function unwatchTable(table) {
   }
 }
 
-// One page change: restart the wait for the pass, bounded by the longest
-// wait counted from the burst's first change.
+// One page change: restart the wait for the pass, bounded by the longest wait.
 function scheduleReapply(table) {
-  const now = Date.now();
-  if (!reapplyBursts.has(table)) reapplyBursts.set(table, now);
-  const pending = reapplyTimers.get(table);
-  if (pending !== undefined) clearTimeout(pending);
-  const untilLongest = reapplyBursts.get(table) + DR_DETECTION_SETTINGS.reapplyMaxWaitMs - now;
-  const wait = Math.max(0, Math.min(DR_DETECTION_SETTINGS.settleDelayMs, untilLongest));
-  reapplyTimers.set(table, setTimeout(() => reapplyRounding(table), wait));
+  restartSettleWait(table, reapplyTimers, reapplyRounding, DR_DETECTION_SETTINGS.reapplyMaxWaitMs);
 }
 
 // The debug row for a table above the cell cap. A debug row raises no toast.
@@ -1119,8 +1129,6 @@ function logAboveCellCap(cellCount) {
  * @param {Element} table - The table or grid (key into DR_MODEL's registry).
  */
 function reapplyRounding(table) {
-  reapplyTimers.delete(table);
-  reapplyBursts.delete(table);
   const watcher = reapplyObservers.get(table);
   if (!watcher) return;
   watcher.observer.disconnect();
