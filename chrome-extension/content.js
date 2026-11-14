@@ -153,13 +153,10 @@ const pendingRoots = new Set();
 const OBSERVED_CHANGES = { childList: true, characterData: true, subtree: true };
 
 /**
- * One page change: restart the key's wait, then run the action once the page
- * has been quiet for the settle delay. With a longest wait, the action also
- * runs once a burst has lasted that long from its first change.
  * @param {Element} key - The element whose changes the wait covers.
- * @param {WeakMap} waits - key → { id, burstStartMs }: the pending setTimeout id and the clock time of the burst's first change.
+ * @param {WeakMap} waits - key → { id, burstStartMs }.
  * @param {function(Element): void} action - Runs with the key after the wait.
- * @param {number} [maxWaitMs] - The longest wait in milliseconds; absent means no longest wait.
+ * @param {number} [maxWaitMs] - The longest wait in milliseconds; absent means none.
  */
 function restartSettleWait(key, waits, action, maxWaitMs) {
   const now = Date.now();
@@ -176,9 +173,8 @@ function restartSettleWait(key, waits, action, maxWaitMs) {
 }
 
 /**
- * Cancel a key's wait. Safe on a key that holds none.
  * @param {Element} key - The element whose wait to cancel.
- * @param {WeakMap} waits - key → { id, burstStartMs }, as restartSettleWait holds it.
+ * @param {WeakMap} waits - key → { id, burstStartMs }.
  */
 function cancelSettleWait(key, waits) {
   const previous = waits.get(key);
@@ -538,9 +534,6 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
-        // A node added inside a wrapper already in the page re-evaluates the
-        // whole nest through its chain root, so a pending table registers
-        // once its rows arrive.
         injectTablePillboxes(node);
       }
       for (const node of mutation.removedNodes) {
@@ -1079,7 +1072,6 @@ function unwatchTable(table) {
   }
 }
 
-// One page change: restart the wait for the pass, bounded by the longest wait.
 function scheduleReapply(table) {
   restartSettleWait(table, reapplyTimers, reapplyRounding, DR_DETECTION_SETTINGS.reapplyMaxWaitMs);
 }

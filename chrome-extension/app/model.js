@@ -176,12 +176,8 @@ const DR_MODEL = (function () {
   // source is not its own, and the table pillbox view redraws the active
   // table's table pillbox from every notice.
   //
-  // The one place the shipped defaults fill in on a write.
-  /**
-   * @param {Element} table The table to write.
-   * @param {Object} settings A patch: the keys to change; every other key keeps its stored value.
-   * @param {string} source 'sidebar' or 'page'.
-   */
+  // The one place the shipped defaults fill in on a write. settings is a
+  // patch: a key it leaves out keeps its stored value.
   function setTableSettings(table, settings, source) {
     const stored = Object.assign({}, getTableSettings(table), settings || {});
     _ensureEntry(table).settings = stored;

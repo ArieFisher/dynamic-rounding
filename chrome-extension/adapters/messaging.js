@@ -80,10 +80,7 @@ const DR_BUS = (function () {
 
   const subscribers = new Map(); // topic name -> Set<handler>
 
-  /**
-   * @param {string} topic - The topic name to look up in TOPICS.
-   * @returns {boolean} Whether TOPICS holds the name.
-   */
+  /** @param {string} topic - The topic name to look up in TOPICS. */
   function isKnownTopic(topic) {
     return Object.prototype.hasOwnProperty.call(TOPICS, topic);
   }
@@ -94,24 +91,17 @@ const DR_BUS = (function () {
     }
   }
 
-  // The wire format: one message object holding the topic name beside the
-  // payload's own fields.
   const TOPIC_FIELD = 'topic';
 
   /**
    * @param {string} topic - The topic name the message carries.
    * @param {Object} payload - The plain-value fields sent beside the name.
-   * @returns {Object} The message Chrome sends.
    */
   function encodeMessage(topic, payload) {
     return Object.assign({ [TOPIC_FIELD]: topic }, payload);
   }
 
-  /**
-   * @param {*} message - The value Chrome handed the listener.
-   * @returns {?{topic: string, payload: Object}} The topic name and the
-   *   payload, or null when the value is not a bus message.
-   */
+  /** @param {*} message - The value Chrome handed the listener. */
   function decodeMessage(message) {
     if (!message || typeof message[TOPIC_FIELD] !== 'string') return null;
     const payload = Object.assign({}, message);
@@ -168,7 +158,6 @@ const DR_BUS = (function () {
   let publishDepth = 0;
 
   /**
-   * Run one delivery a level deeper on the publish depth.
    * @param {string} action - The words the error text puts before the topic
    *   name, e.g. 'publishing'.
    * @param {string} topic - The topic being delivered, for the error text.
@@ -317,13 +306,7 @@ const DR_BUS = (function () {
   // callback rather than throwing the way a tab-routed publish does. A lost
   // one-way publish is a silent miss; an unanswered request is a case every
   // publisher already handles.
-  /**
-   * @param {string} topic - A request-family topic name.
-   * @param {Object} payload - The plain-value fields sent beside the name.
-   * @param {Function} callback - Receives the responder's answer, or undefined.
-   * @param {{tabId: ?number}} [opts] - The tab to send to; without a tab
-   *   number the bus queries the tab in front of the current window.
-   */
+  /** @param {{tabId: ?number}} [opts] - The tab to send to, as sendToTab takes it. */
   function request(topic, payload, callback, opts) {
     assertKnownTopic(topic);
     assertRequestFamily(topic, 'request');

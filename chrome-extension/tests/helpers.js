@@ -274,15 +274,9 @@ function makeTablePillboxTestTable(rowsOrCells, extra) {
   return table;
 }
 
-/**
- * Tests read and plant a table pillbox's button by table, while the view
- * holds each button inside a per-table record beside its resize observer.
- * This reads and writes the button through that record. A planted record
- * gets an observer stub, so the view's teardown runs on it unchanged.
- *
- * @param {WeakMap} views The view's map from table to { button, resizeObserver }.
- * @returns {{has: Function, get: Function, set: Function, delete: Function}}
- */
+// A planted record gets an observer stub, so the view's teardown runs on it
+// unchanged.
+/** @param {WeakMap} views The view's map from table to { button, resizeObserver }. */
 function tablePillboxButtons(views) {
   return {
     has: (table) => views.has(table),

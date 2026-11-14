@@ -84,8 +84,7 @@ function createBoundTab(tabsApi, bus) {
       });
     },
 
-    // The bound tab's number: null before the lookup answers, and null when
-    // there was no tab to bind to. The sidebar's requests address this tab.
+    // null before the lookup answers, and when there was no tab to bind to.
     tabId() {
       return boundTabId;
     },
