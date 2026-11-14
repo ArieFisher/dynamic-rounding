@@ -21,9 +21,7 @@ const UNBOUND_STATUS_MSG = 'Right-click a table to connect it here.';
 // redraw the sidebar against a table the user cannot see.
 //
 // The bound tab is the tab the sidebar was opened for, and the sidebar serves
-// that tab alone. It is a separate fact from the tab number the service
-// worker holds: the worker's number answers which tab to close the sidebar
-// for, and this one answers which tab the sidebar is showing.
+// that tab alone.
 //
 // The tabs interface and the bus arrive as parameters so the whole concern
 // runs in the suite with stubs, without the sidebar's page elements.
@@ -97,28 +95,31 @@ function createBoundTab(tabsApi, bus) {
       return boundWindowId;
     },
 
-    // Close the sidebar when the tab it was opened for stops being the one in
-    // front. This is the one close on a tab switch. The service worker holds
-    // no switch listener: an idle restart empties its tab number, and a
-    // sidebar opened from Chrome's own side-panel control never sets it, so
-    // the sidebar's listener is the one that every switch reaches.
+    // Close the sidebar when the tab it was opened for leaves the front,
+    // reloads or navigates, or closes. Each sidebar watches its own tab, so
+    // a sidebar in another window stays open. The service worker holds no
+    // tab listener: an idle restart empties its variables, and a sidebar
+    // opened from Chrome's own side-panel control never reaches it.
     //
-    // A side panel belongs to one browser window, and the activation event
-    // fires for every window. An activation in another window leaves the
-    // bound tab where it was — still the front tab of its own window — so it
-    // is passed over. A tabs interface reporting no window leaves the
-    // comparison on the tab alone.
+    // The activation event fires for every window, and an activation in
+    // another window leaves the bound tab in front of its own. A tabs
+    // interface reporting no window leaves the comparison on the tab alone.
     //
     // With no tab recorded there is nothing to have left, so nothing closes.
-    onSwitchAway(onLeft) {
-      if (!tabsApi || !tabsApi.onActivated ||
-          typeof tabsApi.onActivated.addListener !== 'function') return;
-      tabsApi.onActivated.addListener((activeInfo) => {
-        if (!activeInfo || boundTabId === null) return;
-        if (boundWindowId !== null && activeInfo.windowId !== boundWindowId) return;
-        if (activeInfo.tabId === boundTabId) return;
-        onLeft();
-      });
+    onLeave(onLeft) {
+      if (!tabsApi) return;
+      const listen = (event, hasLeft) => {
+        if (!event || typeof event.addListener !== 'function') return;
+        event.addListener((...args) => {
+          if (boundTabId !== null && hasLeft(...args)) onLeft();
+        });
+      };
+      listen(tabsApi.onActivated, (activeInfo) => !!activeInfo &&
+        (boundWindowId === null || activeInfo.windowId === boundWindowId) &&
+        activeInfo.tabId !== boundTabId);
+      listen(tabsApi.onUpdated, (tabId, changeInfo) =>
+        tabId === boundTabId && !!changeInfo && changeInfo.status === 'loading');
+      listen(tabsApi.onRemoved, (tabId) => tabId === boundTabId);
     },
   };
 }
@@ -606,10 +607,6 @@ boundTab.subscribe('state:settingsChanged', ({ source }) => {
   redrawFromActiveTable(source === 'sidebar');
 });
 
-DR_BUS.subscribe('state:boundTabLeft', () => {
-  window.close();
-});
-
 boundTab.subscribe('state:rangeError', ({ error }) => {
   writeStatus(error || 'Invalid range expression.', 'range');
   rangeExprEl.classList.add('invalid');
@@ -627,10 +624,6 @@ boundTab.subscribe('state:previewSamplesChanged', () => {
 boundTab.subscribe('state:tableSwitched', () => {
   DR_LOG.debug(DR_LOG.formatRow('table switch'));
   redrawFromActiveTable();
-});
-
-window.addEventListener('unload', () => {
-  DR_BUS.publish('state:sidebarClosed', {});
 });
 
 // Populate every control from a settings object. The redraw read's settings
@@ -908,7 +901,7 @@ rangeExprEl.value = '';
 boundTab.resolve(() => {
   redrawFromActiveTable();
   // Registered after the tab lookup, for the reason resolve() states.
-  boundTab.onSwitchAway(() => { window.close(); });
+  boundTab.onLeave(() => { window.close(); });
 });
 
 updateDisabledState();

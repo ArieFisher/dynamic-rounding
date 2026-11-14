@@ -1398,9 +1398,8 @@ const PENDING_FILL_ROWS = [
      'state:errorRecorded',
      // The sidebar's three requests, each answered by the tab's content script.
      'request:applySettings', 'request:activeTable', 'request:captureState',
-     // The service worker's three, plus the one it receives.
-     'intent:menuClicked', 'state:sidebarOpened', 'state:boundTabLeft',
-     'state:sidebarClosed',
+     // The service worker's two.
+     'intent:menuClicked', 'state:sidebarOpened',
      // The content script's six reports to the sidebar, the settings
      // notice among them.
      'state:settingsChanged', 'state:tableActivated', 'state:tableSwitched',
@@ -1413,8 +1412,6 @@ const PENDING_FILL_ROWS = [
   const WORKER_TOPICS = {
     'intent:menuClicked': ['intent', 'tab'],
     'state:sidebarOpened': ['state-change', 'tab'],
-    'state:boundTabLeft': ['state-change', 'extension-pages'],
-    'state:sidebarClosed': ['state-change', 'extension-pages'],
     // The content script's six reports. Every one broadcasts: the content
     // script holds no tabs interface, and the sidebar is an extension page.
     'state:settingsChanged': ['state-change', 'extension-pages'],
@@ -3862,9 +3859,8 @@ function issue328SettingsOf(table) {
 // The sidebar asks for the whole page-side half of a capture in one request.
 // The answer is composed by buildCaptureStateResponse() — a named function
 // the suite drives directly, because the bus's own listener is a no-op stub
-// here (the established equivalent-path pattern, see the state:boundTabLeft
-// note above). A source assertion pins that the responder exists and routes
-// through it.
+// here (the established equivalent-path pattern). A source assertion pins
+// that the responder exists and routes through it.
 
 (function captureStatePull() {
   eq('capture-wire: buildCaptureStateResponse loads in the content-script bundle',
@@ -4124,8 +4120,8 @@ function issue328SettingsOf(table) {
     b.sent.tabs.length === 1 ? Object.keys(b.sent.tabs[0].msg).sort().join(',') : null,
     'probe,topic');
 
-  // An explicit tab number skips the lookup. Only the service worker holds a
-  // tab number, and it holds it for a tab that may not be the active one.
+  // An explicit tab number skips the lookup. The service worker passes the
+  // tab the user clicked in, which may not be the active one.
   const c = makeBusSandbox();
   c.bus.publish('intent:menuClicked', {}, { tabId: 42 });
   eq('bus route: an explicit tab number skips the active-tab lookup', c.sent.queries, 0);
@@ -4144,18 +4140,18 @@ function issue328SettingsOf(table) {
   // reaches the service worker and the open sidebar, and never a content
   // script. It needs no tab number, so it runs no active-tab lookup.
   const f = makeBusSandbox();
-  f.bus.publish('state:boundTabLeft', {});
+  f.bus.publish('state:rangeOk', {});
   eq('bus route: an extension-pages topic broadcasts once', f.sent.pages.length, 1);
   eq('bus route: and sends into no tab', f.sent.tabs.length, 0);
   eq('bus route: and runs no active-tab lookup', f.sent.queries, 0);
   eq('bus route: the broadcast carries the topic name on the wire',
-    f.sent.pages.length === 1 ? f.sent.pages[0].topic : null, 'state:boundTabLeft');
+    f.sent.pages.length === 1 ? f.sent.pages[0].topic : null, 'state:rangeOk');
 
   // An extension-pages publish from a context with no chrome.tabs reaches its
   // audience: that carrier needs none. An absent interface is no reason to
   // pick the other carrier.
   const g = makeBusSandbox({ noTabs: true });
-  g.bus.publish('state:boundTabLeft', {});
+  g.bus.publish('state:rangeOk', {});
   eq('bus route: an extension-pages topic sends from a context with no chrome.tabs',
     g.sent.pages.length, 1);
 

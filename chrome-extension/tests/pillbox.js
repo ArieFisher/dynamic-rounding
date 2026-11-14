@@ -1893,21 +1893,6 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 })();
 
 // ---------------------------------------------------------------------------
-// AC4: closing the sidebar leaves a later press unchanged.
-//
-// The close message stops at the sidebar page — the content script has no
-// handler for it.
-// ---------------------------------------------------------------------------
-
-(function sidebarRebind_AC4_closeChangesNothingForALaterPress() {
-  // The close reaches the sidebar page alone, so there is nothing to
-  // deliver here — the content script registers no branch for it. That
-  // absence is asserted at the source, next to the other retirements.
-  eq('rebind AC4: the content script registers no branch for the close message',
-    /state:boundTabLeft/.test(sourceByName('content.js') || ''), false);
-})();
-
-// ---------------------------------------------------------------------------
 // Sanity: isAccessibilityArtifact round-trip on the embedded-table fixtures
 // ---------------------------------------------------------------------------
 (function pass2aria_sanity_artifactEmbedded() {
@@ -2309,7 +2294,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // AC1: Right-clicking a table causes flashActiveTable to run on that table.
 // AC2: state:tableActivated onMessage in sidebar.js calls flashSidebarContainer.
 // AC3: Right-clicking a non-table element produces NO flash and NO state:tableActivated send.
-// AC4: background.js does NOT relay state:tableActivated when boundTabId is null.
+// AC4: background.js does NOT relay state:tableActivated.
 // ---------------------------------------------------------------------------
 //
 // Runtime note: the main eval() above registered document.addEventListener with
