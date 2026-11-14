@@ -96,7 +96,7 @@ function createBoundTab(tabsApi, bus) {
     // front. This is the one close on a tab switch. The service worker holds
     // no switch listener: an idle restart empties its tab number, and a
     // sidebar opened from Chrome's own side-panel control never sets it, so
-    // only the sidebar sees every switch.
+    // the sidebar's listener is the one that every switch reaches.
     //
     // A side panel belongs to one browser window, and the activation event
     // fires for every window. An activation in another window leaves the

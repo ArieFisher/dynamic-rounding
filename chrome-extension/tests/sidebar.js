@@ -1444,8 +1444,8 @@ const SINGLE_READ_SAMPLES = {
 
   // --- Leaving the bound tab ---
   //
-  // The sidebar is the one close on a tab switch: the service worker holds no
-  // switch listener.
+  // The sidebar's own listener is the one close path on a tab switch: the
+  // service worker holds no switch listener.
   (function closesOnSwitchAway() {
     const tabs = makeTabs([{ id: OWN_TAB, windowId: OWN_WINDOW }]);
     const boundTab = createBoundTab(tabs, makeBus());

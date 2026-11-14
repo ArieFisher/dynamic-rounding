@@ -1297,8 +1297,8 @@
 
   // --- A tab switch and a page unload close the sidebar through one path each:
   // the sidebar's own switch listener, and the worker's navigation listener.
-  // A second path for either would close the sidebar twice, or in a window the
-  // switch never touched. ---
+  // A second path for either would close the sidebar twice, or in a window
+  // other than the one the switch happened in. ---
   (function noSecondClosePath() {
     const ctx = loadBackground();
     eq('bg routing: the worker registers no tab-activation listener',
