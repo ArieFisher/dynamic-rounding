@@ -4817,6 +4817,10 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
     eq(`#421 longest wait (${kind}): a pass runs within the longest wait of the burst's start`,
       firstPassAt !== null && firstPassAt <= 1000, true);
     eq(`#421 longest wait (${kind}): that pass simplifies the page's value`, t.text(1, 1), '4,300');
+    // 20 steps of 50 ms end exactly at the longest wait, so the capped pass is
+    // the last event before this check. Another step count leaves a live timer.
+    eq(`#421 longest wait (${kind}): no timer record remains for the table after the capped pass`,
+      reapplyTimers.has(t.table), false);
   });
 })();
 

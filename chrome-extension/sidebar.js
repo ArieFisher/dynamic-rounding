@@ -84,6 +84,12 @@ function createBoundTab(tabsApi, bus) {
       });
     },
 
+    // The bound tab's number: null before the lookup answers, and null when
+    // there was no tab to bind to. The sidebar's requests address this tab.
+    tabId() {
+      return boundTabId;
+    },
+
     // The window the bound tab sits in: null before the lookup answers, and
     // null when the tabs interface reports no window. The screenshot take
     // passes this window, whose front tab is the bound tab by construction —
@@ -93,12 +99,10 @@ function createBoundTab(tabsApi, bus) {
     },
 
     // Close the sidebar when the tab it was opened for stops being the one in
-    // front. The service worker closes it on the ordinary route and misses
-    // two: an idle restart empties the tab number it compares against, and a
-    // sidebar opened from Chrome's own side-panel control never sets it. On
-    // those routes the sidebar would otherwise survive the switch and keep
-    // showing controls for a page the user left. Closing here gives a tab
-    // switch one outcome, whichever route it takes.
+    // front. This is the one close on a tab switch. The service worker holds
+    // no switch listener: an idle restart empties its tab number, and a
+    // sidebar opened from Chrome's own side-panel control never sets it, so
+    // the sidebar's listener is the one that every switch reaches.
     //
     // A side panel belongs to one browser window, and the activation event
     // fires for every window. An activation in another window leaves the
@@ -417,7 +421,7 @@ function redrawFromActiveTable(keepControls) {
     cachedMaxMag = answer ? answer.maxMag : null;
     setTableBound(cachedSamples !== null);
     renderLensPreview();
-  });
+  }, { tabId: boundTab.tabId() });
 }
 
 function decouple() {
@@ -528,13 +532,13 @@ function currentSettings() {
   const controls = readControls();
   // Always emit concrete numbers — never null/blank — so content.js never falls
   // back to the "offset_other inherits from offset_top" branch. numTop has no
-  // sidebar control; pin it to 1.
+  // sidebar control; it carries the shipped default.
   return Object.assign({ enabled: controls.enabled }, controls.switches, {
     dateGranularity: controls.dateGranularity,
     timeGranularity: controls.timeGranularity,
     offsetTop: topVal,
     offsetOther: otherVal,
-    numTop: 1,
+    numTop: DR_DEFAULTS.numTop,
     rangeExpr: controls.rangeExpr,
   });
 }
@@ -562,7 +566,7 @@ function applyNow() {
     } else {
       writeStatus('');
     }
-  });
+  }, { tabId: boundTab.tabId() });
 }
 
 enabledEl.addEventListener('change', () => {
@@ -703,7 +707,7 @@ function refreshCaptureSizeNote() {
       captureSizeNoteEl.textContent = warning;
       captureSizeNoteEl.hidden = false;
     }
-  });
+  }, { tabId: boundTab.tabId() });
 }
 
 for (const el of captureMarkEls) {
@@ -883,7 +887,7 @@ function saveCapture() {
     if (!answer) DR_LOG.warn(DR_LOG.formatRow('error', { step: 'state pull' }));
     pageAnswer = answer || null;
     settle();
-  });
+  }, { tabId: boundTab.tabId() });
   takeCaptureScreenshot(chrome.tabs, boundTab.windowId(), (result) => {
     shot = result;
     settle();
@@ -904,9 +908,7 @@ rangeExprEl.value = '';
 // samples, and the sidebar shows the unbound prompt.
 boundTab.resolve(() => {
   redrawFromActiveTable();
-  // Registered after the tab lookup, for the reason resolve() states. The
-  // service worker closes the sidebar on most tab switches; this covers the
-  // switches it misses, so every switch ends the same way.
+  // Registered after the tab lookup, for the reason resolve() states.
   boundTab.onSwitchAway(() => { window.close(); });
 });
 

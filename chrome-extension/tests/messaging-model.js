@@ -1156,6 +1156,54 @@ const PENDING_FILL_ROWS = [
   });
 })();
 
+// --- A pending table has no longest wait ---
+//
+// The re-apply observer runs a pass once a burst has lasted reapplyMaxWaitMs.
+// A pending table under constant page changes is not re-tested on a timer:
+// every change restarts a full settle delay, however long the burst has run.
+// The clock moves 50 milliseconds per change, to 1500 milliseconds in all, past
+// the longest wait the re-apply observer applies.
+
+(function pendingRetest_aSustainedBurstNeverRunsTheRetest() {
+  const neverEl = makeDgNode('DIV', 'sustained-burst-grid', 'grid', [
+    makeDgRow(0, ['alpha', 'north', 'open']),
+    makeDgRow(1, ['bravo', 'south', 'open']),
+    makeDgRow(2, ['charlie', 'east', 'open']),
+  ]);
+  const stepMs = 50;
+  const changes = 30;
+  const savedNow = Date.now;
+
+  withPendingHarness(function ({ observers, timers }) {
+    withTablePillboxDocumentMock(function () {
+      injectTablePillboxes(neverEl);
+    });
+    const observer = observers[0];
+    const timersBefore = timers.length;
+    let clock = savedNow.call(Date);
+    Date.now = () => clock;
+    try {
+      for (let i = 0; i < changes; i++) {
+        observer.trigger();
+        clock += stepMs;
+      }
+    } finally {
+      Date.now = savedNow;
+    }
+    const waits = timers.slice(timersBefore);
+    eq('pending burst: one timer per change, each a full settle delay',
+      waits.map((timer) => timer.ms), new Array(changes).fill(DR_DETECTION_SETTINGS.settleDelayMs));
+    eq('pending burst: only the last change keeps a live timer',
+      waits.filter((timer) => !timer.cancelled).length, 1);
+    eq('pending burst: no re-test ran during the burst', pendingRetestCounts.get(neverEl), 0);
+    eq('pending burst: the burst is longer than the re-apply longest wait',
+      changes * stepMs > DR_DETECTION_SETTINGS.reapplyMaxWaitMs, true);
+    eq('pending burst: once the page goes quiet, one re-test runs', runPendingRetestTimers(timers), 1);
+    eq('pending burst: that re-test counts as one failed re-test', pendingRetestCounts.get(neverEl), 1);
+    dropPendingTable(neverEl);
+  });
+})();
+
 // --- Adversarial: a re-test that finds the nest registered ends the record ---
 //
 // The vocabulary row states the rule: a re-test that finds the nest already
@@ -1349,14 +1397,14 @@ const PENDING_FILL_ROWS = [
     topicNames.every((t) => KNOWN_FAMILIES.includes(topics[t].family)), true);
   eq('DR_BUS.TOPICS: enumerates exactly the expected topics',
     topicNames.slice().sort(),
-    ['intent:activateTable', 'intent:toggleTable', 'state:activeTableChanged',
+    ['intent:activateTable', 'intent:toggleTable',
      // The model's error state, published to the toast view in the same context.
      'state:errorRecorded',
      // The sidebar's three requests, each answered by the tab's content script.
      'request:applySettings', 'request:activeTable', 'request:captureState',
-     // The service worker's four, plus the two it receives.
+     // The service worker's three, plus the one it receives.
      'intent:menuClicked', 'state:sidebarOpened', 'state:boundTabLeft',
-     'state:sidebarClosed', 'state:pageUnloaded',
+     'state:sidebarClosed',
      // The content script's six reports to the sidebar, the settings
      // notice among them.
      'state:settingsChanged', 'state:tableActivated', 'state:tableSwitched',
@@ -1371,7 +1419,6 @@ const PENDING_FILL_ROWS = [
     'state:sidebarOpened': ['state-change', 'tab'],
     'state:boundTabLeft': ['state-change', 'extension-pages'],
     'state:sidebarClosed': ['state-change', 'extension-pages'],
-    'state:pageUnloaded': ['state-change', 'extension-pages'],
     // The content script's six reports. Every one broadcasts: the content
     // script holds no tabs interface, and the sidebar is an extension page.
     'state:settingsChanged': ['state-change', 'extension-pages'],
@@ -1395,8 +1442,6 @@ const PENDING_FILL_ROWS = [
   // subscriber) determines what a committed toggle does.
   eq('DR_BUS.TOPICS: intent:toggleTable is in the intent family',
     topics['intent:toggleTable'].family, 'intent');
-  eq('DR_BUS.TOPICS: state:activeTableChanged is in the state-change family',
-    topics['state:activeTableChanged'].family, 'state-change');
   // The sidebar's settings apply. The content script answers it, and the
   // sidebar reads whether anyone answered to determine bound versus unbound,
   // so it is a request.
@@ -1416,24 +1461,13 @@ const PENDING_FILL_ROWS = [
   eq('DR_BUS.publish: an unregistered topic throws instead of publishing silently',
     typeof unknownTopicThrew, 'string');
 
-  // --- (b) publishing the intent changes the model and emits the
-  // resulting state-change with the whole new value. ---
+  // --- (b) publishing the intent changes the model. ---
   const originalActive = DR_MODEL.getActiveTable();
   try {
     const fakeTable = { __fake: 'table-A' };
-    let stateChangePayload = 'NOT_CALLED';
-    const unsubscribe = DR_BUS.subscribe('state:activeTableChanged', (payload) => {
-      stateChangePayload = payload;
-    });
-    try {
-      DR_BUS.publish('intent:activateTable', { table: fakeTable });
-    } finally {
-      unsubscribe();
-    }
+    DR_BUS.publish('intent:activateTable', { table: fakeTable });
     eq('intent:activateTable: publishing the intent updates DR_MODEL.getActiveTable()',
       DR_MODEL.getActiveTable(), fakeTable);
-    eq('intent:activateTable: the resulting state-change fires exactly once, carrying the whole new value',
-      stateChangePayload, { table: fakeTable });
   } finally {
     DR_MODEL.setActiveTable(originalActive);
   }
@@ -1720,23 +1754,18 @@ const PENDING_FILL_ROWS = [
 // publish, unlike an EventEmitter with replay or a BehaviorSubject.
 // ---------------------------------------------------------------------------
 (function appModelSelection_busIsStateless_lateSubscriberMissesPastPublish() {
-  const topic = 'state:activeTableChanged';
-  const fakeTable = { __fake: 'stateless-check' };
-  const savedActive = DR_MODEL.getActiveTable();
-  try {
-    // Publish BEFORE any subscriber attaches — nothing is listening yet.
-    DR_BUS.publish(topic, { table: fakeTable });
+  const topic = 'state:errorRecorded';
+  // Publish BEFORE any subscriber of this test attaches — nothing is listening
+  // yet. The toast view's own handler returns early on a payload with no rows.
+  DR_BUS.publish(topic, { errorState: null });
 
-    let received = 'NOT_CALLED';
-    const unsubscribe = DR_BUS.subscribe(topic, (payload) => { received = payload; });
-    try {
-      eq('DR_BUS statelessness: a subscriber that attaches after a publish never receives that publish',
-        received, 'NOT_CALLED');
-    } finally {
-      unsubscribe();
-    }
+  let received = 'NOT_CALLED';
+  const unsubscribe = DR_BUS.subscribe(topic, (payload) => { received = payload; });
+  try {
+    eq('DR_BUS statelessness: a subscriber that attaches after a publish never receives that publish',
+      received, 'NOT_CALLED');
   } finally {
-    DR_MODEL.setActiveTable(savedActive);
+    unsubscribe();
   }
 })();
 
@@ -1752,10 +1781,10 @@ const PENDING_FILL_ROWS = [
   // The second topic is state:settingsChanged: the content script holds no
   // subscriber of its own for it, so only the fixture's handlers run here.
   // The test measures the bus's own delivery under a nested publish.
-  const TOPIC_A = 'state:activeTableChanged';
+  // Topic A is state:errorRecorded: the toast view's handler returns early on
+  // a payload with no rows.
+  const TOPIC_A = 'state:errorRecorded';
   const TOPIC_B = 'state:settingsChanged';
-  const savedActive = DR_MODEL.getActiveTable();
-  DR_MODEL.setActiveTable(null);
   let counter = 0;
 
   const unsubA = DR_BUS.subscribe(TOPIC_A, () => {
@@ -1764,19 +1793,18 @@ const PENDING_FILL_ROWS = [
   const unsubB = DR_BUS.subscribe(TOPIC_B, () => {
     counter++;
     if (counter === 1) {
-      DR_BUS.publish(TOPIC_A, { table: null }); // guarded to bounce back to A only once
+      DR_BUS.publish(TOPIC_A, { errorState: null }); // guarded to bounce back to A only once
     }
   });
 
   let threw = null;
   try {
-    DR_BUS.publish(TOPIC_A, { table: null }); // kick off the cycle
+    DR_BUS.publish(TOPIC_A, { errorState: null }); // kick off the cycle
   } catch (e) {
     threw = e.message;
   } finally {
     unsubA();
     unsubB();
-    DR_MODEL.setActiveTable(savedActive);
   }
 
   eq('DR_BUS reentrancy: a guarded two-topic publish cycle completes without throwing (no infinite loop/stack overflow)',
@@ -2385,7 +2413,7 @@ const PENDING_FILL_ROWS = [
     const removedTablePillboxes = registerFingerprintedTable(grid.scrollPaneEl);
     reapplyObservers.set(grid.scrollPaneEl, { observer: { disconnect() { gridObserverDisconnects++; } }, target: grid.scrollPaneEl });
     const pendingTimer = setTimeout(function () {}, 10000);
-    reapplyTimers.set(grid.scrollPaneEl, pendingTimer);
+    reapplyTimers.set(grid.scrollPaneEl, { id: pendingTimer, burstStartMs: Date.now() });
 
     eq('fingerprint teardown: the grid registers and gets a table pillbox before the teardown (precondition)',
       DR_MODEL.hasTable(grid.scrollPaneEl) && tablePillboxes.has(grid.scrollPaneEl), true);
@@ -4131,7 +4159,7 @@ function issue328SettingsOf(table) {
   // audience: that carrier needs none. An absent interface is no reason to
   // pick the other carrier.
   const g = makeBusSandbox({ noTabs: true });
-  g.bus.publish('state:pageUnloaded', {});
+  g.bus.publish('state:boundTabLeft', {});
   eq('bus route: an extension-pages topic sends from a context with no chrome.tabs',
     g.sent.pages.length, 1);
 
@@ -4174,11 +4202,9 @@ function issue328SettingsOf(table) {
 
 // --- A subscriber learns the sending tab ---
 //
-// The service worker's page-unload handler reads the sending tab's number off
-// Chrome's sender record and acts only when that tab is the one the sidebar
-// was opened for. A payload cannot carry the number — a content script does
-// not hold its own. Without this argument, the bus would close the sidebar
-// on a page unload in any tab.
+// The sidebar reads the sending tab's number off Chrome's sender record and
+// acts only on a message from the tab it was opened for. A payload cannot
+// carry the number — a content script does not hold its own.
 (function busSubscriberReceivesSenderTab() {
   const a = makeBusSandbox();
   const sameContext = [];
@@ -4291,6 +4317,26 @@ function issue328SettingsOf(table) {
   t.fire({ topic: 'request:applySettings' }, { tab: { id: 1 } }, () => { answered = true; });
   eq('bus request: an arriving request with no local responder sends no reply',
     answered, false);
+})();
+
+(function busRequestExplicitTab() {
+  // The sidebar passes its bound tab's number, so the bus sends its request
+  // to that tab and runs no query for the tab in front.
+  const s = makeBusSandbox({ reply: { ok: true } });
+  let answer = null;
+  s.bus.request('request:activeTable', {}, (x) => { answer = x; }, { tabId: 42 });
+  eq('bus request: an explicit tab number skips the active-tab lookup', s.sent.queries, 0);
+  eq('bus request: and addresses the tab the caller named',
+    s.sent.tabs.length === 1 ? s.sent.tabs[0].tabId : null, 42);
+  eq('bus request: and hands the callback that tab\'s answer',
+    answer ? answer.ok : null, true);
+
+  // A null tab number, as the sidebar holds before its tab lookup answers,
+  // falls back to the lookup.
+  const t = makeBusSandbox();
+  t.bus.request('request:activeTable', {}, () => {}, { tabId: null });
+  eq('bus request: a null tab number falls back to the active-tab lookup',
+    [t.sent.queries, t.sent.tabs.length === 1 ? t.sent.tabs[0].tabId : null], [1, 7]);
 })();
 
 (function busOneResponderPerTopic() {
