@@ -1502,8 +1502,8 @@ const SINGLE_READ_SAMPLES = {
     eq('bound tab: an activation in the bound tab\'s own window closes it', closes, 1);
   })();
 
-  // Each sidebar watches its own bound tab, so a reload in one window never
-  // closes a sidebar in another.
+  // Each sidebar listens for its own bound tab's events, so a reload in one
+  // window never closes a sidebar in another.
   (function closesOnReload() {
     const tabs = makeTabs([{ id: OWN_TAB, windowId: OWN_WINDOW }]);
     const boundTab = createBoundTab(tabs, makeBus());

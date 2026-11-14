@@ -96,10 +96,10 @@ function createBoundTab(tabsApi, bus) {
     },
 
     // Close the sidebar when the tab it was opened for leaves the front,
-    // reloads or navigates, or closes. Each sidebar watches its own tab, so
-    // a sidebar in another window stays open. The service worker holds no
-    // tab listener: an idle restart empties its variables, and a sidebar
-    // opened from Chrome's own side-panel control never reaches it.
+    // reloads or navigates, or closes. Each sidebar listens for its own tab's
+    // events, so a sidebar in another window stays open. The service worker
+    // holds no tab listener: an idle restart empties its variables, and a
+    // sidebar opened from Chrome's own side-panel control never reaches it.
     //
     // The activation event fires for every window, and an activation in
     // another window leaves the bound tab in front of its own. A tabs
@@ -108,6 +108,10 @@ function createBoundTab(tabsApi, bus) {
     // With no tab recorded there is nothing to have left, so nothing closes.
     onLeave(onLeft) {
       if (!tabsApi) return;
+      /**
+       * @param {object|undefined} event A chrome.tabs event, or undefined when the tabs interface lacks it.
+       * @param {function(...*): boolean} hasLeft Reads the event's arguments and returns true when the bound tab left.
+       */
       const listen = (event, hasLeft) => {
         if (!event || typeof event.addListener !== 'function') return;
         event.addListener((...args) => {
