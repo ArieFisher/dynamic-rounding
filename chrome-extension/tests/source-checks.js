@@ -2118,6 +2118,11 @@
   eq('table-pillbox-split: ui-pillbox.js calls no controller function directly',
     foundCalls, []);
 
+  // The controller is the model's one writer; the view reads the model and
+  // writes nothing to it.
+  eq('table-pillbox-split: ui-pillbox.js writes nothing to the model',
+    uiPillboxSrc.match(/DR_MODEL\.(register|unregister|set)[A-Za-z]*\s*\(/g) || [], []);
+
   // The click handler publishes the press as an intent instead.
   eq('table-pillbox-split: ui-pillbox.js publishes intent:toggleTable from the click handler',
     /DR_BUS\.publish\(\s*'intent:toggleTable'/.test(uiPillboxSrc), true);
