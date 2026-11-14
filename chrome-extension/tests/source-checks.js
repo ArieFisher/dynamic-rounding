@@ -169,8 +169,6 @@
     typeof resetTable, 'function');
   eq('table-pillbox: tablePillboxes WeakMap is defined',
     tablePillboxes instanceof WeakMap, true);
-  eq('table-pillbox: trackedTables Set is defined',
-    trackedTables instanceof Set, true);
 })();
 
 // --- Regression guard: content.js declares the new infrastructure ---
@@ -181,8 +179,6 @@
   const src = allContentSrc;
   eq('table-pillbox: declares tablePillboxes WeakMap',
     /const\s+tablePillboxes\s*=\s*new\s+WeakMap/.test(src), true);
-  eq('table-pillbox: declares trackedTables Set',
-    /const\s+trackedTables\s*=\s*new\s+Set/.test(src), true);
   eq('table-pillbox: defines isTableOn',
     /function\s+isTableOn\b/.test(src), true);
   eq('table-pillbox: defines syncTablePillbox',

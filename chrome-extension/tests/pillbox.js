@@ -972,17 +972,19 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   const listeners = [];
   const origAdd = global.window.addEventListener;
   const origFlag = _scrollResizeListenersAdded;
-  const savedTracked = Array.from(trackedTables);
+  const origRegistered = DR_MODEL.getRegisteredTables;
   global.window.addEventListener = (type, handler, options) => {
     listeners.push({ type, handler, options });
   };
   _scrollResizeListenersAdded = false;
-  trackedTables.clear();
   const tableRect = { top: 200, bottom: 500, left: 100, right: 900, width: 800, height: 300 };
   const table = { getBoundingClientRect() { return tableRect; } };
   const buttonEl = { style: {} };
   tablePillboxes.set(table, buttonEl);
-  trackedTables.add(table);
+  // A settings write can register a table with no table pillbox; the walk
+  // passes over it. The stub holds the walk to these two tables.
+  const tableWithNoPillbox = {};
+  DR_MODEL.getRegisteredTables = () => [tableWithNoPillbox, table];
   const origScrollX = global.window.scrollX;
   const origScrollY = global.window.scrollY;
   global.window.scrollX = 0;
@@ -1001,8 +1003,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   } finally {
     global.window.addEventListener = origAdd;
     _scrollResizeListenersAdded = origFlag;
-    trackedTables.clear();
-    savedTracked.forEach((t) => trackedTables.add(t));
+    DR_MODEL.getRegisteredTables = origRegistered;
     tablePillboxes.delete(table);
     global.window.scrollX = origScrollX;
     global.window.scrollY = origScrollY;
@@ -2037,9 +2038,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   });
 
   // Already tagged → skipped → tablePillboxes should NOT have a new entry
-  // (we cannot assert .has() false on a pre-existing table pillbox since none was injected,
-  // but we CAN verify the grid was not re-registered via trackedTables)
-  eq('pass2-aria: already-tagged grid is NOT added to trackedTables again',
+  eq('pass2-aria: already-tagged grid gets no table pillbox again',
     tablePillboxes.has(grid), false);
 })();
 

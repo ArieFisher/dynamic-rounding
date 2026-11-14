@@ -130,7 +130,6 @@ globalThis.DR_CAPTURE = DR_CAPTURE;
 globalThis.CAPTURE_MARK_GLYPHS = CAPTURE_MARK_GLYPHS;
 // Expose table pillbox infrastructure for tests
 globalThis.tablePillboxes = tablePillboxes;
-globalThis.trackedTables = trackedTables;
 // tablePillboxStyleInjected is a let; expose a getter/setter so tests can reset it.
 Object.defineProperty(globalThis, 'tablePillboxStyleInjected', {
   get() { return tablePillboxStyleInjected; },

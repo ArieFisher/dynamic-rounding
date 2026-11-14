@@ -141,9 +141,9 @@ const reapplyBursts = new WeakMap();
 // pendingRetestTimers: chainRootEl → pending setTimeout id for the debounced re-test.
 // pendingRetestCounts: chainRootEl → failed re-tests so far, against
 //                      DR_DETECTION_SETTINGS.pendingRetestCap.
-// pendingRoots is the enumerable companion to the three WeakMaps, the way
-// trackedTables accompanies the registry: the table observer's removal branch
-// walks it to find a pending root inside a removed subtree.
+// pendingRoots is the enumerable companion to the three WeakMaps: the table
+// observer's removal branch walks it to find a pending root inside a removed
+// subtree.
 const pendingObservers = new WeakMap();
 const pendingRetestTimers = new WeakMap();
 const pendingRetestCounts = new WeakMap();
@@ -487,8 +487,8 @@ function revalidateTableShape(table, opts = {}) {
 // Discard one table's registration and every per-table resource the
 // extension holds beside it: the table pillbox, the resize observer that keeps the
 // table pillbox positioned, the table's re-apply observer and its pending timer,
-// the view's tracked-table list, and the registry entry with the cell
-// originals inside it. Two callers reach this: the removal
+// and the registry entry with the cell originals inside it. Two callers reach
+// this: the removal
 // observer, for a table the page took out; and the shape-fingerprint
 // mismatch path, for a table whose shape no longer matches the one the
 // registry recorded. Each caller writes its own row.
@@ -511,7 +511,6 @@ function teardownTableEntry(table) {
     ro.disconnect();
   }
   unwatchTable(table);
-  trackedTables.delete(table);
   DR_MODEL.unregisterTable(table);
   if (DR_MODEL.getActiveTable() === table) {
     DR_BUS.publish('intent:activateTable', { table: null });

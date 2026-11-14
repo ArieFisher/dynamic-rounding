@@ -24,15 +24,13 @@ const DR_MODEL = (function () {
   // --- Table registry ---
   //
   // A WeakMap cannot be enumerated, and the content script's removal
-  // observer and the capture's state serializer both list every registered
-  // table, so a Set holds the same tables. _ensureEntry adds a table to both,
+  // observer, the capture's state serializer, and the table pillbox
+  // repositioning each list every registered table, so a Set holds the same
+  // tables. _ensureEntry adds a table to both,
   // and unregisterTable removes it from both. The Set holds a strong
   // reference to each table, so an entry stays until unregisterTable runs,
   // even after the page removes the table. The content script calls
   // unregisterTable from its removal observer.
-  //
-  // ui-pillbox.js keeps a separate trackedTables Set for repositioning table
-  // pillboxes, and does not read this one.
   const tableRegistry = new WeakMap();
   const registeredTables = new Set();
 

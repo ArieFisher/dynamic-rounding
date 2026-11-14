@@ -1438,7 +1438,7 @@ function makePositionedAncestor(styleOverrides) {
 //      fixture tables and Pass 2 (GRID_ARIA_SELECTOR) sees an empty list.
 //   2. Temporarily stub document.createElement + document.body.appendChild so
 //      createTablePillbox can run without errors.
-//   3. Reset tablePillboxes / trackedTables for each run by deleting entries we
+//   3. Reset tablePillboxes for each run by deleting entries we
 //      added (WeakMap does not expose a clear(), so we track which table objects
 //      we inserted and delete them by re-using the objects).
 //
@@ -1572,13 +1572,12 @@ function runPass1WithTables(tables) {
   return { tables };
 }
 
-// Helper: clean up tablePillboxes / trackedTables for a list of table objects so
+// Helper: clean up tablePillboxes for a list of table objects so
 // they do not pollute subsequent tests.
 function cleanupPass1Tables(tables) {
   for (const t of tables) {
     if (tablePillboxes.has(t)) {
       tablePillboxes.delete(t);
-      trackedTables.delete(t);
     }
   }
 }
@@ -2150,7 +2149,6 @@ function dgColumnTexts(rowEls, columnIndex) {
 function forgetRegisteredTable(table) {
   DR_MODEL.unregisterTable(table);
   tablePillboxes.delete(table);
-  trackedTables.delete(table);
 }
 
 // Replace one fixture row's cells, the way a virtualized grid redraws a row.

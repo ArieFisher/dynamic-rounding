@@ -45,9 +45,6 @@ const CLIPPING_OVERFLOW = new Set(['hidden', 'scroll', 'auto', 'clip']);
 /** WeakMap from HTMLTableElement → HTMLButtonElement (the table pillbox's button) */
 const tablePillboxes = new WeakMap();
 
-/** A WeakMap cannot be iterated, so repositioning walks this Set. */
-const trackedTables = new Set();
-
 /** WeakMap from HTMLTableElement → ResizeObserver for the table pillbox */
 const tableResizeObservers = new WeakMap();
 
@@ -284,10 +281,9 @@ function createTablePillbox(table) {
 
   button.addEventListener('mousedown', (e) => e.stopPropagation());
 
-  // View-only bookkeeping: the button element, and the reposition-on-scroll
-  // list. DR_MODEL's table registry holds the "found" registration.
+  // View-only bookkeeping: the button element. DR_MODEL's table registry
+  // holds the "found" registration, and repositioning walks it.
   tablePillboxes.set(table, button);
-  trackedTables.add(table);
   DR_MODEL.registerTable(table);
   // The shape fingerprint, recorded once per registration. A new registry
   // entry holds no originals, so this read takes the cells as they stand.
@@ -335,8 +331,10 @@ function injectTablePillboxes(root = document) {
   consumeNominations(nominations);
 }
 
+// A settings write can register a table that has no table pillbox, so the
+// walk skips a registered table with no button.
 function repositionAllTablePillboxes() {
-  for (const table of trackedTables) {
+  for (const table of DR_MODEL.getRegisteredTables()) {
     const button = tablePillboxes.get(table);
     if (button) {
       positionTablePillbox(table, button);
