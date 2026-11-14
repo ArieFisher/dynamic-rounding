@@ -52,7 +52,6 @@ const DR_BUS = (function () {
   const TOPICS = {
     'intent:activateTable': { family: INTENT, route: null },
     'intent:toggleTable': { family: INTENT, route: null },
-    'state:activeTableChanged': { family: STATE_CHANGE, route: null },
     // Same context only: the sidebar reads the error state through
     // request:captureState.
     'state:errorRecorded': { family: STATE_CHANGE, route: null },
@@ -66,7 +65,6 @@ const DR_BUS = (function () {
     'state:sidebarOpened': { family: STATE_CHANGE, route: ROUTE_TAB },
     'state:boundTabLeft': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:sidebarClosed': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
-    'state:pageUnloaded': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     // The content script's topics for the sidebar. Each takes the
     // extension-pages route: the content script has no chrome.tabs, and the
     // sidebar is an extension page.
@@ -82,10 +80,43 @@ const DR_BUS = (function () {
 
   const subscribers = new Map(); // topic name -> Set<handler>
 
+  /**
+   * @param {string} topic - The topic name to look up in TOPICS.
+   * @returns {boolean} Whether TOPICS holds the name.
+   */
+  function isKnownTopic(topic) {
+    return Object.prototype.hasOwnProperty.call(TOPICS, topic);
+  }
+
   function assertKnownTopic(topic) {
-    if (!Object.prototype.hasOwnProperty.call(TOPICS, topic)) {
+    if (!isKnownTopic(topic)) {
       throw new Error('DR_BUS: unknown topic "' + topic + '"');
     }
+  }
+
+  // The wire format: one message object holding the topic name beside the
+  // payload's own fields.
+  const TOPIC_FIELD = 'topic';
+
+  /**
+   * @param {string} topic - The topic name the message carries.
+   * @param {Object} payload - The plain-value fields sent beside the name.
+   * @returns {Object} The message Chrome sends.
+   */
+  function encodeMessage(topic, payload) {
+    return Object.assign({ [TOPIC_FIELD]: topic }, payload);
+  }
+
+  /**
+   * @param {*} message - The value Chrome handed the listener.
+   * @returns {?{topic: string, payload: Object}} The topic name and the
+   *   payload, or null when the value is not a bus message.
+   */
+  function decodeMessage(message) {
+    if (!message || typeof message[TOPIC_FIELD] !== 'string') return null;
+    const payload = Object.assign({}, message);
+    delete payload[TOPIC_FIELD];
+    return { topic: message[TOPIC_FIELD], payload };
   }
 
   function subscribe(topic, handler) {
@@ -136,13 +167,34 @@ const DR_BUS = (function () {
   const MAX_PUBLISH_DEPTH = 20;
   let publishDepth = 0;
 
+  /**
+   * Run one delivery a level deeper on the publish depth.
+   * @param {string} action - The words the error text puts before the topic
+   *   name, e.g. 'publishing'.
+   * @param {string} topic - The topic being delivered, for the error text.
+   * @param {Function} deliver - The delivery to run at the deeper level.
+   */
+  function withDepthGuard(action, topic, deliver) {
+    publishDepth++;
+    try {
+      if (publishDepth > MAX_PUBLISH_DEPTH) {
+        throw new Error(
+          'DR_BUS: publish depth exceeded ' + MAX_PUBLISH_DEPTH +
+          ' while ' + action + ' "' + topic + '" — likely an unguarded reentrant publish cycle'
+        );
+      }
+      deliver();
+    } finally {
+      publishDepth--;
+    }
+  }
+
   function relay(topic, payload, route, opts) {
-    const message = Object.assign({ topic }, payload);
     if (route === ROUTE_EXTENSION_PAGES) {
-      sendToExtensionPages(message);
+      sendToExtensionPages(encodeMessage(topic, payload));
       return;
     }
-    sendToTab(message, opts, null);
+    sendToTab(topic, payload, opts, null);
   }
 
   function sendToExtensionPages(message) {
@@ -159,22 +211,23 @@ const DR_BUS = (function () {
     }
   }
 
-  // A tab-routed send needs a tab number. A caller holding a tab number that
-  // may not be the tab in front passes it as opts.tabId: the service worker
-  // does, for the right-clicked tab and the bound tab. Otherwise the bus
+  // A tab-routed send needs a tab number. A caller holding one passes it as
+  // opts.tabId: the service worker does, for the right-clicked tab and the
+  // bound tab, and the sidebar does, for its bound tab. Otherwise the bus
   // queries the tab in front of the current window.
   //
   // onReply, when given, receives the responder's answer, or undefined on
   // every failure path after the chrome.tabs check.
-  function sendToTab(message, opts, onReply) {
+  function sendToTab(topic, payload, opts, onReply) {
     if (!chrome.tabs || typeof chrome.tabs.sendMessage !== 'function' ||
         typeof chrome.tabs.query !== 'function') {
       // A tab-routed topic published from a context with no chrome.tabs (a
       // content script) cannot reach its audience. Returning quietly here
       // would reproduce the silent miss the topic table exists to remove.
-      throw new Error('DR_BUS: tab-routed topic "' + message.topic +
+      throw new Error('DR_BUS: tab-routed topic "' + topic +
         '" published from a context with no chrome.tabs');
     }
+    const message = encodeMessage(topic, payload);
     const deliver = (tabId) => {
       try {
         chrome.tabs.sendMessage(tabId, message, (response) => {
@@ -215,21 +268,12 @@ const DR_BUS = (function () {
       throw new Error('DR_BUS: publish() cannot carry a request-family topic; "' +
         topic + '" is answered, and publish() discards the answer — use request()');
     }
-    publishDepth++;
-    try {
-      if (publishDepth > MAX_PUBLISH_DEPTH) {
-        throw new Error(
-          'DR_BUS: publish depth exceeded ' + MAX_PUBLISH_DEPTH +
-          ' while publishing "' + topic + '" — likely an unguarded reentrant publish cycle'
-        );
-      }
+    withDepthGuard('publishing', topic, () => {
       deliverLocally(topic, payload, null);
       const route = TOPICS[topic].route;
       if (!route || typeof chrome === 'undefined' || !chrome.runtime) return;
       relay(topic, payload, route, opts);
-    } finally {
-      publishDepth--;
-    }
+    });
   }
 
   // A request topic has exactly one responder, in exactly one context. A
@@ -273,7 +317,14 @@ const DR_BUS = (function () {
   // callback rather than throwing the way a tab-routed publish does. A lost
   // one-way publish is a silent miss; an unanswered request is a case every
   // publisher already handles.
-  function request(topic, payload, callback) {
+  /**
+   * @param {string} topic - A request-family topic name.
+   * @param {Object} payload - The plain-value fields sent beside the name.
+   * @param {Function} callback - Receives the responder's answer, or undefined.
+   * @param {{tabId: ?number}} [opts] - The tab to send to; without a tab
+   *   number the bus queries the tab in front of the current window.
+   */
+  function request(topic, payload, callback, opts) {
     assertKnownTopic(topic);
     assertRequestFamily(topic, 'request');
     if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.tabs ||
@@ -282,7 +333,7 @@ const DR_BUS = (function () {
       callback(undefined);
       return;
     }
-    sendToTab(Object.assign({ topic }, payload), null, callback);
+    sendToTab(topic, payload, opts, callback);
   }
 
   // The one Chrome message listener in each context. No other file registers
@@ -290,11 +341,9 @@ const DR_BUS = (function () {
   if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage &&
       typeof chrome.runtime.onMessage.addListener === 'function') {
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      if (!message || typeof message.topic !== 'string') return;
-      const topic = message.topic;
-      if (!Object.prototype.hasOwnProperty.call(TOPICS, topic)) return;
-      const payload = Object.assign({}, message);
-      delete payload.topic;
+      const decoded = decodeMessage(message);
+      if (!decoded || !isKnownTopic(decoded.topic)) return;
+      const { topic, payload } = decoded;
       const tabId = senderTabId(sender);
       if (TOPICS[topic].family !== REQUEST) {
         deliverLocally(topic, payload, tabId);
@@ -308,18 +357,9 @@ const DR_BUS = (function () {
       // The responder counts as one level of the publish depth, so a publish
       // nested under it counts from there. The one-way branch above counts no
       // level: a publish from a subscriber it reaches starts at depth 1.
-      publishDepth++;
-      try {
-        if (publishDepth > MAX_PUBLISH_DEPTH) {
-          throw new Error(
-            'DR_BUS: publish depth exceeded ' + MAX_PUBLISH_DEPTH +
-            ' while responding to "' + topic + '" — likely an unguarded reentrant publish cycle'
-          );
-        }
+      withDepthGuard('responding to', topic, () => {
         sendResponse(responder(payload, { tabId }));
-      } finally {
-        publishDepth--;
-      }
+      });
     });
   }
 

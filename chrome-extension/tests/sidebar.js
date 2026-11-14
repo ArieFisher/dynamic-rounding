@@ -512,23 +512,20 @@
 // bus's own guard this would recurse until the real call stack overflows.
 // ---------------------------------------------------------------------------
 (function appModelSettings_busReentrancy_unguardedCycleTerminatesSafely() {
-  const TOPIC_A = 'state:activeTableChanged';
+  const TOPIC_A = 'state:errorRecorded';
   const TOPIC_B = 'state:settingsChanged';
-  const savedActive = DR_MODEL.getActiveTable();
-  DR_MODEL.setActiveTable(null); // see the note on the guarded cycle above
 
   const unsubA = DR_BUS.subscribe(TOPIC_A, () => { DR_BUS.publish(TOPIC_B, { source: 'page', settings: Object.assign({}, DR_DEFAULTS) }); });
-  const unsubB = DR_BUS.subscribe(TOPIC_B, () => { DR_BUS.publish(TOPIC_A, { table: null }); });
+  const unsubB = DR_BUS.subscribe(TOPIC_B, () => { DR_BUS.publish(TOPIC_A, { errorState: null }); });
 
   let threw = null;
   try {
-    DR_BUS.publish(TOPIC_A, { table: null });
+    DR_BUS.publish(TOPIC_A, { errorState: null });
   } catch (e) {
     threw = e.message;
   } finally {
     unsubA();
     unsubB();
-    DR_MODEL.setActiveTable(savedActive);
   }
 
   eq('DR_BUS reentrancy (unguarded cycle): publish() throws a catchable error instead of crashing with a real stack overflow',
@@ -542,7 +539,7 @@
   let secondThrew = null;
   const unsubCheck = DR_BUS.subscribe(TOPIC_A, () => {});
   try {
-    DR_BUS.publish(TOPIC_A, { table: null });
+    DR_BUS.publish(TOPIC_A, { errorState: null });
   } catch (e) {
     secondThrew = e.message;
   } finally {
@@ -832,7 +829,7 @@
 // ---------------------------------------------------------------------------
 // The context-menu toggle must go through the same controller branch a
 // table pillbox press uses. The right-click that opens the menu already activates
-// the table (the contextmenu handler calls setActiveTable), so with the
+// the table (the contextmenu handler publishes intent:activateTable), so with the
 // sidebar open, the menu toggle on that table must write the table's settings
 // and send them (the settings notice). A menu path that simplified the table
 // directly would leave the settings and the sidebar stale, and the next
@@ -1383,6 +1380,27 @@ const SINGLE_READ_SAMPLES = {
       noWindow.windowId(), null);
   })();
 
+  // --- The tab number the sidebar's requests address ---
+  (function tabIdAccessor() {
+    const boundTab = createBoundTab(makeTabs([{ id: OWN_TAB, windowId: OWN_WINDOW }]), makeBus());
+    const before = boundTab.tabId();
+    boundTab.resolve(() => {});
+    eq('bound tab: tabId() answers null before the lookup and the bound tab after it',
+      [before, boundTab.tabId()], [null, OWN_TAB]);
+    const noTab = createBoundTab(makeTabs([]), makeBus());
+    noTab.resolve(() => {});
+    eq('bound tab: tabId() stays null when there is no tab to bind to',
+      noTab.tabId(), null);
+
+    // Every request the sidebar sends addresses the bound tab.
+    const calls = sidebarSrc.match(/DR_BUS\.request\('[^']+'[\s\S]*?\n  \}[^\n]*\);/g) || [];
+    eq('bound tab: the sidebar sends at least one request (fails closed on a lost match)',
+      calls.length > 0, true);
+    eq('bound tab: every sidebar request passes the bound tab\'s number',
+      calls.length === (sidebarSrc.match(/DR_BUS\.request\(/g) || []).length &&
+        calls.every((call) => call.endsWith('}, { tabId: boundTab.tabId() });')), true);
+  })();
+
   // No tab to bind to: the sidebar still runs its opening read, which falls
   // to the unbound state on its own when nothing answers.
   (function resolveWithNoActiveTab() {
@@ -1444,11 +1462,8 @@ const SINGLE_READ_SAMPLES = {
 
   // --- Leaving the bound tab ---
   //
-  // The service worker closes the sidebar when the tab it was opened for
-  // stops being the front tab, and misses two routes: an idle restart empties
-  // the tab number it compares against, and a sidebar opened from Chrome's
-  // own side-panel control never sets it. On those routes the sidebar closes
-  // itself, so a tab switch has one outcome.
+  // The sidebar's own listener is the one close path on a tab switch: the
+  // service worker holds no switch listener.
   (function closesOnSwitchAway() {
     const tabs = makeTabs([{ id: OWN_TAB, windowId: OWN_WINDOW }]);
     const boundTab = createBoundTab(tabs, makeBus());
