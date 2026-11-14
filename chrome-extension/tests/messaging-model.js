@@ -2234,7 +2234,7 @@ const PENDING_FILL_ROWS = [
     // after eval() returns — same trick the top-of-file eval already uses.
     eval(contentScriptBundle + `
       globalThis.__rt_DR_MODEL = DR_MODEL;
-      globalThis.__rt_tablePillboxes = tablePillboxes;
+      globalThis.__rt_tablePillboxes = tablePillboxButtons(tablePillboxViews);
     `);
 
     eq('ancestor removal: exactly one MutationObserver constructed (the _tableObserver watching document.body)',
@@ -2403,6 +2403,8 @@ const PENDING_FILL_ROWS = [
     eq('fingerprint teardown: the re-apply observer disconnects', gridObserverDisconnects, 1);
     eq('fingerprint teardown: the re-apply observer record goes with it',
       reapplyObservers.has(grid.scrollPaneEl), false);
+    eq('fingerprint teardown: the table pillbox view record goes with it',
+      tablePillboxes.has(grid.scrollPaneEl), false);
     eq('fingerprint teardown: the registry entry is gone',
       DR_MODEL.hasTable(grid.scrollPaneEl), false);
     eq('fingerprint teardown: the fingerprint goes with the entry',

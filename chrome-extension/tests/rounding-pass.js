@@ -3933,7 +3933,7 @@ function everyRowRead(kind, largeIn) {
       globalThis.__ri2_DR_MODEL = DR_MODEL;
       globalThis.__ri2_roundTable = roundTable;
       globalThis.__ri2_syncTablePillbox = syncTablePillbox;
-      globalThis.__ri2_tablePillboxes = tablePillboxes;
+      globalThis.__ri2_tablePillboxes = tablePillboxButtons(tablePillboxViews);
     `);
 
 

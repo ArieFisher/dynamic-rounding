@@ -167,8 +167,10 @@
     typeof createTablePillbox, 'function');
   eq('table-pillbox: resetTable is defined',
     typeof resetTable, 'function');
-  eq('table-pillbox: tablePillboxes WeakMap is defined',
-    tablePillboxes instanceof WeakMap, true);
+  eq('table-pillbox: tablePillboxViews WeakMap is defined',
+    tablePillboxViews instanceof WeakMap, true);
+  eq('table-pillbox: removeTablePillbox is defined',
+    typeof removeTablePillbox, 'function');
 })();
 
 // --- Regression guard: content.js declares the new infrastructure ---
@@ -177,8 +179,8 @@
   // Table pillbox infrastructure lives in ui-pillbox.js;
   // scan the combined content-script source so the contract is location-agnostic.
   const src = allContentSrc;
-  eq('table-pillbox: declares tablePillboxes WeakMap',
-    /const\s+tablePillboxes\s*=\s*new\s+WeakMap/.test(src), true);
+  eq('table-pillbox: declares tablePillboxViews WeakMap',
+    /const\s+tablePillboxViews\s*=\s*new\s+WeakMap/.test(src), true);
   eq('table-pillbox: defines isTableOn',
     /function\s+isTableOn\b/.test(src), true);
   eq('table-pillbox: defines syncTablePillbox',

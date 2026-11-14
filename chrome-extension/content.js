@@ -502,14 +502,7 @@ function revalidateTableShape(table, opts = {}) {
 // registers a fresh table makes that table active right after, and the
 // sidebar's read, which lands after this handler finishes, reads it.
 function teardownTableEntry(table) {
-  const button = tablePillboxes.get(table);
-  if (button && button.parentElement) {
-    button.parentElement.removeChild(button);
-  }
-  const ro = tableResizeObservers.get(table);
-  if (ro) {
-    ro.disconnect();
-  }
+  removeTablePillbox(table);
   unwatchTable(table);
   DR_MODEL.unregisterTable(table);
   if (DR_MODEL.getActiveTable() === table) {

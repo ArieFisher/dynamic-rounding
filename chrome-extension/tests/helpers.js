@@ -275,7 +275,27 @@ function makeTablePillboxTestTable(rowsOrCells, extra) {
 }
 
 /**
- * Inject a fake entry into the module-level tablePillboxes WeakMap so that
+ * Tests read and plant a table pillbox's button by table, while the view
+ * holds each button inside a per-table record beside its resize observer.
+ * This reads and writes the button through that record. A planted record
+ * gets an observer stub, so the view's teardown runs on it unchanged.
+ *
+ * @param {WeakMap} views The view's map from table to { button, resizeObserver }.
+ * @returns {{has: Function, get: Function, set: Function, delete: Function}}
+ */
+function tablePillboxButtons(views) {
+  return {
+    has: (table) => views.has(table),
+    get: (table) => (views.has(table) ? views.get(table).button : undefined),
+    set: (table, button) => views.set(table, { button, resizeObserver: { disconnect() {} } }),
+    delete: (table) => views.delete(table),
+  };
+}
+
+const tablePillboxes = tablePillboxButtons(tablePillboxViews);
+
+/**
+ * Inject a fake entry into the table pillbox view's records so that
  * syncTablePillbox can find the button for this table.
  *
  * Returns a minimal button stub that supports setAttribute/getAttribute/classList
@@ -2096,7 +2116,7 @@ function withRightClickSandbox(run) {
     // the registry and parent-equivalence harnesses above expose theirs.
     eval(contentScriptBundle + `
       globalThis.__rcr_DR_MODEL = DR_MODEL;
-      globalThis.__rcr_tablePillboxes = tablePillboxes;
+      globalThis.__rcr_tablePillboxes = tablePillboxButtons(tablePillboxViews);
       globalThis.__rcr_DR_LOG = DR_LOG;
       globalThis.__rcr_DR_BUS = DR_BUS;
       globalThis.__rcr_holdPendingTable = holdPendingTable;

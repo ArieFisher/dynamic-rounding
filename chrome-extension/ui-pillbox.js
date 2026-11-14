@@ -42,11 +42,12 @@ const CLIPPING_OVERFLOW = new Set(['hidden', 'scroll', 'auto', 'clip']);
 
 // --- Per-table pillbox infrastructure ---
 
-/** WeakMap from HTMLTableElement → HTMLButtonElement (the table pillbox's button) */
-const tablePillboxes = new WeakMap();
-
-/** WeakMap from HTMLTableElement → ResizeObserver for the table pillbox */
-const tableResizeObservers = new WeakMap();
+/**
+ * WeakMap from a table (a native table or a grid) to its table pillbox's view
+ * record: { button, resizeObserver }, the button element and the observer
+ * that keeps it positioned.
+ */
+const tablePillboxViews = new WeakMap();
 
 // The table pillbox shows the table's on/off value, the same value the
 // sidebar pillbox shows, so the two always agree. The press handler in
@@ -57,9 +58,24 @@ function isTableOn(table) {
 }
 
 function syncTablePillbox(table) {
-  const button = tablePillboxes.get(table);
-  if (!button) return;
-  button.setAttribute('aria-pressed', isTableOn(table) ? 'true' : 'false');
+  const view = tablePillboxViews.get(table);
+  if (!view) return;
+  view.button.setAttribute('aria-pressed', isTableOn(table) ? 'true' : 'false');
+}
+
+// The resize observer goes with the button, so a table the page removed
+// leaves no observer behind.
+/**
+ * @param {Element} table The table whose table pillbox and resize observer this removes.
+ */
+function removeTablePillbox(table) {
+  const view = tablePillboxViews.get(table);
+  if (!view) return;
+  if (view.button.parentElement) {
+    view.button.parentElement.removeChild(view.button);
+  }
+  view.resizeObserver.disconnect();
+  tablePillboxViews.delete(table);
 }
 
 // Every settings write targets the active table, so on each settings notice
@@ -281,19 +297,18 @@ function createTablePillbox(table) {
 
   button.addEventListener('mousedown', (e) => e.stopPropagation());
 
-  // View-only bookkeeping: the button element. DR_MODEL's table registry
-  // holds the "found" registration, and repositioning walks it.
-  tablePillboxes.set(table, button);
+  const resizeObserver = new ResizeObserver(() => {
+    positionTablePillbox(table, button);
+  });
+  resizeObserver.observe(table);
+
+  // View-only bookkeeping. DR_MODEL's table registry holds the "found"
+  // registration, and repositioning walks it.
+  tablePillboxViews.set(table, { button, resizeObserver });
   DR_MODEL.registerTable(table);
   // The shape fingerprint, recorded once per registration. A new registry
   // entry holds no originals, so this read takes the cells as they stand.
   DR_MODEL.setTableFingerprint(table, readTableFingerprint(table, fingerprintReadOpts(table)));
-
-  const ro = new ResizeObserver(() => {
-    positionTablePillbox(table, button);
-  });
-  ro.observe(table);
-  tableResizeObservers.set(table, ro);
 
   // Global tap-outside collapse (added once for all table pillboxes)
   if (!_globalTapCollapseAdded) {
@@ -335,9 +350,9 @@ function injectTablePillboxes(root = document) {
 // walk skips a registered table with no button.
 function repositionAllTablePillboxes() {
   for (const table of DR_MODEL.getRegisteredTables()) {
-    const button = tablePillboxes.get(table);
-    if (button) {
-      positionTablePillbox(table, button);
+    const view = tablePillboxViews.get(table);
+    if (view) {
+      positionTablePillbox(table, view.button);
     }
   }
 }
