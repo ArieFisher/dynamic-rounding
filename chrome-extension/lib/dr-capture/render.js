@@ -455,20 +455,20 @@ function renderScreenshotSection(state, dataUrl) {
 // open, under this file's own stylesheet — no page CSS, no cloned nodes,
 // and deliberately crude. The JSON island carries the precision.
 function renderSidebarLikeness(state) {
-  const view = state.sidebarView;
-  if (!view) {
-    return '<div class="cap-panel"><p class="cap-empty">No sidebar view state was recorded.</p></div>';
+  const sidebarSnapshot = state.sidebarSnapshot;
+  if (!sidebarSnapshot) {
+    return '<div class="cap-panel"><p class="cap-empty">No sidebar snapshot was recorded.</p></div>';
   }
   const onOff = function (isOn) { return isOn ? 'on' : 'off'; };
   const switchRow = function (label, isOn) {
     return '<div class="cap-switch"><span>' + escapeHtml(label) + '</span><b>' +
       onOff(!!isOn) + '</b></div>';
   };
-  const switches = Object.keys(view.switches || {}).map(function (key) {
-    return switchRow(key, view.switches[key]);
+  const switches = Object.keys(sidebarSnapshot.switches || {}).map(function (key) {
+    return switchRow(key, sidebarSnapshot.switches[key]);
   }).join('');
 
-  const stops = Array.isArray(view.stops) && view.stops.length > 1 ? view.stops : null;
+  const stops = Array.isArray(sidebarSnapshot.stops) && sidebarSnapshot.stops.length > 1 ? sidebarSnapshot.stops : null;
   const pct = function (value) {
     if (!stops) return 50;
     const idx = stops.indexOf(value);
@@ -477,10 +477,10 @@ function renderSidebarLikeness(state) {
   // Both thumbs always render, matching the live control: coupled shows the
   // brown thumb tucked under the blue one at the same stop.
   const thumbs =
-    '<span class="cap-thumb" style="left: ' + pct(view.topVal) + '%"></span>' +
-    '<span class="cap-thumb cap-thumb-bot' + (view.coupled ? ' cap-coupled' : '') +
-      '" style="left: ' + pct(view.coupled ? view.topVal : view.botVal) + '%"></span>';
-  const lens = view.lensPreview || { top: [], bottom: [] };
+    '<span class="cap-thumb" style="left: ' + pct(sidebarSnapshot.topVal) + '%"></span>' +
+    '<span class="cap-thumb cap-thumb-bot' + (sidebarSnapshot.coupled ? ' cap-coupled' : '') +
+      '" style="left: ' + pct(sidebarSnapshot.coupled ? sidebarSnapshot.topVal : sidebarSnapshot.botVal) + '%"></span>';
+  const lens = sidebarSnapshot.lensPreview || { top: [], bottom: [] };
   const bandRows = function (rows) {
     return (rows || []).map(function (row) {
       return '<div class="cap-band">' + escapeHtml(row) + '</div>';
@@ -488,21 +488,21 @@ function renderSidebarLikeness(state) {
   };
 
   return '<div class="cap-panel">' +
-    switchRow('Rounding', view.enabled) +
+    switchRow('Rounding', sidebarSnapshot.enabled) +
     switches +
-    '<div class="cap-switch"><span>Dates</span><b>' + escapeHtml(displayValue(view.dateGranularity)) + '</b></div>' +
-    '<div class="cap-switch"><span>Times</span><b>' + escapeHtml(displayValue(view.timeGranularity)) + '</b></div>' +
+    '<div class="cap-switch"><span>Dates</span><b>' + escapeHtml(displayValue(sidebarSnapshot.dateGranularity)) + '</b></div>' +
+    '<div class="cap-switch"><span>Times</span><b>' + escapeHtml(displayValue(sidebarSnapshot.timeGranularity)) + '</b></div>' +
     '<h3>Lens control (' +
-      (view.coupled
-        ? 'coupled, both at ' + escapeHtml(displayValue(view.topVal))
-        : 'top ' + escapeHtml(displayValue(view.topVal)) +
-          ', other ' + escapeHtml(displayValue(view.botVal))) +
+      (sidebarSnapshot.coupled
+        ? 'coupled, both at ' + escapeHtml(displayValue(sidebarSnapshot.topVal))
+        : 'top ' + escapeHtml(displayValue(sidebarSnapshot.topVal)) +
+          ', other ' + escapeHtml(displayValue(sidebarSnapshot.botVal))) +
     ')</h3>' +
     '<div class="cap-rail">' + thumbs + '</div>' +
     '<h3>Lens preview</h3>' +
     bandRows(lens.top) +
     bandRows(lens.bottom) +
-    '<p class="cap-status">' + escapeHtml(displayValue(view.status)) + '</p>' +
+    '<p class="cap-status">' + escapeHtml(displayValue(sidebarSnapshot.status)) + '</p>' +
     '</div>';
 }
 
