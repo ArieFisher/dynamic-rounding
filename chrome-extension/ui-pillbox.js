@@ -45,18 +45,10 @@ const CLIPPING_OVERFLOW = new Set(['hidden', 'scroll', 'auto', 'clip']);
 // A table (native or grid) → { button, resizeObserver }.
 const tablePillboxViews = new WeakMap();
 
-// The table pillbox shows the table's on/off value, the same value the
-// sidebar pillbox shows, so the two always agree. The press handler in
-// content.js reads this value and writes its opposite. A table that is on
-// with no cell to simplify still shows on.
-function isTableOn(table) {
-  return DR_MODEL.getTableSettings(table).enabled === true;
-}
-
 function syncTablePillbox(table) {
   const view = tablePillboxViews.get(table);
   if (!view) return;
-  view.button.setAttribute('aria-pressed', isTableOn(table) ? 'true' : 'false');
+  view.button.setAttribute('aria-pressed', DR_MODEL.isTableOn(table) ? 'true' : 'false');
 }
 
 /** @param {Element} table The table whose table pillbox this removes. */
@@ -213,19 +205,10 @@ function positionTablePillbox(table, button) {
   button.style.top  = buttonTop  + 'px';
 }
 
-// The recorded and the compared fingerprint both read the stored originals, so
-// the extension's own writes never read as a page change.
-/** @param {Element} table The registered table whose stored originals the reader returns. */
-function fingerprintReadOpts(table) {
-  return { originalText: (cellEl) => DR_MODEL.getTableOriginalText(table, cellEl) };
-}
-
 /** Guard so the global tap-outside collapse listener is added only once */
 let _globalTapCollapseAdded = false;
 
 function createTablePillbox(table) {
-  if (!isDataTable(table)) return;
-  if (table.tagName !== 'TABLE') table.classList.add('dr-ext-grid');
   ensureTablePillboxStyleInjected();
 
   const button = document.createElement('button');
@@ -294,13 +277,7 @@ function createTablePillbox(table) {
   });
   resizeObserver.observe(table);
 
-  // View-only bookkeeping. DR_MODEL's table registry holds the "found"
-  // registration, and repositioning walks it.
   tablePillboxViews.set(table, { button, resizeObserver });
-  DR_MODEL.registerTable(table);
-  // The shape fingerprint, recorded once per registration. A new registry
-  // entry holds no originals, so this read takes the cells as they stand.
-  DR_MODEL.setTableFingerprint(table, readTableFingerprint(table, fingerprintReadOpts(table)));
 
   // Global tap-outside collapse (added once for all table pillboxes)
   if (!_globalTapCollapseAdded) {
@@ -315,22 +292,6 @@ function createTablePillbox(table) {
   }
 
   return button;
-}
-
-// The page observer in content.js passes each added element. The nomination
-// outcomes go to consumeNominations in content.js, which holds each pending
-// table, so content.js calls this only after it defines consumeNominations.
-/** @param {Document|Element} [root] The node whose subtree the scan reads. */
-function injectTablePillboxes(root = document) {
-  const { tables, nominations } = scanTables(root, { isRegistered: DR_MODEL.hasTable });
-  tables.forEach(table => {
-    if (!DR_MODEL.hasTable(table)) {
-      createTablePillbox(table);
-    }
-  });
-  // For a grid the nomination step selected, createTablePillbox runs the data
-  // test a second time. The repeat keeps registration in this view alone.
-  consumeNominations(nominations);
 }
 
 // A settings write can register a table that has no table pillbox, so the

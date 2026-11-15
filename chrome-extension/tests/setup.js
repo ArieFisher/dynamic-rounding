@@ -146,10 +146,10 @@ Object.defineProperty(globalThis, 'highlightStyleInjected', {
   set(v) { highlightStyleInjected = v; },
   configurable: true,
 });
-globalThis.isTableOn = isTableOn;
 globalThis.syncTablePillbox = syncTablePillbox;
 globalThis.positionTablePillbox = positionTablePillbox;
 globalThis.createTablePillbox = createTablePillbox;
+globalThis.registerDataTable = registerDataTable;
 globalThis.injectTablePillboxes = injectTablePillboxes;
 globalThis.isDataTable = isDataTable;
 // The lens preview's sample pool for one table, built from the two steps
@@ -248,7 +248,7 @@ globalThis.pendingRetestCounts = pendingRetestCounts;
 globalThis.isAccessibilityArtifact = isAccessibilityArtifact;
 globalThis.OFFSCREEN_LEFT_PX_THRESHOLD = DR_DETECTION_SETTINGS.offscreenLeftPx;
 // Expose content.js's marker call-site wrapper for direct unit testing.
-globalThis.markAndAddTablePillboxIfNewGrid = markAndAddTablePillboxIfNewGrid;
+globalThis.registerIfNew = registerIfNew;
 // Expose the DR_MODEL-backed originals port so grid-adapter tests can build
 // an adapter the same way roundTable and collectNumericCells do in
 // production (registryAdapter) — a plain
