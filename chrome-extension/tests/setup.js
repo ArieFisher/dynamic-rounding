@@ -194,8 +194,6 @@ Object.defineProperty(globalThis, 'lastRightClickedTable', {
 // app-model-selection test suite.
 globalThis.DR_MODEL = DR_MODEL;
 globalThis.DR_BUS = DR_BUS;
-// Expose the toast view for the toast test section.
-globalThis.DR_TOAST = DR_TOAST;
 // Expose grid-detection helpers for the grid-detection test suite.
 globalThis.looksLikeGrid = looksLikeGrid;
 globalThis.findTargetTable = findTargetTable;

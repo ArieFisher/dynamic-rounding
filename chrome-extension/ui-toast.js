@@ -86,5 +86,5 @@ const DR_TOAST = (function () {
     show(errorState.rows[errorState.rows.length - 1].text);
   });
 
-  return { show, hide, TOAST_CLASS, TOAST_HIDE_MS };
+  return { TOAST_CLASS, TOAST_HIDE_MS };
 })();
