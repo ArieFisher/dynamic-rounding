@@ -514,7 +514,7 @@ for (const [which, thumb] of [['top', topThumb], ['other', otherThumb]]) {
 }
 
 // The values the controls hold. The settings payload and the capture's
-// sidebar view both read them here.
+// sidebar snapshot both read them here.
 function readControls() {
   const switches = {};
   forEachSwitch((name, el) => { switches[name] = el.checked; });
@@ -740,7 +740,7 @@ function saveCaptureFile(opts) {
 // time from this page's live controls and variables. Sidebar view state has
 // no model by existing design, so this is evidence-taking, not a second
 // store of record.
-function collectSidebarView() {
+function collectSidebarSnapshot() {
   return Object.assign(readControls(), {
     stops: STOPS.slice(),
     topVal: topVal,
@@ -835,7 +835,7 @@ function assembleAndSaveCapture(mark, remarks, pageState, shot) {
   state.screenshot = shot && shot.record
     ? shot.record
     : { taken: false, reason: 'no screenshot was attempted' };
-  state.sidebarView = collectSidebarView();
+  state.sidebarSnapshot = collectSidebarSnapshot();
   // Provenance is evidence: the two contexts' rows stay in separate lists.
   state.log = {
     content: pageState ? pageState.log || null : null,

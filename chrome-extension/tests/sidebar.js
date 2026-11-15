@@ -1564,20 +1564,20 @@ const SINGLE_READ_SAMPLES = {
 // ---------------------------------------------------------------------------
 // Two key lists leave the sidebar and have readers elsewhere: the settings the
 // sidebar sends, read against the settings contract, and the capture's sidebar
-// view, read by the capture renderer. Each expected list is derived from its
+// snapshot, read by the capture renderer. Each expected list is derived from its
 // reader, so a renamed key fails here and a new key needs no edit here.
 // ---------------------------------------------------------------------------
 (function sidebarKeysMatchTheirReaders() {
   const h = makeIssue251SidebarHarness({ captureMarks: ['looks-wrong'] });
   const renderSrc = sourceByName('lib/dr-capture/render.js');
   if (!h || typeof renderSrc !== 'string') {
-    eq('sidebar view keys: the sidebar harness and the capture renderer source are available', false, true);
+    eq('sidebar snapshot keys: the sidebar harness and the capture renderer source are available', false, true);
     return;
   }
   const savedBuild = DR_CAPTURE.buildCaptureDocument;
   const savedWarn = DR_LOG.warn;
   try {
-    eq('sidebar view keys: sidebar.js loaded with no stub gaps', h.evalError, null);
+    eq('sidebar snapshot keys: sidebar.js loaded with no stub gaps', h.evalError, null);
     if (h.evalError !== null) return;
 
     h.enabledEl.fire('change');
@@ -1587,9 +1587,9 @@ const SINGLE_READ_SAMPLES = {
     eq('settings keys: the sent settings hold exactly the settings contract\'s keys',
       Object.keys(applies[0].settings).sort(), Object.keys(DR_DEFAULTS).sort());
 
-    let sidebarView = null;
+    let sidebarSnapshot = null;
     DR_CAPTURE.buildCaptureDocument = (input) => {
-      sidebarView = input.state.sidebarView;
+      sidebarSnapshot = input.state.sidebarSnapshot;
       throw new Error('stop before the file save');
     };
     h.chromeMock.runtime.getManifest = () => ({ version: '0' });
@@ -1598,20 +1598,20 @@ const SINGLE_READ_SAMPLES = {
     DR_LOG.warn = () => {};
     h.captureMarkEls[0].fire('click');
     h.el('captureSave').fire('click');
-    eq('sidebar view keys: the finish press hands the renderer a sidebar view',
-      sidebarView !== null && typeof sidebarView === 'object', true);
-    if (!sidebarView) return;
+    eq('sidebar snapshot keys: the finish press hands the renderer a sidebar snapshot',
+      sidebarSnapshot !== null && typeof sidebarSnapshot === 'object', true);
+    if (!sidebarSnapshot) return;
 
     const readKeys = (pattern) => Array.from(new Set(
       Array.from(renderSrc.matchAll(pattern), (match) => match[1]))).sort();
-    const viewKeysRead = readKeys(/\bview\.(\w+)/g);
+    const snapshotKeysRead = readKeys(/\bsidebarSnapshot\.(\w+)/g);
     const lensKeysRead = readKeys(/\blens\.(\w+)/g);
-    eq('sidebar view keys: the scan found keys the renderer reads (fails closed on an empty list)',
-      viewKeysRead.length > 0 && lensKeysRead.length > 0, true);
-    eq('sidebar view keys: the sidebar view holds every key the renderer reads',
-      viewKeysRead.filter((key) => !(key in sidebarView)), []);
-    eq('sidebar view keys: the sidebar view\'s lens preview holds every key the renderer reads',
-      lensKeysRead.filter((key) => !(key in (sidebarView.lensPreview || {}))), []);
+    eq('sidebar snapshot keys: the scan found keys the renderer reads (fails closed on an empty list)',
+      snapshotKeysRead.length > 0 && lensKeysRead.length > 0, true);
+    eq('sidebar snapshot keys: the sidebar snapshot holds every key the renderer reads',
+      snapshotKeysRead.filter((key) => !(key in sidebarSnapshot)), []);
+    eq('sidebar snapshot keys: the sidebar snapshot\'s lens preview holds every key the renderer reads',
+      lensKeysRead.filter((key) => !(key in (sidebarSnapshot.lensPreview || {}))), []);
   } finally {
     DR_CAPTURE.buildCaptureDocument = savedBuild;
     DR_LOG.warn = savedWarn;
