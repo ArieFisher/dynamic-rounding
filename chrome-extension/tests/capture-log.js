@@ -12,12 +12,12 @@
       cellRec.original, ' 8,584,629 ');
     const html = DR_CAPTURE.buildCaptureDocument({
       state: {
-        captureFormat: 10,
+        captureFormat: 11,
         meta: { url: 'https://www.example.com/grid', title: 'G', version: '2.1.70',
           platform: 'test', at: '2026-09-22T16:00:00.000Z' },
         mark: 'looks-right', remarks: '', detectionSettings: null,
         activeTableIndex: 0, tables: [tableRec], lensPreview: null, fixtureSeed: null,
-        sidebarView: null, errorState: { hasError: false, count: 0, rows: [] },
+        sidebarSnapshot: null, errorState: { hasError: false, count: 0, rows: [] },
         log: { content: { entries: [], dropped: 0, limit: 50 }, sidebar: { entries: [], dropped: 0, limit: 50 } },
       },
     });
@@ -147,7 +147,7 @@
 
   const state = collectCaptureState({ model, adapterFor: fakeAdapterFor });
 
-  eq('capture-state: the state carries its format version', state.captureFormat, 10);
+  eq('capture-state: the state carries its format version', state.captureFormat, 11);
   eq('capture-state: the state holds no page-wide settings; each table carries its own',
     Object.prototype.hasOwnProperty.call(state, 'settings'), false);
   eq('capture-state: a table with no settings of its own carries the shipped defaults',
@@ -297,7 +297,7 @@
   const filenameFor = DR_CAPTURE.filenameFor;
 
   const makeState = (over) => Object.assign({
-    captureFormat: 10,
+    captureFormat: 11,
     meta: {
       url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z',
@@ -314,7 +314,7 @@
       ],
     }],
     lensPreview: { samples: { top: [{ original: '98,765', num: 98765 }], bottom: [] }, maxMag: 4 },
-    sidebarView: {
+    sidebarSnapshot: {
       enabled: true,
       switches: { simplifyDates: false },
       dateGranularity: 'year', timeGranularity: 'hour', rangeExpr: '',
@@ -557,7 +557,7 @@
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
   const makeState = (over) => Object.assign({
-    captureFormat: 10,
+    captureFormat: 11,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
     mark: 'looks-wrong',
@@ -572,7 +572,7 @@
       ],
     }],
     lensPreview: null,
-    sidebarView: {
+    sidebarSnapshot: {
       enabled: true, switches: {}, dateGranularity: 'year', timeGranularity: 'hour',
       rangeExpr: '', stops: [-1, 0, 1], topVal: 0, botVal: 0, coupled: true,
       status: '', noTable: false,
@@ -634,12 +634,12 @@
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
   const makeState = (over) => Object.assign({
-    captureFormat: 10,
+    captureFormat: 11,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
     mark: 'looks-wrong', remarks: '', detectionSettings: null,
     activeTableIndex: null, tables: [], lensPreview: null, fixtureSeed: null,
-    sidebarView: null, errorState: null,
+    sidebarSnapshot: null, errorState: null,
     log: { content: null, sidebar: { entries: [], dropped: 0, limit: 50 } },
     page: { url: 'https://www.example.com/prices', title: 'Prices' },
   }, over || {});
@@ -713,7 +713,7 @@
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
   const makeState = (over) => Object.assign({
-    captureFormat: 10,
+    captureFormat: 11,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
     mark: 'looks-wrong',
@@ -721,7 +721,7 @@
     activeTableIndex: 0,
     tables: [],
     lensPreview: null,
-    sidebarView: null,
+    sidebarSnapshot: null,
     log: {
       content: { entries: [], dropped: 0, limit: 50 },
       sidebar: { entries: [], dropped: 0, limit: 50 },
@@ -852,8 +852,8 @@
     state.detectionSettings, DR_DETECTION_SETTINGS);
   eq('capture-settings: the state\'s captureFormat equals CAPTURE_FORMAT',
     state.captureFormat, CAPTURE_FORMAT);
-  eq('capture-settings: CAPTURE_FORMAT is 10',
-    CAPTURE_FORMAT, 10);
+  eq('capture-settings: CAPTURE_FORMAT is 11',
+    CAPTURE_FORMAT, 11);
   eq('capture-settings: the returned copy is not the same object as DR_DETECTION_SETTINGS',
     state.detectionSettings !== DR_DETECTION_SETTINGS, true);
 
@@ -883,10 +883,10 @@
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
   const baseState = (detectionSettings) => ({
-    captureFormat: 10,
+    captureFormat: 11,
     meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
     mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
-    tables: [], lensPreview: null, sidebarView: null,
+    tables: [], lensPreview: null, sidebarSnapshot: null,
     log: { content: null, sidebar: null }, page: null, fixtureSeed: null,
     detectionSettings,
   });
@@ -949,10 +949,10 @@
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
   const baseState = (over) => Object.assign({
-    captureFormat: 10,
+    captureFormat: 11,
     meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
     mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
-    tables: [], lensPreview: null, sidebarView: null,
+    tables: [], lensPreview: null, sidebarSnapshot: null,
     log: { content: null, sidebar: null }, page: null, fixtureSeed: null,
   }, over || {});
   const visibleHalf = (html) => html.slice(0, html.indexOf('id="capture-state"'));
@@ -984,7 +984,7 @@
   eq('capture-settings: an absent detectionSettings field renders the absence placeholder in the detection settings section',
     /<h2>Detection settings<\/h2>[\s\S]{0,80}—/.test(visibleHalf(htmlWithAbsent)), true);
   eq('capture-settings: the format version still prints in the header when detectionSettings is absent',
-    /<dt>Capture format<\/dt><dd>10<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
+    /<dt>Capture format<\/dt><dd>11<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
 
   const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   const fnStart = sidebarJsSrc.indexOf('function assembleAndSaveCapture');
@@ -1000,10 +1000,10 @@
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const html = DR_CAPTURE.buildCaptureDocument({
     state: {
-      captureFormat: 10,
+      captureFormat: 11,
       meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
       mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
-      tables: [], lensPreview: null, sidebarView: null,
+      tables: [], lensPreview: null, sidebarSnapshot: null,
       log: { content: null, sidebar: null }, page: null, fixtureSeed: null,
       detectionSettings: { exampleScalarSetting: 1 },
     },
@@ -1040,12 +1040,12 @@
   eq('capture-state: the state carries the model\'s error state', state.errorState, errorState);
 
   const renderState = {
-    captureFormat: 10,
+    captureFormat: 11,
     meta: { url: 'https://www.example.com/p', title: 'P', version: '2.1.70',
       platform: 'test', at: '2026-09-17T16:00:00.000Z' },
     mark: 'looks-wrong', remarks: '', detectionSettings: null,
     activeTableIndex: null, tables: [], lensPreview: null, fixtureSeed: null,
-    sidebarView: { enabled: true, switches: {}, dateGranularity: 'year', timeGranularity: 'hour',
+    sidebarSnapshot: { enabled: true, switches: {}, dateGranularity: 'year', timeGranularity: 'hour',
       rangeExpr: '', stops: [0], topVal: 0, botVal: 0, coupled: true, status: '',
       noTable: true, lensPreview: { top: [], bottom: [] } },
     errorState: errorState,
