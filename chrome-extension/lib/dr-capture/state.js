@@ -52,13 +52,14 @@
  * lastRoundOptions to settings: each table carries its own settings.
  * Format 8 drops each cell's isOutside field: every row joins the dataset,
  * so no reader of the field remains.
- * Format 9 drops each table's locked field and the sidebar view's locked
+ * Format 9 drops each table's locked field and the sidebar snapshot's locked
  * field: the extension no longer locks a table.
  * Format 10 drops each table's appliedFlag field: a table shows simplified
  * values when one of its cells carries the marker class, and each cell records that.
+ * Format 11 renames the sidebarView field to sidebarSnapshot.
  */
 
-const CAPTURE_FORMAT = 10;
+const CAPTURE_FORMAT = 11;
 
 function collectCaptureState(deps) {
   const model = (deps && deps.model) || DR_MODEL;

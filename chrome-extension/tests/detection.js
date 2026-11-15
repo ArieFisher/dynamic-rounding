@@ -991,11 +991,10 @@ const supTestOpts = {
     outer.parentElement  = document.body;
     outer.parentNode     = document.body;
 
-    // The click target is inner itself (not in any <table>, no dr-ext-grid yet).
+    // The click target is inner itself (not in any <table>).
     // Adjust closest() on inner to use the real chain.
     inner.closest = function(sel) {
       if (sel === 'table') return null;
-      if (sel === '.dr-ext-grid') return null;
       return null;
     };
 
@@ -1078,7 +1077,7 @@ const supTestOpts = {
     eq('findTargetTable: prefers native <table> ancestor over grid heuristic',
       result.handle, tableEl);
     // A bare <table> ancestor is a case the caller already knows how to
-    // handle (it never gets the dr-ext-grid marker); isNew is always false.
+    // handle; isNew is always false.
     eq('findTargetTable: native <table> ancestor reports isNew: false',
       result.isNew, false);
   });
@@ -1144,10 +1143,10 @@ const supTestOpts = {
 })();
 
 // FT6: findTargetTable — returns a new grid via { handle, isNew: true } and
-// does not mark it itself; the caller — content.js's markAndAddTablePillboxIfNewGrid —
-// writes dr-ext-grid and builds the table pillbox. findTargetTable must resolve the
-// new grid AND must leave it unmarked.
-(function findTargetTable_reportsNewGridWithoutMarking() {
+// does not register it itself; the caller — content.js's registerIfNew —
+// registers it and builds the table pillbox. findTargetTable must resolve the
+// new grid AND must leave it unregistered.
+(function findTargetTable_reportsNewGridWithoutRegistering() {
   withFindTargetEnv([], function() {
     const makeRows5 = () => [
       makeGridRow([{text:'A',width:100},{text:'100'}], 'row', 20),
@@ -1171,10 +1170,10 @@ const supTestOpts = {
 
     eq('findTargetTable: resolves the new grid to the outermost element',
       result.handle, outer);
-    eq('findTargetTable: reports isNew: true for a not-yet-marked grid',
+    eq('findTargetTable: reports isNew: true for a not-yet-registered grid',
       result.isNew, true);
-    eq('findTargetTable: does NOT write the dr-ext-grid marker itself (reports only)',
-      outer.classList.contains('dr-ext-grid'), false);
+    eq('findTargetTable: does NOT register the grid itself (reports only)',
+      DR_MODEL.hasTable(outer), false);
   });
 })();
 
@@ -1196,7 +1195,7 @@ const supTestOpts = {
 //     scrolling pane beside it.
 //   - A nest that resolves nothing falls through to the geometry probe
 //     unchanged.
-//   - findTargetTable reports: it registers nothing and writes no marker.
+//   - findTargetTable reports: it registers nothing.
 //
 // Every expected value below comes from that statement, never from the
 // detection layer's source. The fixture is makeDatabaseQueryGrid (defined
@@ -1217,9 +1216,6 @@ const supTestOpts = {
     result !== null && result.isNew, true);
   eq('findTargetTable AC1: the resolution reads no layout, so the geometry probe did not produce it',
     styleProbe.layoutReads, 0);
-  eq('findTargetTable AC1: the resolution writes no grid marker class',
-    [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl]
-      .map((el) => el.classList.contains('dr-ext-grid')), [false, false, false]);
   eq('findTargetTable AC1: the resolution adds no registry entry',
     [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl]
       .map((el) => DR_MODEL.hasTable(el)), [false, false, false]);
@@ -3193,8 +3189,6 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
     DR_MODEL.getRegisteredTables().length, before);
   eq('nesting: the nomination step registers no element of the nest',
     nestElements.map((el) => DR_MODEL.hasTable(el)), [false, false, false]);
-  eq('nesting: the nomination step writes no grid marker class',
-    nestElements.map((el) => el.classList.contains('dr-ext-grid')), [false, false, false]);
 })();
 
 // =============================================================================
