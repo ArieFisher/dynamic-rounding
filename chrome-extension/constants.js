@@ -41,6 +41,11 @@ const DR_DEFAULTS = {
  */
 const DR_DETECTION_SETTINGS = {
   // --- Nomination step ---
+  // 1 registers a vendor grid's scrolling pane and leaves the pinned pane,
+  // which holds the row-number column, outside the table. The first-column
+  // exclusion then reaches the first data column, and a range expression
+  // counts that column as column A. A pinned pane that holds real data drops
+  // out of the table at this depth.
   nestingDepth: 1,
   // --- Grid detection ---
   gridMinChildren: 5,
@@ -83,6 +88,11 @@ const DR_DETECTION_SETTINGS = {
   passTargetMs: 200,
   // --- Pending tables ---
   // Failed re-tests a pending table takes before its subtree observer drops.
+  // A re-test runs only after a subtree change and the settle delay, so the
+  // count grows only while the subtree keeps changing, and the data test
+  // budget bounds each re-test. At the fastest rate, 100 re-tests take about
+  // ten seconds and half a second of processing. A lower cap leaves a slow
+  // query unregistered when its loading state keeps changing the subtree.
   pendingRetestCap: 100,
   // --- Accessibility artifact check ---
   offscreenLeftPx: -9999,

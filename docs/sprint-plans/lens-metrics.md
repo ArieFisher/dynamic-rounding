@@ -37,7 +37,7 @@ responder (`chrome-extension/content.js`), the sidebar
 (`chrome-extension/sidebar.html`, `chrome-extension/sidebar.js`), the capture
 state and renderer (`chrome-extension/lib/dr-capture/state.js`,
 `chrome-extension/lib/dr-capture/render.js`), one new case table under `js/`,
-the manual test page (`docs/test-pages/tables.html`), and the living docs.
+the manual test page (`docs/test-pages/test-tables-1.html`), and the living docs.
 
 **The code as it stands**, checked against `main` for this plan:
 
@@ -101,7 +101,7 @@ the manual test page (`docs/test-pages/tables.html`), and the living docs.
 - **Regression fixtures:** synthetic and minimized.
 - **Docs track behavior:** the sprint's dev notes name the living docs it
   updates.
-- **Manual test page:** the sprint adds a section to `docs/test-pages/tables.html`
+- **Manual test page:** the sprint adds a section to `docs/test-pages/test-tables-1.html`
   and names it in the pull request.
 
 ## 3. Design
@@ -284,7 +284,7 @@ One sprint, no dependents.
   Living docs: the capture state entry and the lens metrics entry in
   `docs/vocabulary.md`; the sidebar and capture paragraphs in
   `chrome-extension/README.md`; the capture section of `docs/design.md`;
-  `docs/test-pages/tables.html`, new section 34.
+  `docs/test-pages/test-tables-1.html`, new section 34.
 - **Out of scope:** A spreadsheet or Python metrics function. Reading the
   registry's frozen magnitude in the sidebar. A refresh for an off table whose
   page loads new data. Crowding in any display. A cell cap on the pool.

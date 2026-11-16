@@ -311,7 +311,7 @@ const SEAT_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// AC3: Two-digit-year US dates via findDates + roundTable pipeline.
+// Two-digit-year US dates via findDates + roundTable pipeline.
 // We test via roundTable since an all-numeric date needs the column post-pass.
 // ---------------------------------------------------------------------------
 (function dateRoundTwoDigitYear() {
@@ -347,7 +347,7 @@ const SEAT_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// AC5: Column-level MDY/DMY auto-detect via roundTable pipeline.
+// Column-level MDY/DMY auto-detect via roundTable pipeline.
 // ---------------------------------------------------------------------------
 (function dateRoundColumnAutoDetect() {
   withCreateTreeWalker(function() {
@@ -449,7 +449,7 @@ const SEAT_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// AC6: Non-date strings pass through unchanged.
+// Non-date strings pass through unchanged.
 // ---------------------------------------------------------------------------
 (function dateRoundNonDatePassthrough() {
   withCreateTreeWalker(function() {
@@ -913,7 +913,7 @@ const SEAT_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// AC1: Whole-cell exponent cell — 10<sup>12</sup> → innerText "1012"
+// Whole-cell exponent cell — 10<sup>12</sup> → innerText "1012"
 // The exponent digits "12" must NOT be altered after roundTable runs.
 // ---------------------------------------------------------------------------
 (function supAC1_wholeCellExponent() {
@@ -936,13 +936,13 @@ const SEAT_ROWS = [
     // The exponent "12" must not have been touched — cell.innerText must still
     // contain "12" at the sup position (indices 2..4 of the flattened text).
     const supNode = cell._textNodes[1];
-    eq('sup AC1: exponent text node "12" is unchanged after roundTable',
+    eq('sup: exponent text node "12" is unchanged after roundTable',
       supNode.nodeValue, '12');
   });
 })();
 
 // ---------------------------------------------------------------------------
-// AC2a: "20 × 10<sup>15</sup>" — the "15" exponent must not be rounded.
+// "20 × 10<sup>15</sup>" — the "15" exponent must not be rounded.
 // ---------------------------------------------------------------------------
 (function supAC2a_positiveExponent() {
   withSupCreateTreeWalker(function() {
@@ -961,13 +961,13 @@ const SEAT_ROWS = [
     roundTable(table, supTestOpts);
 
     const supNode = cell._textNodes[1];
-    eq('sup AC2a: exponent "15" in "20 × 10<sup>15</sup>" is unchanged',
+    eq('sup: exponent "15" in "20 × 10<sup>15</sup>" is unchanged',
       supNode.nodeValue, '15');
   });
 })();
 
 // ---------------------------------------------------------------------------
-// AC2b: "20 × 10<sup>−12</sup> s" — unicode-minus negative exponent preserved.
+// "20 × 10<sup>−12</sup> s" — unicode-minus negative exponent preserved.
 // ---------------------------------------------------------------------------
 (function supAC2b_negativeExponentWithUnit() {
   withSupCreateTreeWalker(function() {
@@ -986,13 +986,13 @@ const SEAT_ROWS = [
     roundTable(table, supTestOpts);
 
     const supNode = cell._textNodes[1];
-    eq('sup AC2b: exponent "−12" in "20 × 10<sup>−12</sup> s" is unchanged',
+    eq('sup: exponent "−12" in "20 × 10<sup>−12</sup> s" is unchanged',
       supNode.nodeValue, '−12');
   });
 })();
 
 // ---------------------------------------------------------------------------
-// AC2c: "~ 10<sup>−32</sup> sec" — the "−32" exponent must not be rounded.
+// "~ 10<sup>−32</sup> sec" — the "−32" exponent must not be rounded.
 // ---------------------------------------------------------------------------
 (function supAC2c_negativeExponentTildeForm() {
   withSupCreateTreeWalker(function() {
@@ -1011,13 +1011,13 @@ const SEAT_ROWS = [
     roundTable(table, supTestOpts);
 
     const supNode = cell._textNodes[1];
-    eq('sup AC2c: exponent "−32" in "~ 10<sup>−32</sup> sec" is unchanged',
+    eq('sup: exponent "−32" in "~ 10<sup>−32</sup> sec" is unchanged',
       supNode.nodeValue, '−32');
   });
 })();
 
 // ---------------------------------------------------------------------------
-// AC2d: "6 × 10<sup>9</sup>" — the "9" exponent must not be rounded.
+// "6 × 10<sup>9</sup>" — the "9" exponent must not be rounded.
 // ---------------------------------------------------------------------------
 (function supAC2d_singleDigitExponent() {
   withSupCreateTreeWalker(function() {
@@ -1035,13 +1035,13 @@ const SEAT_ROWS = [
     roundTable(table, supTestOpts);
 
     const supNode = cell._textNodes[1];
-    eq('sup AC2d: exponent "9" in "6 × 10<sup>9</sup>" is unchanged',
+    eq('sup: exponent "9" in "6 × 10<sup>9</sup>" is unchanged',
       supNode.nodeValue, '9');
   });
 })();
 
 // ---------------------------------------------------------------------------
-// AC3: Mixed cell — exponent protected, non-exponent number still eligible.
+// Mixed cell — exponent protected, non-exponent number still eligible.
 //
 // Cell: "From inflation (~ 10<sup>−32</sup> sec) – 1234 ka"
 // The "1234" is not inside <sup> so it goes through the normal extraction path.
@@ -1069,13 +1069,13 @@ const SEAT_ROWS = [
 
     // The exponent node must be untouched
     const supNode = cell._textNodes[1];
-    eq('sup AC3: exponent "−32" in mixed cell is unchanged',
+    eq('sup: exponent "−32" in mixed cell is unchanged',
       supNode.nodeValue, '−32');
 
     // The non-exponent part must have been processed — assert the cell was
     // marked as rounded (dr-ext-rounded), which only happens when formattedValue
     // differs from originalValue (i.e. "1234" was simplified).
-    eq('sup AC3: mixed cell is marked dr-ext-rounded (non-exponent 1234 was simplified)',
+    eq('sup: mixed cell is marked dr-ext-rounded (non-exponent 1234 was simplified)',
       cell.classList.contains('dr-ext-rounded'), true);
   });
 })();
@@ -1083,20 +1083,20 @@ const SEAT_ROWS = [
 // ---------------------------------------------------------------------------
 // SimplifyDates / simplifyTimes boolean wiring
 //
-// Acceptance criteria verified here:
-//   AC1: simplifyDates=true  → date cell IS rounded (dr-ext-rounded added, text changed)
-//   AC2: simplifyDates=false → date cell is left UNCHANGED (no class, same text)
-//   AC3: simplifyTimes=true  → time cell IS simplified (dr-ext-rounded added, text changed)
-//   AC4: simplifyTimes=false → time cell is left UNCHANGED
-//   AC5: sidebar.js updateDisabledState wires dateGranularity.disabled to !simplifyDates
+// Checked here:
+//   simplifyDates=true  → date cell IS rounded (dr-ext-rounded added, text changed)
+//   simplifyDates=false → date cell is left UNCHANGED (no class, same text)
+//   simplifyTimes=true  → time cell IS simplified (dr-ext-rounded added, text changed)
+//   simplifyTimes=false → time cell is left UNCHANGED
+//   sidebar.js updateDisabledState wires dateGranularity.disabled to !simplifyDates
 //        and timeGranularity.disabled to !simplifyTimes (static source analysis only —
 //        the test harness has no sidebar DOM path so live execution is not possible).
 // ---------------------------------------------------------------------------
 
-// --- AC1: simplifyDates=true → date cell is rounded ---
+// --- simplifyDates=true → date cell is rounded ---
 // Use a bare year "2018" with decade granularity: roundDateText("2018","decade")="2010",
 // so the cell text must change and dr-ext-rounded must be added.
-(function invertPills_AC1_simplifyDatesTrue() {
+(function dateTimeSwitches_simplifyDatesTrue() {
   withCreateTreeWalker(function() {
     const table = makeMockTable([[
       { tag: 'td', text: '2018' },
@@ -1111,17 +1111,17 @@ const SEAT_ROWS = [
     };
     roundTable(table, opts);
     const cell = table.rows[0].cells[0];
-    eq('invert-pills AC1: simplifyDates=true — date cell gets dr-ext-rounded class',
+    eq('date and time switches: simplifyDates=true — date cell gets dr-ext-rounded class',
       cell.classList.contains('dr-ext-rounded'), true);
-    eq('invert-pills AC1: simplifyDates=true — date cell text is changed (2018→2010)',
+    eq('date and time switches: simplifyDates=true — date cell text is changed (2018→2010)',
       cell.innerText, '2010');
   });
 })();
 
-// --- AC2: simplifyDates=false → date cell is left unchanged ---
+// --- simplifyDates=false → date cell is left unchanged ---
 // Same "2018" cell, same decade granularity, but simplifyDates=false.
 // The cell must NOT be rounded — text stays "2018", no class added.
-(function invertPills_AC2_simplifyDatesFalse() {
+(function dateTimeSwitches_simplifyDatesFalse() {
   withCreateTreeWalker(function() {
     const table = makeMockTable([[
       { tag: 'td', text: '2018' },
@@ -1136,15 +1136,15 @@ const SEAT_ROWS = [
     };
     roundTable(table, opts);
     const cell = table.rows[0].cells[0];
-    eq('invert-pills AC2: simplifyDates=false — date cell does NOT get dr-ext-rounded',
+    eq('date and time switches: simplifyDates=false — date cell does NOT get dr-ext-rounded',
       cell.classList.contains('dr-ext-rounded'), false);
-    eq('invert-pills AC2: simplifyDates=false — date cell text is unchanged',
+    eq('date and time switches: simplifyDates=false — date cell text is unchanged',
       cell.innerText, '2018');
   });
 })();
 
-// AC1/AC2 parity check with ISO date "2024-03-14" (decade granularity → "2020")
-(function invertPills_AC1_AC2_isoDate() {
+// parity check with ISO date "2024-03-14" (decade granularity → "2020")
+(function dateTimeSwitches_isoDate() {
   withCreateTreeWalker(function() {
     // simplifyDates=true branch
     const tableOn = makeMockTable([[{ tag: 'td', text: '2024-03-14' }]]);
@@ -1156,7 +1156,7 @@ const SEAT_ROWS = [
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
     });
     const cellOn = tableOn.rows[0].cells[0];
-    eq('invert-pills AC1 (ISO date): simplifyDates=true — ISO date rounded',
+    eq('date and time switches (ISO date): simplifyDates=true — ISO date rounded',
       cellOn.classList.contains('dr-ext-rounded'), true);
   });
 
@@ -1171,16 +1171,16 @@ const SEAT_ROWS = [
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
     });
     const cellOff = tableOff.rows[0].cells[0];
-    eq('invert-pills AC2 (ISO date): simplifyDates=false — ISO date NOT rounded',
+    eq('date and time switches (ISO date): simplifyDates=false — ISO date NOT rounded',
       cellOff.classList.contains('dr-ext-rounded'), false);
-    eq('invert-pills AC2 (ISO date): simplifyDates=false — ISO date text unchanged',
+    eq('date and time switches (ISO date): simplifyDates=false — ISO date text unchanged',
       cellOff.innerText, '2024-03-14');
   });
 })();
 
-// --- AC3: simplifyTimes=true → time cell IS simplified ---
+// --- simplifyTimes=true → time cell IS simplified ---
 // "14:30" with hour granularity → roundTimeText returns "15:00" (half-hour rounds up).
-(function invertPills_AC3_simplifyTimesTrue() {
+(function dateTimeSwitches_simplifyTimesTrue() {
   withCreateTreeWalker(function() {
     const table = makeMockTable([[
       { tag: 'td', text: '14:30' },
@@ -1195,16 +1195,16 @@ const SEAT_ROWS = [
     };
     roundTable(table, opts);
     const cell = table.rows[0].cells[0];
-    eq('invert-pills AC3: simplifyTimes=true — time cell gets dr-ext-rounded class',
+    eq('date and time switches: simplifyTimes=true — time cell gets dr-ext-rounded class',
       cell.classList.contains('dr-ext-rounded'), true);
-    eq('invert-pills AC3: simplifyTimes=true — time cell text is changed (14:30→15:00)',
+    eq('date and time switches: simplifyTimes=true — time cell text is changed (14:30→15:00)',
       cell.innerText, '15:00');
   });
 })();
 
-// --- AC4: simplifyTimes=false → time cell is left UNCHANGED ---
+// --- simplifyTimes=false → time cell is left UNCHANGED ---
 // Same "14:30" cell; with simplifyTimes=false the cell must stay as-is.
-(function invertPills_AC4_simplifyTimesFalse() {
+(function dateTimeSwitches_simplifyTimesFalse() {
   withCreateTreeWalker(function() {
     const table = makeMockTable([[
       { tag: 'td', text: '14:30' },
@@ -1219,15 +1219,15 @@ const SEAT_ROWS = [
     };
     roundTable(table, opts);
     const cell = table.rows[0].cells[0];
-    eq('invert-pills AC4: simplifyTimes=false — time cell does NOT get dr-ext-rounded',
+    eq('date and time switches: simplifyTimes=false — time cell does NOT get dr-ext-rounded',
       cell.classList.contains('dr-ext-rounded'), false);
-    eq('invert-pills AC4: simplifyTimes=false — time cell text is unchanged',
+    eq('date and time switches: simplifyTimes=false — time cell text is unchanged',
       cell.innerText, '14:30');
   });
 })();
 
-// AC3/AC4 parity check with "3:45 PM" (hour granularity → "4:00 PM")
-(function invertPills_AC3_AC4_twelveHour() {
+// parity check with "3:45 PM" (hour granularity → "4:00 PM")
+(function dateTimeSwitches_twelveHour() {
   withCreateTreeWalker(function() {
     // simplifyTimes=true
     const tableOn = makeMockTable([[{ tag: 'td', text: '3:45 PM' }]]);
@@ -1239,9 +1239,9 @@ const SEAT_ROWS = [
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
     });
     const cellOn = tableOn.rows[0].cells[0];
-    eq('invert-pills AC3 (12-hr): simplifyTimes=true — "3:45 PM" rounded',
+    eq('date and time switches (12-hr): simplifyTimes=true — "3:45 PM" rounded',
       cellOn.classList.contains('dr-ext-rounded'), true);
-    eq('invert-pills AC3 (12-hr): simplifyTimes=true — text changed to "4:00 PM"',
+    eq('date and time switches (12-hr): simplifyTimes=true — text changed to "4:00 PM"',
       cellOn.innerText, '4:00 PM');
   });
 
@@ -1256,9 +1256,9 @@ const SEAT_ROWS = [
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
     });
     const cellOff = tableOff.rows[0].cells[0];
-    eq('invert-pills AC4 (12-hr): simplifyTimes=false — "3:45 PM" NOT rounded',
+    eq('date and time switches (12-hr): simplifyTimes=false — "3:45 PM" NOT rounded',
       cellOff.classList.contains('dr-ext-rounded'), false);
-    eq('invert-pills AC4 (12-hr): simplifyTimes=false — text unchanged',
+    eq('date and time switches (12-hr): simplifyTimes=false — text unchanged',
       cellOff.innerText, '3:45 PM');
   });
 })();
@@ -1266,16 +1266,16 @@ const SEAT_ROWS = [
 // ---------------------------------------------------------------------------
 // Adversarial tests
 //
-// These tests are written from the SPEC, not the implementation.
+// These tests are written from the intended behavior, not the implementation.
 // Adversarial focus: prove the boolean polarity is correct (true=simplify,
 // false=leave alone) across a wider set of inputs and combinations that the
 // developer's own tests did not exercise.
 // ---------------------------------------------------------------------------
 
-// --- ADV-AC1: century granularity also works when simplifyDates=true ---
+// --- century granularity also works when simplifyDates=true ---
 // A different granularity than the developer tested (decade) to ensure the
 // boolean wiring is not granularity-specific.
-(function invertPills_adv_AC1_century() {
+(function dateTimeSwitches_century() {
   withCreateTreeWalker(function() {
     const table = makeMockTable([[
       { tag: 'td', text: '2018' },
@@ -1288,16 +1288,16 @@ const SEAT_ROWS = [
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
     });
     const cell = table.rows[0].cells[0];
-    eq('ADV AC1 (century): simplifyDates=true — 2018 rounded to 2000',
+    eq('(century): simplifyDates=true — 2018 rounded to 2000',
       cell.innerText, '2000');
-    eq('ADV AC1 (century): simplifyDates=true — cell gets dr-ext-rounded',
+    eq('(century): simplifyDates=true — cell gets dr-ext-rounded',
       cell.classList.contains('dr-ext-rounded'), true);
   });
 })();
 
-// --- ADV-AC2: century granularity, simplifyDates=false — year must NOT be rounded ---
+// --- century granularity, simplifyDates=false — year must NOT be rounded ---
 // Adversarial: if the implementation only guards the decade path, century would leak.
-(function invertPills_adv_AC2_century() {
+(function dateTimeSwitches_century() {
   withCreateTreeWalker(function() {
     const table = makeMockTable([[
       { tag: 'td', text: '2018' },
@@ -1310,18 +1310,18 @@ const SEAT_ROWS = [
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
     });
     const cell = table.rows[0].cells[0];
-    eq('ADV AC2 (century): simplifyDates=false — cell does NOT get dr-ext-rounded',
+    eq('(century): simplifyDates=false — cell does NOT get dr-ext-rounded',
       cell.classList.contains('dr-ext-rounded'), false);
-    eq('ADV AC2 (century): simplifyDates=false — text unchanged (2018)',
+    eq('(century): simplifyDates=false — text unchanged (2018)',
       cell.innerText, '2018');
   });
 })();
 
-// --- ADV-AC2: mixed table — date cell left alone while numeric cell rounds ---
+// --- mixed table — date cell left alone while numeric cell rounds ---
 // A date-like year appears alongside a large number.
 // simplifyDates=false: the year must not be rounded even though max_mag is
 // computed from the real number in the same table.
-(function invertPills_adv_AC2_mixedTable() {
+(function dateTimeSwitches_mixedTable() {
   withCreateTreeWalker(function() {
     const table = makeMockTable([[
       { tag: 'td', text: '2018' },
@@ -1335,21 +1335,21 @@ const SEAT_ROWS = [
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
     });
     const dateCell = table.rows[0].cells[0];
-    eq('ADV AC2 (mixed): simplifyDates=false — date cell NOT rounded even with large sibling',
+    eq('(mixed): simplifyDates=false — date cell NOT rounded even with large sibling',
       dateCell.classList.contains('dr-ext-rounded'), false);
-    eq('ADV AC2 (mixed): simplifyDates=false — date cell text unchanged (2018)',
+    eq('(mixed): simplifyDates=false — date cell text unchanged (2018)',
       dateCell.innerText, '2018');
     // Numeric cell SHOULD still be rounded (control: proves roundTable ran)
     const numCell = table.rows[0].cells[1];
-    eq('ADV AC2 (mixed): numeric sibling 8,584,629 IS rounded (control)',
+    eq('(mixed): numeric sibling 8,584,629 IS rounded (control)',
       numCell.classList.contains('dr-ext-rounded'), true);
   });
 })();
 
-// --- ADV-AC3/AC4: isolation — simplifyTimes=true with simplifyDates=false ---
+// --- isolation — simplifyTimes=true with simplifyDates=false ---
 // Time cell must be simplified; a date cell in the same row must be left alone.
 // This catches any incorrect coupling between the two boolean flags.
-(function invertPills_adv_AC3_timesOnDatesOff() {
+(function dateTimeSwitches_timesOnDatesOff() {
   withCreateTreeWalker(function() {
     const table = makeMockTable([[
       { tag: 'td', text: '14:30' },
@@ -1364,20 +1364,20 @@ const SEAT_ROWS = [
     });
     const timeCell = table.rows[0].cells[0];
     const dateCell = table.rows[0].cells[1];
-    eq('ADV AC3/AC4 isolation: simplifyTimes=true — time cell IS rounded',
+    eq('isolation: simplifyTimes=true — time cell IS rounded',
       timeCell.classList.contains('dr-ext-rounded'), true);
-    eq('ADV AC3/AC4 isolation: simplifyTimes=true — time cell text changed (14:30→15:00)',
+    eq('isolation: simplifyTimes=true — time cell text changed (14:30→15:00)',
       timeCell.innerText, '15:00');
-    eq('ADV AC3/AC4 isolation: simplifyDates=false — date cell NOT rounded',
+    eq('isolation: simplifyDates=false — date cell NOT rounded',
       dateCell.classList.contains('dr-ext-rounded'), false);
-    eq('ADV AC3/AC4 isolation: simplifyDates=false — date cell text unchanged (2018)',
+    eq('isolation: simplifyDates=false — date cell text unchanged (2018)',
       dateCell.innerText, '2018');
   });
 })();
 
-// --- ADV-AC1/AC4: isolation — simplifyDates=true with simplifyTimes=false ---
+// --- isolation — simplifyDates=true with simplifyTimes=false ---
 // Date cell must be simplified; a time cell in the same row must be left alone.
-(function invertPills_adv_AC1_datesOnTimesOff() {
+(function dateTimeSwitches_datesOnTimesOff() {
   withCreateTreeWalker(function() {
     const table = makeMockTable([[
       { tag: 'td', text: '2018' },
@@ -1392,20 +1392,20 @@ const SEAT_ROWS = [
     });
     const dateCell = table.rows[0].cells[0];
     const timeCell = table.rows[0].cells[1];
-    eq('ADV AC1/AC4 isolation: simplifyDates=true — date cell IS rounded',
+    eq('isolation: simplifyDates=true — date cell IS rounded',
       dateCell.classList.contains('dr-ext-rounded'), true);
-    eq('ADV AC1/AC4 isolation: simplifyDates=true — date cell text changed (2018→2010)',
+    eq('isolation: simplifyDates=true — date cell text changed (2018→2010)',
       dateCell.innerText, '2010');
-    eq('ADV AC4/AC1 isolation: simplifyTimes=false — time cell NOT rounded',
+    eq('isolation: simplifyTimes=false — time cell NOT rounded',
       timeCell.classList.contains('dr-ext-rounded'), false);
-    eq('ADV AC4/AC1 isolation: simplifyTimes=false — time cell text unchanged (14:30)',
+    eq('isolation: simplifyTimes=false — time cell text unchanged (14:30)',
       timeCell.innerText, '14:30');
   });
 })();
 
-// --- ADV-AC1/AC3: both simplifyDates=true and simplifyTimes=true — both simplified ---
+// --- both simplifyDates=true and simplifyTimes=true — both simplified ---
 // Confirm both flags can be active simultaneously without one suppressing the other.
-(function invertPills_adv_bothTrue() {
+(function dateTimeSwitches_bothTrue() {
   withCreateTreeWalker(function() {
     const table = makeMockTable([[
       { tag: 'td', text: '2018' },
@@ -1420,20 +1420,20 @@ const SEAT_ROWS = [
     });
     const dateCell = table.rows[0].cells[0];
     const timeCell = table.rows[0].cells[1];
-    eq('ADV both=true: date cell IS rounded (2018→2010)',
+    eq('both=true: date cell IS rounded (2018→2010)',
       dateCell.classList.contains('dr-ext-rounded'), true);
-    eq('ADV both=true: date cell text changed to 2010',
+    eq('both=true: date cell text changed to 2010',
       dateCell.innerText, '2010');
-    eq('ADV both=true: time cell IS rounded (14:30→15:00)',
+    eq('both=true: time cell IS rounded (14:30→15:00)',
       timeCell.classList.contains('dr-ext-rounded'), true);
-    eq('ADV both=true: time cell text changed to 15:00',
+    eq('both=true: time cell text changed to 15:00',
       timeCell.innerText, '15:00');
   });
 })();
 
-// --- ADV-AC2/AC4: both simplifyDates=false and simplifyTimes=false — neither simplified ---
+// --- both simplifyDates=false and simplifyTimes=false — neither simplified ---
 // The fully-off state: no date or time cell gets rounded.
-(function invertPills_adv_bothFalse() {
+(function dateTimeSwitches_bothFalse() {
   withCreateTreeWalker(function() {
     const table = makeMockTable([[
       { tag: 'td', text: '2018' },
@@ -1448,13 +1448,13 @@ const SEAT_ROWS = [
     });
     const dateCell = table.rows[0].cells[0];
     const timeCell = table.rows[0].cells[1];
-    eq('ADV both=false: date cell NOT rounded',
+    eq('both=false: date cell NOT rounded',
       dateCell.classList.contains('dr-ext-rounded'), false);
-    eq('ADV both=false: date cell text unchanged (2018)',
+    eq('both=false: date cell text unchanged (2018)',
       dateCell.innerText, '2018');
-    eq('ADV both=false: time cell NOT rounded',
+    eq('both=false: time cell NOT rounded',
       timeCell.classList.contains('dr-ext-rounded'), false);
-    eq('ADV both=false: time cell text unchanged (14:30)',
+    eq('both=false: time cell text unchanged (14:30)',
       timeCell.innerText, '14:30');
   });
 })();
@@ -1524,7 +1524,6 @@ const SEAT_ROWS = [
 
 // =============================================================================
 // Grid rounding tests
-// Spec: docs/sprint-plans/grid-support-v2.md §2 D3 + §4 "grid-rounding"
 // =============================================================================
 
 // ---------------------------------------------------------------------------
@@ -1538,10 +1537,10 @@ const SEAT_ROWS = [
 // ---------------------------------------------------------------------------
 // A synthetic database-query-shaped vendor grid.
 //
-// The shape rebuilds docs/test-pages/tables.html §13 with invented values, per
-// the repository's regression-fixture convention: a role="table" wrapper
-// holding a pinned pane of leading columns beside a scrolling pane of data,
-// all under dg-- classes, with rows paired across the panes by data-row. The
+// The shape rebuilds docs/test-pages/test-tables-1.html §13 with invented
+// values, per the repository's regression-fixture convention: a role="table"
+// wrapper holding a pinned pane of leading columns beside a scrolling pane of
+// data, all under dg-- classes, with rows paired across the panes by data-row. The
 // nomination step, the two adapters, and the table pillbox builder all read these
 // nodes, so each one answers the selector queries, the role read, the class
 // list, the parent link, and the text reads those three make.
@@ -2064,7 +2063,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 })();
 
 // ---------------------------------------------------------------------------
-// GR4: resetTable restores originals on visible rows
+// resetTable restores originals on visible rows
 // ---------------------------------------------------------------------------
 
 (function gr4_resetTable_restoresOriginals() {
@@ -2084,9 +2083,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   });
 
   // All cells should carry dr-ext-rounded and a registry original
-  eq('GR4 (setup): cell 0 is rounded',
+  eq('(setup): cell 0 is rounded',
     grid.cellEls[0].classList.contains('dr-ext-rounded'), true);
-  eq('GR4 (setup): cell 0 registry original is stored original value',
+  eq('(setup): cell 0 registry original is stored original value',
     DR_MODEL.getTableOriginalText(grid.wrapperEl, grid.cellEls[0]), '8584629');
 
   // Build a querySelectorAll stub on the wrapper that returns only the already-rounded cells
@@ -2110,18 +2109,18 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   resetTable(grid.wrapperEl);
 
   // All previously-rounded cells should now have their original text restored
-  eq('GR4: cell 0 nodeValue restored to original',
+  eq('cell 0 nodeValue restored to original',
     grid.cellEls[0].childNodes[0].nodeValue, '8584629');
 
-  eq('GR4: cell 0 no longer carries dr-ext-rounded',
+  eq('cell 0 no longer carries dr-ext-rounded',
     grid.cellEls[0].classList.contains('dr-ext-rounded'), false);
 
-  eq('GR4: cell 0 registry original cleared after reset',
+  eq('cell 0 registry original cleared after reset',
     DR_MODEL.getTableOriginal(grid.wrapperEl, grid.cellEls[0]), undefined);
 })();
 
 // ---------------------------------------------------------------------------
-// GR5: extractPreviewSamples on a grid — expected structure returned
+// extractPreviewSamples on a grid — expected structure returned
 // ---------------------------------------------------------------------------
 
 (function gr5_extractPreviewSamples_gridStructure() {
@@ -2143,63 +2142,62 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   const result = extractPreviewSamples(grid.wrapperEl);
 
   // Must return the correct shape: { samples: { top: [...], bottom: [...] }, maxMag: <number> }
-  eq('GR5: extractPreviewSamples returns an object with samples key',
+  eq('extractPreviewSamples returns an object with samples key',
     typeof result.samples, 'object');
 
-  eq('GR5: extractPreviewSamples samples has top array',
+  eq('extractPreviewSamples samples has top array',
     Array.isArray(result.samples.top), true);
 
-  eq('GR5: extractPreviewSamples samples has bottom array',
+  eq('extractPreviewSamples samples has bottom array',
     Array.isArray(result.samples.bottom), true);
 
-  eq('GR5: extractPreviewSamples returns maxMag as a number',
+  eq('extractPreviewSamples returns maxMag as a number',
     typeof result.maxMag, 'number');
 
   // The large-magnitude cells (8M, 9M, 7M) are magnitude 6; they go in top.
-  eq('GR5: top band contains at least one entry',
+  eq('top band contains at least one entry',
     result.samples.top.length >= 1, true);
 
   // Each entry must have original and num fields
   if (result.samples.top.length > 0) {
-    eq('GR5: top[0] has original field',
+    eq('top[0] has original field',
       typeof result.samples.top[0].original, 'string');
-    eq('GR5: top[0] has num field',
+    eq('top[0] has num field',
       typeof result.samples.top[0].num, 'number');
   }
 
   // maxMag for cells in the 8M range is 6
-  eq('GR5: maxMag is 6 for cells around 8,000,000',
+  eq('maxMag is 6 for cells around 8,000,000',
     result.maxMag, 6);
 })();
 
 // ---------------------------------------------------------------------------
-// GR6: Adversarial extras
+// Adversarial extras
 // ---------------------------------------------------------------------------
 
-// GR6a: the grid read is the cell's flat text: every text piece, joined in
+// the grid read is the cell's flat text: every text piece, joined in
 // page order, however deep the pieces sit.
 (function gr6a_gridRead_isTheFlatText() {
   const readOf = (cell) => makeCellObj(cell, new GridAdapter({}).originalsPort).getText();
-  eq('GR6a: a piece inside nested elements is read',
+  eq('a piece inside nested elements is read',
     readOf(makeElementNode('cell', [makeElementNode('inner', [makeTextNode('42')])])), '42');
-  eq('GR6a: a cell with no text piece reads as empty',
+  eq('a cell with no text piece reads as empty',
     readOf(makeElementNode('cell', [makeElementNode('inner', [])])), '');
-  eq('GR6a: a whitespace piece is part of the read',
+  eq('a whitespace piece is part of the read',
     readOf(makeElementNode('cell', [makeTextNode('   ')])), '   ');
-  eq('GR6a: every piece joins in page order',
+  eq('every piece joins in page order',
     readOf(makeElementNode('cell', [makeTextNode('first'), makeElementNode('b', [makeTextNode('42')])])), 'first42');
 })();
 
 // =============================================================================
 // E2E grid rounding tests — drive roundTable/resetTable on real div-grid stubs.
-// Spec: docs/sprint-plans/grid-support-v2.md §2 D3 + §4 "grid-rounding".
 // Regression guard for commit 3404e86: roundTable must write via nodeValue
 // (GridAdapter's applyPatches → the registry record), NOT via
 // an innerHTML write (which crashes React's reconciler).
 // =============================================================================
 
 // ---------------------------------------------------------------------------
-// E2E-GR1: roundTable on a numeric div-grid — nodeValue written, node identity
+// roundTable on a numeric div-grid — nodeValue written, node identity
 // preserved, drOriginal set, dr-ext-rounded applied.
 // ---------------------------------------------------------------------------
 (function e2e_gr1_roundTable_numericGrid_nodeValuePath() {
@@ -2222,23 +2220,23 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   roundTable(grid.wrapperEl, opts);
 
   // The cell must now carry the rounded class.
-  eq('E2E-GR1: cell[0] has dr-ext-rounded after roundTable',
+  eq('cell[0] has dr-ext-rounded after roundTable',
     cell0.classList.contains('dr-ext-rounded'), true);
 
   // The text was actually changed (8584629 → some abbreviated form; check it differs).
-  eq('E2E-GR1: cell[0] text node value changed from original',
+  eq('cell[0] text node value changed from original',
     cell0.childNodes[0].nodeValue !== originalValue, true);
 
   // Node identity: the SAME Text node object must hold the new value.
-  eq('E2E-GR1: Text node object identity preserved (same reference)',
+  eq('Text node object identity preserved (same reference)',
     cell0.childNodes[0] === textNodeBefore, true);
 
   // childNodes.length must be unchanged (no appendChild / removeChild).
-  eq('E2E-GR1: cell[0] childNodes.length unchanged after roundTable',
+  eq('cell[0] childNodes.length unchanged after roundTable',
     cell0.childNodes.length, childCountBefore);
 
   // The registry original must be recorded for the cell (the patch path).
-  eq('E2E-GR1: cell[0] registry original is set to original text',
+  eq('cell[0] registry original is set to original text',
     DR_MODEL.getTableOriginalText(grid.wrapperEl, cell0), originalValue);
 })();
 
@@ -2274,7 +2272,6 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 
 // =============================================================================
 // Grid-virtualization re-apply tests
-// Spec: docs/sprint-plans/grid-support-v2.md §2 D4 + §4 "grid-virtualization"
 // Commit: a65129c added GRID_REAPPLY_DEBOUNCE_MS, reapplyObservers, reapplyTimers,
 // computeGridCellRoundedValue, reapplyRounding, observer attachment in roundTable,
 // and teardown in resetTable + removed-node observer.
@@ -2693,9 +2690,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 // injectTablePillboxes. These tests call it directly with element-node stubs.
 // ---------------------------------------------------------------------------
 
-// AC1 (the Kaggle case): an added [role="table"] grid whose ONLY embedded
+// an added [role="table"] grid whose ONLY embedded
 // <table>s are chart accessibility artifacts → registers and gets a table pillbox.
-(function observer_AC1_addedGridOnlyArtifactTables_getsTablePillbox() {
+(function observer_addedGridOnlyArtifactTables_getsTablePillbox() {
   const artifact1 = makeArtifactEmbeddedTable();
   const artifact2 = makeArtifactEmbeddedTable();
   const grid = asAddedGridNode(makeAriaGrid([artifact1, artifact2]));
@@ -2710,9 +2707,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     tablePillboxes.has(grid), true);
 })();
 
-// AC2: an added grid wrapping a REAL table → observer bows out (no registration or table pillbox
+// an added grid wrapping a REAL table → observer bows out (no registration or table pillbox
 // on the grid itself; the real embedded table is owned by Pass 1).
-(function observer_AC2_addedGridRealTable_bowsOut() {
+(function observer_addedGridRealTable_bowsOut() {
   const realTbl = makePass1DataTable(); // not an artifact, has .rows for isDataTable
   const grid = asAddedGridNode(makeAriaGrid([realTbl]));
 
@@ -2728,9 +2725,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   cleanupPass1Tables([realTbl]);
 })();
 
-// AC3: an accessibility artifact <table> reached via querySelectorAll on the
+// an accessibility artifact <table> reached via querySelectorAll on the
 // added node gets NO table pillbox (Pass 1 artifact skip in the observer path).
-(function observer_AC3_addedSubtreeArtifactTable_noTablePillbox() {
+(function observer_addedSubtreeArtifactTable_noTablePillbox() {
   const artifact = makeArtifactEmbeddedTable();
   const container = {
     nodeType: global.Node.ELEMENT_NODE,
@@ -2748,9 +2745,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     tablePillboxes.has(artifact), false);
 })();
 
-// AC4: a real native <table> reached via querySelectorAll on the added node
+// a real native <table> reached via querySelectorAll on the added node
 // DOES get a table pillbox (Pass 1 survivor in the observer path).
-(function observer_AC4_addedSubtreeRealTable_getsTablePillbox() {
+(function observer_addedSubtreeRealTable_getsTablePillbox() {
   const realTbl = makePass1DataTable();
   const container = {
     nodeType: global.Node.ELEMENT_NODE,
@@ -3021,7 +3018,7 @@ function everyRowRead(kind, largeIn) {
 })();
 
 // -------------------------------------------------------------------------
-// AC3 (Bug #1): embedded-in-text numbers feed maxMag.
+// embedded-in-text numbers feed maxMag.
 // A table whose only large values are embedded in mixed-text cells (like
 // "₹2,000 crore") must produce maxMag=3 (from 2,000) even when a stand-alone
 // small numeric cell (e.g. "5") is also present.
@@ -3051,13 +3048,13 @@ function everyRowRead(kind, largeIn) {
 
   const result = extractPreviewSamples(table);
 
-  eq('AC3: maxMag is 3 (from embedded 2,000, not suppressed by stand-alone 5)',
+  eq('maxMag is 3 (from embedded 2,000, not suppressed by stand-alone 5)',
     result.maxMag, 3);
 
-  eq('AC3: top band contains the large embedded number',
+  eq('top band contains the large embedded number',
     result.samples.top.length >= 1, true);
 
-  eq('AC3: top band num is 2000 (the embedded value)',
+  eq('top band num is 2000 (the embedded value)',
     result.samples.top[0] && result.samples.top[0].num, 2000);
 
   // Complementary: a pure-number table still works as before (regression guard).
@@ -3068,7 +3065,7 @@ function everyRowRead(kind, largeIn) {
     ],
   };
   const pureResult = extractPreviewSamples(pureTable);
-  eq('AC3-regression: pure-number table maxMag is 7 (27M)',
+  eq('regression: pure-number table maxMag is 7 (27M)',
     pureResult.maxMag, 7);
 
   // Also verify that collectNumericCells picks up the embedded number from
@@ -3082,7 +3079,7 @@ function everyRowRead(kind, largeIn) {
   const cells = collectNumericCells(mixedTable);
   // Should find at least 2000 among the collected cells.
   const nums = cells.map(c => c.num);
-  eq('AC3-collect: collectNumericCells finds 2000 from embedded text',
+  eq('collect: collectNumericCells finds 2000 from embedded text',
     nums.includes(2000), true);
 })();
 

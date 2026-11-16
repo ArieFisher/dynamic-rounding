@@ -79,7 +79,7 @@ This repository is public. Before staging a new file, answer this: does it serve
 ### Code style
 
 - Keep code simple and readable.
-- Document every new parameter in the language's doc-comment form, e.g. JSDoc or a Python docstring: one line per parameter, stating its type and meaning.
+- Give every new Python parameter and return value a type hint. In JavaScript, write no per-parameter doc comments; a parameter's name states its meaning. The exception is `ROUND_DYNAMIC`, whose JSDoc Google Sheets reads to build the help card.
 - A comment holds only what the code cannot show: a reason, a constraint, or a fact about the page or a caller outside the file. No comment restates what the code does, because the restatement becomes false when the code changes. Before writing a comment, check whether a clearer name or a smaller function would make it unnecessary; that is a judgement, not a rule.
 - Keep existing function signatures backward compatible.
 
@@ -89,7 +89,7 @@ A capture from the extension holds real page content, and this repository is pub
 
 ### The manual test page
 
-`docs/test-pages/tables.html` holds one table per shape the extension handles, each with the result to expect. It is the page I load to check a change by hand, so it is the only place a manual test can name.
+`docs/test-pages/test-tables-1.html` holds one table per shape the extension handles, each with the result to expect. It is the page I load to check a change by hand, so it is the only place a manual test can name.
 
 - **Every change that adds a kind of test names the table in that page to test it on.** Give me the section number in the pull request's manual tests and in chat. A test with no table to run it on is a test I cannot run.
 - **A change to a table shape the page already holds needs no new table.** Point at the section that holds it.
@@ -98,7 +98,7 @@ A capture from the extension holds real page content, and this repository is pub
 
 ### Docs track behavior
 
-Living documents: `README.md`, `CONTRIBUTING.md`, `MAINTAINERS.md`, `chrome-extension/README.md`, `docs/design.md`, `docs/test-pages/tables.html`, `docs/vocabulary.md`, `js/README.md`, `js/tests-googlesheets-tab.md`, `python/README.md`, the `.agent/` instruction files, and this file. Sprint plans and logs, research notes, and released `js/CHANGELOG.md` entries are historical records. Mark them, never rewrite them.
+Living documents: `README.md`, `CONTRIBUTING.md`, `MAINTAINERS.md`, `chrome-extension/README.md`, `docs/design.md`, `docs/test-pages/test-tables-1.html`, `docs/vocabulary.md`, `js/README.md`, `js/tests-googlesheets-tab.md`, `python/README.md`, the `.agent/` instruction files, and this file. Sprint plans and logs, research notes, and released `js/CHANGELOG.md` entries are historical records. Mark them, never rewrite them.
 
 - A pull request that changes behavior updates every living document its change invalidates, in the same branch. If none apply, write "No doc impact" in the body.
 
@@ -223,7 +223,7 @@ These rules govern all prose: **chat**, **documents**, and **GitHub** (pull requ
 ### Chat
 
 - **TL;DR first.** Conclusion, then support.
-- **Answer only what was asked.** A narrow question gets the answer and stops. No options, no offers, no extra framing.
+- **Answer only what was asked.** A narrow question gets the answer and stops. No options, no offers, no extra framing. Skip detail lists and restated reasoning.
 - **Explain ideas, not instructions.** State the problem, the change, and why the change removes the problem. Do not merely strip out the jargon: a de-jargonized instruction is still an instruction.
 - **Surface a consequence only when it would change my decision.** Flag a behavior change beyond the one I named when it does one of these: breaks something that works today, changes what a user sees on a page or a cell type I did not name, or needs a product choice. A consequence that follows directly from the change I asked for is not flagged. Put each flagged change to me before implementing, and never ship one and mention it after.
 - **No unrequested scope.** Build the rule I asked for, not the adjacent one. A related concern becomes a separate issue, never a quiet addition.

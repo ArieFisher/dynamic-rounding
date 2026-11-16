@@ -843,66 +843,66 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
 // --- Adversarial range parser tests ---
 
 // Primary bug report: f4:g8 (lowercase partial-range)
-(function sprint_f4g8_lowercase() {
+(function f4g8_lowercase() {
   const r = parseRangeExpr('f4:g8');
-  eq('sprint partial-range-fix: "f4:g8" -> no error',
+  eq('partial range: "f4:g8" -> no error',
     typeof r.error, 'undefined');
-  eq('sprint partial-range-fix: "f4:g8" -> one range',
+  eq('partial range: "f4:g8" -> one range',
     r.ranges && r.ranges.length, 1);
   const rng = r.ranges && r.ranges[0];
-  eq('sprint partial-range-fix: "f4:g8" colMin=5', rng && rng.colMin, 5);
-  eq('sprint partial-range-fix: "f4:g8" colMax=6', rng && rng.colMax, 6);
-  eq('sprint partial-range-fix: "f4:g8" rowMin=3', rng && rng.rowMin, 3);
-  eq('sprint partial-range-fix: "f4:g8" rowMax=7', rng && rng.rowMax, 7);
+  eq('partial range: "f4:g8" colMin=5', rng && rng.colMin, 5);
+  eq('partial range: "f4:g8" colMax=6', rng && rng.colMax, 6);
+  eq('partial range: "f4:g8" rowMin=3', rng && rng.rowMin, 3);
+  eq('partial range: "f4:g8" rowMax=7', rng && rng.rowMax, 7);
 })();
 
 // Case-insensitive: uppercase F4:G8 must also work
-(function sprint_F4G8_uppercase() {
+(function F4G8_uppercase() {
   const r = parseRangeExpr('F4:G8');
-  eq('sprint partial-range-fix: "F4:G8" -> no error',
+  eq('partial range: "F4:G8" -> no error',
     typeof r.error, 'undefined');
   const rng = r.ranges && r.ranges[0];
-  eq('sprint partial-range-fix: "F4:G8" colMin=5', rng && rng.colMin, 5);
-  eq('sprint partial-range-fix: "F4:G8" colMax=6', rng && rng.colMax, 6);
-  eq('sprint partial-range-fix: "F4:G8" rowMin=3', rng && rng.rowMin, 3);
-  eq('sprint partial-range-fix: "F4:G8" rowMax=7', rng && rng.rowMax, 7);
+  eq('partial range: "F4:G8" colMin=5', rng && rng.colMin, 5);
+  eq('partial range: "F4:G8" colMax=6', rng && rng.colMax, 6);
+  eq('partial range: "F4:G8" rowMin=3', rng && rng.rowMin, 3);
+  eq('partial range: "F4:G8" rowMax=7', rng && rng.rowMax, 7);
 })();
 
-// Acceptance criterion: B2:D (col+row on left, col-only on right) -> open row end
-(function sprint_B2D_partial() {
+// B2:D (col+row on left, col-only on right) -> open row end
+(function B2D_partial() {
   const r = parseRangeExpr('B2:D');
-  eq('sprint partial-range-fix: "B2:D" -> no error',
+  eq('partial range: "B2:D" -> no error',
     typeof r.error, 'undefined');
-  eq('sprint partial-range-fix: "B2:D" -> one range',
+  eq('partial range: "B2:D" -> one range',
     r.ranges && r.ranges.length, 1);
   const rng = r.ranges && r.ranges[0];
-  eq('sprint partial-range-fix: "B2:D" colMin=1', rng && rng.colMin, 1);
-  eq('sprint partial-range-fix: "B2:D" colMax=3', rng && rng.colMax, 3);
-  eq('sprint partial-range-fix: "B2:D" rowMin=1', rng && rng.rowMin, 1);
-  eq('sprint partial-range-fix: "B2:D" rowMax=Infinity', rng && rng.rowMax, Infinity);
+  eq('partial range: "B2:D" colMin=1', rng && rng.colMin, 1);
+  eq('partial range: "B2:D" colMax=3', rng && rng.colMax, 3);
+  eq('partial range: "B2:D" rowMin=1', rng && rng.rowMin, 1);
+  eq('partial range: "B2:D" rowMax=Infinity', rng && rng.rowMax, Infinity);
 })();
 
-// Acceptance criterion: B:D5 (col-only on left, col+row on right) -> open row start
-(function sprint_BD5_partial() {
+// B:D5 (col-only on left, col+row on right) -> open row start
+(function BD5_partial() {
   const r = parseRangeExpr('B:D5');
-  eq('sprint partial-range-fix: "B:D5" -> no error',
+  eq('partial range: "B:D5" -> no error',
     typeof r.error, 'undefined');
-  eq('sprint partial-range-fix: "B:D5" -> one range',
+  eq('partial range: "B:D5" -> one range',
     r.ranges && r.ranges.length, 1);
   const rng = r.ranges && r.ranges[0];
-  eq('sprint partial-range-fix: "B:D5" colMin=1', rng && rng.colMin, 1);
-  eq('sprint partial-range-fix: "B:D5" colMax=3', rng && rng.colMax, 3);
-  eq('sprint partial-range-fix: "B:D5" rowMin=0', rng && rng.rowMin, 0);
-  eq('sprint partial-range-fix: "B:D5" rowMax=4', rng && rng.rowMax, 4);
+  eq('partial range: "B:D5" colMin=1', rng && rng.colMin, 1);
+  eq('partial range: "B:D5" colMax=3', rng && rng.colMax, 3);
+  eq('partial range: "B:D5" rowMin=0', rng && rng.rowMin, 0);
+  eq('partial range: "B:D5" rowMax=4', rng && rng.rowMax, 4);
 })();
 
 // Regression guard: the basic shapes still pass
-(function sprint_regression_union() {
+(function regression_union() {
   const r = parseRangeExpr('{A1:E8, G3:G}');
-  eq('sprint regression: "{A1:E8, G3:G}" -> 2 ranges', r.ranges && r.ranges.length, 2);
+  eq('regression: "{A1:E8, G3:G}" -> 2 ranges', r.ranges && r.ranges.length, 2);
 })();
 
-// --- AC2: Mixed cell — <a>5</a> preserved, 1234 outside rounds ---
+// --- Mixed cell — <a>5</a> preserved, 1234 outside rounds ---
 // filterLinkMatches must drop the match for '5' (inside anchor) and keep '1234' (outside).
 (function ac2_filterLinkMatches_mixedCell() {
   withLinkCreateTreeWalker(function() {
@@ -916,12 +916,12 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
 
     // '5' inside anchor must be dropped; '1234' outside must be kept.
     const nums = filtered.map(m => m.num);
-    eq('AC2: filterLinkMatches keeps 1234 (outside anchor)', nums.includes(1234), true);
-    eq('AC2: filterLinkMatches drops 5 (inside anchor)', nums.includes(5), false);
+    eq('filterLinkMatches keeps 1234 (outside anchor)', nums.includes(1234), true);
+    eq('filterLinkMatches drops 5 (inside anchor)', nums.includes(5), false);
   });
 })();
 
-// --- AC4: Hidden-sortkey regression guard ---
+// --- Hidden-sortkey regression guard ---
 // A cell like <td><span style="display:none">700023000</span>+2.3%</td>
 // The implementation reads cell.innerText (which browsers exclude hidden text from).
 // We model this by making cell.innerText = '+2.3%' only (hidden span excluded).
@@ -934,11 +934,11 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
 
   // The visible text IS numeric (toNumber strips % via CLEAN_REGEX -> 2.3),
   // but getExclusionReason excludes percent cells by default -> cell is skipped.
-  eq('AC4: percent cell excluded by default (regression guard: no spurious rounding)',
+  eq('percent cell excluded by default (regression guard: no spurious rounding)',
     getExclusionReason(cellText, 1, {}), 'percent');
 })();
 
-// AC4 via roundTable: confirm the cell is skipped, not rounded.
+// via roundTable: confirm the cell is skipped, not rounded.
 (function ac4_roundTable_hiddenSortkeyNotRounded() {
   withLinkCreateTreeWalker(function() {
     // Cell whose innerText (visible) is '+2.3%'; hidden sortkey not visible.
@@ -957,7 +957,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
       rangeExpr: '',
     };
     roundTable(table, opts);
-    eq('AC4: percent cell with hidden sortkey is NOT rounded',
+    eq('percent cell with hidden sortkey is NOT rounded',
       cell.classList.contains('dr-ext-rounded'), false);
   });
 })();
@@ -1027,7 +1027,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
     filtered.length, 1);
 })();
 
-// --- 4. Spec-scope guards ---
+// --- 4. Scope guards ---
 
 (function quoteScopeGuards() {
   // Single quotes: numbers inside '...' are NOT excluded (out of scope)
@@ -1156,7 +1156,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 // =============================================================================
 
 // ---------------------------------------------------------------------------
-// AC1: Worked-examples table
+// Worked-examples table
 // Each row: [input, granularity, expected-year-string]
 // ---------------------------------------------------------------------------
 (function dateRoundWorkedExamples() {
@@ -1195,7 +1195,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 })();
 
 // ---------------------------------------------------------------------------
-// AC2: Shape equivalence — same logical date, different textual forms
+// Shape equivalence — same logical date, different textual forms
 // All forms of Jun 21, 2020 must round identically.
 // ---------------------------------------------------------------------------
 (function dateRoundShapeEquivalence() {
@@ -1239,7 +1239,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 })();
 
 // ---------------------------------------------------------------------------
-// AC4: roundDateText returns a 4-digit year string for a pure date cell read
+// roundDateText returns a 4-digit year string for a pure date cell read
 // by the classification pass. The date object is passed in, bypassing text parsing.
 // ---------------------------------------------------------------------------
 (function dateRoundReturnType() {
@@ -1254,7 +1254,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 })();
 
 // ---------------------------------------------------------------------------
-// AC7: Bare-year no-op short-circuit — "2020" at decade granularity.
+// Bare-year no-op short-circuit — "2020" at decade granularity.
 // roundDateText returns "2020", originalValue is "2020" → formattedValue === originalValue
 // → roundTable skips it (no DOM rewrite, no dr-ext-rounded class).
 // ---------------------------------------------------------------------------
@@ -1277,7 +1277,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 })();
 
 // ---------------------------------------------------------------------------
-// AC8: isDateLike accepts newly added shapes.
+// isDateLike accepts newly added shapes.
 // ---------------------------------------------------------------------------
 (function dateRoundIsDateLikeNewShapes() {
   eq('isDateLike: "2020/07/21" (ISO slash) -> true',  isDateLike('2020/07/21'), true);
@@ -1288,7 +1288,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 })();
 
 // ---------------------------------------------------------------------------
-// AC9: Boundary semantics — a date never leaves its own year, decade, or century.
+// Boundary semantics — a date never leaves its own year, decade, or century.
 // ---------------------------------------------------------------------------
 (function dateRoundBoundarySemantics() {
   eq('boundary: Dec 31, 2029 decade -> 2020', roundDateText('Dec 31, 2029', 'decade'), '2020');
@@ -1414,38 +1414,38 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 // IsDateLike with adjacent text and markers
 // ---------------------------------------------------------------------------
 
-(function sprintDateTolerance() {
+(function dateTolerance() {
 
-  // --- Acceptance criteria: positive cases ---
+  // --- Positive cases ---
 
-  // AC1: ISO date with trailing word
-  eq('dateTolerance AC1: isDateLike("2020-03-14 sales") -> true',
+  // ISO date with trailing word
+  eq('date detection: isDateLike("2020-03-14 sales") -> true',
     isDateLike('2020-03-14 sales'), true);
 
-  // AC2: Named-month date with trailing superscript digit (footnote ref)
-  eq('dateTolerance AC2: isDateLike("March 14, 2024¹") -> true',
+  // Named-month date with trailing superscript digit (footnote ref)
+  eq('date detection: isDateLike("March 14, 2024¹") -> true',
     isDateLike('March 14, 2024¹'), true);
 
-  // AC3: Ordinal day in standard month-day-year form
-  eq('dateTolerance AC3: isDateLike("Jun 1st, 2020") -> true',
+  // Ordinal day in standard month-day-year form
+  eq('date detection: isDateLike("Jun 1st, 2020") -> true',
     isDateLike('Jun 1st, 2020'), true);
 
-  // AC4: Day-month-year with ordinal day
-  eq('dateTolerance AC4: isDateLike("21st June 2020") -> true',
+  // Day-month-year with ordinal day
+  eq('date detection: isDateLike("21st June 2020") -> true',
     isDateLike('21st June 2020'), true);
 
-  // --- Acceptance criteria: negative (false-positive guards) ---
+  // --- Negative cases (false-positive guards) ---
 
-  // AC5: "Sales: 2020" — label before bare year must NOT be a date
-  eq('dateTolerance AC5: isDateLike("Sales: 2020") -> false',
+  // "Sales: 2020" — label before bare year must NOT be a date
+  eq('date detection: isDateLike("Sales: 2020") -> false',
     isDateLike('Sales: 2020'), false);
 
-  // AC6: "$2,020.00" — currency amount containing a year-like number
-  eq('dateTolerance AC6: isDateLike("$2,020.00") -> false',
+  // "$2,020.00" — currency amount containing a year-like number
+  eq('date detection: isDateLike("$2,020.00") -> false',
     isDateLike('$2,020.00'), false);
 
-  // AC7: "version 2020.1.3" — version string with year-like first component
-  eq('dateTolerance AC7: isDateLike("version 2020.1.3") -> false',
+  // "version 2020.1.3" — version string with year-like first component
+  eq('date detection: isDateLike("version 2020.1.3") -> false',
     isDateLike('version 2020.1.3'), false);
 
   // --- Adversarial: multiple superscripts ---
@@ -1491,49 +1491,49 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 })();
 
 // ---------------------------------------------------------------------------
-// Simplify naming — adversarial contract lock-in
+// Simplify naming — contract lock-in
 // ---------------------------------------------------------------------------
 
 (function simplifyNamingUnification() {
 
   // -------------------------------------------------------------------------
-  // AC3: simplifyFirstColumn polarity — mirror of AC2.
+  // simplifyFirstColumn polarity — mirror of the first-row case.
   // -------------------------------------------------------------------------
 
   // Case 1: flag true → col 0 IS simplified (not excluded)
-  eq('AC3 simplifyFirstColumn: true + col 0 → null (col IS simplified)',
+  eq('simplifyFirstColumn: true + col 0 → null (col IS simplified)',
     getExclusionReason('1,234', 0, { simplifyFirstColumn: true, simplifyFirstRow: true }, 1), null);
 
   // Case 2: flag false → col 0 excluded
-  eq('AC3 simplifyFirstColumn: false + col 0 → "firstColumn"',
+  eq('simplifyFirstColumn: false + col 0 → "firstColumn"',
     getExclusionReason('1,234', 0, { simplifyFirstRow: true, simplifyFirstColumn: false }, 1), 'firstColumn');
 
   // Case 3: flag unset → col 0 excluded (intentional default change)
-  eq('AC3 simplifyFirstColumn: unset + col 0 → "firstColumn" (new default semantics)',
+  eq('simplifyFirstColumn: unset + col 0 → "firstColumn" (new default semantics)',
     getExclusionReason('1,234', 0, { simplifyFirstRow: true }, 1), 'firstColumn');
 
   // Case 4: flag false but col 1 → null (only col 0 is affected)
-  eq('AC3 simplifyFirstColumn: false + col 1 → null (non-first column unaffected)',
+  eq('simplifyFirstColumn: false + col 1 → null (non-first column unaffected)',
     getExclusionReason('1,234', 1, { simplifyFirstRow: true, simplifyFirstColumn: false }, 1), null);
 
   // -------------------------------------------------------------------------
-  // AC6: DR_DEFAULTS snapshot — all six keys with exact default values.
+  // DR_DEFAULTS snapshot — all six keys with exact default values.
   // -------------------------------------------------------------------------
-  eq('AC6 DR_DEFAULTS: simplifyMixedCurrency = true',
+  eq('DR_DEFAULTS: simplifyMixedCurrency = true',
     DR_DEFAULTS.simplifyMixedCurrency, true);
-  eq('AC6 DR_DEFAULTS: simplifyMixedPercent = true',
+  eq('DR_DEFAULTS: simplifyMixedPercent = true',
     DR_DEFAULTS.simplifyMixedPercent, true);
-  eq('AC6 DR_DEFAULTS: simplifyDates = true',
+  eq('DR_DEFAULTS: simplifyDates = true',
     DR_DEFAULTS.simplifyDates, true);
-  eq('AC6 DR_DEFAULTS: simplifyTimes = false',
+  eq('DR_DEFAULTS: simplifyTimes = false',
     DR_DEFAULTS.simplifyTimes, false);
-  eq('AC6 DR_DEFAULTS: simplifyFirstRow = false',
+  eq('DR_DEFAULTS: simplifyFirstRow = false',
     DR_DEFAULTS.simplifyFirstRow, false);
-  eq('AC6 DR_DEFAULTS: simplifyFirstColumn = false',
+  eq('DR_DEFAULTS: simplifyFirstColumn = false',
     DR_DEFAULTS.simplifyFirstColumn, false);
 
   // -------------------------------------------------------------------------
-  // AC7: sidebar.html id ↔ setting key parity — each of the six keys must
+  // sidebar.html id ↔ setting key parity — each of the six keys must
   // appear as id="<key>" on a checkbox <input>.
   // -------------------------------------------------------------------------
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
@@ -1543,7 +1543,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   ];
   for (const key of optionKeys) {
     // Match <input ... type="checkbox" ... id="<key>"> (or id before type)
-    eq(`AC7 sidebar.html: checkbox with id="${key}" present`,
+    eq(`sidebar.html: checkbox with id="${key}" present`,
       new RegExp(`<input[^>]*type="checkbox"[^>]*id="${key}"|<input[^>]*id="${key}"[^>]*type="checkbox"`).test(sidebarHtml),
       true);
   }
@@ -1552,9 +1552,9 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 
 // ---------------------------------------------------------------------------
 // Lens preview layout
-// AC1: formatOomLabel exhaustive suffix-boundary check
-// AC3: renderOtherPreview DESCENDING sort (real DOM-stub eval)
-// AC4: step-label CSS classes (step top / step bot)
+// formatOomLabel exhaustive suffix-boundary check
+// renderOtherPreview DESCENDING sort (real DOM-stub eval)
+// step-label CSS classes (step top / step bot)
 // Adversarial: sort-mutation side-effect check
 // ---------------------------------------------------------------------------
 (function advancedPreviewRedesignTests() {
@@ -1598,26 +1598,26 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   const fmtOom = apHelpers.formatOomLabel;
 
   // -------------------------------------------------------------------------
-  // AC1: Exhaustive formatOomLabel mapping for mag = 9,8,7,6,5,4,3,2,1,0,-1,-2
-  // Expected values derived from the spec pattern (10^mag with k/M/B suffix),
+  // Exhaustive formatOomLabel mapping for mag = 9,8,7,6,5,4,3,2,1,0,-1,-2
+  // Expected values derived from the pattern (10^mag with k/M/B suffix),
   // NOT from reading the implementation.
   // -------------------------------------------------------------------------
   // Suffix boundaries: mag 9 → 1B+, mag 6 → 1M+, mag 3 → 1k+
-  eq('AC1-oom: mag=9 → "1B+" (1e9 boundary)', fmtOom(9), '1B+');
-  eq('AC1-oom: mag=8 → "100M+" (within B range, 1e8=100M)', fmtOom(8), '100M+');
-  eq('AC1-oom: mag=7 → "10M+" (within M range, 1e7=10M)', fmtOom(7), '10M+');
-  eq('AC1-oom: mag=6 → "1M+" (1e6 boundary)', fmtOom(6), '1M+');
-  eq('AC1-oom: mag=5 → "100k+" (within k range, 1e5=100k)', fmtOom(5), '100k+');
-  eq('AC1-oom: mag=4 → "10k+" (within k range, 1e4=10k)', fmtOom(4), '10k+');
-  eq('AC1-oom: mag=3 → "1k+" (1e3 boundary)', fmtOom(3), '1k+');
-  eq('AC1-oom: mag=2 → "100+" (1e2, no suffix)', fmtOom(2), '100+');
-  eq('AC1-oom: mag=1 → "10+" (1e1, no suffix)', fmtOom(1), '10+');
-  eq('AC1-oom: mag=0 → "1+" (1e0=1, no suffix)', fmtOom(0), '1+');
-  eq('AC1-oom: mag=-1 → "0.1+" (sub-unit, 1e-1=0.1)', fmtOom(-1), '0.1+');
-  eq('AC1-oom: mag=-2 → "0.01+" (sub-unit, 1e-2=0.01)', fmtOom(-2), '0.01+');
+  eq('oom: mag=9 → "1B+" (1e9 boundary)', fmtOom(9), '1B+');
+  eq('oom: mag=8 → "100M+" (within B range, 1e8=100M)', fmtOom(8), '100M+');
+  eq('oom: mag=7 → "10M+" (within M range, 1e7=10M)', fmtOom(7), '10M+');
+  eq('oom: mag=6 → "1M+" (1e6 boundary)', fmtOom(6), '1M+');
+  eq('oom: mag=5 → "100k+" (within k range, 1e5=100k)', fmtOom(5), '100k+');
+  eq('oom: mag=4 → "10k+" (within k range, 1e4=10k)', fmtOom(4), '10k+');
+  eq('oom: mag=3 → "1k+" (1e3 boundary)', fmtOom(3), '1k+');
+  eq('oom: mag=2 → "100+" (1e2, no suffix)', fmtOom(2), '100+');
+  eq('oom: mag=1 → "10+" (1e1, no suffix)', fmtOom(1), '10+');
+  eq('oom: mag=0 → "1+" (1e0=1, no suffix)', fmtOom(0), '1+');
+  eq('oom: mag=-1 → "0.1+" (sub-unit, 1e-1=0.1)', fmtOom(-1), '0.1+');
+  eq('oom: mag=-2 → "0.01+" (sub-unit, 1e-2=0.01)', fmtOom(-2), '0.01+');
 
   // -------------------------------------------------------------------------
-  // AC2-STRATEGY-MONOTONIC: the slider stops must be ordered so the resulting
+  // STRATEGY-MONOTONIC: the slider stops must be ordered so the resulting
   // rounding STEP changes in a single direction across the track. This is the
   // whole point of the stop ordering: stepForOffset is non-monotonic in the
   // offset value (half-steps interleave with integer steps), so the array order
@@ -1629,11 +1629,11 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     const src = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
     const m = src.match(/const STOPS\s*=\s*\[([^\]]*)\]/);
     if (!m) {
-      eq('AC2-mono: STOPS array found in sidebar.js', false, true);
+      eq('mono: STOPS array found in sidebar.js', false, true);
       return;
     }
     const STOPS = m[1].split(',').map((s) => parseFloat(s.trim()));
-    eq('AC2-mono: STOPS has 9 stops', STOPS.length, 9);
+    eq('mono: STOPS has 9 stops', STOPS.length, 9);
 
     for (const mag of [6, 5, 3, 9]) {
       const oomVal = Math.pow(10, mag);
@@ -1648,20 +1648,20 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
           break;
         }
       }
-      eq('AC2-mono mag=' + mag + ': step() strictly increases across STOPS' +
+      eq('mono mag=' + mag + ': step() strictly increases across STOPS' +
         (firstBreak ? ' [break at ' + firstBreak + ']' : ''), monotonic, true);
     }
 
     // Spot-check the exact step sweep at mag 6 against the worked example.
     const expectAtMag6 = [10e3, 50e3, 100e3, 250e3, 500e3, 1e6, 2.5e6, 5e6, 10e6];
     STOPS.forEach((offset, i) => {
-      eq('AC2-mono mag=6: offset ' + offset + ' → step ' + expectAtMag6[i],
+      eq('mono mag=6: offset ' + offset + ' → step ' + expectAtMag6[i],
         stepForOffset(1e6, offset), expectAtMag6[i]);
     });
   })();
 
   // -------------------------------------------------------------------------
-  // AC3: renderOtherPreview DESCENDING sort by magnitude.
+  // renderOtherPreview DESCENDING sort by magnitude.
   // Extract renderOtherPreview from sidebar.js, provide DOM stubs, call with rows
   // in ASCENDING order, assert rendered order is DESCENDING.
   // Also check for sort-mutation side-effect on the caller's array.
@@ -1772,7 +1772,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   realRenderOtherPreview(bandEl, rowsAscending, -0.5, 4);
 
   // The band container should have 4 "pair" div children.
-  eq('AC3-sort: renderOtherPreview appended 4 pair elements', bandEl._appended.length, 4);
+  eq('sort: renderOtherPreview appended 4 pair elements', bandEl._appended.length, 4);
 
   // Each pair div contains children: from-span, arrow-span, num-span, step-span.
   // The from-span's textContent reflects the original number.
@@ -1784,13 +1784,13 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 
   const renderedFromTexts = bandEl._appended.map(getFromText);
   // Expected descending order: 50,000 first, then 5,000, 500, 50
-  eq('AC3-sort: first rendered row is highest magnitude (50,000)',
+  eq('sort: first rendered row is highest magnitude (50,000)',
     renderedFromTexts[0], '50,000');
-  eq('AC3-sort: second rendered row is next (5,000)',
+  eq('sort: second rendered row is next (5,000)',
     renderedFromTexts[1], '5,000');
-  eq('AC3-sort: third rendered row (500)',
+  eq('sort: third rendered row (500)',
     renderedFromTexts[2], '500');
-  eq('AC3-sort: fourth rendered row is lowest magnitude (50)',
+  eq('sort: fourth rendered row is lowest magnitude (50)',
     renderedFromTexts[3], '50');
 
   // -------------------------------------------------------------------------
@@ -1798,88 +1798,88 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   // renderOtherPreview uses rows.slice().sort(...) which must NOT mutate the caller's
   // array. If it sorts in place, cachedSamples would be corrupted across renders.
   // -------------------------------------------------------------------------
-  eq('AC3-mutation: renderOtherPreview does NOT mutate caller rows[0] (still 50 after render)',
+  eq('mutation: renderOtherPreview does NOT mutate caller rows[0] (still 50 after render)',
     rowsAscending[0].num, 50);
-  eq('AC3-mutation: renderOtherPreview does NOT mutate caller rows[3] (still 50000 after render)',
+  eq('mutation: renderOtherPreview does NOT mutate caller rows[3] (still 50000 after render)',
     rowsAscending[3].num, 50000);
   // Belt-and-suspenders: the entire original order is preserved.
   const originalNums = originalArray.map(r => r.num);
   const afterNums = rowsAscending.map(r => r.num);
-  eq('AC3-mutation: full array order unchanged after renderOtherPreview',
+  eq('mutation: full array order unchanged after renderOtherPreview',
     afterNums, originalNums);
 
   // -------------------------------------------------------------------------
-  // AC3-edge: zero rows and null el guard
+  // edge: zero rows and null el guard
   // -------------------------------------------------------------------------
   const emptyEl = makeBandEl();
   realRenderOtherPreview(emptyEl, [], -0.5, 0);
-  eq('AC3-edge: empty rows renders nothing', emptyEl._appended.length, 0);
+  eq('edge: empty rows renders nothing', emptyEl._appended.length, 0);
 
   realRenderOtherPreview(null, rowsAscending, -0.5, 4); // should not throw
 
   // -------------------------------------------------------------------------
-  // AC4: other preview examples carry a brown trailing step label "(5k)" after
+  // other preview examples carry a brown trailing step label "(5k)" after
   // the rounded number, showing what the example rounds to the nearest of. The
   // pair still has three cells (from, arrow, num); the step span lives INSIDE
   // the num span (a 4th grid child would wrap to the next row). The top example
   // keeps its three cells and is prefixed "e.g.".
   // -------------------------------------------------------------------------
 
-  // AC4a: other preview pair has 3 cells (from/arrow/num); the brown step label
+  // other preview pair has 3 cells (from/arrow/num); the brown step label
   // is nested in the num span, not a 4th grid child.
   const otherPreviewEl2 = makeBandEl();
   realRenderOtherPreview(otherPreviewEl2, [{ num: 1000, original: '1,000' }], -0.5, 3);
-  eq('AC4-bot: bottom example pair has exactly 3 cells (from/arrow/num)',
+  eq('bot: bottom example pair has exactly 3 cells (from/arrow/num)',
     otherPreviewEl2._appended[0]._children.length, 3);
   const botNumSpan = otherPreviewEl2._appended[0]._children[2];
-  eq('AC4-bot: num span has a nested step-label child',
+  eq('bot: num span has a nested step-label child',
     botNumSpan._children.length, 1);
-  eq('AC4-bot: step-label child has class "step-label"',
+  eq('bot: step-label child has class "step-label"',
     botNumSpan._children[0] ? botNumSpan._children[0].className : '', 'step-label');
   // 1,000 at offset -0.5 rounds to the nearest 500 → label "(500)".
-  eq('AC4-bot: step-label text is " (500)"',
+  eq('bot: step-label text is " (500)"',
     botNumSpan._children[0] ? botNumSpan._children[0].textContent : '', ' (500)');
 
-  // AC4a-zero: a zero row gets no step label (avoids "(0)").
+  // zero: a zero row gets no step label (avoids "(0)").
   const botZeroEl = makeBandEl();
   realRenderOtherPreview(botZeroEl, [{ num: 0, original: '0' }], -0.5, 3);
   const zeroNumSpan = botZeroEl._appended[0]._children[2];
-  eq('AC4-bot-zero: zero row num span has no step-label child',
+  eq('bot-zero: zero row num span has no step-label child',
     zeroNumSpan._children.length, 0);
 
-  // AC4b: top preview example pair is prefixed "e.g." and has no step label.
+  // top preview example pair is prefixed "e.g." and has no step label.
   // renderTopPreview with cachedMaxMag=null skips the step header, so the only
   // appended element is the example.
   const topPreviewEl2 = makeBandEl();
   realRenderTopPreview(topPreviewEl2, [{ num: 100000, original: '100,000' }], -0.5);
-  eq('AC4-top: top preview appended exactly one element (no header)',
+  eq('top: top preview appended exactly one element (no header)',
     topPreviewEl2._appended.length, 1);
   const topExamplePair = topPreviewEl2._appended[0];
-  eq('AC4-top: top example has exactly 3 cells (from/arrow/num, no step)',
+  eq('top: top example has exactly 3 cells (from/arrow/num, no step)',
     topExamplePair._children.length, 3);
-  eq('AC4-top: top example "from" is prefixed "e.g."',
+  eq('top: top example "from" is prefixed "e.g."',
     topExamplePair._children[0].textContent, 'e.g. 100,000');
   // Top-band num cell carries no nested step label.
-  eq('AC4-top: top example num cell has no nested step label',
+  eq('top: top example num cell has no nested step label',
     topExamplePair._children[2]._children.length, 0);
 
-  // AC4-strip: the "from" shows the bare number, not the original
+  // strip: the "from" shows the bare number, not the original
   // surrounding text. renderTopPreview keys off row.num, so a row whose original
   // was "₹2,000 crore" still renders just "e.g. 2,000".
   const stripBandEl = makeBandEl();
   realRenderTopPreview(stripBandEl, [{ num: 2000, original: '₹2,000 crore' }], -0.5);
-  eq('AC4-strip: top "from" strips surrounding text to bare "e.g. 2,000"',
+  eq('strip: top "from" strips surrounding text to bare "e.g. 2,000"',
     stripBandEl._appended[0]._children[0].textContent, 'e.g. 2,000');
 
-  // AC4c: source-level constant values are correct (structural).
-  eq('AC4-src: OOM_LABEL_CLASS constant is "oom-label" in source',
+  // source-level constant values are correct (structural).
+  eq('src: OOM_LABEL_CLASS constant is "oom-label" in source',
     /const OOM_LABEL_CLASS\s*=\s*['"]oom-label['"]/.test(sidebarSrc), true);
-  eq('AC4-src: STEP_HEADER_CLASS constant is "step-header" in source',
+  eq('src: STEP_HEADER_CLASS constant is "step-header" in source',
     /const STEP_HEADER_CLASS\s*=\s*['"]step-header['"]/.test(sidebarSrc), true);
-  eq('AC4-src: STEP_LABEL_CLASS constant is "step-label" in source',
+  eq('src: STEP_LABEL_CLASS constant is "step-label" in source',
     /const STEP_LABEL_CLASS\s*=\s*['"]step-label['"]/.test(sidebarSrc), true);
 
-  // AC4e: when cachedMaxMag is set, the top preview renders the step header AND
+  // when cachedMaxMag is set, the top preview renders the step header AND
   // the example as two from|arrow|num pairs in the same band container (the
   // #topPreview grid lays them on two lines with their "→" arrows aligned in the
   // middle column). Rebuild the render helpers with a non-null cachedMaxMag to
@@ -1892,57 +1892,57 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
       'return ' + renderSrc + '(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, cachedMaxMag);'
     ))(stubDocument, realFormatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, 6);
   } catch (e) {
-    eq('AC4e: renderTopPreview (cachedMaxMag=6) eval succeeded', String(e), '');
+    eq('renderTopPreview (cachedMaxMag=6) eval succeeded', String(e), '');
   }
   if (renderHelpersWithMag) {
     const topWithHdr = makeBandEl();
     renderHelpersWithMag.renderTopPreview(topWithHdr, [{ num: 8584629, original: '8,584,629' }], -0.5);
-    eq('AC4e: top preview appends 2 elements (step header + example)',
+    eq('top preview appends 2 elements (step header + example)',
       topWithHdr._appended.length, 2);
     const stratPair = topWithHdr._appended[0];
     const examplePair = topWithHdr._appended[1];
-    eq('AC4e: first appended element is the step header pair (class "pair step-header")',
+    eq('first appended element is the step header pair (class "pair step-header")',
       stratPair.className, 'pair step-header');
-    eq('AC4e: step header pair has 3 cells (from/arrow/num)',
+    eq('step header pair has 3 cells (from/arrow/num)',
       stratPair._children.length, 3);
-    eq('AC4e: step header "from" is the OoM label "1M+" (maxMag=6)',
+    eq('step header "from" is the OoM label "1M+" (maxMag=6)',
       stratPair._children[0].textContent, '1M+');
-    eq('AC4e: step header "num" starts "nearest "',
+    eq('step header "num" starts "nearest "',
       stratPair._children[2].textContent.indexOf('nearest ') === 0, true);
-    eq('AC4e: second appended element is the example pair (class "pair example")',
+    eq('second appended element is the example pair (class "pair example")',
       examplePair.className, 'pair example');
-    eq('AC4e: example pair has 3 cells (from/arrow/num)',
+    eq('example pair has 3 cells (from/arrow/num)',
       examplePair._children.length, 3);
     // The two "→" arrows sit in the same (middle) grid column so they align.
-    eq('AC4e: step header arrow is in the middle cell ("→")',
+    eq('step header arrow is in the middle cell ("→")',
       stratPair._children[1].textContent, '→');
-    eq('AC4e: example arrow is in the middle cell ("→")',
+    eq('example arrow is in the middle cell ("→")',
       examplePair._children[1].textContent, '→');
   }
 
-  // AC4f: sidebar.html lays the top preview out on the shared lens-preview grid
+  // sidebar.html lays the top preview out on the shared lens-preview grid
   // (no flex override), so the step header and the example line stack and
   // their "→" arrows align in the middle column. The step header cells are blue.
   const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
-  eq('AC4f: #topPreview element carries the lens-preview grid class',
+  eq('#topPreview element carries the lens-preview grid class',
     /<div[^>]*id="topPreview"[^>]*class="lens-preview"|<div[^>]*class="lens-preview"[^>]*id="topPreview"/.test(sidebarHtmlSrc), true);
-  eq('AC4f: #topPreview is NOT overridden to display:flex',
+  eq('#topPreview is NOT overridden to display:flex',
     /#topPreview\s*\{[^}]*display:\s*flex/.test(sidebarHtmlSrc), false);
-  eq('AC4f: #topPreview step header cells are blue (#1a73e8)',
+  eq('#topPreview step header cells are blue (#1a73e8)',
     /#topPreview \.step-header \.num\s*\{\s*color:\s*#1a73e8/.test(sidebarHtmlSrc), true);
-  eq('AC4f: .step-label colour rule present in sidebar.html',
+  eq('.step-label colour rule present in sidebar.html',
     /\.step-label\s*\{\s*color:\s*#b3623d/.test(sidebarHtmlSrc), true);
 
-  // AC4d: oom-label span is still appended inside the from-span for non-zero
+  // oom-label span is still appended inside the from-span for non-zero
   // rows of the other preview.
   const oomLabelBandEl = makeBandEl();
   realRenderOtherPreview(oomLabelBandEl, [{ num: 5000, original: '5,000' }], -0.5, 3);
   const fromSpan = oomLabelBandEl._appended[0]._children[0];
-  eq('AC4-oom-label: from-span has oom-label child appended',
+  eq('oom-label: from-span has oom-label child appended',
     fromSpan._children.length >= 1, true);
-  eq('AC4-oom-label: oom-label child has class "oom-label"',
+  eq('oom-label: oom-label child has class "oom-label"',
     fromSpan._children[0] ? fromSpan._children[0].className : '', 'oom-label');
-  eq('AC4-oom-label: oom-label text contains "(1k+)"',
+  eq('oom-label: oom-label text contains "(1k+)"',
     fromSpan._children[0] ? fromSpan._children[0].textContent.includes('1k+') : false, true);
 })();
 
@@ -2120,7 +2120,7 @@ const LADDER_OPTS = {
 })();
 
 // ---------------------------------------------------------------------------
-// AC2: the lens preview and the table must round the same cell to the same
+// the lens preview and the table must round the same cell to the same
 // value once a setting changes: extractPreviewSamples and roundTable both
 // read the table's settings.
 // ---------------------------------------------------------------------------
@@ -2183,7 +2183,7 @@ const LADDER_OPTS = {
 })();
 
 // ---------------------------------------------------------------------------
-// AC5: settings survive a sidebar close and
+// settings survive a sidebar close and
 // reopen — pulled from the model (request:activeTable), not reset to DR_DEFAULTS.
 // The settings live on the active table, so the reopen's read
 // answers that table's settings.
@@ -2362,7 +2362,7 @@ const LADDER_OPTS = {
 // content.js's own onMessage listener or the settings apply's responder,
 // which is the actual code path a real request:applySettings message
 // drives. This test dispatches that message through the captured listener
-// (the AC1 pattern) against a table already bound as "selected", lets the
+// (the pattern) against a table already bound as "selected", lets the
 // real responder write the table's settings and apply them, and checks the
 // resulting cells against extractPreviewSamples on the same table, which
 // classifies each simplified cell's stored original — so the assertion
@@ -2419,7 +2419,7 @@ const LADDER_OPTS = {
     querySelectorAll: () => [],
     readyState: 'complete',
     // The range pulse at the end of applySidebarRounding adds the highlight
-    // stylesheet and needs these — the reconnect/AC1 tests above never reach
+    // stylesheet and needs these — the reconnect tests above never reach
     // that call (no active table, so the subscriber's `if (selected)` guard
     // short-circuits).
     createElement: () => ({ textContent: '', appendChild() {} }),
@@ -2447,7 +2447,7 @@ const LADDER_OPTS = {
       } catch (e) {
         // module-level init may fail against the stub DOM; the onMessage
         // listener and the two wiring assignments above both run before any
-        // dynamic/async code (see the AC1 test).
+        // dynamic/async code (see the test).
       }
 
       if (capturedListeners.length === 0 || !wiredDR_MODEL) return;

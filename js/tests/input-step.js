@@ -55,7 +55,7 @@ module.exports = function runSheetsLadder(h) {
         testExact(`[${kind}] ${label}: type`, typeof value, expectedType);
     }
 
-    // --- Criterion 1 and 2: text cells under each result kind -------------
+    // --- text cells under each result kind -------------
     // A pure cell and a bracketed number return text under 'text' and the
     // rounded value under 'number'. A cell with words or a unit number
     // returns text under both values.
@@ -90,7 +90,7 @@ module.exports = function runSheetsLadder(h) {
         kinds.number.ROUND_DYNAMIC([['$1,011', 'about 1,234 users', '(1,234)']]),
         [[1000, 'about 1,000 users', -1000]]);
 
-    // --- Criterion 3: values that are not text -----------------------------
+    // --- values that are not text -----------------------------
     // A plain number rounds as today and returns a number. A date object, a
     // boolean, and an empty cell return unchanged.
     const date = new Date(2020, 0, 15);
@@ -111,7 +111,7 @@ module.exports = function runSheetsLadder(h) {
             RD([[1234, date, true, false, '']]), [[1000, date, true, false, '']]);
     }
 
-    // --- Criterion 4: text that stays as written ---------------------------
+    // --- text that stays as written ---------------------------
     // Identifier shapes stay. Dates and times are off, so date and time text
     // stays. A year inside text rounds; a bare year typed as text stays.
     const unchanged = [
@@ -146,7 +146,7 @@ module.exports = function runSheetsLadder(h) {
             [['416-555-1234', '2024-01-15', '9:30', '2020', 'Q3 2,000']]);
     }
 
-    // --- Criterion 5: the dataset and the max magnitude --------------------
+    // --- the dataset and the max magnitude --------------------
     // Offsets -0.5 for the top band and 0 for the rest, so a number's band
     // shows in its result: 1,600 rounds to 1,500 in the top band and to
     // 2,000 outside it.
@@ -183,7 +183,7 @@ module.exports = function runSheetsLadder(h) {
     testArrayExact('[number] dataset mode: the first row and the first column round',
         kinds.number.ROUND_DYNAMIC(firstRowAndColumn), [[1000, 'about 5,500 users'], ['4,500 units', 10000]]);
 
-    // --- Criterion 6: the currency list ------------------------------------
+    // --- the currency list ------------------------------------
     // "R47" is a pure cell with a currency sign written in letters; "CAD45.67"
     // is a unit number, so it returns text under both values.
     bothModes('text', 'a currency sign written in letters "R47" rounds', 'R47', 'R45');
@@ -231,7 +231,7 @@ module.exports = function runSheetsLadder(h) {
         testExact('README currency-sign line: lists no subset of the signs', /\$, €, £/.test(currencyLine), false);
     }
 
-    // --- Criterion 7: the field the Sheets suite reads ---------------------
+    // --- the field the Sheets suite reads ---------------------
     // The built file holds the same constant as the Sheets entry source, so
     // the field the suite reads matches the constant in that source.
     const entry = fs.readFileSync(path.join(__dirname, '..', 'src', 'entry.js'), 'utf8');

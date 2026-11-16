@@ -362,7 +362,7 @@ For the user: a table gets a pillbox exactly when simplifying it would change a 
 For the developer or tester: one number-reading rule to test. `tests/detection.js` lines 150–230 turn into assertions that detection matches the ladder.
 
 ### Files
-`chrome-extension/lib/dr-table/detect.js`, `chrome-extension/lib/dr-simplify/ladder.js`, `chrome-extension/lib/dr-number/core.js`, `chrome-extension/lib/dr-number/identifiers.js`, `chrome-extension/tests/detection.js`, `docs/test-pages/tables.html`, `docs/vocabulary.md` (data test, currency list), `docs/design.md`.
+`chrome-extension/lib/dr-table/detect.js`, `chrome-extension/lib/dr-simplify/ladder.js`, `chrome-extension/lib/dr-number/core.js`, `chrome-extension/lib/dr-number/identifiers.js`, `chrome-extension/tests/detection.js`, `docs/test-pages/test-tables-1.html`, `docs/vocabulary.md` (data test, currency list), `docs/design.md`.
 
 ### Complexity
 Removes one parse path (the `parseFloat` probe). Adds no state. A settings-aware choice would add a dependency from detection on the settings record, which is a new path. Net: removes, if detection stays settings-independent.
@@ -956,10 +956,10 @@ No. The gate still exists. `classifyTableCell` in `chrome-extension/content.js` 
 A rewrite should state the current defect: a CSS-styled superscript skips as a split number, while a `<sup>` superscript masks the exponent and rounds the base number. Name the one gate in the shared classification step. Remove the "silently corrupted values" consequence and lower the priority. The fix has two options: derive `hasSuperscript` from a non-empty `getSuperscriptRanges` result for every cell, or widen the gate to any cell that has element children. Vocabulary: "flattened text" is retired in favor of **flat text**. "Superscript masking" is not in `docs/vocabulary.md`, so a rewrite either defines it on the same branch or describes it in plain words. Use **text piece**, **split number**, and **placement step** where they apply.
 
 ### New capability
-For the user: a number with a CSS-styled exponent or footnote marker rounds its base value on both table kinds. For the developer or tester: one superscript test covers both markup forms, and `docs/test-pages/tables.html` gets the styled fixture in its superscript section.
+For the user: a number with a CSS-styled exponent or footnote marker rounds its base value on both table kinds. For the developer or tester: one superscript test covers both markup forms, and `docs/test-pages/test-tables-1.html` gets the styled fixture in its superscript section.
 
 ### Files
-`chrome-extension/content.js` (`classifyTableCell`, `patchEntry` supRanges), `chrome-extension/lib/dr-table/detect.js` (`getSuperscriptRanges`), `chrome-extension/lib/dr-simplify/ladder.js` (the `hasSuperscript` parameter documentation), `chrome-extension/tests/detection.js`, `chrome-extension/tests/rounding-pass.js`, `chrome-extension/tests/helpers.js`, `docs/test-pages/tables.html`.
+`chrome-extension/content.js` (`classifyTableCell`, `patchEntry` supRanges), `chrome-extension/lib/dr-table/detect.js` (`getSuperscriptRanges`), `chrome-extension/lib/dr-simplify/ladder.js` (the `hasSuperscript` parameter documentation), `chrome-extension/tests/detection.js`, `chrome-extension/tests/rounding-pass.js`, `chrome-extension/tests/helpers.js`, `docs/test-pages/test-tables-1.html`.
 
 ### Complexity
 The fix removes a special case: the `sup` check that duplicates half of the detection inside `getSuperscriptRanges`. It adds no state, option, or path. Net: removes.
@@ -1041,7 +1041,7 @@ For the developer or tester: the store tells "not frozen" apart from "frozen wit
 - `chrome-extension/app/store.js` (`maxMagnitude` default, `getTableMaxMagnitude`)
 - `chrome-extension/lib/dr-capture/state.js`
 - `chrome-extension/tests/messaging-model.js`
-- `docs/test-pages/tables.html`
+- `docs/test-pages/test-tables-1.html`
 
 ### Complexity
 Option (a) adds a second "not yet frozen" value next to `null`, one state. Option (b) adds a branch that writes the freeze on a re-apply pass, one path. Net: adds.
@@ -1526,7 +1526,7 @@ The change adds one branch (the missing answer) and one user-visible string. It 
 S: one branch, one string, and one test in an existing glue block.
 
 ### Urgency
-P3. The fix is for clarity only. Captures still save correctly, no correctness or security risk exists, and no other work waits on it. The manual test runs on a restricted page such as the Chrome Web Store, and `docs/test-pages/tables.html` has no section that covers it.
+P3. The fix is for clarity only. Captures still save correctly, no correctness or security risk exists, and no other work waits on it. The manual test runs on a restricted page such as the Chrome Web Store, and `docs/test-pages/test-tables-1.html` has no section that covers it.
 
 ## #299 — [follow-up] give the sidebar a view model so tests execute its logic
 
@@ -1811,7 +1811,7 @@ Yes. A rewrite should cover these points:
 - **When to collapse.** Collapse only when the source ends differ. A source `3–3` stays as written.
 - **What counts as the join.** The text between the two numbers holds a hyphen, en dash or em dash, plus whitespace and format marks, so `$245–$250` becomes `$250`. The footnote in the capture stays: `250[b]`.
 - **Both table kinds.** Both kinds share `cellPatches`, so the change reaches both.
-- **Manual test.** Add a `245–250` row to section 6 of `docs/test-pages/tables.html`.
+- **Manual test.** Add a `245–250` row to section 6 of `docs/test-pages/test-tables-1.html`.
 
 ### New capability
 For the user: a dash pair whose ends land on one step shows one value.
@@ -1822,7 +1822,7 @@ For the developer or tester: one tested rule for joined numbers in an extracted 
 - `chrome-extension/lib/dr-number/parsing.js` (list of join characters)
 - `chrome-extension/tests/rounding-pass.js`
 - `chrome-extension/tests/number.js`
-- `docs/test-pages/tables.html`
+- `docs/test-pages/test-tables-1.html`
 - `docs/vocabulary.md`
 
 ### Complexity
@@ -2124,7 +2124,7 @@ P3: no current value triggers the defect. The first change that adds a nested de
 **Summary:** #375 · [follow-up] three comments still describe the retired ARIA pass · update then keep · S · P3
 
 ### Can it be closed
-No. All three stale comments stand on main. `chrome-extension/lib/dr-table/detect.js:46` still describes `GRID_ARIA_SELECTOR` as the selector "for the cheap load-time ARIA pass". The selector now feeds the qualifying-element guard and the nomination step (`findTables`) at lines 1703, 1872, and 1932. The §15 comment in `docs/test-pages/tables.html` has moved to line 1060. It still says native-table and ARIA passes re-check an added subtree, while `content.js:566` runs `findTables` on the added root. The header of `chrome-extension/ui-toggle.js`, lines 9–13, still gives the file as the home of `looksLikeGrid`, `findTargetTable`, and `isDataTable`. All three functions are defined in `detect.js`, at lines 1199, 1315, and 1515. No merged pull request touches these lines.
+No. All three stale comments stand on main. `chrome-extension/lib/dr-table/detect.js:46` still describes `GRID_ARIA_SELECTOR` as the selector "for the cheap load-time ARIA pass". The selector now feeds the qualifying-element guard and the nomination step (`findTables`) at lines 1703, 1872, and 1932. The §15 comment in `docs/test-pages/test-tables-1.html` has moved to line 1060. It still says native-table and ARIA passes re-check an added subtree, while `content.js:566` runs `findTables` on the added root. The header of `chrome-extension/ui-toggle.js`, lines 9–13, still gives the file as the home of `looksLikeGrid`, `findTargetTable`, and `isDataTable`. All three functions are defined in `detect.js`, at lines 1199, 1315, and 1515. No merged pull request touches these lines.
 
 ### Can it be updated
 Yes. The line reference for the test page is out of date (1034 is now 1060). The `ui-toggle.js` header also uses retired terms that the issue leaves out. "toggle widget" should be pillbox. "selection" should be the active table. "store" in the prose should be the application model. The §15 comment says "mutation observer" where the canonical term is detection of added nodes. "Nomination step" appears in `docs/vocabulary.md` but has no row of its own. The rewrite can use it as is, or define it in the same branch. "ARIA pass" is a retired name with no entry in the vocabulary. A rewrite should say:
@@ -2139,7 +2139,7 @@ For the user: none. For the developer or tester: the comments match where detect
 ### Files
 - `chrome-extension/lib/dr-table/detect.js`
 - `chrome-extension/ui-toggle.js`
-- `docs/test-pages/tables.html`
+- `docs/test-pages/test-tables-1.html`
 - `docs/vocabulary.md` (only if the nomination step gets a row)
 
 ### Complexity
@@ -2303,7 +2303,7 @@ For the developer or tester: one ancestor walk rule for nests, and a test that p
 - `chrome-extension/lib/dr-table/detect.js` (`_chainRootOf`, `_depthInChain`, `chainRootOf`)
 - `chrome-extension/constants.js`
 - `chrome-extension/tests/detection.js`
-- `docs/test-pages/tables.html` (new section for a deep nest)
+- `docs/test-pages/test-tables-1.html` (new section for a deep nest)
 
 ### Complexity
 Option (a) adds a setting. Option (b) removes the step counter from two walks and adds no state. Net for (b): removes.
@@ -2330,7 +2330,7 @@ P3: no shipped vendor profile nests this deep, and the defect only adds a second
 **Summary:** #382 · [follow-up] a right-click in a sibling pane of a registered nest registers a second table · update then keep · S · P2
 
 ### Can it be closed
-No. The defect reproduces on main. In `findTargetTable` (chrome-extension/lib/dr-table/detect.js), step 3 gets nothing back because `nominateNest` returns outcome `registered` with `selected: null`. The call then falls through to the geometry probe. With a flex style probe, a right-click on a pinned-pane cell of `makeDatabaseQueryGrid` returns the pinned pane with `isNew: true` while the scrolling pane is registered. This happens for one pinned column and for two. With two columns the pinned pane passes the data test and gets a second pillbox. With one column `createToggleForTable` skips the pillbox. The right-click still makes the pinned pane active, and the menu toggle then acts on it. Section 13 of docs/test-pages/tables.html has the one-column shape. Pull requests #372 and #384 left this path open, and the step 3 comment points at this issue.
+No. The defect reproduces on main. In `findTargetTable` (chrome-extension/lib/dr-table/detect.js), step 3 gets nothing back because `nominateNest` returns outcome `registered` with `selected: null`. The call then falls through to the geometry probe. With a flex style probe, a right-click on a pinned-pane cell of `makeDatabaseQueryGrid` returns the pinned pane with `isNew: true` while the scrolling pane is registered. This happens for one pinned column and for two. With two columns the pinned pane passes the data test and gets a second pillbox. With one column `createToggleForTable` skips the pillbox. The right-click still makes the pinned pane active, and the menu toggle then acts on it. Section 13 of docs/test-pages/test-tables-1.html has the one-column shape. Pull requests #372 and #384 left this path open, and the step 3 comment points at this issue.
 
 ### Can it be updated
 Yes. The priority line says no live page shows the shape. That is out of date, because section 13 of the manual test page shows it. Replace "gutter" and "data pane" with pinned pane and scrolling pane. "Nest" and "registry route" are not in docs/vocabulary.md. Use chain root, qualifying element, and containment chain. Do not use "selects" for the nomination step, because "selected table" is a retired synonym for active table. A rewrite should say: a right-click in the pinned pane of a registered grid resolves the grid's registered table. Two cases need their outcomes stated. A two-column pane gets a second pillbox. A one-column pane becomes the active table and takes the menu toggle.
@@ -2882,7 +2882,7 @@ For the developer or tester: one header-row reading serves the fingerprint and t
 - `chrome-extension/lib/dr-table/detect.js`
 - `chrome-extension/content.js` (`classifyTableCell`, `tableDataCells`)
 - `docs/vocabulary.md` (literal row number, exclusion)
-- `docs/test-pages/tables.html` (sections 10, 13, and a new header-less section)
+- `docs/test-pages/test-tables-1.html` (sections 10, 13, and a new header-less section)
 - `chrome-extension/tests/ladder.js`, `chrome-extension/tests/rounding-pass.js`
 
 ### Complexity
@@ -2924,7 +2924,7 @@ For the user: a table drawn inside an embedded frame, such as a claude.ai artifa
 For the developer or tester: captures from pages with frames record the table, and the bus delivers each tab-routed topic to exactly one frame, so a request receives exactly one answer.
 
 ### Files
-`chrome-extension/manifest.json`, `chrome-extension/background.js`, `chrome-extension/adapters/messaging.js`, `chrome-extension/content.js`, `chrome-extension/sidebar.js`, `chrome-extension/lib/dr-capture/state.js`, `docs/vocabulary.md`, `docs/design.md`, `chrome-extension/README.md`, `docs/test-pages/tables.html` (the fix needs a new section with a table inside a frame).
+`chrome-extension/manifest.json`, `chrome-extension/background.js`, `chrome-extension/adapters/messaging.js`, `chrome-extension/content.js`, `chrome-extension/sidebar.js`, `chrome-extension/lib/dr-capture/state.js`, `docs/vocabulary.md`, `docs/design.md`, `chrome-extension/README.md`, `docs/test-pages/test-tables-1.html` (the fix needs a new section with a table inside a frame).
 
 ### Complexity
 Paths 1 and 2 add one state (the bound frame beside the bound tab), one routing input (the frame number on each tab-routed send), and one capture field. Path 2 also adds an injection path in the service worker, and the pillbox view gains a first-gesture special case. Path 3 adds nothing. Net verdict: adds.
@@ -3212,13 +3212,13 @@ Yes. The rewrite should make these points:
 
 ### New capability
 For the user: a press on a very large table no longer freezes the page. Under path 1, the page shows a notice explaining why nothing changed.
-For the developer or tester: one cap covers every pass. That needs a new section in `docs/test-pages/tables.html` with a table above 10,000 cells.
+For the developer or tester: one cap covers every pass. That needs a new section in `docs/test-pages/test-tables-1.html` with a table above 10,000 cells.
 
 ### Files
 - `chrome-extension/content.js` (`roundTable`, `simplifyTableCells`, `watchTable`, `logAboveCellCap`)
 - `chrome-extension/constants.js` (`reapplyCellCap`)
 - sidebar notice files, for path 1's product choice
-- `docs/design.md`, `docs/vocabulary.md`, `docs/test-pages/tables.html`
+- `docs/design.md`, `docs/vocabulary.md`, `docs/test-pages/test-tables-1.html`
 
 ### Complexity
 - Path 1 adds one outcome: a table above the cap stays raw, with a notice. It removes the separate cap check in `watchTable`. Net: neutral.

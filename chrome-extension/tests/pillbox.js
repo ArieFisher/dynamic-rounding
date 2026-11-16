@@ -141,7 +141,7 @@
 
 // --- Helpers ---
 
-// --- AC5: showsSimplified returns false for a fresh table ---
+// --- showsSimplified returns false for a fresh table ---
 
 (function tablePillbox_showsSimplified_freshTable() {
   const table = makeTablePillboxTestTable([{ tag: 'td', text: '1,000' }]);
@@ -149,7 +149,7 @@
     showsSimplified(table), false);
 })();
 
-// --- AC5: showsSimplified returns true after roundTable marks cells ---
+// --- showsSimplified returns true after roundTable marks cells ---
 
 (function tablePillbox_showsSimplified_afterRound() {
   // The marker is set directly, the way roundTable leaves it, without the
@@ -160,7 +160,7 @@
     showsSimplified(table), true);
 })();
 
-// --- AC5: showsSimplified after the reset restores originals ---
+// --- showsSimplified after the reset restores originals ---
 // Turning simplification off resets the table outright. This pins the reset
 // against three observables, plus the marker and the stored original, which
 // the reset clears.
@@ -193,7 +193,7 @@
     DR_MODEL.hasTableOriginal(table, cell), false);
 })();
 
-// --- AC6: syncTablePillbox sets aria-pressed on the button to match DR_MODEL.isTableOn ---
+// --- syncTablePillbox sets aria-pressed on the button to match DR_MODEL.isTableOn ---
 
 (function tablePillbox_syncTablePillbox_ariaFalseWhenNotRounded() {
   const table = makeTablePillboxTestTable([{ tag: 'td', text: '1,000' }]);
@@ -237,7 +237,7 @@
     button.getAttribute('aria-pressed'), 'false');
 })();
 
-// --- AC6: syncTablePillbox is a no-op when no table pillbox is registered ---
+// --- syncTablePillbox is a no-op when no table pillbox is registered ---
 
 (function tablePillbox_syncTablePillbox_noEntryIsNoop() {
   const table = makeTablePillboxTestTable([{ tag: 'td', text: '1,000' }]);
@@ -250,7 +250,7 @@
 })();
 
 // --- DOM shape: createTablePillbox creates the table pillbox button structure ---
-// Spec (§3.6 + AC): button.dr-ext-table-pillbox > span.dr-ext-table-pillbox-dot > span.dr-ext-table-pillbox-knob
+// button.dr-ext-table-pillbox > span.dr-ext-table-pillbox-dot > span.dr-ext-table-pillbox-knob
 // The button must have type="button", aria-pressed="false", and an aria-label.
 
 (function tablePillbox_createTablePillbox_domShape() {
@@ -382,7 +382,7 @@
 })();
 
 // --- Anchor geometry (rest state, scroll=0) ---
-// Spec (§3.2): button left/top place the dot's bottom-right at
+// button left/top place the dot's bottom-right at
 //   dot.bottom = rect.top  + scrollY + TABLE_PILLBOX_DOT_OVERLAP_PX
 //   dot.right  = rect.right + scrollX + TABLE_PILLBOX_DOT_OVERHANG_PX
 // With justify-content: flex-end + padding: TABLE_PILLBOX_HIT_PAD_PX, the dot sits
@@ -461,7 +461,7 @@
     top, expectedTop);
 })();
 
-// --- AC3 / AC4: the two directions of a press ---
+// --- /: the two directions of a press ---
 // A press on a table showing the original simplifies it; a press on a simplified table resets
 // it. Each direction is driven here through the call the press path makes.
 // We verify the outcome on the table rather than inspecting private calls.
@@ -492,7 +492,7 @@
 
     // After a press turning simplification on, at least one cell is simplified
     const hasRounded = table._cells.some(c => c.classList.contains('dr-ext-rounded'));
-    eq('table-pillbox: a press on a table showing the original simplifies its cells (AC3)',
+    eq('table-pillbox: a press on a table showing the original simplifies its cells',
       hasRounded, true);
     // aria-pressed should now reflect the simplified state
     eq('table-pillbox: aria-pressed="true" after a press turns simplification on',
@@ -528,15 +528,15 @@
     DR_MODEL.setActiveTable(savedActive);
   }
 
-  // After turning simplification off: the table shows its originals (AC4)
-  eq('table-pillbox: a press on a simplified table shows the originals (AC4)',
+  // After turning simplification off: the table shows its originals
+  eq('table-pillbox: a press on a simplified table shows the originals',
     showsSimplified(table), false);
   // aria-pressed should be "false" — the table shows its original values
   eq('table-pillbox: aria-pressed="false" after a press turns simplification off',
     input.getAttribute('aria-pressed'), 'false');
 })();
 
-// --- AC5: showsSimplified sequence: false → true → false via full toggle cycle ---
+// --- showsSimplified sequence: false → true → false via full toggle cycle ---
 
 (function tablePillbox_showsSimplified_fullCycle() {
   withCreateTreeWalker(function() {
@@ -578,7 +578,7 @@
         }
       });
       resetTable(table);
-      eq('table-pillbox: showsSimplified is false after the reset (AC5)',
+      eq('table-pillbox: showsSimplified is false after the reset',
         showsSimplified(table), false);
     }
   });
@@ -588,8 +588,8 @@
 // Accessibility tests
 // =============================================================================
 
-// --- accessibility AC3: button click handler updates aria-pressed (mouse path) ---
-// Spec (§3.4): for a <button>, Space/Enter are native. The click handler must
+// --- accessibility: button click handler updates aria-pressed (mouse path) ---
+// for a <button>, Space/Enter are native. The click handler must
 // update aria-pressed when pointerType is 'mouse' or ''.
 // We use createTablePillbox (with DOM stubs) to get real event listeners,
 // then simulate pointerdown→click on a table that has rounded cells.
@@ -677,7 +677,7 @@
   clickHandlers.forEach(fn => fn({ stopPropagation() {}, type: 'click' }));
 
   // After click: table shows originals, aria-pressed='false'
-  eq('accessibility AC3: button click (mouse, was-rounded) sets aria-pressed="false"',
+  eq('accessibility: button click (mouse, was-rounded) sets aria-pressed="false"',
     buttonEl.getAttribute('aria-pressed'), 'false');
 })();
 
@@ -782,7 +782,7 @@
 // All four tests stub window.getComputedStyle (and/or the rect) then restore
 // the original before returning, so surrounding tests are unaffected.
 
-// AC1: display:none (computed style) → labelEl.style.display === 'none'
+// display:none (computed style) → labelEl.style.display === 'none'
 (function visGate_displayNone() {
   const origGetComputedStyle = global.window.getComputedStyle;
   global.window.getComputedStyle = () => ({ display: 'none', visibility: 'visible' });
@@ -800,7 +800,7 @@
     labelEl.style.display, 'none');
 })();
 
-// AC2: visibility:hidden (computed style) → labelEl.style.display === 'none'
+// visibility:hidden (computed style) → labelEl.style.display === 'none'
 (function visGate_visibilityHidden() {
   const origGetComputedStyle = global.window.getComputedStyle;
   global.window.getComputedStyle = () => ({ display: 'block', visibility: 'hidden' });
@@ -818,7 +818,7 @@
     labelEl.style.display, 'none');
 })();
 
-// AC3: zero-area bounding rect → labelEl.style.display === 'none'
+// zero-area bounding rect → labelEl.style.display === 'none'
 (function visGate_zeroAreaRect() {
   // No need to override getComputedStyle — default stub returns visible style.
   const table = {
@@ -832,7 +832,7 @@
     labelEl.style.display, 'none');
 })();
 
-// AC4: normal rect + no hiding → labelEl.style.display === '' (visible)
+// normal rect + no hiding → labelEl.style.display === '' (visible)
 (function visGate_normalVisible() {
   // Default getComputedStyle stub returns display:block / visibility:visible.
   const origScrollX = global.window.scrollX;
@@ -1078,7 +1078,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // =============================================================================
 
 // --- Knob travel derivation ---
-// Spec (§3.5): TABLE_PILLBOX_KNOB_TRAVEL_PX === TABLE_PILLBOX_PILL_WIDTH_PX - TABLE_PILLBOX_KNOB_PX - 2*TABLE_PILLBOX_KNOB_INSET_PX === 12
+// TABLE_PILLBOX_KNOB_TRAVEL_PX === TABLE_PILLBOX_PILL_WIDTH_PX - TABLE_PILLBOX_KNOB_PX - 2*TABLE_PILLBOX_KNOB_INSET_PX === 12
 
 (function tablePillboxAC_knobTravelDerivation() {
   eq('expanding-table-pillbox: TABLE_PILLBOX_KNOB_TRAVEL_PX equals 12 (default geometry)',
@@ -1086,7 +1086,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 })();
 
 // --- Mouse click toggles state ---
-// Spec (§3.4 + AC): pointerType 'mouse'/'': intent:toggleTable published, aria-pressed updates.
+// pointerType 'mouse'/'': intent:toggleTable published, aria-pressed updates.
 // We create a real button via createTablePillbox (with DOM stubs).
 
 (function tablePillboxAC_mouseClick_togglesState() {
@@ -1167,7 +1167,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 })();
 
 // --- Touch first tap expands, does NOT toggle ---
-// Spec (AC): pointerType 'touch' first tap → adds .expanded, aria-pressed unchanged
+// pointerType 'touch' first tap → adds .expanded, aria-pressed unchanged
 
 (function tablePillboxAC_touchFirstTap_expandsOnly() {
   const table = makeTablePillboxTestTable([{ tag: 'td', text: '1,000' }]);
@@ -1253,7 +1253,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 })();
 
 // --- Touch second tap toggles and refreshes expansion ---
-// Spec (AC): second tap on already-expanded → publishes intent:toggleTable, updates aria-pressed
+// second tap on already-expanded → publishes intent:toggleTable, updates aria-pressed
 
 (function tablePillboxAC_touchSecondTap_togglesState() {
   const appendedToBody = [];
@@ -1343,7 +1343,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 })();
 
 // --- Pen pointer behaves like touch (two-tap flow) ---
-// Spec (AC): pointerType 'pen' uses same expand-then-toggle path as 'touch'
+// pointerType 'pen' uses same expand-then-toggle path as 'touch'
 
 (function tablePillboxAC_penPointer_behavesLikeTouch() {
   const appendedToBody = [];
@@ -1421,7 +1421,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 })();
 
 // --- Auto-collapse timer ---
-// Spec (AC): after .expanded is added, TABLE_PILLBOX_AUTO_COLLAPSE_MS ms later .expanded is removed.
+// after .expanded is added, TABLE_PILLBOX_AUTO_COLLAPSE_MS ms later .expanded is removed.
 // We fake setTimeout to capture and drain the queued callback synchronously.
 
 (function tablePillboxAC_autoCollapse_timer() {
@@ -1512,7 +1512,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 })();
 
 // --- Tap-outside collapse ---
-// Spec (AC): pointerdown outside an .expanded button removes .expanded;
+// pointerdown outside an .expanded button removes .expanded;
 //            pointerdown inside preserves .expanded.
 // We test via the global document pointerdown listener that createTablePillbox registers.
 
@@ -1725,10 +1725,10 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // after each sub-test, and for restoring chrome.runtime.sendMessage.
 
 // ---------------------------------------------------------------------------
-// AC1 (mouse path): sidebar open + different table → rebind + RESET dispatched
+// sidebar open + different table → rebind + RESET dispatched
 // ---------------------------------------------------------------------------
 
-(function sidebarRebind_AC1_mouse_differentTable() {
+(function sidebarRebind_mouse_differentTable() {
   const tableA = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
@@ -1762,32 +1762,32 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   lastRightClickedTable = null;
 
   // 1a. lastRightClickedTable must be tableB
-  eq('rebind AC1 mouse: lastRightClickedTable rebound to tableB',
+  eq('rebind mouse: lastRightClickedTable rebound to tableB',
     reboundToB_mouse, true);
 
   // 1b. state:tableSwitched dispatched exactly once. The sidebar's handler
   // pulls the model's settings.
   const switchCalls = sentMessages.filter(m => m.topic === 'state:tableSwitched');
-  eq('rebind AC1 mouse: state:tableSwitched dispatched exactly once',
+  eq('rebind mouse: state:tableSwitched dispatched exactly once',
     switchCalls.length, 1);
 
   // 1c. state:previewSamplesChanged NOT dispatched — the state:tableSwitched pull
   // chain already ends in the preview fetch; a second trigger would be a
   // duplicate round-trip.
   const previewCalls = sentMessages.filter(m => m.topic === 'state:previewSamplesChanged');
-  eq('rebind AC1 mouse: state:previewSamplesChanged not dispatched on a switch',
+  eq('rebind mouse: state:previewSamplesChanged not dispatched on a switch',
     previewCalls.length, 0);
 
   // 1d. The switch apply rounds tableB (the model's enabled is on)
-  eq('rebind AC1 mouse: the switch apply rounded tableB',
+  eq('rebind mouse: the switch apply rounded tableB',
     hasRounded_mouse, true);
 })();
 
 // ---------------------------------------------------------------------------
-// AC1 (touch second-tap path): same assertions as mouse
+// same assertions as mouse
 // ---------------------------------------------------------------------------
 
-(function sidebarRebind_AC1_touch_differentTable() {
+(function sidebarRebind_touch_differentTable() {
   const tableA = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
@@ -1816,26 +1816,26 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   global.chrome.runtime.sendMessage = origSendMessage;
   lastRightClickedTable = null;
 
-  eq('rebind AC1 touch: lastRightClickedTable rebound to tableB',
+  eq('rebind touch: lastRightClickedTable rebound to tableB',
     reboundToB_touch, true);
 
   const switchCalls = sentMessages.filter(m => m.topic === 'state:tableSwitched');
-  eq('rebind AC1 touch: state:tableSwitched dispatched exactly once',
+  eq('rebind touch: state:tableSwitched dispatched exactly once',
     switchCalls.length, 1);
 
   const previewCalls = sentMessages.filter(m => m.topic === 'state:previewSamplesChanged');
-  eq('rebind AC1 touch: state:previewSamplesChanged not dispatched on a switch',
+  eq('rebind touch: state:previewSamplesChanged not dispatched on a switch',
     previewCalls.length, 0);
 
-  eq('rebind AC1 touch: the switch apply rounded tableB',
+  eq('rebind touch: the switch apply rounded tableB',
     hasRounded_touch, true);
 })();
 
 // ---------------------------------------------------------------------------
-// AC2 (mouse path): sidebar open, clicking same table → NO RESET dispatched
+// sidebar open, clicking same table → NO RESET dispatched
 // ---------------------------------------------------------------------------
 
-(function sidebarRebind_AC2_mouse_sameTable() {
+(function sidebarRebind_mouse_sameTable() {
   const tableA = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'H2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
@@ -1856,15 +1856,15 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 
   // Same-table guard: the switch message must NOT be dispatched
   const switchCalls = sentMessages.filter(m => m.topic === 'state:tableSwitched');
-  eq('rebind AC2 mouse: state:tableSwitched NOT dispatched for same-table click',
+  eq('rebind mouse: state:tableSwitched NOT dispatched for same-table click',
     switchCalls.length, 0);
 })();
 
 // ---------------------------------------------------------------------------
-// AC2 (touch second-tap path): same table → NO RESET dispatched
+// same table → NO RESET dispatched
 // ---------------------------------------------------------------------------
 
-(function sidebarRebind_AC2_touch_sameTable() {
+(function sidebarRebind_touch_sameTable() {
   const tableA = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'H2' }],
     [{ tag: 'td', text: '5,000,000' }, { tag: 'td', text: '100' }],
@@ -1884,15 +1884,15 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   lastRightClickedTable = null;
 
   const switchCalls = sentMessages.filter(m => m.topic === 'state:tableSwitched');
-  eq('rebind AC2 touch: state:tableSwitched NOT dispatched for same-table click',
+  eq('rebind touch: state:tableSwitched NOT dispatched for same-table click',
     switchCalls.length, 0);
 })();
 
 // ---------------------------------------------------------------------------
-// AC3 (mouse path): sidebar CLOSED → clicking a different table → NO RESET
+// sidebar CLOSED → clicking a different table → NO RESET
 // ---------------------------------------------------------------------------
 
-(function sidebarRebind_AC3_mouse_sidebarClosed() {
+(function sidebarRebind_mouse_sidebarClosed() {
   const tableA = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'H2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
@@ -1924,10 +1924,10 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 })();
 
 // ---------------------------------------------------------------------------
-// AC3 (touch second-tap path): sidebar CLOSED → NO RESET
+// sidebar CLOSED → NO RESET
 // ---------------------------------------------------------------------------
 
-(function sidebarRebind_AC3_touch_sidebarClosed() {
+(function sidebarRebind_touch_sidebarClosed() {
   const tableA = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'H2' }],
     [{ tag: 'td', text: '5,000,000' }, { tag: 'td', text: '100' }],
@@ -1973,9 +1973,9 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 })();
 
 // ---------------------------------------------------------------------------
-// AC1: ARIA grid with ONLY accessibility artifacts → Pass 2 registers it with a table pillbox
+// ARIA grid with ONLY accessibility artifacts → Pass 2 registers it with a table pillbox
 // ---------------------------------------------------------------------------
-(function pass2aria_AC1_onlyArtifactTables_getsTablePillbox() {
+(function pass2aria_onlyArtifactTables_getsTablePillbox() {
   const artifact1 = makeArtifactEmbeddedTable();
   const artifact2 = makeArtifactEmbeddedTable();
   const grid = makeAriaGrid([artifact1, artifact2]);
@@ -1998,9 +1998,9 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 })();
 
 // ---------------------------------------------------------------------------
-// AC2: ARIA grid wrapping a REAL table → Pass 2 bows out (no table pillbox, no class)
+// ARIA grid wrapping a REAL table → Pass 2 bows out (no table pillbox, no class)
 // ---------------------------------------------------------------------------
-(function pass2aria_AC2_realTable_pass2BowsOut() {
+(function pass2aria_realTable_pass2BowsOut() {
   const realTbl = makeRealEmbeddedTable();
   const grid    = makeAriaGrid([realTbl]);
 
@@ -2021,9 +2021,9 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 })();
 
 // ---------------------------------------------------------------------------
-// Adversarial AC2-mix: grid with an artifact + one real table → still skipped
+// grid with an artifact + one real table → still skipped
 // ---------------------------------------------------------------------------
-(function pass2aria_adversarial_mixedArtifactAndReal_bowsOut() {
+(function pass2aria_mixedArtifactAndReal_bowsOut() {
   const artifact = makeArtifactEmbeddedTable();
   const real    = makeRealEmbeddedTable();
   const grid    = makeAriaGrid([artifact, real]);
@@ -2048,7 +2048,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // Adversarial: grid with NO embedded tables → Pass 2 adds class + table pillbox
 // (no embedded tables means .some(!artifact) is false — empty array)
 // ---------------------------------------------------------------------------
-(function pass2aria_adversarial_noEmbeddedTables_getsTablePillbox() {
+(function pass2aria_noEmbeddedTables_getsTablePillbox() {
   const grid = makeAriaGrid([]);
 
   withTablePillboxDocumentMock(function() {
@@ -2070,7 +2070,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // ---------------------------------------------------------------------------
 // Adversarial: an already registered grid is skipped (preserved guard)
 // ---------------------------------------------------------------------------
-(function pass2aria_adversarial_alreadyRegistered_skipped() {
+(function pass2aria_alreadyRegistered_skipped() {
   const grid = makeAriaGrid([]);
   DR_MODEL.registerTable(grid); // the "already found" signal pass 2 checks
 
@@ -2093,7 +2093,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // Adversarial: element with tagName=TABLE is skipped by the tagName guard
 // (the preserved `if (el.tagName === 'TABLE') return;` fires before the new line)
 // ---------------------------------------------------------------------------
-(function pass2aria_adversarial_tableTagName_skipped() {
+(function pass2aria_tableTagName_skipped() {
   const artifact = makeArtifactEmbeddedTable();
   // Make an ARIA-grid-matching element that is itself a <TABLE>
   const classes = new Set();
@@ -2127,23 +2127,23 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 })();
 
 // ---------------------------------------------------------------------------
-// Acceptance criteria
+// Checked here:
 //
-// AC1: Clicking the table pillbox while the sidebar is open changes
+// Clicking the table pillbox while the sidebar is open changes
 //      enabledEl.checked to match the table's new rounded/unrounded state
 //      (sidebar handler updates the checkbox).
 //
-// AC2: Clicking the sidebar pillbox still updates the table pillbox
+// Clicking the sidebar pillbox still updates the table pillbox
 //      state (regression guard).
 //
-// AC3: Toggling a table that is NOT lastRightClickedTable sends no spurious
+// Toggling a table that is NOT lastRightClickedTable sends no spurious
 //      sidebar update.
 //
-// AC5: Existing tests pass (covered by running the full suite without --bail).
+// Existing tests pass (covered by running the full suite without --bail).
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// AC1: Clicking the table pillbox while the sidebar is open sends the
+// Clicking the table pillbox while the sidebar is open sends the
 //      settings notice for the active table, and the sidebar's
 //      handler for it redraws the switch from the notice's settings.
 //
@@ -2155,7 +2155,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 //     itself through its harness.
 // ---------------------------------------------------------------------------
 
-(function tablePillbox_AC1_partA_settingsNoticeOnActiveTable() {
+(function tablePillbox_partA_settingsNoticeOnActiveTable() {
   // Capture sendMessage calls.
   const sent = [];
   const origSend = global.chrome.runtime.sendMessage;
@@ -2181,27 +2181,27 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   lastRightClickedTable = null;
 
   const notice = sent.find(m => m.topic === 'state:settingsChanged');
-  eq('AC1 part-A: the settings notice is sent when the pressed table is the active one',
+  eq('part-A: the settings notice is sent when the pressed table is the active one',
     notice !== undefined, true);
-  eq('AC1 part-A: the notice marks a page-side writer',
+  eq('part-A: the notice marks a page-side writer',
     notice && notice.source, 'page');
   // After click on a fresh table, it becomes rounded → enabled should be true.
-  eq('AC1 part-A: the notice carries the new on/off value (true after first click)',
+  eq('part-A: the notice carries the new on/off value (true after first click)',
     notice && notice.settings.enabled, true);
 })();
 
-(function tablePillbox_AC1_partB_sidebarHandlerStaticAnalysis() {
+(function tablePillbox_partB_sidebarHandlerStaticAnalysis() {
   // Verify sidebar.js source subscribes to the settings notice and redraws
   // its controls on a notice another writer sent.
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
-  eq("AC1 part-B: sidebar.js subscribes to 'state:settingsChanged'",
+  eq("part-B: sidebar.js subscribes to 'state:settingsChanged'",
     /boundTab\.subscribe\(\s*'state:settingsChanged'/.test(sidebarSrc), true);
-  eq('AC1 part-B: sidebar.js redraws its controls on a notice another writer sent',
+  eq('part-B: sidebar.js redraws its controls on a notice another writer sent',
     /'state:settingsChanged'[\s\S]{0,300}redrawFromActiveTable\(source === 'sidebar'\)/.test(sidebarSrc), true);
 })();
 
 // ---------------------------------------------------------------------------
-// AC2: Clicking the sidebar pillbox still updates the table pillbox
+// Clicking the sidebar pillbox still updates the table pillbox
 //      state (regression guard).
 //
 // The sidebar-to-table path goes through content.js's request:applySettings
@@ -2209,20 +2209,20 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // guard that a press still takes a table through the full round trip.
 // ---------------------------------------------------------------------------
 
-(function tablePillbox_AC2_sidebarToTablePath_regression() {
+(function tablePillbox_sidebarToTablePath_regression() {
   // Static guard: content.js must still contain the request:applySettings
   // message handler that triggers rounding when the sidebar changes settings.
   const contentSrc = sourceByName('content.js');
   if (contentSrc === null) {
-    eq('AC2 regression: source file content.js present in manifest', false, true);
+    eq('regression: source file content.js present in manifest', false, true);
     return;
   }
-  eq('AC2 regression: content.js still handles request:applySettings message',
+  eq('regression: content.js still handles request:applySettings message',
     contentSrc.includes('request:applySettings'), true);
 
   // Static guard: sidebar.js must still have enabledEl wired up.
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
-  eq('AC2 regression: sidebar.js still references enabledEl',
+  eq('regression: sidebar.js still references enabledEl',
     sidebarSrc.includes('enabledEl'), true);
 
   // Dynamic guard: a press still takes a table on and back off; the intent
@@ -2245,11 +2245,11 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     withCreateTreeWalker(function() { DR_BUS.publish('intent:toggleTable', { table }); });
     const isNowRounded = showsSimplified(table);
 
-    eq('AC2 regression: a press takes a table showing the original to simplified',
+    eq('regression: a press takes a table showing the original to simplified',
       !wasRounded && isNowRounded, true);
 
     withCreateTreeWalker(function() { DR_BUS.publish('intent:toggleTable', { table }); });
-    eq('AC2 regression: a second press takes it back to its original values',
+    eq('regression: a second press takes it back to its original values',
       showsSimplified(table), false);
   } finally {
     DR_MODEL.setActiveTable(null);
@@ -2258,15 +2258,15 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 })();
 
 // ---------------------------------------------------------------------------
-// AC3: a press on a table that is not the active one moves the active table.
+// a press on a table that is not the active one moves the active table.
 //
-// The spec asked for no spurious sidebar update from such a press. The press
+// A press must send no spurious sidebar update from such a press. The press
 // makes the pressed table active and sends state:tableSwitched first, so the
 // settings notice that follows marks the active table, and the sidebar
 // redraws from it for the table it now describes.
 // ---------------------------------------------------------------------------
 
-(function tablePillbox_AC3_wrongTable_movesTheActiveTableBeforeTheNotice() {
+(function tablePillbox_wrongTable_movesTheActiveTableBeforeTheNotice() {
   const sent = [];
   const origSend = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
@@ -2292,19 +2292,19 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   global.chrome.runtime.sendMessage = origSend;
   lastRightClickedTable = null;
 
-  eq('AC3: clicking non-lastRightClickedTable reassigns lastRightClickedTable',
+  eq('clicking non-lastRightClickedTable reassigns lastRightClickedTable',
     lrc === tableA, true);
-  eq('AC3: clicking non-lastRightClickedTable sends state:tableSwitched',
+  eq('clicking non-lastRightClickedTable sends state:tableSwitched',
     actions.includes('state:tableSwitched'), true);
-  eq('AC3: the switch reaches the sidebar before the settings notice',
+  eq('the switch reaches the sidebar before the settings notice',
     actions.indexOf('state:tableSwitched') < actions.indexOf('state:settingsChanged'), true);
-  eq('AC3: the press sends one settings notice, from a page-side writer',
+  eq('the press sends one settings notice, from a page-side writer',
     notices.map(n => n.source), ['page']);
 })();
 
 // With no table active, a press makes the pressed table the active one, so
 // its press sends one settings notice, as a press on the active table does.
-(function tablePillbox_AC3_noLastRightClicked_pressSendsOneNotice() {
+(function tablePillbox_noLastRightClicked_pressSendsOneNotice() {
   const sent = [];
   const origSend = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
@@ -2322,13 +2322,13 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   lastRightClickedTable = null;
 
   const notices = sent.filter(m => m.topic === 'state:settingsChanged');
-  eq('AC3 null active table: the press sends one settings notice, from a page-side writer',
+  eq('null active table: the press sends one settings notice, from a page-side writer',
     notices.map(n => n.source), ['page']);
 })();
 
-// AC3 corollary: a press on the active table publishes the table's new
+// corollary: a press on the active table publishes the table's new
 // settings once, whatever the sidebar is doing. Nothing here reads that.
-(function tablePillbox_AC3_sidebarClosed_oneNotice() {
+(function tablePillbox_sidebarClosed_oneNotice() {
   const sent = [];
   const origSend = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
@@ -2349,16 +2349,16 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   // with the sidebar closed — the controller reads no sidebar visibility.
   // "No spurious sidebar update" still holds because a closed sidebar has no
   // page to receive the message.
-  eq('AC3 corollary: a press on the active table publishes its settings once (a closed sidebar has no page to receive it)',
+  eq('corollary: a press on the active table publishes its settings once (a closed sidebar has no page to receive it)',
     notices.length, 1);
 })();
 
 // Right-click activation
 // ---------------------------------------------------------------------------
-// AC1: Right-clicking a table causes flashActiveTable to run on that table.
-// AC2: state:tableActivated onMessage in sidebar.js calls flashSidebarContainer.
-// AC3: Right-clicking a non-table element produces NO flash and NO state:tableActivated send.
-// AC4: background.js does NOT relay state:tableActivated.
+// Right-clicking a table causes flashActiveTable to run on that table.
+// state:tableActivated onMessage in sidebar.js calls flashSidebarContainer.
+// Right-clicking a non-table element produces NO flash and NO state:tableActivated send.
+// background.js does NOT relay state:tableActivated.
 // ---------------------------------------------------------------------------
 //
 // Runtime note: the main eval() above registered document.addEventListener with
@@ -2386,61 +2386,61 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   const bgSrc      = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
-  // AC1 (source): contextmenu handler calls flashActiveTable(table) inside
+  // contextmenu handler calls flashActiveTable(table) inside
   // the `if (found)` guard. findTargetTable returns { handle, isNew }, so the handler
   // guards on `found` and derives `table` from registerIfNew(found)
   // before flashing it.
   // Pattern: `if (found) { ... flashActiveTable(table) ...` within the handler.
-  eq('table-activation AC1 source: contextmenu handler calls flashActiveTable(table)',
+  eq('active table source: contextmenu handler calls flashActiveTable(table)',
     /if\s*\(\s*found\s*\)[\s\S]{0,300}flashActiveTable\(\s*table\s*\)/.test(contentSrc),
     true);
 
-  // AC1 (source): the call to flashActiveTable is inside the `if (found)` block
+  // the call to flashActiveTable is inside the `if (found)` block
   // — it cannot appear BEFORE the guard.
   // We verify that flashActiveTable does NOT appear before the first `if (found)`.
   const contextmenuMatch = contentSrc.match(/document\.addEventListener\s*\(\s*['"]contextmenu['"][\s\S]*?\}\s*,\s*true\s*\)/);
   const handlerSrc = contextmenuMatch ? contextmenuMatch[0] : '';
   const flashIndex = handlerSrc.indexOf('flashActiveTable');
   const guardIndex = handlerSrc.indexOf('if (found)');
-  eq('table-activation AC1 source: flashActiveTable appears after if(found) guard in handler',
+  eq('active table source: flashActiveTable appears after if(found) guard in handler',
     flashIndex !== -1 && guardIndex !== -1 && flashIndex > guardIndex,
     true);
 
-  // AC3 (source): state:tableActivated sendMessage is inside the `if (found)` block,
+  // state:tableActivated sendMessage is inside the `if (found)` block,
   // meaning a non-table right-click cannot trigger it.
   const sendMsgIndex = handlerSrc.indexOf('state:tableActivated');
-  eq('table-activation AC3 source: state:tableActivated send is inside if(found) guard',
+  eq('active table source: state:tableActivated send is inside if(found) guard',
     sendMsgIndex !== -1 && sendMsgIndex > guardIndex,
     true);
 
-  // AC2 (source): sidebar.js state:tableActivated handler calls flashSidebarContainer().
-  eq('table-activation AC2 source: sidebar.js state:tableActivated handler calls flashSidebarContainer()',
+  // sidebar.js state:tableActivated handler calls flashSidebarContainer().
+  eq('active table source: sidebar.js state:tableActivated handler calls flashSidebarContainer()',
     /state:tableActivated[\s\S]{0,120}flashSidebarContainer\s*\(\s*\)/.test(sidebarSrc),
     true);
 
-  // AC2 (source): flashSidebarContainer adds the dr-sidebar-flash class to document.body.
-  eq('table-activation AC2 source: flashSidebarContainer adds dr-sidebar-flash class',
+  // flashSidebarContainer adds the dr-sidebar-flash class to document.body.
+  eq('active table source: flashSidebarContainer adds dr-sidebar-flash class',
     /flashSidebarContainer[\s\S]{0,300}classList\.add\s*\(\s*SIDEBAR_FLASH_CLASS\s*\)/.test(sidebarSrc),
     true);
 
-  // AC4 (source): the worker neither publishes nor subscribes to the activation
+  // the worker neither publishes nor subscribes to the activation
   // topic. The sidebar receives it straight from the content script over the
   // extension-pages route. Runtime coverage lives in backgroundMessageRouting.
-  eq('table-activation AC4 source: the worker does not publish the activation report',
+  eq('active table source: the worker does not publish the activation report',
     /publish\(\s*'state:tableActivated'/.test(bgSrc), false);
-  eq('table-activation AC4 source: the worker does not subscribe to it either',
+  eq('active table source: the worker does not subscribe to it either',
     /subscribe\(\s*'state:tableActivated'/.test(bgSrc), false);
 
-  // AC4 (source): content.js reaches the sidebar directly, without the worker.
+  // content.js reaches the sidebar directly, without the worker.
   // The topic's route is what decides that, so the route is the thing to pin.
-  eq('table-activation AC4 source: content.js publishes the activation report',
+  eq('active table source: content.js publishes the activation report',
     /DR_BUS\.publish\(\s*'state:tableActivated'/.test(contentSrc), true);
-  eq('table-activation AC4 source: and its route reaches every extension page, the sidebar included',
+  eq('active table source: and its route reaches every extension page, the sidebar included',
     DR_BUS.TOPICS['state:tableActivated'].route, 'extension-pages');
 })();
 
 // ---------------------------------------------------------------------------
-// AC1 + AC3 runtime: re-eval with a capturing document.addEventListener stub
+// + runtime: re-eval with a capturing document.addEventListener stub
 // so the contextmenu handler can be invoked directly.
 // ---------------------------------------------------------------------------
 (function tableContextmenuActivation_runtime() {
@@ -2486,12 +2486,12 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
       typeof capturedHandler, 'function');
 
     if (typeof capturedHandler !== 'function') {
-      eq('table-activation AC1 runtime: handler capture required (skipped)', false, true);
-      eq('table-activation AC3 runtime: handler capture required (skipped)', false, true);
+      eq('active table runtime: handler capture required (skipped)', false, true);
+      eq('active table runtime: handler capture required (skipped)', false, true);
       return;
     }
 
-    // --- AC1: right-clicking a table flashes that table AND sends state:tableActivated ---
+    // --- right-clicking a table flashes that table AND sends state:tableActivated ---
     const flashedClasses = [];
     const mockTable = {
       tagName: 'TABLE',
@@ -2512,19 +2512,19 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     sentMessages.length = 0;
     capturedHandler({ target: mockTable });
 
-    eq('table-activation AC1 runtime: flashActiveTable adds dr-ext-active-flash to the table',
+    eq('active table runtime: flashActiveTable adds dr-ext-active-flash to the table',
       flashedClasses.includes('dr-ext-active-flash'),
       true);
 
-    eq('table-activation AC1 runtime: flashActiveTable adds the highlight stylesheet on the first right-click on a page',
+    eq('active table runtime: flashActiveTable adds the highlight stylesheet on the first right-click on a page',
       addedToHead.some((node) => String(node.textContent).includes('drExtActiveFlash')),
       true);
 
-    eq('table-activation AC1 runtime: state:tableActivated sent when right-clicking a table',
+    eq('active table runtime: state:tableActivated sent when right-clicking a table',
       sentMessages.some(m => m.topic === 'state:tableActivated'),
       true);
 
-    // --- AC3: right-clicking a non-table element — no flash, no state:tableActivated ---
+    // --- right-clicking a non-table element — no flash, no state:tableActivated ---
     const nonTableTarget = {
       tagName: 'SPAN',
       classList: { contains() { return false; } },
@@ -2535,7 +2535,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     sentMessages.length = 0;
     capturedHandler({ target: nonTableTarget });
 
-    eq('table-activation AC3 runtime: no state:tableActivated sent when right-clicking non-table',
+    eq('active table runtime: no state:tableActivated sent when right-clicking non-table',
       sentMessages.some(m => m.topic === 'state:tableActivated'),
       false);
 
@@ -2690,8 +2690,6 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // ---------------------------------------------------------------------------
 // The right-click handler
 // registers what the new route resolves and makes it active.
-// Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.5 and the
-// right-click-registers block in §5; decision D1.
 // ---------------------------------------------------------------------------
 //
 // The resolver half of these criteria sits with the findTargetTable tests
@@ -2705,93 +2703,93 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // table and no subtree observer, and the criterion is that the route needs
 // neither.
 
-// --- AC1: a right-click in the scrolling pane registers it and makes it active ---
+// --- a right-click in the scrolling pane registers it and makes it active ---
 
-(function rightClickRegisters_AC1_runtime_scrollingPaneRegistersAndBecomesActive() {
+(function rightClickRegisters_runtime_scrollingPaneRegistersAndBecomesActive() {
   withRightClickSandbox(function (ctx) {
     const grid = makeDatabaseQueryGrid();
 
-    eq('right-click AC1 runtime: the contextmenu handler was captured',
+    eq('right-click runtime: the contextmenu handler was captured',
       typeof ctx.contextmenuHandler, 'function');
     if (typeof ctx.contextmenuHandler !== 'function') return;
 
-    eq('right-click AC1 runtime: no scan registered the nest before the click',
+    eq('right-click runtime: no scan registered the nest before the click',
       ctx.model.getRegisteredTables().length, 0);
 
     ctx.contextmenuHandler({ target: grid.scrollRowEls[2].children[1] });
 
-    eq('right-click AC1 runtime: the scrolling pane enters the registry',
+    eq('right-click runtime: the scrolling pane enters the registry',
       ctx.model.hasTable(grid.scrollPaneEl), true);
-    eq('right-click AC1 runtime: the scrolling pane becomes the active table',
+    eq('right-click runtime: the scrolling pane becomes the active table',
       ctx.model.getActiveTable() === grid.scrollPaneEl, true);
-    eq('right-click AC1 runtime: the registry holds the scrolling pane alone',
+    eq('right-click runtime: the registry holds the scrolling pane alone',
       ctx.model.getRegisteredTables().map((el) => el === grid.scrollPaneEl), [true]);
-    eq('right-click AC1 runtime: the scrolling pane carries a table pillbox',
+    eq('right-click runtime: the scrolling pane carries a table pillbox',
       ctx.tablePillboxes.has(grid.scrollPaneEl), true);
-    eq('right-click AC1 runtime: the pinned pane carries no table pillbox',
+    eq('right-click runtime: the pinned pane carries no table pillbox',
       ctx.tablePillboxes.has(grid.pinnedPaneEl), false);
-    eq('right-click AC1 runtime: the wrapper carries no table pillbox',
+    eq('right-click runtime: the wrapper carries no table pillbox',
       ctx.tablePillboxes.has(grid.wrapperEl), false);
-    eq('right-click AC1 runtime: the click reports the table as activated',
+    eq('right-click runtime: the click reports the table as activated',
       ctx.sentMessages.some((m) => m.topic === 'state:tableActivated'), true);
   });
 })();
 
-// --- AC1: a right-click on the nest's own layers registers the scrolling pane ---
+// --- a right-click on the nest's own layers registers the scrolling pane ---
 
-(function rightClickRegisters_AC1_runtime_aClickOnAPlainLayerRegistersTheScrollingPane() {
+(function rightClickRegisters_runtime_aClickOnAPlainLayerRegistersTheScrollingPane() {
   withRightClickSandbox(function (ctx) {
     const plain = makeDatabaseQueryGrid({ plainWrapper: true });
 
-    eq('right-click AC1 runtime: the contextmenu handler was captured (plain layer)',
+    eq('right-click runtime: the contextmenu handler was captured (plain layer)',
       typeof ctx.contextmenuHandler, 'function');
     if (typeof ctx.contextmenuHandler !== 'function') return;
 
     ctx.contextmenuHandler({ target: plain.paneParentEl });
 
-    eq('right-click AC1 runtime: a click on the plain layer between the panes registers the scrolling pane',
+    eq('right-click runtime: a click on the plain layer between the panes registers the scrolling pane',
       ctx.model.hasTable(plain.scrollPaneEl), true);
-    eq('right-click AC1 runtime: that click makes the scrolling pane active',
+    eq('right-click runtime: that click makes the scrolling pane active',
       ctx.model.getActiveTable() === plain.scrollPaneEl, true);
-    eq('right-click AC1 runtime: that click puts a table pillbox on the scrolling pane',
+    eq('right-click runtime: that click puts a table pillbox on the scrolling pane',
       ctx.tablePillboxes.has(plain.scrollPaneEl), true);
-    eq('right-click AC1 runtime: that click puts no table pillbox on the plain layer or the wrapper',
+    eq('right-click runtime: that click puts no table pillbox on the plain layer or the wrapper',
       [plain.paneParentEl, plain.wrapperEl].map((el) => ctx.tablePillboxes.has(el)), [false, false]);
   });
 })();
 
-// --- AC2: a right-click in the row-number gutter registers the scrolling pane ---
+// --- a right-click in the row-number gutter registers the scrolling pane ---
 
-(function rightClickRegisters_AC2_runtime_gutterRegistersTheScrollingPane() {
+(function rightClickRegisters_runtime_gutterRegistersTheScrollingPane() {
   withRightClickSandbox(function (ctx) {
     const grid = makeDatabaseQueryGrid();
 
-    eq('right-click AC2 runtime: the contextmenu handler was captured',
+    eq('right-click runtime: the contextmenu handler was captured',
       typeof ctx.contextmenuHandler, 'function');
     if (typeof ctx.contextmenuHandler !== 'function') return;
 
     ctx.contextmenuHandler({ target: grid.pinnedRowEls[0].children[0] });
 
-    eq('right-click AC2 runtime: a click in the row-number gutter registers the scrolling pane',
+    eq('right-click runtime: a click in the row-number gutter registers the scrolling pane',
       ctx.model.hasTable(grid.scrollPaneEl), true);
-    eq('right-click AC2 runtime: the scrolling pane becomes the active table',
+    eq('right-click runtime: the scrolling pane becomes the active table',
       ctx.model.getActiveTable() === grid.scrollPaneEl, true);
-    eq('right-click AC2 runtime: the pinned pane stays out of the registry',
+    eq('right-click runtime: the pinned pane stays out of the registry',
       ctx.model.hasTable(grid.pinnedPaneEl), false);
-    eq('right-click AC2 runtime: the wrapper stays out of the registry',
+    eq('right-click runtime: the wrapper stays out of the registry',
       ctx.model.hasTable(grid.wrapperEl), false);
-    eq('right-click AC2 runtime: the scrolling pane carries a table pillbox',
+    eq('right-click runtime: the scrolling pane carries a table pillbox',
       ctx.tablePillboxes.has(grid.scrollPaneEl), true);
-    eq('right-click AC2 runtime: the pinned pane carries no table pillbox',
+    eq('right-click runtime: the pinned pane carries no table pillbox',
       ctx.tablePillboxes.has(grid.pinnedPaneEl), false);
-    eq('right-click AC2 runtime: the wrapper carries no table pillbox',
+    eq('right-click runtime: the wrapper carries no table pillbox',
       ctx.tablePillboxes.has(grid.wrapperEl), false);
   });
 })();
 
-// --- AC3: a role-bearing element that fails the data test registers nothing ---
+// --- a role-bearing element that fails the data test registers nothing ---
 
-(function rightClickRegisters_AC3_runtime_aFailedDataTestRegistersNothing() {
+(function rightClickRegisters_runtime_aFailedDataTestRegistersNothing() {
   withRightClickSandbox(function (ctx) {
     const oneCell = makeRoleBearingNest([makeDgRow(0, ['17'])]);
     const noNumber = makeRoleBearingNest([
@@ -2799,39 +2797,39 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
       makeDgRow(1, ['south', 'bravo']),
     ]);
 
-    eq('right-click AC3 runtime: the contextmenu handler was captured',
+    eq('right-click runtime: the contextmenu handler was captured',
       typeof ctx.contextmenuHandler, 'function');
     if (typeof ctx.contextmenuHandler !== 'function') return;
 
     ctx.contextmenuHandler({ target: oneCell.children[0].children[0] });
 
-    eq('right-click AC3 runtime: a click in the one-row-one-cell element registers nothing',
+    eq('right-click runtime: a click in the one-row-one-cell element registers nothing',
       ctx.model.getRegisteredTables().length, 0);
-    eq('right-click AC3 runtime: a click in the one-row-one-cell element leaves no active table',
+    eq('right-click runtime: a click in the one-row-one-cell element leaves no active table',
       ctx.model.getActiveTable(), null);
-    eq('right-click AC3 runtime: the one-row-one-cell element gets no table pillbox',
+    eq('right-click runtime: the one-row-one-cell element gets no table pillbox',
       ctx.tablePillboxes.has(oneCell), false);
 
     ctx.contextmenuHandler({ target: noNumber.children[0].children[0] });
 
-    eq('right-click AC3 runtime: a click in the two-rows-no-number element registers nothing',
+    eq('right-click runtime: a click in the two-rows-no-number element registers nothing',
       ctx.model.getRegisteredTables().length, 0);
-    eq('right-click AC3 runtime: a click in the two-rows-no-number element leaves no active table',
+    eq('right-click runtime: a click in the two-rows-no-number element leaves no active table',
       ctx.model.getActiveTable(), null);
-    eq('right-click AC3 runtime: the two-rows-no-number element gets no table pillbox',
+    eq('right-click runtime: the two-rows-no-number element gets no table pillbox',
       ctx.tablePillboxes.has(noNumber), false);
-    eq('right-click AC3 runtime: neither click reports a table as activated',
+    eq('right-click runtime: neither click reports a table as activated',
       ctx.sentMessages.some((m) => m.topic === 'state:tableActivated'), false);
   });
 })();
 
-// --- AC5: the route needs no pending observer ---
+// --- the route needs no pending observer ---
 
-(function rightClickRegisters_AC5_runtime_theRouteInstallsNoObserver() {
+(function rightClickRegisters_runtime_theRouteInstallsNoObserver() {
   withRightClickSandbox(function (ctx) {
     const grid = makeDatabaseQueryGrid();
 
-    eq('right-click AC5 runtime: the contextmenu handler was captured',
+    eq('right-click runtime: the contextmenu handler was captured',
       typeof ctx.contextmenuHandler, 'function');
     if (typeof ctx.contextmenuHandler !== 'function') return;
 
@@ -2842,16 +2840,16 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 
     ctx.contextmenuHandler({ target: grid.pinnedRowEls[1].children[0] });
 
-    eq('right-click AC5 runtime: the resolution and registration construct no observer',
+    eq('right-click runtime: the resolution and registration construct no observer',
       ctx.constructedObservers.length - observersAtLoad, 0);
-    eq('right-click AC5 runtime: the resolution and registration call observe no times',
+    eq('right-click runtime: the resolution and registration call observe no times',
       ctx.observeCalls.length - observeCallsAtLoad, 0);
-    eq('right-click AC5 runtime: no observer watches any element of the nest',
+    eq('right-click runtime: no observer watches any element of the nest',
       ctx.observeCalls.some((call) =>
         call.target === grid.wrapperEl ||
         call.target === grid.pinnedPaneEl ||
         call.target === grid.scrollPaneEl), false);
-    eq('right-click AC5 runtime: the registration still happened without one',
+    eq('right-click runtime: the registration still happened without one',
       ctx.model.hasTable(grid.scrollPaneEl) &&
         ctx.model.getActiveTable() === grid.scrollPaneEl, true);
   });
@@ -2879,7 +2877,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   });
 })();
 
-// AC1 (live): flashActiveTable (already in global scope from the main eval)
+// flashActiveTable (already in global scope from the main eval)
 // adds 'dr-ext-active-flash' to the passed table's classList.
 (function tableContextmenuActivation_flashFn() {
   const addedClasses = [];
@@ -2893,7 +2891,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 
   flashActiveTable(mockTable);
 
-  eq('table-activation AC1 live: flashActiveTable adds dr-ext-active-flash class',
+  eq('active table live: flashActiveTable adds dr-ext-active-flash class',
     addedClasses.includes('dr-ext-active-flash'),
     true);
 })();
