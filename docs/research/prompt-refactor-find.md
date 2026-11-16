@@ -17,7 +17,7 @@ Read every comment in the file.
 
 - Search for: comments on self-documenting code, where the behavior or logic is clear from the code alone.
 - Search for: comments that make up for unreadable code, where what the code does, or where its values come from, is hard to understand without the comment. Leave out cases where making the code readable would complicate it or go against one of the architecture principles below.
-- Search for: comments that describe behavior the code no longer has.
+- Search for: comments that describe behavior, names, or values the code no longer has.
 - Search for: comments longer than they need to be.
 
 ### Unify Code Paths for Parity by Construction
