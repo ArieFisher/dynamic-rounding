@@ -1108,7 +1108,7 @@ function makeDgRow(rowIndex, cellTexts) {
  *     the scrolling pane alone. Two columns pass it, which puts two elements
  *     at depth 1.
  *   - rows: row pairs across the two panes. Zero builds an empty wrapper, the
- *     shape a later sprint retests once its rows arrive.
+ *     shape a pending table re-tests once its rows arrive.
  *   - plainWrapper: puts one role-less div between the wrapper and the two
  *     panes. A nesting depth counts qualifying elements, so the extra layer
  *     leaves both panes at depth 1. `paneParentEl` in the result is that div,

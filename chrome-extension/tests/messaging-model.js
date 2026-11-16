@@ -61,10 +61,10 @@
 // Sidebar settings pull and unified toggle
 // ---------------------------------------------------------------------------
 
-(function sprintSidebarPullAndUnifiedToggle() {
+(function sidebarPullAndUnifiedToggle() {
   const contentSrc = sourceByName('content.js');
   if (contentSrc === null) {
-    eq('sprint-sidebar-pull: source file content.js present in manifest', false, true);
+    eq('sidebar pull: source file content.js present in manifest', false, true);
     return;
   }
 
@@ -502,7 +502,7 @@
   }
 })();
 
-// GR6e: the registry original is stored ONCE; a second write against the
+// the registry original is stored ONCE; a second write against the
 // patched piece lands nothing and leaves the stored original in place.
 // A re-round starts from restored text: every apply resets the table first.
 (function gr6e_drOriginal_storedOnce() {
@@ -512,16 +512,16 @@
 
   // First write: original should be stored
   cellObj.applyPatches([{ index: 0, numStr: '12345', newNum: '12000' }]);
-  eq('GR6e: registry original stored on first write',
+  eq('registry original stored on first write',
     DR_MODEL.getTableOriginalText(grid.wrapperEl, grid.cellEls[0]), '12345');
 
   // Second write, against the piece's patched text: the piece no longer
   // shows its stored original, so nothing lands.
-  eq('GR6e: a second write into the patched piece lands nothing',
+  eq('a second write into the patched piece lands nothing',
     cellObj.applyPatches([{ index: 0, numStr: '12000', newNum: '10000' }]), 0);
-  eq('GR6e: registry original NOT overwritten on second write',
+  eq('registry original NOT overwritten on second write',
     DR_MODEL.getTableOriginalText(grid.wrapperEl, grid.cellEls[0]), '12345');
-  eq('GR6e: nodeValue keeps the first write',
+  eq('nodeValue keeps the first write',
     grid.cellEls[0].childNodes[0].nodeValue, '12000');
 })();
 
@@ -554,7 +554,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// E2E-GR2: resetTable after roundTable — Text node restored in place, class
+// resetTable after roundTable — Text node restored in place, class
 // removed, drOriginal cleared, childNodes.length still unchanged.
 // ---------------------------------------------------------------------------
 (function e2e_gr2_resetTable_restoresNodeValue() {
@@ -573,35 +573,35 @@
   roundTable(grid.wrapperEl, opts);
 
   // Confirm the cell is rounded before we reset (pre-condition).
-  eq('E2E-GR2 (pre): cell[0] is rounded before resetTable',
+  eq('(pre): cell[0] is rounded before resetTable',
     cell0.classList.contains('dr-ext-rounded'), true);
 
   // Now reset.
   resetTable(grid.wrapperEl);
 
   // nodeValue must be back to the original on the SAME Text node.
-  eq('E2E-GR2: Text node nodeValue restored to original value',
+  eq('Text node nodeValue restored to original value',
     textNodeBefore.nodeValue, originalValue);
 
   // The SAME node object must still be in childNodes[0].
-  eq('E2E-GR2: Text node identity preserved through reset (same reference)',
+  eq('Text node identity preserved through reset (same reference)',
     cell0.childNodes[0] === textNodeBefore, true);
 
   // dr-ext-rounded class must be removed.
-  eq('E2E-GR2: dr-ext-rounded removed after resetTable',
+  eq('dr-ext-rounded removed after resetTable',
     cell0.classList.contains('dr-ext-rounded'), false);
 
   // The registry original must be cleared.
-  eq('E2E-GR2: registry original cleared after resetTable',
+  eq('registry original cleared after resetTable',
     DR_MODEL.getTableOriginal(grid.wrapperEl, cell0), undefined);
 
   // childNodes.length still unchanged (no innerHTML write at any point).
-  eq('E2E-GR2: childNodes.length unchanged throughout (no innerHTML write)',
+  eq('childNodes.length unchanged throughout (no innerHTML write)',
     cell0.childNodes.length, childCountBefore);
 })();
 
 // ---------------------------------------------------------------------------
-// E2E-GR4: mode:'extracted' skip on grids — mixed-text cell is left unrounded;
+// mode:'extracted' skip on grids — mixed-text cell is left unrounded;
 // pure-numeric cell IS rounded. Known limitation: grids skip extracted cells
 // (innerHTML incompatible with nodeValue-only write model).
 // ---------------------------------------------------------------------------
@@ -627,24 +627,24 @@
   roundTable(grid.wrapperEl, opts);
 
   // Mixed cell must be UNROUNDED (extracted path skipped on virtualized grid).
-  eq('E2E-GR4: mixed-text cell NOT rounded on grid (extracted mode skipped)',
+  eq('mixed-text cell NOT rounded on grid (extracted mode skipped)',
     mixedCell.classList.contains('dr-ext-rounded'), false);
 
-  eq('E2E-GR4: mixed-text cell text node unchanged',
+  eq('mixed-text cell text node unchanged',
     mixedCell.childNodes[0].nodeValue, mixedTextBefore);
 
   // Pure-numeric cell must be rounded.
-  eq('E2E-GR4: pure-numeric cell IS rounded on grid',
+  eq('pure-numeric cell IS rounded on grid',
     numericCell.classList.contains('dr-ext-rounded'), true);
 
-  eq('E2E-GR4: pure-numeric cell text changed from original',
+  eq('pure-numeric cell text changed from original',
     numericCell.childNodes[0].nodeValue !== numericTextBefore, true);
 
   // Registry original set on numeric, not on mixed.
-  eq('E2E-GR4: registry original set on pure-numeric cell',
+  eq('registry original set on pure-numeric cell',
     DR_MODEL.getTableOriginalText(grid.wrapperEl, numericCell), numericTextBefore);
 
-  eq('E2E-GR4: registry original NOT set on mixed-text cell',
+  eq('registry original NOT set on mixed-text cell',
     DR_MODEL.getTableOriginal(grid.wrapperEl, mixedCell), undefined);
 })();
 
@@ -918,11 +918,9 @@
 // ---------------------------------------------------------------------------
 // A grid that arrives before its rows registers when
 // the rows arrive.
-// Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.4 and the
-// pending-retest block in §5; the re-test cap's reasoning in §6.
 // ---------------------------------------------------------------------------
 //
-// The rule these assertions pin, in the specification's words:
+// The rule these assertions pin:
 //   - A chain root whose containment chain is empty — no qualifying element of
 //     its nest passes the data test — becomes a pending table: one debounced
 //     subtree observer on the chain root, watching childList, characterData,
@@ -947,13 +945,13 @@ const PENDING_FILL_ROWS = [
   ['charlie', '2,140,663', '58.02'],
 ];
 
-// --- Criterion 1: a container inserted empty and then filled registers ---
+// --- a container inserted empty and then filled registers ---
 
-(function pendingRetest_AC1_aLoneContainerFilledLaterRegistersAndGainsATablePillbox() {
+(function pendingRetest_aLoneContainerFilledLaterRegistersAndGainsATablePillbox() {
   const lone = makeDgNode('DIV', 'lone-pending-grid', 'grid', []);
   const before = DR_MODEL.getRegisteredTables().length;
 
-  eq('pending AC1: the suite holds no pending table before this case',
+  eq('pending: the suite holds no pending table before this case',
     pendingRoots.size, 0);
 
   withPendingHarness(function ({ observers, timers }) {
@@ -961,36 +959,36 @@ const PENDING_FILL_ROWS = [
       injectTablePillboxes(lone);
     });
 
-    eq('pending AC1: an empty container registers nothing',
+    eq('pending: an empty container registers nothing',
       DR_MODEL.hasTable(lone), false);
-    eq('pending AC1: an empty container gains no table pillbox', tablePillboxes.has(lone), false);
-    eq('pending AC1: an empty container is held as a pending table',
+    eq('pending: an empty container gains no table pillbox', tablePillboxes.has(lone), false);
+    eq('pending: an empty container is held as a pending table',
       pendingRoots.has(lone), true);
-    eq('pending AC1: the empty container carries one observer', observers.length, 1);
+    eq('pending: the empty container carries one observer', observers.length, 1);
 
     // The rows arrive, each holding a number.
     PENDING_FILL_ROWS.forEach((cellTexts, i) => appendDgChild(lone, makeDgRow(i, cellTexts)));
-    eq('pending AC1: the filled container passes the data test', isDataTable(lone), true);
+    eq('pending: the filled container passes the data test', isDataTable(lone), true);
 
     withTablePillboxDocumentMock(function () {
       if (observers[0]) observers[0].trigger();
-      eq('pending AC1: one mutation schedules one re-test', runPendingRetestTimers(timers), 1);
+      eq('pending: one mutation schedules one re-test', runPendingRetestTimers(timers), 1);
     });
 
-    eq('pending AC1: the filled container registers', DR_MODEL.hasTable(lone), true);
-    eq('pending AC1: the filled container gains a table pillbox', tablePillboxes.has(lone), true);
-    eq('pending AC1: the registration drops the pending record',
+    eq('pending: the filled container registers', DR_MODEL.hasTable(lone), true);
+    eq('pending: the filled container gains a table pillbox', tablePillboxes.has(lone), true);
+    eq('pending: the registration drops the pending record',
       pendingRoots.has(lone), false);
-    eq('pending AC1: the registration disconnects the observer',
+    eq('pending: the registration disconnects the observer',
       observers[0] && observers[0].disconnectCount, 1);
-    eq('pending AC1: the registration adds exactly one registry entry',
+    eq('pending: the registration adds exactly one registry entry',
       DR_MODEL.getRegisteredTables().length - before, 1);
   });
 
   forgetRegisteredTable(lone);
 })();
 
-(function pendingRetest_AC1_anEmptyDatabaseQueryGridFilledLaterRegistersItsScrollingPane() {
+(function pendingRetest_anEmptyDatabaseQueryGridFilledLaterRegistersItsScrollingPane() {
   const grid = makeDatabaseQueryGrid({ rows: 0 });
   const before = DR_MODEL.getRegisteredTables().length;
 
@@ -999,50 +997,50 @@ const PENDING_FILL_ROWS = [
       injectTablePillboxes(grid.wrapperEl);
     });
 
-    eq('pending AC1: an empty database query grid registers nothing',
+    eq('pending: an empty database query grid registers nothing',
       [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl].map((el) => DR_MODEL.hasTable(el)),
       [false, false, false]);
-    eq('pending AC1: an empty database query grid holds the wrapper as a pending table',
+    eq('pending: an empty database query grid holds the wrapper as a pending table',
       pendingRoots.has(grid.wrapperEl), true);
-    eq('pending AC1: the empty wrapper carries one observer', observers.length, 1);
+    eq('pending: the empty wrapper carries one observer', observers.length, 1);
 
     fillDatabaseQueryGrid(grid);
 
     withTablePillboxDocumentMock(function () {
       if (observers[0]) observers[0].trigger();
-      eq('pending AC1: one fill schedules one re-test', runPendingRetestTimers(timers), 1);
+      eq('pending: one fill schedules one re-test', runPendingRetestTimers(timers), 1);
     });
 
-    eq('pending AC1: the filled grid registers the scrolling pane alone',
+    eq('pending: the filled grid registers the scrolling pane alone',
       [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl].map((el) => DR_MODEL.hasTable(el)),
       [false, false, true]);
-    eq('pending AC1: the scrolling pane gains a table pillbox',
+    eq('pending: the scrolling pane gains a table pillbox',
       tablePillboxes.has(grid.scrollPaneEl), true);
-    eq('pending AC1: the wrapper gains no table pillbox', tablePillboxes.has(grid.wrapperEl), false);
-    eq('pending AC1: the pinned pane gains no table pillbox',
+    eq('pending: the wrapper gains no table pillbox', tablePillboxes.has(grid.wrapperEl), false);
+    eq('pending: the pinned pane gains no table pillbox',
       tablePillboxes.has(grid.pinnedPaneEl), false);
-    eq('pending AC1: the registration drops the wrapper\'s pending record',
+    eq('pending: the registration drops the wrapper\'s pending record',
       pendingRoots.has(grid.wrapperEl), false);
-    eq('pending AC1: the registration disconnects the wrapper\'s observer',
+    eq('pending: the registration disconnects the wrapper\'s observer',
       observers[0] && observers[0].disconnectCount, 1);
-    eq('pending AC1: the fill adds exactly one registry entry',
+    eq('pending: the fill adds exactly one registry entry',
       DR_MODEL.getRegisteredTables().length - before, 1);
   });
 
   forgetRegisteredTable(grid.scrollPaneEl);
 })();
 
-// --- Criterion 2: one observer per pending wrapper ---
+// --- one observer per pending wrapper ---
 
-(function pendingRetest_AC2_aPendingWrapperCarriesOneObserverForThreeElements() {
+(function pendingRetest_aPendingWrapperCarriesOneObserverForThreeElements() {
   const grid = makeDatabaseQueryGrid({ rows: 0 });
   const extraPaneEl = appendDgChild(grid.wrapperEl,
     makeDgNode('DIV', 'dg--grid-container dg--extra-pane', 'grid', []));
 
-  eq('pending AC2: three role-bearing elements sit under the empty wrapper',
+  eq('pending: three role-bearing elements sit under the empty wrapper',
     [grid.pinnedPaneEl, grid.scrollPaneEl, extraPaneEl]
       .map((el) => el.parentElement === grid.wrapperEl), [true, true, true]);
-  eq('pending AC2: no element of the empty nest passes the data test',
+  eq('pending: no element of the empty nest passes the data test',
     [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl, extraPaneEl].map(isDataTable),
     [false, false, false, false]);
 
@@ -1051,12 +1049,12 @@ const PENDING_FILL_ROWS = [
       injectTablePillboxes(grid.wrapperEl);
     });
 
-    eq('pending AC2: a nest of four qualifying elements carries one observer',
+    eq('pending: a nest of four qualifying elements carries one observer',
       observers.length, 1);
-    eq('pending AC2: the one observer watches the chain root',
+    eq('pending: the one observer watches the chain root',
       observers[0] && observers[0].observeCalls.length === 1 &&
         observers[0].observeCalls[0].target === grid.wrapperEl, true);
-    eq('pending AC2: the observer watches added nodes, changed text, and the whole subtree',
+    eq('pending: the observer watches added nodes, changed text, and the whole subtree',
       observers[0] && observers[0].observeCalls[0].options,
       { childList: true, characterData: true, subtree: true });
 
@@ -1065,31 +1063,31 @@ const PENDING_FILL_ROWS = [
     withTablePillboxDocumentMock(function () {
       injectTablePillboxes(grid.wrapperEl);
     });
-    eq('pending AC2: a second pass over the same empty wrapper adds no second observer',
+    eq('pending: a second pass over the same empty wrapper adds no second observer',
       observers.length, 1);
-    eq('pending AC2: a second pass leaves one pending root', pendingRoots.size, 1);
+    eq('pending: a second pass leaves one pending root', pendingRoots.size, 1);
 
     dropPendingTable(grid.wrapperEl);
   });
 
-  eq('pending AC2: the case leaves no pending table behind', pendingRoots.size, 0);
+  eq('pending: the case leaves no pending table behind', pendingRoots.size, 0);
 })();
 
-// --- Criterion 3: the re-test cap bounds a container that never passes ---
+// --- the re-test cap bounds a container that never passes ---
 //
 // The container holds rows of text and no number, so every re-test finds the
 // chain empty. The debounce is driven once per re-test, the way a subtree that
 // churns without loading data drives it.
 
-(function pendingRetest_AC3_aContainerThatNeverPassesStopsAtTheCap() {
+(function pendingRetest_aContainerThatNeverPassesStopsAtTheCap() {
   const neverEl = makeDgNode('DIV', 'never-a-data-grid', 'grid', [
     makeDgRow(0, ['alpha', 'north', 'open']),
     makeDgRow(1, ['bravo', 'south', 'open']),
     makeDgRow(2, ['charlie', 'east', 'open']),
   ]);
-  eq('pending AC3: a container of text rows never passes the data test',
+  eq('pending: a container of text rows never passes the data test',
     isDataTable(neverEl), false);
-  eq('pending AC3: the detection settings ship a re-test cap of 100',
+  eq('pending: the detection settings ship a re-test cap of 100',
     DR_DETECTION_SETTINGS.pendingRetestCap, 100);
 
   // The log buffer holds the last 50 rows and counts the rows that dropped off
@@ -1106,9 +1104,9 @@ const PENDING_FILL_ROWS = [
       injectTablePillboxes(neverEl);
     });
 
-    eq('pending AC3: the container is held as a pending table',
+    eq('pending: the container is held as a pending table',
       pendingRoots.has(neverEl), true);
-    eq('pending AC3: the held container starts at zero failed re-tests',
+    eq('pending: the held container starts at zero failed re-tests',
       pendingRetestCounts.get(neverEl), 0);
 
     const observer = observers[0];
@@ -1117,41 +1115,41 @@ const PENDING_FILL_ROWS = [
       if (observer) observer.trigger();
       runPendingRetestTimers(timers);
     }
-    eq('pending AC3: one short of the cap the count reads the failed re-tests',
+    eq('pending: one short of the cap the count reads the failed re-tests',
       pendingRetestCounts.get(neverEl), DR_DETECTION_SETTINGS.pendingRetestCap - 1);
-    eq('pending AC3: one short of the cap the observer stays connected',
+    eq('pending: one short of the cap the observer stays connected',
       observer && observer.disconnectCount, 0);
-    eq('pending AC3: one short of the cap the container is still pending',
+    eq('pending: one short of the cap the container is still pending',
       pendingRoots.has(neverEl), true);
 
     // The re-test that reaches the cap.
     if (observer) observer.trigger();
     runPendingRetestTimers(timers);
 
-    eq('pending AC3: reaching the cap disconnects the observer',
+    eq('pending: reaching the cap disconnects the observer',
       observer && observer.disconnectCount, 1);
-    eq('pending AC3: reaching the cap drops the pending root',
+    eq('pending: reaching the cap drops the pending root',
       pendingRoots.has(neverEl), false);
-    eq('pending AC3: reaching the cap drops the failed-re-test count',
+    eq('pending: reaching the cap drops the failed-re-test count',
       pendingRetestCounts.has(neverEl), false);
-    eq('pending AC3: reaching the cap drops the debounce timer',
+    eq('pending: reaching the cap drops the debounce timer',
       pendingRetestTimers.has(neverEl), false);
-    eq('pending AC3: reaching the cap leaves the observer map empty for the root',
+    eq('pending: reaching the cap leaves the observer map empty for the root',
       pendingObservers.has(neverEl), false);
-    eq('pending AC3: the dropped container registers nothing',
+    eq('pending: the dropped container registers nothing',
       DR_MODEL.hasTable(neverEl), false);
 
     const added = recordedRows() - logRowsBefore;
     const entries = DR_LOG.snapshot().entries;
     const newRows = entries.slice(Math.max(0, entries.length - added));
-    eq('pending AC3: the cap cycle records at least one log row', added >= 1, true);
-    eq('pending AC3: reaching the cap records one debug row for the drop',
+    eq('pending: the cap cycle records at least one log row', added >= 1, true);
+    eq('pending: reaching the cap records one debug row for the drop',
       newRows.filter((row) => row.level === 'debug' && /pending table/.test(row.text)).map((row) => row.text),
       ['Dynamic Rounding: pending table drop · reason: re-test cap']);
 
     // A later mutation on the dropped container costs nothing: no observer
     // remains to run, and the record is gone.
-    eq('pending AC3: the dropped container holds no pending record',
+    eq('pending: the dropped container holds no pending record',
       pendingRoots.size, 0);
   });
 })();
@@ -1647,7 +1645,7 @@ const PENDING_FILL_ROWS = [
 // `DR_BUS.publish('intent:toggleTable', { table })`, and content.js's
 // intent:toggleTable subscriber runs the press. This pin checks
 // {same table, different table} for both click branches — not just that a
-// guard's boolean outcome matches (the AC1-AC4 rebind tests above already
+// guard's boolean outcome matches (the rebind tests above already
 // cover that), but the ORDER and full contents of every dispatched message.
 //
 // The expected sequences below are LITERALS, so the pin holds in a shallow
@@ -2041,7 +2039,7 @@ const PENDING_FILL_ROWS = [
 // --- (g) settings notice sequence: showsSimplified (reading the cell
 // markers) must report correctly to the sidebar across a full round ->
 // peek-original -> peek-back cycle, not just a single toggle. The table pillbox
-// AC1 test above pins one click; the guard matrix pins one
+// test above pins one click; the guard matrix pins one
 // intent:toggleTable dispatch. Neither exercises the 3-step peek cycle. ---
 (function registrySprint_tableToggleStateAcrossPeekCycle() {
   const savedActive = DR_MODEL.getActiveTable();
@@ -2138,9 +2136,8 @@ const PENDING_FILL_ROWS = [
 
 // --- The registry's fingerprint field. The entry
 // carries the shape the table had when it registered, and the table pillbox view's
-// builder is its one writer. Spec: the shape-fingerprint block in
-// docs/sprint-plans/grid-detection-recovery-v2.md §5, and the shape
-// fingerprint row in docs/vocabulary.md. ---
+// builder is its one writer. The shape fingerprint row in docs/vocabulary.md
+// defines the field. ---
 (function shapeFingerprint_theRegistryHoldsAFingerprintPerTable() {
   const table = { tagName: 'TABLE' }; // identity is all that matters here
 
@@ -2373,8 +2370,7 @@ const PENDING_FILL_ROWS = [
 // per-table resource the extension holds beside it: the table pillbox, the resize
 // observer, a virtualized grid's re-apply observer and its pending timer, and
 // the registry entry. The teardown writes no
-// row: each caller writes its own. Spec: the shape-fingerprint block in
-// docs/sprint-plans/grid-detection-recovery-v2.md §5. ---
+// row: each caller writes its own. ---
 
 (function shapeFingerprint_theTeardownDiscardsTheEntryAndEveryResourceBesideIt() {
   const grid = makeDatabaseQueryGrid();
@@ -2460,11 +2456,9 @@ const PENDING_FILL_ROWS = [
   });
 })();
 
-// --- Criterion 4: a pending container removed from the
-// page leaves no observer and no timer.
-// Spec: docs/sprint-plans/grid-detection-recovery-v2.md, the pending-retest
-// block in §5 — "The removal branch of the table observer drops a pending
-// root's observer and timer."
+// --- a pending container removed from the
+// page leaves no observer and no timer: the removal branch of the table
+// observer drops a pending root's observer and timer.
 //
 // A pending table holds no registry entry, so the registry sweep above passes
 // over it; the pending sweep is the only thing that reaches it. The real
@@ -2472,7 +2466,7 @@ const PENDING_FILL_ROWS = [
 // removal case above captures it: the content-script bundle is re-evaluated
 // with a capturing MutationObserver installed first, so the observer under
 // test is the production one and not a re-implementation of its steps. ---
-(function pendingRetest_AC4_removalDropsTheObserverAndTheTimer() {
+(function pendingRetest_removalDropsTheObserverAndTheTimer() {
   const capturedInstances = [];
   class CapturingRemovalMO {
     constructor(cb) { this._cb = cb; this.disconnectCount = 0; capturedInstances.push(this); }
@@ -2517,7 +2511,7 @@ const PENDING_FILL_ROWS = [
       globalThis.__pending_holdPendingTable = holdPendingTable;
     `);
 
-    eq('pending AC4: exactly one observer stands after the load (the table observer)',
+    eq('pending: exactly one observer stands after the load (the table observer)',
       capturedInstances.length, 1);
     const tableObserver = capturedInstances[0];
     const freshPendingRoots = global.__pending_pendingRoots;
@@ -2526,27 +2520,27 @@ const PENDING_FILL_ROWS = [
     // Case 1: the removed node is an ancestor of the pending root.
     const root = { nodeType: 1, tagName: 'DIV' };
     holdPending(root);
-    eq('pending AC4 (pre): the root is held as a pending table',
+    eq('pending (pre): the root is held as a pending table',
       freshPendingRoots.has(root), true);
-    eq('pending AC4 (pre): holding the root builds one more observer',
+    eq('pending (pre): holding the root builds one more observer',
       capturedInstances.length, 2);
     const pendingObserver = capturedInstances[1];
 
     // One mutation on the subtree schedules the debounced re-test.
     pendingObserver._cb([], pendingObserver);
-    eq('pending AC4 (pre): the mutation schedules one re-test timer',
+    eq('pending (pre): the mutation schedules one re-test timer',
       timers.filter((t) => !t.cancelled).length, 1);
 
     const ancestor = { nodeType: 1, contains: (el) => el === root };
     tableObserver._cb([{ addedNodes: [], removedNodes: [ancestor] }]);
 
-    eq('pending AC4: removing an ancestor disconnects the pending observer',
+    eq('pending: removing an ancestor disconnects the pending observer',
       pendingObserver.disconnectCount, 1);
-    eq('pending AC4: removing an ancestor cancels the scheduled re-test timer',
+    eq('pending: removing an ancestor cancels the scheduled re-test timer',
       timers.filter((t) => !t.cancelled).length, 0);
-    eq('pending AC4: removing an ancestor drops the pending root',
+    eq('pending: removing an ancestor drops the pending root',
       freshPendingRoots.has(root), false);
-    eq('pending AC4: no pending root remains after the ancestor removal',
+    eq('pending: no pending root remains after the ancestor removal',
       freshPendingRoots.size, 0);
 
     // Case 2: the removed node is the pending root itself.
@@ -2555,21 +2549,21 @@ const PENDING_FILL_ROWS = [
     const secondObserver = capturedInstances[2];
     secondObserver._cb([], secondObserver);
     const scheduledForSecond = timers.filter((t) => !t.cancelled).length;
-    eq('pending AC4 (pre): the second root schedules one re-test timer',
+    eq('pending (pre): the second root schedules one re-test timer',
       scheduledForSecond, 1);
 
     tableObserver._cb([{ addedNodes: [], removedNodes: [rootItself] }]);
 
-    eq('pending AC4: removing the pending root itself disconnects its observer',
+    eq('pending: removing the pending root itself disconnects its observer',
       secondObserver.disconnectCount, 1);
-    eq('pending AC4: removing the pending root itself cancels its re-test timer',
+    eq('pending: removing the pending root itself cancels its re-test timer',
       timers.filter((t) => !t.cancelled).length, 0);
-    eq('pending AC4: removing the pending root itself drops the pending root',
+    eq('pending: removing the pending root itself drops the pending root',
       freshPendingRoots.has(rootItself), false);
-    eq('pending AC4: the pending observer map holds nothing for either root',
+    eq('pending: the pending observer map holds nothing for either root',
       [global.__pending_pendingObservers.has(root),
         global.__pending_pendingObservers.has(rootItself)], [false, false]);
-    eq('pending AC4: the pending timer map holds nothing for either root',
+    eq('pending: the pending timer map holds nothing for either root',
       [global.__pending_pendingRetestTimers.has(root),
         global.__pending_pendingRetestTimers.has(rootItself)], [false, false]);
   } finally {
@@ -3113,12 +3107,9 @@ function issue328SettingsOf(table) {
 
 // ---------------------------------------------------------------------------
 // The comparison at the two controller entry points
-// Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.6 and the
-// shape-fingerprint block in §5; decision D7 in
-// docs/sprint-plans/grid-detection-recovery.md.
 // ---------------------------------------------------------------------------
 //
-// The rule these assertions pin, in the specification's words:
+// The rule these assertions pin:
 //   - Every action on a registered table compares the table's current shape
 //     against the fingerprint the registry recorded, before it acts.
 //   - A match changes nothing.
@@ -3136,7 +3127,7 @@ function issue328SettingsOf(table) {
 // Every expected value below comes from that statement, never from the
 // controller's source.
 
-// --- Criterion: scrolling a virtualized grid, which changes the drawn row
+// --- scrolling a virtualized grid, which changes the drawn row
 // count, does not trip the fingerprint. Shape one: a grid that groups its data
 // rows, with the header row outside the group. A scroll replaces the group's
 // rows and leaves the header row alone. ---
@@ -3301,7 +3292,7 @@ function issue328SettingsOf(table) {
   });
 })();
 
-// --- Criterion: changing the column set trips the fingerprint. The entry is
+// --- changing the column set trips the fingerprint. The entry is
 // discarded, and a table pillbox press afterwards simplifies from the original. ---
 
 // Shape one: the page redraws its rows one column wider, so every cell of the
@@ -3426,7 +3417,7 @@ function issue328SettingsOf(table) {
   });
 })();
 
-// --- Criterion: a discarded entry's originals never reach the fresh entry. ---
+// --- a discarded entry's originals never reach the fresh entry. ---
 
 (function shapeFingerprint_criterion3_aDiscardedEntrysOriginalsStayBehind() {
   runPressFixture(() => {
@@ -3458,7 +3449,7 @@ function issue328SettingsOf(table) {
   });
 })();
 
-// --- Criterion: on a database query grid whose new result makes the pinned
+// --- on a database query grid whose new result makes the pinned
 // pane pass the data test, the fresh registration lands on the wrapper, the
 // wrapper is active, and the old pane holds no table pillbox. ---
 
@@ -3504,7 +3495,7 @@ function issue328SettingsOf(table) {
   });
 })();
 
-// --- Criterion: a native table's fingerprint trips when its header row's text
+// --- a native table's fingerprint trips when its header row's text
 // changes, and holds when a data cell's text changes. ---
 
 (function shapeFingerprint_criterion5_aNativeTablesHeaderTextTripsTheFingerprint() {

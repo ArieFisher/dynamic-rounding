@@ -823,12 +823,12 @@
     has ? sizeWarning(nearlyBig) : 'missing', null);
 })();
 
-// --- lib/dr-capture: the detection settings in force at capture time (D8) ---
+// --- lib/dr-capture: the detection settings in force at capture time ---
 //
 // The capture state gains a detectionSettings field: a plain copy of DR_DETECTION_SETTINGS taken at
 // capture time, so a capture shows the detection values that were in force.
 
-// Criterion 1: collectCaptureState carries every key of the detection settings,
+// collectCaptureState carries every key of the detection settings,
 // the format version moves to 2, and the copy is plain and detached — a
 // mutation on the returned copy must never reach DR_DETECTION_SETTINGS itself.
 (function captureStateCarriesDetectionSettings() {
@@ -874,7 +874,7 @@
     DR_DETECTION_SETTINGS.vendorProfiles[0].name, originalFirstVendorName);
 })();
 
-// Criterion 2: the rendered file shows the detection settings in its visible
+// the rendered file shows the detection settings in its visible
 // half — a scalar, every item of a display-value list, and a vendor
 // profile's name and selector — and a hostile value in a profile field
 // reaches the visible half only in its escaped form.
@@ -938,7 +938,7 @@
     hostileVisible.includes('&amp;'), true);
 })();
 
-// Criterion 3: a state with no detectionSettings field (null, or the key absent) does
+// a state with no detectionSettings field (null, or the key absent) does
 // not throw, renders the absence placeholder in the detection settings section, and the
 // header still states the format version — the capture still saves. The
 // sidebar side: assembleAndSaveCapture's fallback state carries
@@ -993,7 +993,7 @@
     fnStart !== -1 && /detectionSettings:\s*null/.test(fnBody), true);
 })();
 
-// Criterion 5: the detection settings section sits in the visible half under its own
+// the detection settings section sits in the visible half under its own
 // heading, ahead of the hidden capture-state JSON block, so a reader finds
 // it while scanning the file rather than only in the JSON.
 (function captureDetectionSettingsHeadingPrecedesStateBlock() {

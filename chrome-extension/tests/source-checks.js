@@ -33,15 +33,15 @@
     bgSource.includes('sidePanel.open'), true);
 })();
 
-// --- AC5: manifest.json has a valid N.N.N version string ---
+// --- manifest.json has a valid N.N.N version string ---
 (function ac5_manifestVersion() {
   const manifest = JSON.parse(
     require('fs').readFileSync(require('path').join(__dirname, 'manifest.json'), 'utf8'));
-  eq('AC5: manifest.json version matches semver N.N.N',
+  eq('manifest.json version matches semver N.N.N',
     /^\d+\.\d+\.\d+$/.test(manifest.version), true);
 })();
 
-// --- AC6: the content-based regression guards in the quote and decimal
+// --- the content-based regression guards in the quote and decimal
 // blocks (which assert no sibling files contain new identifiers) cover scope
 // without depending on git history shape.
 
@@ -66,16 +66,16 @@
 
 // --- Regression guards ---
 
-(function sprintRegressionGuards() {
+(function regressionGuards() {
   const readmePath = path.join(__dirname, '..', 'js', 'README.md');
   const changelogPath = path.join(__dirname, '..', 'js', 'CHANGELOG.md');
 
   const readme = fs.readFileSync(readmePath, 'utf8');
-  eq('sprint regression: js/README.md contains Sheets decimal precision section header',
+  eq('regression: js/README.md contains Sheets decimal precision section header',
     /##\s+Note:\s+decimal precision in Sheets/i.test(readme), true);
 
   const changelog = fs.readFileSync(changelogPath, 'utf8');
-  eq('sprint regression: js/CHANGELOG.md contains doc update entry',
+  eq('regression: js/CHANGELOG.md contains doc update entry',
     /decimal precision in Sheets/.test(changelog), true);
 
   // Python directory: verify no .py files were modified (static guard via git-ignored stat)
@@ -83,13 +83,13 @@
   // that the python directory exists and contains expected files.
   const pythonDir = path.join(__dirname, '..', 'python');
   const fsStat = require('fs');
-  eq('sprint regression: python/ directory exists (not deleted)',
+  eq('regression: python/ directory exists (not deleted)',
     fsStat.existsSync(pythonDir), true);
 })();
 
 // --- Sidebar defaults and layout ---
 
-(function sprintSidebarDefaultsAndLayout() {
+(function sidebarDefaultsAndLayout() {
   const sidebarPath = path.join(__dirname, 'sidebar.html');
   const sidebarHtml = fs.readFileSync(sidebarPath, 'utf8');
 
@@ -105,7 +105,7 @@
     return;
   }
 
-  // AC1/AC2: Sidebar UI defaults live in constants.js (single source of
+  // Sidebar UI defaults live in constants.js (single source of
   // truth shared with content.js). The HTML must NOT hard-code checked /
   // selected attributes — they would shadow the JS-applied defaults.
   eq('sidebar-defaults: sidebar.html does not hard-code "checked" attributes',
@@ -132,24 +132,24 @@
       'ui-pillbox.js', 'ui-toast.js', 'content.js',
     ]), true);
 
-  // AC4a: rangeSection div has "hidden" attribute.
+  // rangeSection div has "hidden" attribute.
   eq('sidebar-defaults: rangeSection has hidden attribute',
     /<div[^>]*id="rangeSection"[^>]*hidden/.test(sidebarHtml) ||
     /<div[^>]*hidden[^>]*id="rangeSection"/.test(sidebarHtml), true);
 
-  // AC4b: rangeSection markup is still present (not deleted).
+  // rangeSection markup is still present (not deleted).
   eq('sidebar-defaults: rangeSection markup still present in HTML',
     sidebarHtml.includes('id="rangeSection"'), true);
 
-  // AC5: parseRangeExpr is defined (in parsing.js).
+  // parseRangeExpr is defined (in parsing.js).
   eq('sidebar-defaults: content scripts still define parseRangeExpr',
     /function parseRangeExpr\b/.test(allContentSrc), true);
 
-  // AC7: manifest permissions do NOT include "storage".
+  // manifest permissions do NOT include "storage".
   eq('sidebar-defaults: manifest permissions does not include "storage"',
     Array.isArray(manifest.permissions) && manifest.permissions.includes('storage'), false);
 
-  // AC8: sidebar.js does not reference chrome.storage.sync.
+  // sidebar.js does not reference chrome.storage.sync.
   eq('sidebar-defaults: sidebar.js does not import chrome.storage',
     /chrome\.storage/.test(sidebarJsSource), false);
 })();
@@ -196,14 +196,14 @@
     src.includes('dr-ext-table-pillbox'), true);
 })();
 
-// --- accessibility AC2: CSS contains :focus-visible with outline and !important ---
-// Spec: the CSS string injected by ensureTablePillboxStyleInjected contains a
+// --- accessibility: CSS contains :focus-visible with outline and !important ---
+// The CSS string injected by ensureTablePillboxStyleInjected contains a
 //       :focus-visible rule with `outline` and `!important`.
 
 (function accessibilityAC2_focusVisibleCSS() {
   const src = allContentSrc; // table pillbox CSS lives in ui-pillbox.js
 
-  eq('accessibility AC2: content.js CSS contains :focus-visible selector',
+  eq('accessibility: content.js CSS contains :focus-visible selector',
     src.includes(':focus-visible'), true);
 
   // Verify that some :focus-visible rule contains outline and !important.
@@ -216,15 +216,15 @@
   const focusImportantLine = lines.find(l =>
     l.includes(':focus-visible') && l.includes('!important'));
 
-  eq('accessibility AC2: :focus-visible rule contains outline property',
+  eq('accessibility: :focus-visible rule contains outline property',
     focusOutlineLine !== undefined, true);
 
-  eq('accessibility AC2: :focus-visible rule uses !important',
+  eq('accessibility: :focus-visible rule uses !important',
     focusImportantLine !== undefined, true);
 })();
 
 // --- Constants vs literals check ---
-// Spec (AC §3.5 + last AC bullet): geometry literals must only appear as constant declarations.
+// geometry literals must only appear as constant declarations.
 // Soft check: the constant names TABLE_PILLBOX_DOT_PX etc. appear in the CSS template block.
 
 (function tablePillboxAC_constantsUsedInCSS() {
@@ -290,10 +290,10 @@
 // Flat switch list, new defaults, switch wrappers
 // ---------------------------------------------------------------------------
 
-(function sprintSidebarTidyup() {
+(function sidebarTidyup() {
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
 
-  // ── AC1: options section has exactly seven switch rows in the canonical order ──
+  // ──: options section has exactly seven switch rows in the canonical order ──
   // Parse all switch-label texts inside #optionsSection.
   // Strategy: extract the optionsSection fragment, then collect every
   // class="switch-label" span's text content via a simple regex.
@@ -326,13 +326,13 @@
 
   const expectedOrder = ['currencies', 'percentages', 'dates', 'times', 'first row', 'first column'];
 
-  eq('sidebar-tidyup AC1: options section has exactly 6 switch rows',
+  eq('sidebar options: options section has exactly 6 switch rows',
     labelTexts.length, 6);
 
-  eq('sidebar-tidyup AC1: switch rows are in canonical order',
+  eq('sidebar options: switch rows are in canonical order',
     labelTexts, expectedOrder);
 
-  // ── AC2: forbidden phrases do not appear anywhere in the options section ──
+  // ──: forbidden phrases do not appear anywhere in the options section ──
 
   const forbidden = [
     'Include numbers in cells containing',
@@ -341,30 +341,30 @@
   ];
   // The full HTML holds none of the forbidden phrases.
   for (const phrase of forbidden) {
-    eq(`sidebar-tidyup AC2 (full HTML): "${phrase}" absent`,
+    eq(`sidebar options (full HTML): "${phrase}" absent`,
       sidebarHtml.includes(phrase), false);
   }
 
-  // ── AC3: DR_DEFAULTS has the seven expected values ──
+  // ──: DR_DEFAULTS has the seven expected values ──
 
-  eq('sidebar-tidyup AC3: DR_DEFAULTS.simplifyMixedCurrency is true',
+  eq('sidebar options: DR_DEFAULTS.simplifyMixedCurrency is true',
     DR_DEFAULTS.simplifyMixedCurrency, true);
-  eq('sidebar-tidyup AC3: DR_DEFAULTS.simplifyMixedPercent is true',
+  eq('sidebar options: DR_DEFAULTS.simplifyMixedPercent is true',
     DR_DEFAULTS.simplifyMixedPercent, true);
-  eq('sidebar-tidyup AC3: DR_DEFAULTS.simplifyDates is true',
+  eq('sidebar options: DR_DEFAULTS.simplifyDates is true',
     DR_DEFAULTS.simplifyDates, true);
-  eq('sidebar-tidyup AC3: DR_DEFAULTS.simplifyTimes is false',
+  eq('sidebar options: DR_DEFAULTS.simplifyTimes is false',
     DR_DEFAULTS.simplifyTimes, false);
-  eq('sidebar-tidyup AC3: DR_DEFAULTS.simplifyFirstRow is false',
+  eq('sidebar options: DR_DEFAULTS.simplifyFirstRow is false',
     DR_DEFAULTS.simplifyFirstRow, false);
-  eq('sidebar-tidyup AC3: DR_DEFAULTS.simplifyFirstColumn is false',
+  eq('sidebar options: DR_DEFAULTS.simplifyFirstColumn is false',
     DR_DEFAULTS.simplifyFirstColumn, false);
-  eq('sidebar-tidyup AC3: DR_DEFAULTS.dateGranularity is "year"',
+  eq('sidebar options: DR_DEFAULTS.dateGranularity is "year"',
     DR_DEFAULTS.dateGranularity, 'year');
-  eq('sidebar-tidyup AC3: DR_DEFAULTS.timeGranularity is "hour"',
+  eq('sidebar options: DR_DEFAULTS.timeGranularity is "hour"',
     DR_DEFAULTS.timeGranularity, 'hour');
 
-  // ── AC4: every option-row checkbox is wrapped in a .switch element ──
+  // ──: every option-row checkbox is wrapped in a .switch element ──
   // For each of the seven option inputs by id, verify there is a parent
   // element with class "switch" enclosing the input.
   const optionInputIds = [
@@ -379,11 +379,11 @@
       '<input[^>]*id="' + id + '"',
       'm'
     );
-    eq(`sidebar-tidyup AC4: #${id} is wrapped in a .switch element`,
+    eq(`sidebar options: #${id} is wrapped in a .switch element`,
       switchWrapRe.test(sidebarHtml), true);
   }
 
-  // ── AC5: #timeGranularity <select> lists hour first, minute second ──
+  // ──: #timeGranularity <select> lists hour first, minute second ──
   // Extract the <select id="timeGranularity"> element and check option order.
   const timeSelectMatch = sidebarHtml.match(/<select[^>]*id="timeGranularity"[^>]*>([\s\S]*?)<\/select>/);
   const timeSelectHtml = timeSelectMatch ? timeSelectMatch[1] : '';
@@ -395,11 +395,11 @@
     timeOptionValues.push(tom[1]);
   }
 
-  eq('sidebar-tidyup AC5: #timeGranularity has exactly 2 options',
+  eq('sidebar options: #timeGranularity has exactly 2 options',
     timeOptionValues.length, 2);
-  eq('sidebar-tidyup AC5: first option is "hour"',
+  eq('sidebar options: first option is "hour"',
     timeOptionValues[0], 'hour');
-  eq('sidebar-tidyup AC5: second option is "minute"',
+  eq('sidebar options: second option is "minute"',
     timeOptionValues[1], 'minute');
 })();
 
@@ -407,15 +407,15 @@
 // The switch appears left of its label in every row
 // =============================================================================
 //
-// Acceptance criteria:
-//   AC1. In every option row the switch (<label class="switch">) comes before
+// Checked here:
+//   - In every option row the switch (<label class="switch">) comes before
 //        the .switch-label text node — verified by comparing indexOf positions
 //        of the checkbox <input> vs <span class="switch-label"> within each row.
-//   AC2. On the dates/times rows the <select id="dateGranularity"> /
+//   - On the dates/times rows the <select id="dateGranularity"> /
 //        <select id="timeGranularity"> is the last element — its index appears
 //        AFTER the .switch-label in the row substring.
-//   AC3. sidebar.html does NOT contain "row-reverse" anywhere.
-//   AC4. The .switch-row CSS block does NOT contain "justify-content: space-between".
+//   - sidebar.html does NOT contain "row-reverse" anywhere.
+//   - The .switch-row CSS block does NOT contain "justify-content: space-between".
 
 (function sidebarSwitchLeft() {
   const sidebarPath = path.join(__dirname, 'sidebar.html');
@@ -445,17 +445,17 @@
     return fromDiv.slice(0, closeIdx + '</div>'.length);
   }
 
-  // --- AC1: switch appears before .switch-label in each option row ---
+  // --- switch appears before .switch-label in each option row ---
   // Rows to check: simplifyFirstColumn (simple), simplifyDates, simplifyTimes.
   const simpleRows = ['simplifyFirstColumn'];
   for (const id of simpleRows) {
     const row = getRowSubstring(id);
-    eq(`sidebar switch-left AC1: row "${id}" exists in sidebar.html`,
+    eq(`sidebar switch order: row "${id}" exists in sidebar.html`,
       row !== null, true);
     if (row !== null) {
       const inputIdx = row.search(new RegExp('id=["\']' + id + '["\']'));
       const labelIdx = row.indexOf('<span class="switch-label">');
-      eq(`sidebar switch-left AC1: switch input comes before .switch-label in row "${id}"`,
+      eq(`sidebar switch order: switch input comes before .switch-label in row "${id}"`,
         inputIdx < labelIdx, true);
     }
   }
@@ -464,17 +464,17 @@
   const complexRows = ['simplifyDates', 'simplifyTimes'];
   for (const id of complexRows) {
     const row = getRowSubstring(id);
-    eq(`sidebar switch-left AC1: row "${id}" exists in sidebar.html`,
+    eq(`sidebar switch order: row "${id}" exists in sidebar.html`,
       row !== null, true);
     if (row !== null) {
       const inputIdx = row.search(new RegExp('id=["\']' + id + '["\']'));
       const labelIdx = row.indexOf('<span class="switch-label">');
-      eq(`sidebar switch-left AC1: switch input comes before .switch-label in row "${id}"`,
+      eq(`sidebar switch order: switch input comes before .switch-label in row "${id}"`,
         inputIdx < labelIdx, true);
     }
   }
 
-  // --- AC2: <select> is the last element (after .switch-label) in dates/times rows ---
+  // --- <select> is the last element (after .switch-label) in dates/times rows ---
   const selectPairs = [
     { rowId: 'simplifyDates',  selectId: 'dateGranularity' },
     { rowId: 'simplifyTimes',  selectId: 'timeGranularity' },
@@ -484,55 +484,55 @@
     if (row !== null) {
       const labelIdx  = row.indexOf('<span class="switch-label">');
       const selectIdx = row.search(new RegExp('<select[^>]*id=["\']' + selectId + '["\']'));
-      eq(`sidebar switch-left AC2: <select id="${selectId}"> appears after .switch-label in row`,
+      eq(`sidebar switch order: <select id="${selectId}"> appears after .switch-label in row`,
         selectIdx > labelIdx, true);
     }
   }
 
-  // --- AC3: sidebar.html does not use row-reverse ---
-  eq('sidebar switch-left AC3: sidebar.html does not contain "row-reverse"',
+  // --- sidebar.html does not use row-reverse ---
+  eq('sidebar switch order: sidebar.html does not contain "row-reverse"',
     sidebarHtml.includes('row-reverse'), false);
 
-  // --- AC4: .switch-row CSS block does not use justify-content: space-between ---
+  // --- .switch-row CSS block does not use justify-content: space-between ---
   // Find the .switch-row block by locating ".switch-row {" and scanning to the closing "}".
   const switchRowBlockStart = sidebarHtml.indexOf('.switch-row {');
-  eq('sidebar switch-left AC4: .switch-row CSS block is present in sidebar.html',
+  eq('sidebar switch order: .switch-row CSS block is present in sidebar.html',
     switchRowBlockStart !== -1, true);
   if (switchRowBlockStart !== -1) {
     const fromBlock = sidebarHtml.slice(switchRowBlockStart);
     const blockClose = fromBlock.indexOf('}');
     const switchRowBlock = blockClose !== -1 ? fromBlock.slice(0, blockClose + 1) : fromBlock.slice(0, 200);
-    eq('sidebar switch-left AC4: .switch-row CSS block does not contain "justify-content: space-between"',
+    eq('sidebar switch order: .switch-row CSS block does not contain "justify-content: space-between"',
       switchRowBlock.includes('justify-content: space-between'), false);
   }
 })();
 
-// --- AC5: sidebar.js updateDisabledState wires granularity dropdowns to switches ---
+// --- sidebar.js updateDisabledState wires granularity dropdowns to switches ---
 // The harness has no live sidebar DOM, so we verify via static source analysis.
 // We assert:
 //   (a) updateDisabledState references dateGranularity.disabled and !simplifyDates
 //   (b) updateDisabledState references timeGranularity.disabled and !simplifyTimes
 // This proves the boolean is wired the correct way round in the sidebar source.
-(function invertPills_AC5_sidebarDisabledStateStaticAnalysis() {
+(function dateTimeSwitches_sidebarDisabledStateStaticAnalysis() {
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
   // dateGranularity.disabled must be set to !simplifyDates (true when OFF, false when ON)
-  eq('invert-pills AC5: sidebar.js sets dateGranularity.disabled = !simplifyDates',
+  eq('date and time switches: sidebar.js sets dateGranularity.disabled = !simplifyDates',
     /dateGranularityEl\.disabled\s*=\s*!document\.getElementById\(['"]simplifyDates['"]\)\.checked/.test(sidebarSrc),
     true);
 
   // timeGranularity.disabled must be set to !simplifyTimes
-  eq('invert-pills AC5: sidebar.js sets timeGranularity.disabled = !simplifyTimes',
+  eq('date and time switches: sidebar.js sets timeGranularity.disabled = !simplifyTimes',
     /timeGranularityEl\.disabled\s*=\s*!document\.getElementById\(['"]simplifyTimes['"]\)\.checked/.test(sidebarSrc),
     true);
 
   // updateDisabledState function must still exist (not deleted or renamed)
-  eq('invert-pills AC5: sidebar.js defines updateDisabledState',
+  eq('date and time switches: sidebar.js defines updateDisabledState',
     /function updateDisabledState\b/.test(sidebarSrc), true);
 })();
 
 // --- The keys simplifyDates/simplifyTimes reach every file that reads them ---
-(function invertPills_oldKeysAbsent() {
+(function dateTimeSwitches_oldKeysAbsent() {
   // The simplifyDates/simplifyTimes option reads (and every other
   // classification-ladder rule) live in lib/dr-simplify/ladder.js; content.js
   // only calls classifyCell.
@@ -560,46 +560,46 @@
     /\bsimplifyTimes\b/.test(sidebarSrc), true);
 })();
 
-// --- AC6: the living documents state the route ---
+// --- the living documents state the route ---
 
-(function rightClickRegisters_AC6_theLivingDocumentsStateTheRoute() {
+(function rightClickRegisters_theLivingDocumentsStateTheRoute() {
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
   const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const extensionReadme = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
 
   const loadTimeScanRow = vocabularyMd.split('\n')
     .find((line) => /^\|\s*load-time scan\s*\|/i.test(line)) || '';
-  eq('right-click AC6: docs/vocabulary.md keeps a load-time scan row',
+  eq('right-click: docs/vocabulary.md keeps a load-time scan row',
     loadTimeScanRow !== '', true);
-  eq('right-click AC6: that row states a marked grid the scan missed enters on a right-click',
+  eq('right-click: that row states a marked grid the scan missed enters on a right-click',
     /right-click/i.test(loadTimeScanRow) && /missed/i.test(loadTimeScanRow), true);
-  eq('right-click AC6: that row names the nomination step and the chain root',
+  eq('right-click: that row names the nomination step and the chain root',
     /nomination step/i.test(loadTimeScanRow) && /chain root/i.test(loadTimeScanRow), true);
-  eq('right-click AC6: that row keeps the geometry probe as the unmarked grid route',
+  eq('right-click: that row keeps the geometry probe as the unmarked grid route',
     /unmarked grid/i.test(loadTimeScanRow) && /geometry probe/i.test(loadTimeScanRow), true);
 
   const detectionParagraph = designMd.split('\n')
     .find((line) => /^\*\*Detection\.\*\*/.test(line)) || '';
-  eq('right-click AC6: docs/design.md keeps a Detection paragraph',
+  eq('right-click: docs/design.md keeps a Detection paragraph',
     detectionParagraph !== '', true);
-  eq('right-click AC6: the Detection paragraph states the right-click route',
+  eq('right-click: the Detection paragraph states the right-click route',
     /right-click/i.test(detectionParagraph) &&
       /nomination step/i.test(detectionParagraph) &&
       /chain root/i.test(detectionParagraph), true);
-  eq('right-click AC6: the Detection paragraph states the gutter outcome',
+  eq('right-click: the Detection paragraph states the gutter outcome',
     /gutter[\s\S]{0,120}scrolling pane/i.test(detectionParagraph), true);
 
   const readmeDetectionPoint = extensionReadme.split('\n')
     .find((line) => /^1\. \*\*Detection runs on demand/.test(line)) || '';
-  eq('right-click AC6: chrome-extension/README.md keeps its first detection point',
+  eq('right-click: chrome-extension/README.md keeps its first detection point',
     readmeDetectionPoint !== '', true);
-  eq('right-click AC6: that point states the right-click route',
+  eq('right-click: that point states the right-click route',
     /right-click/i.test(readmeDetectionPoint) &&
       /nomination step/i.test(readmeDetectionPoint) &&
       /chain root/i.test(readmeDetectionPoint), true);
 })();
 
-// AC4: the three living documents each state the 1000-cell budget, per AGENTS.md's
+// the three living documents each state the 1000-cell budget, per AGENTS.md's
 // rule that a behavior-invalidating change updates every living document it
 // invalidates in the same branch.
 (function dataTestBudget_livingDocumentsStateTheBudget() {
@@ -620,7 +620,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// AC4: background.js does NOT relay the settings notice.
+// background.js does NOT relay the settings notice.
 //
 // background.js runs in a service-worker context without the DOM and module
 // system our harness uses, so we cannot eval() it directly alongside the content
@@ -692,7 +692,7 @@
   }
 })();
 
-// AC2 (live): flashSidebarContainer in sidebar.js logic — exercised via a
+// flashSidebarContainer in sidebar.js logic — exercised via a
 // minimal eval of sidebar.js with a capturing document.body stub.
 // sidebar.js calls document.getElementById at module scope, so we must provide
 // a full-enough stub to get past those calls before onMessage.addListener fires.
@@ -792,7 +792,7 @@
   const roundingSrcForFlash = sourceByName('lib/dr-number/rounding.js');
   const coreSrcForFlash = sourceByName('lib/dr-number/core.js');
   if (constantsCode === null || roundingSrcForFlash === null || coreSrcForFlash === null) {
-    eq('table-activation AC2 live: source files (defaults/rounding/core) present in manifest',
+    eq('active table live: source files (defaults/rounding/core) present in manifest',
       false, true);
     global.document = savedDoc;
     global.chrome   = savedChrome;
@@ -821,20 +821,20 @@
 
   // Exercise the handler WHILE global.document still points to captureDoc2 so
   // that flashSidebarContainer can reach captureBody via document.body.
-  eq('table-activation AC2 live: sidebar onMessage handler was captured',
+  eq('active table live: sidebar onMessage handler was captured',
     typeof capturedOnMessageHandler, 'function');
 
   if (typeof capturedOnMessageHandler === 'function') {
     // Invoke the state:tableActivated message and verify the flash class is applied.
     capturedOnMessageHandler({ topic: 'state:tableActivated' }, FROM_SIDEBAR_TAB, () => {});
 
-    eq('table-activation AC2 live: state:tableActivated message adds dr-sidebar-flash to document.body',
+    eq('active table live: state:tableActivated message adds dr-sidebar-flash to document.body',
       bodyClasses.has('dr-sidebar-flash'),
       true);
 
     // Simulate animationend — the class should be removed afterwards.
     if (typeof animEndListener === 'function') animEndListener();
-    eq('table-activation AC2 live: dr-sidebar-flash removed after animationend',
+    eq('active table live: dr-sidebar-flash removed after animationend',
       bodyClasses.has('dr-sidebar-flash'),
       false);
   }
@@ -845,7 +845,7 @@
   global.window   = savedWindow;
 })();
 
-// AC4 (runtime): the worker relays no activation topic into a tab, whether or
+// the worker relays no activation topic into a tab, whether or
 // not it holds a sidebar tab number. The worker holds no message listener of
 // its own, so the listener under test is the bus's, and the worker's own
 // subscriptions are the only thing that could act on an arriving topic. It
@@ -910,13 +910,13 @@
     global.chrome = savedChrome;
   }
 
-  eq('table-activation AC4 runtime: the bus listener is the worker\'s only message listener',
+  eq('active table runtime: the bus listener is the worker\'s only message listener',
     result.listenerType, 'function');
-  eq('table-activation AC4 runtime: no relay before the sidebar opens',
+  eq('active table runtime: no relay before the sidebar opens',
     result.relaysBeforeOpen, 0);
-  eq('table-activation AC4 runtime: opening the sidebar sends its report to that tab',
+  eq('active table runtime: opening the sidebar sends its report to that tab',
     result.sentOpenedReport, true);
-  eq('table-activation AC4 runtime: still no relay after the sidebar opens',
+  eq('active table runtime: still no relay after the sidebar opens',
     result.relaysAfterOpen, 0);
 })();
 
@@ -925,51 +925,51 @@
 // ---------------------------------------------------------------------------
 
 // Coupled-state other thumb/label colour change
-// AC1. Coupled-state other thumb background is #c48a6a (brown).
-// AC2. Decoupled-state other thumb is still #b3623d (unchanged).
-// AC3. Coupled-state other LABEL color matches the coupled thumb (same hex #c48a6a).
+// - Coupled-state other thumb background is #c48a6a (brown).
+// - Decoupled-state other thumb is still #b3623d (unchanged).
+// - Coupled-state other LABEL color matches the coupled thumb (same hex #c48a6a).
 // ---------------------------------------------------------------------------
 
 (function advancedLowerDotBrown() {
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
 
-  // --- AC1: .dual-thumb.other.coupled background is #c48a6a ---
-  eq('lower-dot-brown AC1: .dual-thumb.other.coupled background is #c48a6a',
+  // --- .dual-thumb.other.coupled background is #c48a6a ---
+  eq('lens control: .dual-thumb.other.coupled background is #c48a6a',
     /\.dual-thumb\.other\.coupled\s*\{[^}]*background\s*:\s*#c48a6a/.test(sidebarHtml), true);
 
-  // --- AC2: .dual-thumb.other (decoupled) background is still #b3623d ---
+  // --- .dual-thumb.other (decoupled) background is still #b3623d ---
   // The rule may be a multi-line block; match the .dual-thumb.other { ... } block
   // that is NOT the .coupled variant, and confirm it contains #b3623d.
   // Strategy: find the line/block for the rule selector without .coupled.
   const decoupledRuleMatch = sidebarHtml.match(/\.dual-thumb\.other\s*\{[^}]*\}/);
   const decoupledRule = decoupledRuleMatch ? decoupledRuleMatch[0] : '';
-  eq('lower-dot-brown AC2: .dual-thumb.other (decoupled) block is present in sidebar.html',
+  eq('lens control: .dual-thumb.other (decoupled) block is present in sidebar.html',
     decoupledRule.length > 0, true);
-  eq('lower-dot-brown AC2: .dual-thumb.other (decoupled) contains background #b3623d',
+  eq('lens control: .dual-thumb.other (decoupled) contains background #b3623d',
     decoupledRule.includes('#b3623d'), true);
 
-  // --- AC3: Coupled-state other LABEL color is #c48a6a (matches the thumb) ---
+  // --- Coupled-state other LABEL color is #c48a6a (matches the thumb) ---
   // Rule: #lensControl.coupled .label-row .lbl.other { color: #c48a6a; }
-  eq('lower-dot-brown AC3: #lensControl.coupled .lbl.other color is #c48a6a',
+  eq('lens control: #lensControl.coupled .lbl.other color is #c48a6a',
     /#lensControl\.coupled[^{]*\.lbl\.other\s*\{[^}]*color\s*:\s*#c48a6a/.test(sidebarHtml), true);
 
-  // Verify thumb and label use the EXACT same hex (AC3 consistency check).
+  // Verify thumb and label use the EXACT same hex (consistency check).
   const coupledLabelMatch = sidebarHtml.match(/#lensControl\.coupled[^{]*\.lbl\.other\s*\{[^}]*color\s*:\s*(#[0-9a-fA-F]{6})/);
   const coupledThumbBgMatch = sidebarHtml.match(/\.dual-thumb\.other\.coupled\s*\{[^}]*background\s*:\s*(#[0-9a-fA-F]{6})/);
   const coupledLabelHex  = coupledLabelMatch  ? coupledLabelMatch[1].toLowerCase()  : 'MISSING';
   const coupledThumbHex  = coupledThumbBgMatch ? coupledThumbBgMatch[1].toLowerCase() : 'MISSING';
-  eq('lower-dot-brown AC3 consistency: coupled label hex === coupled thumb hex',
+  eq('lens control consistency: coupled label hex === coupled thumb hex',
     coupledLabelHex, coupledThumbHex);
 })();
 
 // ---------------------------------------------------------------------------
 // Sidebar lens preview and controls
-// AC1: request:applySettings sends a synchronous response
-// AC3: embedded-in-text numbers feed maxMag
+// request:applySettings sends a synchronous response
+// embedded-in-text numbers feed maxMag
 // ---------------------------------------------------------------------------
 
 // -------------------------------------------------------------------------
-// AC1: request:applySettings is acknowledged (sendResponse fires synchronously)
+// request:applySettings is acknowledged (sendResponse fires synchronously)
 //
 // The content.js onMessage listener was registered at module-eval time against
 // a no-op stub. To capture the real listener we re-eval the full content-script
@@ -1033,7 +1033,7 @@
     global.window   = savedWindow;
   }
 
-  eq('AC1: content.js onMessage listener was captured',
+  eq('content.js onMessage listener was captured',
     capturedListeners.length > 0, true);
 
   if (capturedListeners.length === 0) return;
@@ -1052,28 +1052,28 @@
     fakeSendResponse
   );
 
-  eq('AC1: sendResponse was called for request:applySettings',
+  eq('sendResponse was called for request:applySettings',
     sendResponseCallCount, 1);
 
-  eq('AC1: sendResponse called with {ok:true}',
+  eq('sendResponse called with {ok:true}',
     sendResponseCalledWith && sendResponseCalledWith.ok, true);
 
   // The branch must NOT return true (that would leave the message port open
   // for an async response that will never arrive).
-  eq('AC1: request:applySettings branch does NOT return true (synchronous)',
+  eq('request:applySettings branch does NOT return true (synchronous)',
     returnValue === true, false);
 
   // Source-level belt-and-suspenders: the branch contains a sendResponse( call.
   const contentSrc = sourceByName('content.js');
   if (contentSrc === null) {
-    eq('AC1-src: source file content.js present in manifest', false, true);
+    eq('src: source file content.js present in manifest', false, true);
     return;
   }
   // The branch is a responder. A responder answers by returning, so the
   // acknowledgement reads as a return of the answer rather than a
   // sendResponse call. The asker must receive something, because receiving nothing is what unbinds
   // the sidebar.
-  eq('AC1-src: the request:applySettings responder returns an answer',
+  eq('src: the request:applySettings responder returns an answer',
     /DR_BUS\.respond\(\s*'request:applySettings'[\s\S]{0,300}return \{/.test(contentSrc), true);
 })();
 
@@ -1276,7 +1276,7 @@
     'ui-pillbox.js', 'ui-toast.js', 'content.js',
   ];
 
-  // AC1: no content-script filename literal reaches readFileSync/path.join
+  // no content-script filename literal reaches readFileSync/path.join
   // anywhere in the suite, whether directly (`readFileSync('content.js')`,
   // or `path.join(__dirname, 'content.js')` assigned to a path variable
   // that is read next) or indirectly (a hardcoded array mixing content-script
@@ -1335,7 +1335,7 @@
   }
 
   const filenameLeaks = findContentScriptFilenameLeaks(testsSelfSource);
-  eq('manifest-driven loading AC1: no content-script filename literal (direct or via a loop-fed array) reaches readFileSync/path.join',
+  eq('manifest-driven loading: no content-script filename literal (direct or via a loop-fed array) reaches readFileSync/path.join',
     filenameLeaks.length === 0 ? 'none' : filenameLeaks.join('; '), 'none');
 
   // "concatenated in manifest order": contentScriptBundle must equal the
@@ -1649,47 +1649,47 @@
     adapterDefault._getScrollContainer(), wrapperEl);
 })();
 
-// --- AC6: both live scanners run the step and hold no ARIA pass of their own ---
+// --- both live scanners run the step and hold no ARIA pass of their own ---
 
-(function gridNesting_AC6_neitherLiveScannerHoldsAnAriaPass() {
+(function gridNesting_neitherLiveScannerHoldsAnAriaPass() {
   const controllerSrc = sourceByName('content.js');
 
-  eq('nesting AC6: the controller is listed in the manifest', controllerSrc !== null, true);
-  eq('nesting AC6: the controller, which holds both scanners, names no grid or table role selector',
+  eq('nesting: the controller is listed in the manifest', controllerSrc !== null, true);
+  eq('nesting: the controller, which holds both scanners, names no grid or table role selector',
     controllerSrc !== null &&
       (controllerSrc.includes('GRID_ARIA_SELECTOR') || controllerSrc.includes('role="grid"')),
     false);
   // The step's page-wide entry point is nominateNests, which scanTables
   // composes. The load-time scan and the added-node pass share one function,
   // and that function calls scanTables.
-  eq('nesting AC6: the load-time scan calls the table scan',
+  eq('nesting: the load-time scan calls the table scan',
     controllerSrc !== null && /scanTables\s*\(/.test(controllerSrc), true);
-  eq('nesting AC6: the added-node pass passes each added element to the load-time scan function',
+  eq('nesting: the added-node pass passes each added element to the load-time scan function',
     controllerSrc !== null && /injectTablePillboxes\s*\(\s*node\s*\)/.test(controllerSrc), true);
 })();
 
-// --- AC7: the living documents and the test page state the rule ---
+// --- the living documents and the test page state the rule ---
 
-(function gridNesting_AC7_livingDocumentsAndTheTestPageStateTheRule() {
+(function gridNesting_livingDocumentsAndTheTestPageStateTheRule() {
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
   const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const extensionReadme = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
   const testPage = fs.readFileSync(
-    path.join(__dirname, '..', 'docs', 'test-pages', 'tables.html'), 'utf8');
+    path.join(__dirname, '..', 'docs', 'test-pages', 'test-tables-1.html'), 'utf8');
 
   for (const term of ['qualifying element', 'chain root', 'containment chain', 'nesting depth']) {
-    eq('nesting AC7: docs/vocabulary.md carries a row for "' + term + '"',
+    eq('nesting: docs/vocabulary.md carries a row for "' + term + '"',
       new RegExp('^\\|\\s*' + term + '\\s*\\|', 'mi').test(vocabularyMd), true);
   }
   const pinnedPaneRow = vocabularyMd.split('\n')
     .find((line) => /^\|\s*pinned pane\s*\|/i.test(line)) || '';
-  eq('nesting AC7: docs/vocabulary.md keeps a pinned pane row', pinnedPaneRow !== '', true);
-  eq('nesting AC7: the pinned pane row states that the configured depth governs its columns',
+  eq('nesting: docs/vocabulary.md keeps a pinned pane row', pinnedPaneRow !== '', true);
+  eq('nesting: the pinned pane row states that the configured depth governs its columns',
     /depth/i.test(pinnedPaneRow), true);
 
-  eq('nesting AC7: chrome-extension/README.md states the nesting depth',
+  eq('nesting: chrome-extension/README.md states the nesting depth',
     /nesting depth/i.test(extensionReadme), true);
-  eq('nesting AC7: docs/design.md states the nesting depth',
+  eq('nesting: docs/design.md states the nesting depth',
     /nesting depth/i.test(designMd), true);
 
   const sectionStart = testPage.indexOf('13. Pinned-pane vendor grid');
@@ -1698,13 +1698,13 @@
     : testPage.slice(sectionStart, nextHeadingAt < 0 ? testPage.length : nextHeadingAt);
   const expectMatch = section.match(/<p class="expect">([\s\S]*?)<\/p>/);
   const expectText = expectMatch ? expectMatch[1] : '';
-  eq('nesting AC7: the test page holds a pinned-pane vendor grid section', sectionStart >= 0, true);
-  eq('nesting AC7: that section holds an expectation paragraph', expectText !== '', true);
-  eq('nesting AC7: the expectation names the scrolling pane',
+  eq('nesting: the test page holds a pinned-pane vendor grid section', sectionStart >= 0, true);
+  eq('nesting: that section holds an expectation paragraph', expectText !== '', true);
+  eq('nesting: the expectation names the scrolling pane',
     /scrolling pane/i.test(expectText), true);
-  eq('nesting AC7: the expectation states no table pillbox on the wrapper',
+  eq('nesting: the expectation states no table pillbox on the wrapper',
     /pillbox[^.]*wrapper/i.test(expectText), false);
-  eq('nesting AC7: the section states no second table pillbox',
+  eq('nesting: the section states no second table pillbox',
     /second (table )?pillbox/i.test(section), false);
 })();
 
@@ -1749,44 +1749,44 @@
     /header row/i.test(stateOwnership), true);
 })();
 
-// --- Criterion 5: the living documents state the pending table rule ---
+// --- the living documents state the pending table rule ---
 
-(function pendingRetest_AC5_livingDocumentsStateTheRule() {
+(function pendingRetest_livingDocumentsStateTheRule() {
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
   const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const extensionReadme = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
 
   const pendingRow = vocabularyMd.split('\n')
     .find((line) => /^\|\s*pending table\s*\|/i.test(line)) || '';
-  eq('pending AC5: docs/vocabulary.md carries a row for "pending table"',
+  eq('pending: docs/vocabulary.md carries a row for "pending table"',
     pendingRow !== '', true);
-  eq('pending AC5: the pending table row states the subtree observer',
+  eq('pending: the pending table row states the subtree observer',
     /subtree observer/i.test(pendingRow), true);
-  eq('pending AC5: the pending table row states the re-test cap',
+  eq('pending: the pending table row states the re-test cap',
     /re-test cap/i.test(pendingRow), true);
 
   const designParagraphs = designMd.split('\n\n');
   const detectionParagraph = designParagraphs.find((p) => /^\*\*Detection\.\*\*/.test(p)) || '';
-  eq('pending AC5: docs/design.md carries a Detection paragraph',
+  eq('pending: docs/design.md carries a Detection paragraph',
     detectionParagraph !== '', true);
-  eq('pending AC5: the Detection paragraph states that an empty chain leaves a pending table',
+  eq('pending: the Detection paragraph states that an empty chain leaves a pending table',
     /pending table/i.test(detectionParagraph), true);
-  eq('pending AC5: the Detection paragraph states the cap on failed re-tests',
+  eq('pending: the Detection paragraph states the cap on failed re-tests',
     /reaches the cap/i.test(detectionParagraph), true);
 
   const stateParagraph = designParagraphs.find((p) => /hold state outside the model/i.test(p)) || '';
-  eq('pending AC5: docs/design.md lists the state held outside the model',
+  eq('pending: docs/design.md lists the state held outside the model',
     stateParagraph !== '', true);
-  eq('pending AC5: that list names each pending table\'s subtree observer',
+  eq('pending: that list names each pending table\'s subtree observer',
     /pending table[^.]*observer/i.test(stateParagraph), true);
 
   const detectionPoint = extensionReadme.split('\n')
     .find((line) => /Detection runs on demand/i.test(line)) || '';
-  eq('pending AC5: chrome-extension/README.md carries the detection point',
+  eq('pending: chrome-extension/README.md carries the detection point',
     detectionPoint !== '', true);
-  eq('pending AC5: the detection point states the pending table',
+  eq('pending: the detection point states the pending table',
     /pending table/i.test(detectionPoint), true);
-  eq('pending AC5: the detection point names the re-test cap in the detection settings',
+  eq('pending: the detection point names the re-test cap in the detection settings',
     /pendingRetestCap/.test(detectionPoint), true);
 })();
 
@@ -2132,7 +2132,7 @@
     empty.length === 1 && empty[0].dataUrl === null && empty[0].record.taken === false, true);
 })();
 
-// Criterion 4: the living documents name the detection settings in the capture
+// the living documents name the detection settings in the capture
 // paragraph or row a reader would consult — the README's capture section,
 // the design document's Capture paragraph, and the vocabulary's capture state
 // row — loose enough to survive rewording, tight enough to fail if the

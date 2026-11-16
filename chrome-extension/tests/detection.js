@@ -4,11 +4,11 @@
 // Numbers inside links
 // ---------------------------------------------------------------------------
 
-// --- AC1: Cell whose entire content is inside <a> is left unrounded ---
+// --- Cell whose entire content is inside <a> is left unrounded ---
 // isCellWholeLink(<td><a href="#">1234</a></td>) must return true.
 (function ac1_wholeLinkCell() {
   const cell = makeLinkCell(['1234'], null);
-  eq('AC1: isCellWholeLink returns true for <td><a>1234</a></td>',
+  eq('isCellWholeLink returns true for <td><a>1234</a></td>',
     isCellWholeLink(cell), true);
 })();
 
@@ -18,11 +18,11 @@
     innerText: '1234',
     querySelectorAll: () => [],
   };
-  eq('AC1 (converse): isCellWholeLink returns false when no <a> present',
+  eq('converse: isCellWholeLink returns false when no <a> present',
     isCellWholeLink(plainCell), false);
 })();
 
-// AC1 via roundTable: a pure-numeric whole-link cell is skipped (mode = 'skip'),
+// via roundTable: a pure-numeric whole-link cell is skipped (mode = 'skip'),
 // so it never gets the dr-ext-rounded class.
 (function ac1_roundTable_wholeLinkCellNotRounded() {
   withLinkCreateTreeWalker(function() {
@@ -41,12 +41,12 @@
       rangeExpr: '',
     };
     roundTable(table, opts);
-    eq('AC1: whole-link numeric cell is NOT rounded (dr-ext-rounded absent)',
+    eq('whole-link numeric cell is NOT rounded (dr-ext-rounded absent)',
       linkCell.classList.contains('dr-ext-rounded'), false);
   });
 })();
 
-// --- AC3: Mixed visible text with <a>5</a> inline — linked number preserved ---
+// --- Mixed visible text with <a>5</a> inline — linked number preserved ---
 // isCellWholeLink must return false (not the whole cell text is in links).
 // filterLinkMatches must drop 5 and keep the other number.
 (function ac3_inlineLinkPreservesLinkedNumber() {
@@ -55,14 +55,14 @@
     // text, "Revenue 3000 5", which is what filterLinkMatches reads without a layout.
     const cell = makeLinkCell(['5'], 'Revenue 3000 ');
 
-    eq('AC3: isCellWholeLink is false for mixed cell',
+    eq('isCellWholeLink is false for mixed cell',
       isCellWholeLink(cell), false);
 
     const matches = extractNumbersInText(cell._textNodes.map((node) => node.nodeValue).join(''));
     const filtered = filterLinkMatches(cell, matches);
     const nums = filtered.map(m => m.num);
-    eq('AC3: linked number 5 is absent from filtered matches', nums.includes(5), false);
-    eq('AC3: non-linked 3000 survives filtering', nums.includes(3000), true);
+    eq('linked number 5 is absent from filtered matches', nums.includes(5), false);
+    eq('non-linked 3000 survives filtering', nums.includes(3000), true);
   });
 })();
 
@@ -92,14 +92,14 @@
   }
 })();
 
-// AC1: 1×1 table with a numeric cell → false (< 2 rows AND < 2 columns)
+// 1×1 table with a numeric cell → false (< 2 rows AND < 2 columns)
 (function isDataTable_1x1_numeric() {
   const table = makeIsDataTable([['42']]);
   eq('isDataTable: 1×1 table with numeric cell -> false (too few rows)',
     isDataTable(table), false);
 })();
 
-// AC2: 2×2 table with no numeric cells → false
+// 2×2 table with no numeric cells → false
 (function isDataTable_2x2_noNumeric() {
   const table = makeIsDataTable([
     ['foo', 'bar'],
@@ -109,7 +109,7 @@
     isDataTable(table), false);
 })();
 
-// AC3: 2×2 table with one numeric cell → true
+// 2×2 table with one numeric cell → true
 (function isDataTable_2x2_oneNumeric() {
   const table = makeIsDataTable([
     ['label', 'other'],
@@ -119,7 +119,7 @@
     isDataTable(table), true);
 })();
 
-// AC4: 3×3 table with all-text cells → false
+// 3×3 table with all-text cells → false
 (function isDataTable_3x3_allText() {
   const table = makeIsDataTable([
     ['Name',  'Role',   'Dept'],
@@ -130,14 +130,14 @@
     isDataTable(table), false);
 })();
 
-// AC5: 1-row table with numeric cells → false (< 2 rows)
+// 1-row table with numeric cells → false (< 2 rows)
 (function isDataTable_1row_numeric() {
   const table = makeIsDataTable([['100', '200', '300']]);
   eq('isDataTable: 1-row table with numeric cells -> false (< 2 rows)',
     isDataTable(table), false);
 })();
 
-// AC6: 2-row, 1-column table with numeric cells → false (< 2 columns in every row)
+// 2-row, 1-column table with numeric cells → false (< 2 columns in every row)
 (function isDataTable_2row_1col_numeric() {
   const table = makeIsDataTable([
     ['1000'],
@@ -527,18 +527,18 @@ const supTestOpts = {
 };
 
 // ---------------------------------------------------------------------------
-// AC4 (getSuperscriptRanges direct unit tests)
+// (getSuperscriptRanges direct unit tests)
 // ---------------------------------------------------------------------------
 (function supAC4_directUnitTests() {
-  // AC4a: cell with NO <sup> — getSuperscriptRanges must return []
+  // cell with NO <sup> — getSuperscriptRanges must return []
   withSupCreateTreeWalker(function() {
     const plainCell = makeSuperscriptCell([{ text: '1012', inSup: false }]);
     const ranges = getSuperscriptRanges(plainCell);
-    eq('sup AC4a: getSuperscriptRanges returns [] for cell with no <sup>',
+    eq('sup: getSuperscriptRanges returns [] for cell with no <sup>',
       ranges, []);
   });
 
-  // AC4b: cell built as "10" + <sup>"12"</sup> → range covers indices 2..4
+  // cell built as "10" + <sup>"12"</sup> → range covers indices 2..4
   // (cursor starts at 0; "10" is 2 chars, so "12" runs from 2 to 4)
   withSupCreateTreeWalker(function() {
     const cell = makeSuperscriptCell([
@@ -546,30 +546,30 @@ const supTestOpts = {
       { text: '12', inSup: true },
     ]);
     const ranges = getSuperscriptRanges(cell);
-    eq('sup AC4b: getSuperscriptRanges returns one range for <sup>12</sup>',
+    eq('sup: getSuperscriptRanges returns one range for <sup>12</sup>',
       ranges.length, 1);
-    eq('sup AC4b: range start is 2 (after "10")',
+    eq('sup: range start is 2 (after "10")',
       ranges[0].start, 2);
-    eq('sup AC4b: range end is 4 (covers "12")',
+    eq('sup: range end is 4 (covers "12")',
       ranges[0].end, 4);
   });
 
-  // AC4c: cell "20 × 10" + <sup>"15"</sup> → range covers indices 7..9
+  // cell "20 × 10" + <sup>"15"</sup> → range covers indices 7..9
   withSupCreateTreeWalker(function() {
     const cell = makeSuperscriptCell([
       { text: '20 × 10', inSup: false },  // "20 × 10" = 7 chars
       { text: '15', inSup: true },
     ]);
     const ranges = getSuperscriptRanges(cell);
-    eq('sup AC4c: getSuperscriptRanges on "20 × 10<sup>15</sup>" returns one range',
+    eq('sup: getSuperscriptRanges on "20 × 10<sup>15</sup>" returns one range',
       ranges.length, 1);
-    eq('sup AC4c: range start is 7',
+    eq('sup: range start is 7',
       ranges[0].start, 7);
-    eq('sup AC4c: range end is 9',
+    eq('sup: range end is 9',
       ranges[0].end, 9);
   });
 
-  // AC4d: cell with unicode-minus negative exponent "~ 10" + <sup>"−32"</sup> + " sec"
+  // cell with unicode-minus negative exponent "~ 10" + <sup>"−32"</sup> + " sec"
   // "~ 10" = 4 chars, "−32" (unicode minus U+2212 is 1 char) = 3 chars → range [4, 7)
   withSupCreateTreeWalker(function() {
     const cell = makeSuperscriptCell([
@@ -578,11 +578,11 @@ const supTestOpts = {
       { text: ' sec', inSup: false },
     ]);
     const ranges = getSuperscriptRanges(cell);
-    eq('sup AC4d: getSuperscriptRanges on "~ 10<sup>−32</sup> sec" returns one range',
+    eq('sup: getSuperscriptRanges on "~ 10<sup>−32</sup> sec" returns one range',
       ranges.length, 1);
-    eq('sup AC4d: range start is 4',
+    eq('sup: range start is 4',
       ranges[0].start, 4);
-    eq('sup AC4d: range end is 7',
+    eq('sup: range end is 7',
       ranges[0].end, 7);
   });
 })();
@@ -780,7 +780,6 @@ const supTestOpts = {
 
 // =============================================================================
 // Grid Detection — looksLikeGrid() and findTargetTable() unit tests
-// Spec: docs/sprint-plans/grid-support.md §6
 // =============================================================================
 
 // ---------------------------------------------------------------------------
@@ -791,8 +790,8 @@ const supTestOpts = {
 // looksLikeGrid() — PASS cases
 // ---------------------------------------------------------------------------
 
-// LG1: Pass — unlabelled div-grid, VARIABLE ROW HEIGHTS (AC2, S2 headline)
-// S2 mandates row height is NOT tested. Rows must have differing heights yet
+// LG1: Pass — unlabelled div-grid, VARIABLE ROW HEIGHTS
+// Row height is NOT tested. Rows must have differing heights yet
 // the function must still return true. Column-0 offsetWidths are uniform (80px)
 // so the alignment step passes.
 (function looksLikeGrid_pass_variableRowHeights() {
@@ -853,10 +852,10 @@ const supTestOpts = {
 })();
 
 // ---------------------------------------------------------------------------
-// looksLikeGrid() — REJECT cases (AC4 false-positive guard)
+// looksLikeGrid() — REJECT cases (false-positive guard)
 // ---------------------------------------------------------------------------
 
-// LG4: Reject — CSS layout/card grid with NO numeric content (AC4)
+// LG4: Reject — CSS layout/card grid with NO numeric content
 // Repetitive card-style divs with text-only content must be rejected.
 // This proves the numeric-content step works as the mandatory false-positive guard.
 (function looksLikeGrid_reject_cssCardGrid() {
@@ -874,9 +873,8 @@ const supTestOpts = {
   });
 })();
 
-// LG5: Reject — nav menu (repetitive rows, no numbers) (AC4)
+// LG5: Reject — nav menu (repetitive rows, no numbers)
 // A navigation menu with text-only items must be rejected.
-// This is the second false-positive guard test per the spec.
 (function looksLikeGrid_reject_navMenu() {
   const rows = [
     makeGridRow([{text:'Home',width:100},{text:''}], 'nav-item', 20),
@@ -963,7 +961,7 @@ const supTestOpts = {
 // findTargetTable() walk-up tests
 // ---------------------------------------------------------------------------
 
-// FT1: findTargetTable — returns OUTERMOST matching ancestor (S6), not inner pane
+// FT1: findTargetTable — returns OUTERMOST matching ancestor, not inner pane
 // Build three nested containers: innermost → middle → outer.
 // Both innermost and outer pass looksLikeGrid (both have numeric content, flex,
 // uniform col-0 widths). Middle also passes. The walk-up must keep going as long
@@ -1000,7 +998,7 @@ const supTestOpts = {
 
     const result = findTargetTable(inner);
 
-    eq('findTargetTable: returns outermost ancestor (S6), not inner pane',
+    eq('findTargetTable: returns outermost ancestor, not inner pane',
       result.handle, outer);
   });
 })();
@@ -1055,7 +1053,7 @@ const supTestOpts = {
 
 // FT3: findTargetTable — prefers native <table> ancestor over grid heuristic
 // When the element has a <table> ancestor, closest('table') must be returned
-// immediately without engaging the looksLikeGrid walk-up (AC1).
+// immediately without engaging the looksLikeGrid walk-up.
 (function findTargetTable_prefersNativeTable() {
   withFindTargetEnv([], function() {
     const tableEl = { tagName: 'TABLE', rows: [], dataset: {} };
@@ -1180,11 +1178,9 @@ const supTestOpts = {
 // ---------------------------------------------------------------------------
 // Right-click registration: the nomination step runs from the clicked
 // element's chain root.
-// Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.5 and the
-// right-click-registers block in §5; decision D1.
 // ---------------------------------------------------------------------------
 //
-// The route these assertions pin, in the specification's words:
+// The route these assertions pin:
 //   - A right-click resolves in four steps: the nearest native table, the
 //     nearest already-registered ancestor, the nomination step run from the
 //     chain root of the nest the clicked element sits in, and the geometry
@@ -1202,26 +1198,26 @@ const supTestOpts = {
 // with the grid fixtures further down this file; a top-level function
 // declaration, so it is in scope here).
 
-// --- AC1: a click in the scrolling pane resolves the scrolling pane ---
+// --- a click in the scrolling pane resolves the scrolling pane ---
 
-(function rightClickRegisters_AC1_aClickInTheScrollingPaneResolvesIt() {
+(function rightClickRegisters_aClickInTheScrollingPaneResolvesIt() {
   const grid = makeDatabaseQueryGrid();
   const styleProbe = makeCountingStyleProbe();
   const result = findTargetTable(grid.scrollRowEls[2].children[1],
     { isRegistered: () => false, styleProbe });
 
-  eq('findTargetTable AC1: a click in the scrolling pane resolves the scrolling pane',
+  eq('findTargetTable: a click in the scrolling pane resolves the scrolling pane',
     result !== null && result.handle === grid.scrollPaneEl, true);
-  eq('findTargetTable AC1: the scrolling pane resolution reports isNew',
+  eq('findTargetTable: the scrolling pane resolution reports isNew',
     result !== null && result.isNew, true);
-  eq('findTargetTable AC1: the resolution reads no layout, so the geometry probe did not produce it',
+  eq('findTargetTable: the resolution reads no layout, so the geometry probe did not produce it',
     styleProbe.layoutReads, 0);
-  eq('findTargetTable AC1: the resolution adds no registry entry',
+  eq('findTargetTable: the resolution adds no registry entry',
     [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl]
       .map((el) => DR_MODEL.hasTable(el)), [false, false, false]);
 })();
 
-// --- AC1: a click on the nest's own layers resolves the scrolling pane ---
+// --- a click on the nest's own layers resolves the scrolling pane ---
 //
 // A right-click inside the grid lands on whatever sits under the pointer, and
 // the gaps between the panes belong to the nest's plain layers. The geometry
@@ -1230,38 +1226,38 @@ const supTestOpts = {
 // layer resolves nothing through it. The nomination step runs from the chain
 // root instead, which covers every layer of the nest.
 
-(function rightClickRegisters_AC1_aClickOnTheNestsOwnLayersResolvesTheScrollingPane() {
+(function rightClickRegisters_aClickOnTheNestsOwnLayersResolvesTheScrollingPane() {
   const plain = makeDatabaseQueryGrid({ plainWrapper: true });
   const paneRowResult = findTargetTable(plain.paneParentEl, { isRegistered: () => false });
-  eq('findTargetTable AC1: a click on the plain layer between the panes resolves the scrolling pane',
+  eq('findTargetTable: a click on the plain layer between the panes resolves the scrolling pane',
     paneRowResult !== null && paneRowResult.handle === plain.scrollPaneEl, true);
 
   const grid = makeDatabaseQueryGrid();
   const wrapperResult = findTargetTable(grid.wrapperEl, { isRegistered: () => false });
-  eq('findTargetTable AC1: a click on the wrapper itself resolves the scrolling pane',
+  eq('findTargetTable: a click on the wrapper itself resolves the scrolling pane',
     wrapperResult !== null && wrapperResult.handle === grid.scrollPaneEl, true);
 })();
 
-// --- AC2: a click in the row-number gutter resolves the scrolling pane ---
+// --- a click in the row-number gutter resolves the scrolling pane ---
 
-(function rightClickRegisters_AC2_aClickInTheRowNumberGutterResolvesTheScrollingPane() {
+(function rightClickRegisters_aClickInTheRowNumberGutterResolvesTheScrollingPane() {
   const grid = makeDatabaseQueryGrid();
   const gutterCell = grid.pinnedRowEls[0].children[0];
 
-  eq('findTargetTable AC2: the clicked gutter cell holds a row number',
+  eq('findTargetTable: the clicked gutter cell holds a row number',
     /^\d+$/.test(gutterCell.textContent), true);
 
   const styleProbe = makeCountingStyleProbe();
   const result = findTargetTable(gutterCell, { isRegistered: () => false, styleProbe });
 
-  eq('findTargetTable AC2: a click in the row-number gutter resolves the scrolling pane beside it',
+  eq('findTargetTable: a click in the row-number gutter resolves the scrolling pane beside it',
     result !== null && result.handle === grid.scrollPaneEl, true);
-  eq('findTargetTable AC2: the gutter resolution reports isNew',
+  eq('findTargetTable: the gutter resolution reports isNew',
     result !== null && result.isNew, true);
-  eq('findTargetTable AC2: the gutter resolution reports neither the pinned pane nor the wrapper',
+  eq('findTargetTable: the gutter resolution reports neither the pinned pane nor the wrapper',
     result !== null &&
       (result.handle === grid.pinnedPaneEl || result.handle === grid.wrapperEl), false);
-  eq('findTargetTable AC2: the gutter resolution reads no layout, so the geometry probe did not produce it',
+  eq('findTargetTable: the gutter resolution reads no layout, so the geometry probe did not produce it',
     styleProbe.layoutReads, 0);
 
   // The layout counter is a live probe: the geometry probe does read layout
@@ -1272,35 +1268,35 @@ const supTestOpts = {
     [0, 1, 2, 3, 4, 5].map((i) => makeDgRow(i, ['north', '4,281,905', '17.40'])));
   findTargetTable(roleLess.children[0].children[0],
     { isRegistered: () => false, styleProbe: roleLessProbe });
-  eq('findTargetTable AC2: a role-less tree does reach the geometry probe and read layout',
+  eq('findTargetTable: a role-less tree does reach the geometry probe and read layout',
     roleLessProbe.layoutReads > 0, true);
 })();
 
-// --- AC3: a role-bearing element that fails the data test resolves nothing ---
+// --- a role-bearing element that fails the data test resolves nothing ---
 
-(function rightClickRegisters_AC3_aRoleBearingElementThatFailsTheDataTestResolvesNothing() {
+(function rightClickRegisters_aRoleBearingElementThatFailsTheDataTestResolvesNothing() {
   const oneCell = makeRoleBearingNest([makeDgRow(0, ['17'])]);
   const noNumber = makeRoleBearingNest([
     makeDgRow(0, ['north', 'alpha']),
     makeDgRow(1, ['south', 'bravo']),
   ]);
 
-  eq('findTargetTable AC3: one row of one cell fails the data test',
+  eq('findTargetTable: one row of one cell fails the data test',
     isDataTable(oneCell), false);
-  eq('findTargetTable AC3: two rows with no number fail the data test',
+  eq('findTargetTable: two rows with no number fail the data test',
     isDataTable(noNumber), false);
-  eq('findTargetTable AC3: the one-row-one-cell element is a chain root (sanity)',
+  eq('findTargetTable: the one-row-one-cell element is a chain root (sanity)',
     chainRootOf(oneCell.children[0].children[0]) === oneCell, true);
-  eq('findTargetTable AC3: the two-rows-no-number element is a chain root (sanity)',
+  eq('findTargetTable: the two-rows-no-number element is a chain root (sanity)',
     chainRootOf(noNumber.children[0].children[0]) === noNumber, true);
 
-  eq('findTargetTable AC3: a click inside the one-row-one-cell element resolves nothing',
+  eq('findTargetTable: a click inside the one-row-one-cell element resolves nothing',
     findTargetTable(oneCell.children[0].children[0], { isRegistered: () => false }), null);
-  eq('findTargetTable AC3: a click inside the two-rows-no-number element resolves nothing',
+  eq('findTargetTable: a click inside the two-rows-no-number element resolves nothing',
     findTargetTable(noNumber.children[0].children[0], { isRegistered: () => false }), null);
 })();
 
-// --- AC3: an empty nomination falls through to the geometry probe ---
+// --- an empty nomination falls through to the geometry probe ---
 //
 // The two cases above resolve nothing because the geometry probe rejects them
 // as well, so they say nothing about which step produced the null. This case
@@ -1311,28 +1307,28 @@ const supTestOpts = {
 // sample). The route therefore has to hand the element on rather than end the
 // resolution, and the layout counter records the probe producing the answer.
 
-(function rightClickRegisters_AC3_anEmptyNominationFallsThroughToTheGeometryProbe() {
+(function rightClickRegisters_anEmptyNominationFallsThroughToTheGeometryProbe() {
   const nest = makeRoleBearingNest(
     [0, 1, 2, 3, 4, 5].map((i) => makeDgRow(i, ['4,281,905'])));
   const styleProbe = makeCountingStyleProbe();
 
-  eq('findTargetTable AC3: a single-column nest fails the data test, so the nomination is empty',
+  eq('findTargetTable: a single-column nest fails the data test, so the nomination is empty',
     isDataTable(nest), false);
-  eq('findTargetTable AC3: the clicked cell still sits in that nest',
+  eq('findTargetTable: the clicked cell still sits in that nest',
     chainRootOf(nest.children[0].children[0]) === nest, true);
 
   const result = findTargetTable(nest.children[0].children[0],
     { isRegistered: () => false, styleProbe });
 
-  eq('findTargetTable AC3: an empty nomination falls through and the probe resolves the nest',
+  eq('findTargetTable: an empty nomination falls through and the probe resolves the nest',
     result !== null && result.handle === nest, true);
-  eq('findTargetTable AC3: the fall-through resolution reports isNew',
+  eq('findTargetTable: the fall-through resolution reports isNew',
     result !== null && result.isNew, true);
-  eq('findTargetTable AC3: the fall-through resolution reads layout, so the geometry probe produced it',
+  eq('findTargetTable: the fall-through resolution reads layout, so the geometry probe produced it',
     styleProbe.layoutReads > 0, true);
 })();
 
-// --- AC4: a registered table resolves at the registry route ---
+// --- a registered table resolves at the registry route ---
 //
 // The proof goes through the ports the resolver takes, not through the
 // source text: opts.isRegistered records the elements the resolver asked the
@@ -1342,7 +1338,7 @@ const supTestOpts = {
 // registered, so the isNew false above stands for the registry route rather
 // than for a resolver that never reports a new table.
 
-(function rightClickRegisters_AC4_aRegisteredTableResolvesAtTheRegistryRoute() {
+(function rightClickRegisters_aRegisteredTableResolvesAtTheRegistryRoute() {
   const grid = makeDatabaseQueryGrid();
   const cell = grid.scrollRowEls[3].children[1];
 
@@ -1351,19 +1347,19 @@ const supTestOpts = {
     isRegistered: (el) => { asked.push(el); return el === grid.scrollPaneEl; },
   });
 
-  eq('findTargetTable AC4: a click inside a registered scrolling pane resolves it',
+  eq('findTargetTable: a click inside a registered scrolling pane resolves it',
     result !== null && result.handle === grid.scrollPaneEl, true);
-  eq('findTargetTable AC4: the registry route reports isNew false',
+  eq('findTargetTable: the registry route reports isNew false',
     result !== null && result.isNew, false);
-  eq('findTargetTable AC4: the registry walk stops at the scrolling pane',
+  eq('findTargetTable: the registry walk stops at the scrolling pane',
     asked.length > 0 && asked[asked.length - 1] === grid.scrollPaneEl, true);
-  eq('findTargetTable AC4: no step asks the registry about the wrapper',
+  eq('findTargetTable: no step asks the registry about the wrapper',
     asked.includes(grid.wrapperEl), false);
 
   const freshResult = findTargetTable(cell, { isRegistered: () => false });
-  eq('findTargetTable AC4: the same click with nothing registered reaches the nomination step',
+  eq('findTargetTable: the same click with nothing registered reaches the nomination step',
     freshResult !== null && freshResult.handle === grid.scrollPaneEl, true);
-  eq('findTargetTable AC4: and that resolution reports isNew true',
+  eq('findTargetTable: and that resolution reports isNew true',
     freshResult !== null && freshResult.isNew, true);
 })();
 
@@ -1430,9 +1426,9 @@ const supTestOpts = {
 
 // ---------------------------------------------------------------------------
 // TableAdapter abstraction
-// AC2 — NativeTableAdapter round-trip test
-// AC3 — GridAdapter stub no-throw test
-// AC4 — source scan: no data-row-index literal in content.js
+// NativeTableAdapter round-trip test
+// GridAdapter stub no-throw test
+// source scan: no data-row-index literal in content.js
 // ---------------------------------------------------------------------------
 
 // TA1: NativeTableAdapter round-trip
@@ -1616,7 +1612,7 @@ const supTestOpts = {
 })();
 
 // ---------------------------------------------------------------------------
-// GR1: Unlabelled variable-row-height grid — structural extraction + nodeValue rounding
+// Unlabelled variable-row-height grid — structural extraction + nodeValue rounding
 // The headline test: no ARIA roles, no dg-- classes. GridAdapter must fall back
 // to direct children as rows and direct row-children as cells.
 // ---------------------------------------------------------------------------
@@ -1631,39 +1627,39 @@ const supTestOpts = {
 
   const adapter = makeAdapter(grid.wrapperEl);
 
-  eq('GR1: makeAdapter returns GridAdapter for div wrapper',
+  eq('makeAdapter returns GridAdapter for div wrapper',
     adapter instanceof GridAdapter, true);
 
-  eq('GR1: isGrid() === true',
+  eq('isGrid() === true',
     adapter.isGrid(), true);
 
   const rows = adapter.getRows();
-  eq('GR1: getRows() returns 3 rows',
+  eq('getRows() returns 3 rows',
     rows.length, 3);
 
   const cells0 = rows[0].getCells();
-  eq('GR1: row 0 has 2 cells',
+  eq('row 0 has 2 cells',
     cells0.length, 2);
 
-  eq('GR1: row 0 cell 0 getText() returns "8584629"',
+  eq('row 0 cell 0 getText() returns "8584629"',
     cells0[0].getText(), '8584629');
 
-  eq('GR1: row 0 cell 1 getText() returns "286"',
+  eq('row 0 cell 1 getText() returns "286"',
     cells0[1].getText(), '286');
 
   // Now round via applyPatches and confirm nodeValue changed
   cells0[0].applyPatches([{ index: 0, numStr: '8584629', newNum: '8500000' }]);
   const tn0 = grid.cellEls[0].childNodes[0];
-  eq('GR1: after applyPatches, text node nodeValue is rounded value',
+  eq('after applyPatches, text node nodeValue is rounded value',
     tn0.nodeValue, '8500000');
 
   // The dr-ext-rounded class must be on the cell element
-  eq('GR1: after applyPatches, cell carries dr-ext-rounded class',
+  eq('after applyPatches, cell carries dr-ext-rounded class',
     grid.cellEls[0].classList.contains('dr-ext-rounded'), true);
 })();
 
 // ---------------------------------------------------------------------------
-// GR2: .dg--virtual-row / .dg--cell shaped grid — path extracts via library selectors
+// .dg--virtual-row / .dg--cell shaped grid — path extracts via library selectors
 // ---------------------------------------------------------------------------
 
 (function gr2_dgGrid_extraction() {
@@ -1675,20 +1671,20 @@ const supTestOpts = {
   const adapter = makeAdapter(grid.wrapperEl);
 
   const rows = adapter.getRows();
-  eq('GR2: dg-- grid getRows() returns 2 rows',
+  eq('dg-- grid getRows() returns 2 rows',
     rows.length, 2);
 
   const cells = rows[0].getCells();
-  eq('GR2: dg-- grid row 0 has 2 cells',
+  eq('dg-- grid row 0 has 2 cells',
     cells.length, 2);
 
-  eq('GR2: dg-- grid row 0 cell 0 text is "1000000"',
+  eq('dg-- grid row 0 cell 0 text is "1000000"',
     cells[0].getText(), '1000000');
 })();
 
 // ---------------------------------------------------------------------------
-// GR3: nodeValue write asserts NODE IDENTITY — the regression guard for the
-// reconciler crash. The spec mandates: patch in place, never replace the node.
+// nodeValue write asserts NODE IDENTITY — the regression guard for the
+// reconciler crash. The rule: patch in place, never replace the node.
 // ---------------------------------------------------------------------------
 
 (function gr3_nodeIdentityPreservation() {
@@ -1710,22 +1706,22 @@ const supTestOpts = {
   // The Text node reference must be the SAME object.
   const textNodeAfter = grid.cellEls[0].childNodes[0];
 
-  eq('GR3: text node object identity preserved after applyPatches (same reference)',
+  eq('text node object identity preserved after applyPatches (same reference)',
     textNodeAfter === textNodeBefore, true);
 
-  eq('GR3: text node nodeValue was patched to rounded value',
+  eq('text node nodeValue was patched to rounded value',
     textNodeAfter.nodeValue, '9900000');
 
   // The cell's child node list length must be unchanged (no insertion/removal)
-  eq('GR3: cell childNodes.length unchanged after applyPatches (no appendChild/removeChild)',
+  eq('cell childNodes.length unchanged after applyPatches (no appendChild/removeChild)',
     grid.cellEls[0].childNodes.length, childCountBefore);
 })();
 
 // ---------------------------------------------------------------------------
-// GR3b: the grid write path does NOT use textContent/innerHTML — source-level
-// guard. The spec forbids: cell.textContent=, cell.innerHTML=, removeChild,
+// the grid write path does NOT use textContent/innerHTML — source-level
+// guard. Forbidden: cell.textContent=, cell.innerHTML=, removeChild,
 // appendChild on a cell during a grid write. We verify the node reference is
-// identical (GR3) which implies none of those paths ran. Additionally scan
+// identical which implies none of those paths ran. Additionally scan
 // source for the critical prohibition: the cell object both kinds share
 // (applyPatches), the patch writer it calls, and the piece restore.
 // ---------------------------------------------------------------------------
@@ -1735,19 +1731,19 @@ const supTestOpts = {
   const bodies = ['function makeCellObj(', 'function writePatches(', 'function restoreTextPieces(']
     .map((signature) => sourceBodyOf(src, signature));
 
-  eq('GR3b: the grid write path source is found',
+  eq('the grid write path source is found',
     bodies.every((body) => body.length > 0), true);
 
   // No 'textContent =' assignment anywhere on the grid write path.
-  eq('GR3b: the grid write path contains no textContent= assignment',
+  eq('the grid write path contains no textContent= assignment',
     bodies.some((body) => /textContent\s*=(?!=)/.test(body)), false);
 
   // The writer and the restore write through nodeValue.
-  eq('GR3b: the patch writer and the piece restore write through nodeValue',
+  eq('the patch writer and the piece restore write through nodeValue',
     /\.nodeValue\s*=(?!=)/.test(bodies[1]) && /\.nodeValue\s*=(?!=)/.test(bodies[2]), true);
 })();
 
-// GR6d: applyPatches is a no-op when the cell has no text node
+// applyPatches is a no-op when the cell has no text node
 (function gr6d_applyPatches_noopWhenNoTextNode() {
   // Build a cell with no text node
   const emptyCell = makeElementNode('empty-cell', []);
@@ -1775,14 +1771,14 @@ const supTestOpts = {
     threw = true;
   }
 
-  eq('GR6d: applyPatches on cell with no text node does not throw',
+  eq('applyPatches on cell with no text node does not throw',
     threw, false);
 
-  eq('GR6d: applyPatches on cell with no text node leaves classList unchanged',
+  eq('applyPatches on cell with no text node leaves classList unchanged',
     emptyCell.classList.contains('dr-ext-rounded'), false);
 })();
 
-// GR6f: isDataTable returns true for a grid with numeric cells
+// isDataTable returns true for a grid with numeric cells
 (function gr6f_isDataTable_numericGrid() {
   const grid = makeGridWrapper([
     ['Name', '1234567'],
@@ -1791,11 +1787,11 @@ const supTestOpts = {
   ]);
 
   // isDataTable calls makeAdapter(el).getRows(), so the wrapper must be a div
-  eq('GR6f: isDataTable returns true for grid with numeric cells',
+  eq('isDataTable returns true for grid with numeric cells',
     isDataTable(grid.wrapperEl), true);
 })();
 
-// GR6g: isDataTable returns false for an all-text grid (no finite numbers)
+// isDataTable returns false for an all-text grid (no finite numbers)
 (function gr6g_isDataTable_allTextGrid() {
   const grid = makeGridWrapper([
     ['Name',  'City'],
@@ -1804,33 +1800,32 @@ const supTestOpts = {
     ['Carol', 'Tokyo'],
   ]);
 
-  eq('GR6g: isDataTable returns false for all-text grid (no numeric cells)',
+  eq('isDataTable returns false for all-text grid (no numeric cells)',
     isDataTable(grid.wrapperEl), false);
 })();
 
-// GR6i: GridAdapter write sequence — getText after applyPatches returns the
+// GridAdapter write sequence — getText after applyPatches returns the
 // stored original, and the text node holds the rounded value
 (function gr6i_applyPatches_getTextRoundTrip() {
   const grid = makeGridWrapper([['9876543']]);
   const adapter = makeAdapter(grid.wrapperEl);
   const cellObj = adapter.getRows()[0].getCells()[0];
 
-  eq('GR6i (setup): getText before applyPatches returns original',
+  eq('(setup): getText before applyPatches returns original',
     cellObj.getText(), '9876543');
 
   cellObj.applyPatches([{ index: 0, numStr: '9876543', newNum: '9900000' }]);
 
   // getText after the write returns the ORIGINAL so re-rounding uses the right base.
-  eq('GR6i: getText after applyPatches returns stored original (for re-round safety)',
+  eq('getText after applyPatches returns stored original (for re-round safety)',
     cellObj.getText(), '9876543');
 
   // The nodeValue on the text node is the rounded value
-  eq('GR6i: text node nodeValue after applyPatches is the rounded value',
+  eq('text node nodeValue after applyPatches is the rounded value',
     grid.cellEls[0].childNodes[0].nodeValue, '9900000');
 })();
 
-// GR6j: SPEC GAP GUARD — the grid write path is nodeValue-only. The spec (D3)
-// says the write is a nodeValue patch (GridAdapter's applyPatches →
+// The grid write path is nodeValue-only: the write is a nodeValue patch (GridAdapter's applyPatches →
 // writePatches → nodeValue =), NOT cell.innerHTML = … which destroys
 // React fiber identity.
 //
@@ -1847,12 +1842,12 @@ const supTestOpts = {
     'function restoreTable(', 'function releaseCell(']
     .map((signature) => sourceBodyOf(src, signature));
 
-  eq('GR6j: the write path has no innerHTML= assignment',
+  eq('the write path has no innerHTML= assignment',
     bodies.every((body) => body.length > 0 && !/innerHTML\s*=(?!=)/.test(body)), true);
 
   // The cell object writes through the patch writer, and the patch writer
   // writes through nodeValue (the only permitted write).
-  eq('GR6j: applyPatches writes through the patch writer, which assigns nodeValue',
+  eq('applyPatches writes through the patch writer, which assigns nodeValue',
     /writePatches\(/.test(bodies[0]) && /\.nodeValue\s*=(?!=)/.test(bodies[1]), true);
 })();
 
@@ -2013,7 +2008,7 @@ const supTestOpts = {
     isAccessibilityArtifact({}), false);
 })();
 
-// --- pass1-filter AC1: accessibility artifacts (aria-hidden ancestor) get NO table pillbox ---
+// --- pass1-filter: accessibility artifacts (aria-hidden ancestor) get NO table pillbox ---
 // Build N=3 accessibility artifacts (aria-hidden parent), all valid data tables.
 // After Pass 1 none of them should be in tablePillboxes.
 
@@ -2051,7 +2046,7 @@ const supTestOpts = {
   cleanupPass1Tables(artifacts);
 })();
 
-// --- pass1-filter AC1: accessibility artifacts (off-screen left) get NO table pillbox ---
+// --- pass1-filter: accessibility artifacts (off-screen left) get NO table pillbox ---
 // Build N=2 accessibility artifacts with positioned ancestor left=-10000px.
 
 (function pass1Filter_offscreenLeftArtifacts_zeroTablePillboxes() {
@@ -2089,7 +2084,7 @@ const supTestOpts = {
   cleanupPass1Tables(artifacts);
 })();
 
-// --- pass1-filter AC2: a normal on-screen table still gets exactly ONE table pillbox ---
+// --- pass1-filter: a normal on-screen table still gets exactly ONE table pillbox ---
 
 (function pass1Filter_realTable_getsOneTablePillbox() {
   const realTable = makePass1DataTable();
@@ -2472,7 +2467,7 @@ const supTestOpts = {
 // chrome-extension/lib/dr-table/detect.js and chrome-extension/constants.js.
 // ---------------------------------------------------------------------------
 
-// AC1: a grid whose first data row leads with eleven text cells before its
+// a grid whose first data row leads with eleven text cells before its
 // first number. The budget walks every cell in document order, so the
 // number still falls inside it.
 (function dataTestBudget_grid_numberInTwelfthColumnPasses() {
@@ -2483,7 +2478,7 @@ const supTestOpts = {
     isDataTable(g.wrapperEl), true);
 })();
 
-// AC2: a native table large enough to cross the budget. The budget reads
+// a native table large enough to cross the budget. The budget reads
 // cells in document order, header row included, and stops at the first
 // number. A table with no number inside the budget fails; the same table
 // with a number at the budget-th cell passes; the same table with its only
@@ -2506,7 +2501,7 @@ const supTestOpts = {
     isDataTable(pastBudgetTable), false);
 })();
 
-// AC3: a native table of three rows by two cells with one number still
+// a native table of three rows by two cells with one number still
 // passes. The budget does not disturb a table well inside it.
 (function dataTestBudget_smallNativeTablePasses() {
   const table = makeNativeTableEl([
@@ -2865,12 +2860,9 @@ const PRE_MOVE_DETECTION_SETTINGS = {
 
 // =============================================================================
 // One registration per grid, at the configured depth
-// Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.3 and the
-// grid-nesting-rule block in §5; decision D2 in
-// docs/sprint-plans/grid-detection-recovery.md.
 // =============================================================================
 //
-// The rule these assertions pin, in the specification's words:
+// The rule these assertions pin:
 //   - A qualifying element carries a grid or table role, is not a native
 //     table, and holds no native table the accessibility-artifact guard keeps.
 //   - A chain root is a qualifying element with no qualifying ancestor. A
@@ -2891,42 +2883,42 @@ const PRE_MOVE_DETECTION_SETTINGS = {
 // scanner suites above spell it.
 const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 
-// --- AC1: the database query shape registers the scrolling pane alone ---
+// --- the database query shape registers the scrolling pane alone ---
 
-(function gridNesting_AC1_databaseQueryShapeRegistersTheScrollingPane() {
+(function gridNesting_databaseQueryShapeRegistersTheScrollingPane() {
   const grid = makeDatabaseQueryGrid();
 
   // The data test is what drops the one-column pinned pane from the chain.
-  eq('nesting AC1: the one-column pinned pane fails the data test',
+  eq('nesting: the one-column pinned pane fails the data test',
     isDataTable(grid.pinnedPaneEl), false);
-  eq('nesting AC1: the wrapper passes the data test, so depth drops it, not the test',
+  eq('nesting: the wrapper passes the data test, so depth drops it, not the test',
     isDataTable(grid.wrapperEl), true);
-  eq('nesting AC1: the scrolling pane passes the data test',
+  eq('nesting: the scrolling pane passes the data test',
     isDataTable(grid.scrollPaneEl), true);
 
   const fromHost = findTables(makeNestingHost([grid.wrapperEl]));
-  eq('nesting AC1: a root holding the nest reports one table', fromHost.length, 1);
-  eq('nesting AC1: the reported table is the scrolling pane',
+  eq('nesting: a root holding the nest reports one table', fromHost.length, 1);
+  eq('nesting: the reported table is the scrolling pane',
     fromHost[0] && fromHost[0].handle === grid.scrollPaneEl, true);
-  eq('nesting AC1: with no registry supplied the result reports isNew',
+  eq('nesting: with no registry supplied the result reports isNew',
     fromHost[0] && fromHost[0].isNew, true);
 
   const fromWrapper = findTables(grid.wrapperEl);
-  eq('nesting AC1: the chain root as root reports one table', fromWrapper.length, 1);
-  eq('nesting AC1: the chain root as root reports the scrolling pane',
+  eq('nesting: the chain root as root reports one table', fromWrapper.length, 1);
+  eq('nesting: the chain root as root reports the scrolling pane',
     fromWrapper[0] && fromWrapper[0].handle === grid.scrollPaneEl, true);
 
   // The registered element read through the grid adapter: its first column is
   // the identifier column, not the pinned pane's row-number gutter.
   const rows = makeAdapter(grid.scrollPaneEl).getRows();
-  eq('nesting AC1: the scrolling pane reads six rows', rows.length, 6);
-  eq('nesting AC1: row 0 cell 0 of the registered element is the identifier text',
+  eq('nesting: the scrolling pane reads six rows', rows.length, 6);
+  eq('nesting: row 0 cell 0 of the registered element is the identifier text',
     rows[0].getCells()[0].getText(), 'alpha');
-  eq('nesting AC1: row 0 cell 0 of the registered element is no row number',
+  eq('nesting: row 0 cell 0 of the registered element is no row number',
     /^\d+$/.test(rows[0].getCells()[0].getText()), false);
 })();
 
-// --- AC1: a range expression addresses the identifier column as column A ---
+// --- a range expression addresses the identifier column as column A ---
 //
 // Mechanism: roundTable runs twice on two fresh copies of the fixture, once
 // with a range expression naming column A and once naming column B. Column A
@@ -2936,7 +2928,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 // numeric column at B. Both runs simplify the first row and the first column
 // so the positional exclusions cannot stand in for the range.
 
-(function gridNesting_AC1_rangeExpressionAddressesTheIdentifierColumnAsA() {
+(function gridNesting_rangeExpressionAddressesTheIdentifierColumnAsA() {
   const rangeOpts = { simplifyFirstRow: true, simplifyFirstColumn: true };
 
   const gridA = makeDatabaseQueryGrid();
@@ -2944,11 +2936,11 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   const ratesBeforeA = dgColumnTexts(gridA.scrollRowEls, 2);
   roundTable(gridA.scrollPaneEl,
     Object.assign({}, DR_DEFAULTS, rangeOpts, { rangeExpr: 'A1:A6' }));
-  eq('nesting AC1: a range expression naming column A leaves the count column unchanged',
+  eq('nesting: a range expression naming column A leaves the count column unchanged',
     dgColumnTexts(gridA.scrollRowEls, 1), countsBeforeA);
-  eq('nesting AC1: a range expression naming column A leaves the rate column unchanged',
+  eq('nesting: a range expression naming column A leaves the rate column unchanged',
     dgColumnTexts(gridA.scrollRowEls, 2), ratesBeforeA);
-  eq('nesting AC1: a range expression naming column A rounds no cell of the identifier column',
+  eq('nesting: a range expression naming column A rounds no cell of the identifier column',
     gridA.scrollRowEls.some((rowEl) => rowEl.children[0].classList.contains('dr-ext-rounded')), false);
 
   const gridB = makeDatabaseQueryGrid();
@@ -2958,59 +2950,59 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   roundTable(gridB.scrollPaneEl,
     Object.assign({}, DR_DEFAULTS, rangeOpts, { rangeExpr: 'B1:B6' }));
   const countsAfterB = dgColumnTexts(gridB.scrollRowEls, 1);
-  eq('nesting AC1: a range expression naming column B changes every cell of the count column',
+  eq('nesting: a range expression naming column B changes every cell of the count column',
     countsAfterB.every((text, i) => text !== countsBeforeB[i]), true);
-  eq('nesting AC1: a range expression naming column B leaves the rate column unchanged',
+  eq('nesting: a range expression naming column B leaves the rate column unchanged',
     dgColumnTexts(gridB.scrollRowEls, 2), ratesBeforeB);
-  eq('nesting AC1: a range expression naming column B leaves the identifier column unchanged',
+  eq('nesting: a range expression naming column B leaves the identifier column unchanged',
     dgColumnTexts(gridB.scrollRowEls, 0), identifiersBeforeB);
 
   forgetRegisteredTable(gridA.scrollPaneEl);
   forgetRegisteredTable(gridB.scrollPaneEl);
 })();
 
-// --- AC2: depth 0 registers the wrapper, gutter first ---
+// --- depth 0 registers the wrapper, gutter first ---
 
-(function gridNesting_AC2_depthZeroRegistersTheWrapper() {
+(function gridNesting_depthZeroRegistersTheWrapper() {
   const grid = makeDatabaseQueryGrid();
   const results = findTables(makeNestingHost([grid.wrapperEl]), { nestingDepth: 0 });
-  eq('nesting AC2: depth 0 reports one table', results.length, 1);
-  eq('nesting AC2: depth 0 reports the wrapper',
+  eq('nesting: depth 0 reports one table', results.length, 1);
+  eq('nesting: depth 0 reports the wrapper',
     results[0] && results[0].handle === grid.wrapperEl, true);
 
   const rows = makeAdapter(grid.wrapperEl).getRows();
-  eq('nesting AC2: the wrapper stitches the pinned cells first, so row 0 cell 0 is a row number',
+  eq('nesting: the wrapper stitches the pinned cells first, so row 0 cell 0 is a row number',
     rows[0].getCells()[0].getText(), '1');
 })();
 
-// --- AC3: two qualifying siblings at the configured depth fall back outward ---
+// --- two qualifying siblings at the configured depth fall back outward ---
 
-(function gridNesting_AC3_crowdedDepthFallsBackToTheWrapper() {
+(function gridNesting_crowdedDepthFallsBackToTheWrapper() {
   const grid = makeDatabaseQueryGrid({ pinnedColumns: 2 });
-  eq('nesting AC3: a two-column pinned pane passes the data test',
+  eq('nesting: a two-column pinned pane passes the data test',
     isDataTable(grid.pinnedPaneEl), true);
 
   const results = findTables(makeNestingHost([grid.wrapperEl]));
-  eq('nesting AC3: a depth holding two elements still reports one table', results.length, 1);
-  eq('nesting AC3: the fall-back outward lands on the wrapper',
+  eq('nesting: a depth holding two elements still reports one table', results.length, 1);
+  eq('nesting: the fall-back outward lands on the wrapper',
     results[0] && results[0].handle === grid.wrapperEl, true);
 })();
 
-// --- AC4: a chain shorter than the configured depth clamps to its innermost ---
+// --- a chain shorter than the configured depth clamps to its innermost ---
 
-(function gridNesting_AC4_shortChainClampsToItsInnermostElement() {
+(function gridNesting_shortChainClampsToItsInnermostElement() {
   const lone = makeLoneGrid();
-  eq('nesting AC4: the lone grid passes the data test', isDataTable(lone), true);
+  eq('nesting: the lone grid passes the data test', isDataTable(lone), true);
   const loneResults = findTables(makeNestingHost([lone]));
-  eq('nesting AC4: a one-element chain at the shipped depth reports one table',
+  eq('nesting: a one-element chain at the shipped depth reports one table',
     loneResults.length, 1);
-  eq('nesting AC4: a one-element chain at the shipped depth reports itself',
+  eq('nesting: a one-element chain at the shipped depth reports itself',
     loneResults[0] && loneResults[0].handle === lone, true);
 
   const grid = makeDatabaseQueryGrid();
   const deepResults = findTables(makeNestingHost([grid.wrapperEl]), { nestingDepth: 5 });
-  eq('nesting AC4: a depth past the chain reports one table', deepResults.length, 1);
-  eq('nesting AC4: a depth past the chain clamps to the scrolling pane',
+  eq('nesting: a depth past the chain reports one table', deepResults.length, 1);
+  eq('nesting: a depth past the chain clamps to the scrolling pane',
     deepResults[0] && deepResults[0].handle === grid.scrollPaneEl, true);
 })();
 
@@ -3045,21 +3037,21 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
     findTables(host, { nestingDepth: 2 }).map((r) => r.handle === grid.scrollPaneEl), [true]);
 })();
 
-// --- AC5: two nests under one plain parent report separately ---
+// --- two nests under one plain parent report separately ---
 
-(function gridNesting_AC5_siblingNestsReportSeparately() {
+(function gridNesting_siblingNestsReportSeparately() {
   const first = makeDatabaseQueryGrid();
   const second = makeDatabaseQueryGrid();
   const results = findTables(makeNestingHost([first.wrapperEl, second.wrapperEl]));
-  eq('nesting AC5: two nests under one plain parent report two tables', results.length, 2);
-  eq('nesting AC5: each nest reports its own scrolling pane',
+  eq('nesting: two nests under one plain parent report two tables', results.length, 2);
+  eq('nesting: each nest reports its own scrolling pane',
     results.map((r) => r.handle === first.scrollPaneEl || r.handle === second.scrollPaneEl),
     [true, true]);
-  eq('nesting AC5: the two reported tables are different elements',
+  eq('nesting: the two reported tables are different elements',
     results.length === 2 && results[0].handle !== results[1].handle, true);
 })();
 
-(function gridNesting_AC6_loadTimeScanBuildsOneTablePillbox() {
+(function gridNesting_loadTimeScanBuildsOneTablePillbox() {
   const grid = makeDatabaseQueryGrid();
   const before = DR_MODEL.getRegisteredTables().length;
 
@@ -3077,18 +3069,18 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   });
 
   const added = DR_MODEL.getRegisteredTables().slice(before);
-  eq('nesting AC6: the load-time scan on the fixture adds one registry entry', added.length, 1);
-  eq('nesting AC6: the registered element is the scrolling pane',
+  eq('nesting: the load-time scan on the fixture adds one registry entry', added.length, 1);
+  eq('nesting: the registered element is the scrolling pane',
     added.length === 1 && added[0] === grid.scrollPaneEl, true);
-  eq('nesting AC6: the scrolling pane carries one table pillbox',
+  eq('nesting: the scrolling pane carries one table pillbox',
     tablePillboxes.has(grid.scrollPaneEl), true);
-  eq('nesting AC6: the wrapper carries no table pillbox', tablePillboxes.has(grid.wrapperEl), false);
-  eq('nesting AC6: the pinned pane carries no table pillbox', tablePillboxes.has(grid.pinnedPaneEl), false);
+  eq('nesting: the wrapper carries no table pillbox', tablePillboxes.has(grid.wrapperEl), false);
+  eq('nesting: the pinned pane carries no table pillbox', tablePillboxes.has(grid.pinnedPaneEl), false);
 
   forgetRegisteredTable(grid.scrollPaneEl);
 })();
 
-(function gridNesting_AC6_addedNodePassBuildsOneTablePillbox() {
+(function gridNesting_addedNodePassBuildsOneTablePillbox() {
   const grid = makeDatabaseQueryGrid();
   const before = DR_MODEL.getRegisteredTables().length;
 
@@ -3097,14 +3089,14 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   });
 
   const added = DR_MODEL.getRegisteredTables().slice(before);
-  eq('nesting AC6: the added-node pass on the fixture adds one registry entry', added.length, 1);
-  eq('nesting AC6: the added-node pass registers the scrolling pane',
+  eq('nesting: the added-node pass on the fixture adds one registry entry', added.length, 1);
+  eq('nesting: the added-node pass registers the scrolling pane',
     added.length === 1 && added[0] === grid.scrollPaneEl, true);
-  eq('nesting AC6: the added-node pass puts one table pillbox on the scrolling pane',
+  eq('nesting: the added-node pass puts one table pillbox on the scrolling pane',
     tablePillboxes.has(grid.scrollPaneEl), true);
-  eq('nesting AC6: the added-node pass puts no table pillbox on the wrapper',
+  eq('nesting: the added-node pass puts no table pillbox on the wrapper',
     tablePillboxes.has(grid.wrapperEl), false);
-  eq('nesting AC6: the added-node pass puts no table pillbox on the pinned pane',
+  eq('nesting: the added-node pass puts no table pillbox on the pinned pane',
     tablePillboxes.has(grid.pinnedPaneEl), false);
 
   // A node added inside a nest that already holds a registered element adds
@@ -3113,7 +3105,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   withTablePillboxDocumentMock(function () {
     injectTablePillboxes(grid.scrollPaneEl);
   });
-  eq('nesting AC6: a node added inside a registered nest adds no registry entry',
+  eq('nesting: a node added inside a registered nest adds no registry entry',
     DR_MODEL.getRegisteredTables().length, beforeRediscovery);
 
   forgetRegisteredTable(grid.scrollPaneEl);
@@ -3193,13 +3185,10 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 
 // =============================================================================
 // The shape fingerprint: the reader, the comparison, and the chain-root walk
-// Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.6 and the
-// shape-fingerprint block in §5; decision D7 in
-// docs/sprint-plans/grid-detection-recovery.md; the shape fingerprint row in
-// docs/vocabulary.md.
+// The shape fingerprint row in docs/vocabulary.md defines the fingerprint.
 // =============================================================================
 //
-// The rule these assertions pin, in the specification's words:
+// The rule these assertions pin:
 //   - A shape fingerprint is the column count, and the header row's cell
 //     texts where the table has a header row, recorded for a table when it
 //     enters the registry.
@@ -3539,10 +3528,9 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 
 // =============================================================================
 // Pending tables: the nomination step returns one nest at a time
-// Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.3 and §3.4.
 // =============================================================================
 //
-// The four outcomes, in the specification's words:
+// The four outcomes:
 //   - 'selected'   the step selected an element to register.
 //   - 'empty'      no element of the nest passes the data test, which is the
 //                  pending-table case.
@@ -3640,12 +3628,10 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 })();
 
 // =============================================================================
-// A cell bounds a nest
-// Spec: docs/sprint-plans/grid-reading-gaps.md §3.2 and the grid-in-cell-nest
-// block in §5; issue #527.
+// A cell bounds a nest (issue #527)
 // =============================================================================
 //
-// The rule these assertions pin, in the specification's words:
+// The rule these assertions pin:
 //   - A walk upward from a qualifying element ends at the first element
 //     carrying a cell role, so a grid inside a cell is its own chain root.
 //   - The nest's membership test uses the same stop, so a grid inside a cell
@@ -3928,7 +3914,7 @@ function cnAdapterCellEls(tableEl) {
 // A native cell carries no cell role, so the walk up from the grid passes
 // through it and the grid stays its own chain root. Both tables register.
 // The right-click route for this shape stays out: its first step returns the
-// nearest native table, and the plan leaves the mixed-kind case open.
+// nearest native table, and the mixed-kind case is not decided.
 
 (function cellNest_aGridInsideANativeCellRegistersBesideTheNativeTable() {
   const nativeTable = rwDrawTable('native', cnSections(undefined)).table;
@@ -4373,8 +4359,7 @@ function cnAdapterCellEls(tableEl) {
 
 // =============================================================================
 // Column-first grids (issue #511)
-// Spec: docs/sprint-plans/grid-reading-gaps.md §3.3 and the column-first-grid
-// sprint. A column-first grid's children are columns drawn side by side; a
+// A column-first grid's children are columns drawn side by side; a
 // row-first grid's children are rows drawn one below another. The direction
 // read takes the boxes of the first two children that draw a box, among at
 // most gridSampleSize children: the same top with a larger left reads

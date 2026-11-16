@@ -150,47 +150,47 @@
      typeof fmtOrig, 'function');
 
   // -----------------------------------------------------------------
-  // Acceptance criterion 1: original numbers display with thousands commas.
+  // original numbers display with thousands commas.
   // formatOriginal converts numeric strings to comma-formatted numbers.
   // -----------------------------------------------------------------
-  eq('AC1: formatOriginal integer string gets commas (273233 -> "273,233")',
+  eq('formatOriginal integer string gets commas (273233 -> "273,233")',
      fmtOrig('273233'), '273,233');
-  eq('AC1: formatOriginal large integer number gets commas',
+  eq('formatOriginal large integer number gets commas',
      fmtOrig(1000000), '1,000,000');
-  eq('AC1: formatOriginal already-comma string parses and re-formats ("273,233")',
+  eq('formatOriginal already-comma string parses and re-formats ("273,233")',
      fmtOrig('273,233'), '273,233');
-  eq('AC1: formatOriginal negative large integer gets commas',
+  eq('formatOriginal negative large integer gets commas',
      fmtOrig(-1234567), '-1,234,567');
 
   // -----------------------------------------------------------------
-  // Acceptance criterion 2: rounded numbers magnitude >= 100 → NO decimals.
+  // rounded numbers magnitude >= 100 → NO decimals.
   // -----------------------------------------------------------------
-  eq('AC2: formatOriginal("1234.56") -> "1,234" (magnitude >= 100, commas, no decimals)',
+  eq('formatOriginal("1234.56") -> "1,234" (magnitude >= 100, commas, no decimals)',
      fmtOrig('1234.56'), '1,234');
-  eq('AC2: formatOriginal(100) -> "100" (exactly at boundary, no decimals)',
+  eq('formatOriginal(100) -> "100" (exactly at boundary, no decimals)',
      fmtOrig(100), '100');
 
   // -----------------------------------------------------------------
-  // Acceptance criterion 3: magnitude < 100 → at most 4 decimals, TRUNCATED.
+  // magnitude < 100 → at most 4 decimals, TRUNCATED.
   // This is the adversarial core: must be truncation, NOT rounding.
   // -----------------------------------------------------------------
 
   // Boundary: 99.99999 must NOT round to 100, and must stay < threshold, giving 4 dec.
-  eq('AC3-boundary-99.99999: formatOriginal("99.99999") -> "99.9999" (not rounded to 100)',
+  eq('boundary-99.99999: formatOriginal("99.99999") -> "99.9999" (not rounded to 100)',
      fmtOrig('99.99999'), '99.9999');
 
   // Negatives below threshold: trunc toward zero (not floor).
-  eq('AC3-negative: formatOriginal("-99.99999") -> "-99.9999" (negative, truncated, not -100)',
+  eq('negative: formatOriginal("-99.99999") -> "-99.9999" (negative, truncated, not -100)',
      fmtOrig('-99.99999'), '-99.9999');
-  eq('AC3-negative: formatOriginal("-1.7999") -> "-1.7999" (toward zero)',
+  eq('negative: formatOriginal("-1.7999") -> "-1.7999" (toward zero)',
      fmtOrig('-1.7999'), '-1.7999');
 
   // Negative boundary: -100 at threshold → no decimals.
-  eq('AC3-negative-100: formatOriginal("-100") -> "-100"',
+  eq('negative-100: formatOriginal("-100") -> "-100"',
      fmtOrig('-100'), '-100');
 
   // Numbers with fewer than 4 decimals are preserved as-is (no padding).
-  eq('AC3-fewer-decimals: formatOriginal("1.5") -> "1.5"',
+  eq('fewer-decimals: formatOriginal("1.5") -> "1.5"',
      fmtOrig('1.5'), '1.5');
 
   // -----------------------------------------------------------------
@@ -235,7 +235,7 @@
   // All cases below would fail under a rounding implementation.
   // -----------------------------------------------------------------
 
-  // Spec AC3 canonical example: deep-9s value, must truncate not round.
+  // Canonical example: deep-9s value, must truncate not round.
   eq('regression-trunc: formatOriginal(1.7999999999) -> "1.7999" (not "1.8")',
      fmtOrig(1.7999999999), '1.7999');
 
@@ -287,17 +287,17 @@
 // sidebar.js cannot be eval'd wholesale without a full browser DOM, but we
 // can read sidebar.js / sidebar.html source for static assertions.
 //
-// AC1 – init state: body gets the unbound class, #status reads the prompt message.
-// AC2 – bound state: setTableBound(true) removes the unbound class; also check that
+// – init state: body gets the unbound class, #status reads the prompt message.
+// – bound state: setTableBound(true) removes the unbound class; also check that
 //        state:previewSamplesChanged triggers the redraw read, whose callback
 //        sets the bound state (the only live-rebind path) — note this means
 //        the sidebar does NOT listen for a separate SET_TABLE_BOUND message;
 //        see gap note below.
-// AC3 – old error string is gone from sidebar.js.
-// AC4 – sidebar.html CSS disables optionsSection/advancedSection under the unbound class.
+// – old error string is gone from sidebar.js.
+// – sidebar.html CSS disables optionsSection/advancedSection under the unbound class.
 // ---------------------------------------------------------------------------
 
-(function sprintSidebarNoTableState() {
+(function sidebarNoTableState() {
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
 
@@ -305,26 +305,26 @@
   // Static source checks (can always be verified without eval)
   // -------------------------------------------------------------------------
 
-  // AC3: old error string must be gone.
-  eq('unbound AC3: old error string absent from sidebar.js',
+  // old error string must be gone.
+  eq('unbound: old error string absent from sidebar.js',
     sidebarSrc.includes('Right-click a table first, then reopen the sidebar.'), false);
 
-  // AC1 (static): UNBOUND_CLASS and UNBOUND_STATUS_MSG are defined.
-  eq('unbound AC1: UNBOUND_CLASS constant defined in sidebar.js',
+  // UNBOUND_CLASS and UNBOUND_STATUS_MSG are defined.
+  eq('unbound: UNBOUND_CLASS constant defined in sidebar.js',
     /const UNBOUND_CLASS\s*=\s*['"]unbound['"]/.test(sidebarSrc), true);
 
-  eq('unbound AC1: UNBOUND_STATUS_MSG constant defined in sidebar.js',
+  eq('unbound: UNBOUND_STATUS_MSG constant defined in sidebar.js',
     /const UNBOUND_STATUS_MSG\s*=\s*['"]Right-click a table to connect it here\.['"]/.test(sidebarSrc), true);
 
-  // AC1 (static): setTableBound(false) is called on init.
-  eq('unbound AC1: setTableBound(false) called at module level (init)',
+  // setTableBound(false) is called on init.
+  eq('unbound: setTableBound(false) called at module level (init)',
     /setTableBound\(false\)/.test(sidebarSrc), true);
 
-  // AC2 (static): setTableBound(true) path exists (an answer holding samples).
-  eq('unbound AC2: setTableBound called with whether the answer holds samples',
+  // setTableBound(true) path exists (an answer holding samples).
+  eq('unbound: setTableBound called with whether the answer holds samples',
     /setTableBound\(cachedSamples\s*!==\s*null\)/.test(sidebarSrc), true);
 
-  // AC2 gap check: the sidebar handles state:previewSamplesChanged by calling
+  // gap check: the sidebar handles state:previewSamplesChanged by calling
   // redrawFromActiveTable() (every refresh re-reads the model's settings
   // beside the samples, and calls setTableBound inside its callback). There
   // is NO direct
@@ -333,7 +333,7 @@
   // The sidebar has no push-style binding message. We assert the handler
   // exists and starts the redraw read, then flag the architectural gap as a
   // note.
-  eq('unbound AC2: state:previewSamplesChanged handler calls redrawFromActiveTable',
+  eq('unbound: state:previewSamplesChanged handler calls redrawFromActiveTable',
     /state:previewSamplesChanged[\s\S]{0,300}redrawFromActiveTable\(\)/.test(sidebarSrc), true);
 
   // GAP NOTE: The sidebar does not handle a dedicated "TABLE_BOUND" push message.
@@ -344,21 +344,21 @@
   // This gap is architectural and cannot be covered by a unit test without a
   // full browser environment; flagged here for reviewer awareness.
 
-  // AC4 (static): the unbound state must NOT dim/disable the sidebar sections.
+  // the unbound state must NOT dim/disable the sidebar sections.
   // Instead of greying the whole sidebar, the sidebar pillbox is flipped off
   // (covered by the behavioural tests below). Guard against dimming rules
   // being reintroduced.
-  eq('unbound AC4: sidebar.html does NOT dim #optionsSection under body.unbound',
+  eq('unbound: sidebar.html does NOT dim #optionsSection under body.unbound',
     /body\.unbound\s+#optionsSection/.test(sidebarHtml), false);
 
-  eq('unbound AC4: sidebar.html does NOT dim #advancedSection under body.unbound',
+  eq('unbound: sidebar.html does NOT dim #advancedSection under body.unbound',
     /body\.unbound\s+#advancedSection/.test(sidebarHtml), false);
 
-  eq('unbound AC4: sidebar.html does NOT disable the sidebar pillbox under body.unbound',
+  eq('unbound: sidebar.html does NOT disable the sidebar pillbox under body.unbound',
     /body\.unbound\s+\.title-row\s+\.switch/.test(sidebarHtml), false);
 
-  // AC1 (static): sidebar.html default #status text is the unbound message.
-  eq('unbound AC1: sidebar.html default #status text is the unbound message',
+  // sidebar.html default #status text is the unbound message.
+  eq('unbound: sidebar.html default #status text is the unbound message',
     /id="status"[^>]*>Right-click a table to connect it here\./.test(sidebarHtml), true);
 
   (function setTableBoundBehavioural() {
@@ -389,7 +389,7 @@
 // stopPosition() mapping and CSS vertical alignment
 // ---------------------------------------------------------------------------
 
-(function sprintDotsTickAlignment() {
+(function dotsTickAlignment() {
   const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
 
@@ -412,7 +412,7 @@
     const stopPosition = (v) => pctRaw(stops, snap, v);
     const TOL = 1e-6;
 
-    // AC1a: Each stop maps to the centre of its grid cell in an N-equal-column grid.
+    // Each stop maps to the centre of its grid cell in an N-equal-column grid.
     // Cell k centre = (k + 0.5) / N * 100.
     stops.forEach((v, k) => {
       const expected = (k + 0.5) / N * 100;
@@ -430,7 +430,7 @@
       }
     });
 
-    // AC1b: Key exact values — extremes and the zero stop (index 5 of 9).
+    // Key exact values — extremes and the zero stop (index 5 of 9).
     const pctNeg2 = stopPosition(-2);
     const pctZero = stopPosition(0);
     const pctPos1 = stopPosition(1);
@@ -442,7 +442,7 @@
     eq('dots-tick: stopPosition(1) ≈ 94.4444% (9th cell centre)',
       Math.abs(pctPos1 - 8.5 / N * 100) < TOL, true);
 
-    // AC1c: the extremes are inset by half a cell, never flush at 0/100.
+    // the extremes are inset by half a cell, never flush at 0/100.
     // A value-proportional formula would push an end stop to 0 or 100; the
     // index-based formula keeps both ends a half-cell in.
     eq('dots-tick: stopPosition(-2) is NOT 0 (end stop is inset by half a cell)',
@@ -450,14 +450,14 @@
     eq('dots-tick: stopPosition(1) is NOT 100 (end stop is inset by half a cell)',
       stopPosition(1) !== 100, true);
 
-    // AC2: Monotonic — stopPosition is strictly increasing across all 9 stops.
+    // Monotonic — stopPosition is strictly increasing across all 9 stops.
     let monotonic = true;
     for (let i = 1; i < stops.length; i++) {
       if (stopPosition(stops[i]) <= stopPosition(stops[i - 1])) { monotonic = false; break; }
     }
     eq('dots-tick: stopPosition() is strictly increasing across all 9 stops', monotonic, true);
 
-    // AC3: Equal columns — adjacent stops are exactly one cell (100/N %) apart,
+    // Equal columns — adjacent stops are exactly one cell (100/N %) apart,
     // regardless of the uneven numeric spacing of the stop values.
     let equalCols = true;
     const cell = 100 / N;
@@ -467,7 +467,7 @@
     eq('dots-tick: adjacent stops are one equal column (100/N %) apart', equalCols, true);
   }
 
-  // --- AC4: 9-column grid assumption — verify tick markup matches formula ---
+  // --- 9-column grid assumption — verify tick markup matches formula ---
   // The stopPosition formula assumes N equal columns. Adversarial check: count the actual
   // tick spans and verify the CSS declares exactly repeat(9, 1fr).
   const tickSpans = (sidebarHtmlSrc.match(/class="t"/g) || []).length;
@@ -477,11 +477,11 @@
   eq('dots-tick: .dual-ticks CSS uses repeat(9, 1fr) grid',
     /\.dual-ticks\s*\{[^}]*grid-template-columns\s*:\s*repeat\(9,\s*1fr\)/.test(sidebarHtmlSrc), true);
 
-  // --- AC5: Vertical CSS — .dual-ticks uses top: 20px ---
+  // --- Vertical CSS — .dual-ticks uses top: 20px ---
   eq('dots-tick: .dual-ticks CSS top is 20px',
     /\.dual-ticks\s*\{[^}]*top:\s*20px/.test(sidebarHtmlSrc), true);
 
-  // --- AC6: stopPosition() is only used for thumb positioning (not for fill/label/other) ---
+  // --- stopPosition() is only used for thumb positioning (not for fill/label/other) ---
   // Adversarial: if stopPosition() were wired to a range-fill width or label position, the
   // non-0/100 extremes would produce a visually broken fill. Verify here that all
   // stopPosition() call sites in sidebar.js are limited to style.left on thumbs.
@@ -591,7 +591,7 @@
   eq('wire payload: settings payload is nested exactly as sendToActiveTab sent it, unchanged',
     JSON.stringify(msg.settings), JSON.stringify({ offsetTop: -2, rangeExpr: 'A1:B2' }));
 
-  // ADVERSARIAL pin: the ask passes a response callback
+  // Pin: the ask passes a response callback
   // (chrome.tabs.sendMessage's 3rd argument), which reflects delivery failure
   // back into the UI (setTableBound(false) when nothing answers) and clears
   // statusEl on success. This only pins the MECHANISM — that the ask passes a
