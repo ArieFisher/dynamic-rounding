@@ -4,10 +4,10 @@
 > detector does not use this note's approach. `looksLikeGrid` in
 > `chrome-extension/lib/dr-table/detect.js` ladders on child count, repetitive
 > structure, layout, numeric content, and column widths — not on pinned/scroll
-> co-occurrence or scroll-height signals — and the live spike
-> ([grid-support-feasibility-spike](../sprint-logs/grid-support-feasibility-spike.md))
-> found Databricks renders a single pane, not the pinned + scrollable split
-> described below. The open questions at the bottom are all answered by the
+> co-occurrence or scroll-height signals — and the live spike on a Databricks
+> SQL result grid (PR #114) found a single pane, not the pinned + scrollable
+> split described below. Its cells carry `role="cell"`, not `role="gridcell"`,
+> and each cell carries a stable row key (`data-row`, `data-index`). The open questions at the bottom are all answered by the
 > shipped `GridAdapter` (rows stitch by row key, then DOM index; detection
 > relies on `role="grid"`/`role="table"`, `role="row"`, `role="cell"`,
 > `role="rowgroup"`). Kept as the record of the pre-spike understanding.

@@ -852,7 +852,7 @@ P3. The change has no user impact, no correctness risk, and no security risk. Th
 **Summary:** #257 · [follow-up] the magnitude freeze does not survive a peek round-trip · close · S · P3
 
 ### Can it be closed
-Yes. The issue already carries the `wontfix` label. On `main`, every apply and every toggle runs `resetTable`, which sets the max magnitude to null (`chrome-extension/content.js:759`). `roundTable` then passes `frozenMaxMag: null` with `writes: 'first'` and stores a new magnitude freeze (content.js:1327, 1531). `docs/specs/2026-09-14-sidebar-state-removal.md` lists this re-freeze under "What does not change". The test `registrySprint_offAndOnRoundTripReFreezesRatherThanPreserving` (`chrome-extension/tests/messaging-model.js:2166`) pins the behavior, and the suite passes (3638 passed, 0 failed). The issue's second question is already settled: a settings change goes through the same reset, so it also re-freezes. The vocabulary defines the freeze as fixed "when simplification is first applied", and each apply counts as a new simplification. Closing the issue keeps grids closer to native tables, which compute their max magnitude again on every pass.
+Yes. The issue already carries the `wontfix` label. On `main`, every apply and every toggle runs `resetTable`, which sets the max magnitude to null (`chrome-extension/content.js:759`). `roundTable` then passes `frozenMaxMag: null` with `writes: 'first'` and stores a new magnitude freeze (content.js:1327, 1531). The 2026-09-14 sidebar design kept this re-freeze on purpose and listed it under "What does not change". The test `registrySprint_offAndOnRoundTripReFreezesRatherThanPreserving` (`chrome-extension/tests/messaging-model.js:2166`) pins the behavior, and the suite passes (3638 passed, 0 failed). The issue's second question is already settled: a settings change goes through the same reset, so it also re-freezes. The vocabulary defines the freeze as fixed "when simplification is first applied", and each apply counts as a new simplification. Closing the issue keeps grids closer to native tables, which compute their max magnitude again on every pass.
 
 ### Can it be updated
 Only if it stays open. "Peek" is not in the vocabulary. The canonical wording is a form round trip, meaning a toggle to raw form and back. "Original numbers" becomes raw form. "Coarseness" becomes max magnitude. "Toggling to originals" becomes a toggle to raw form. "Re-round" becomes apply or re-simplify. A rewrite would say that a form round trip on a virtualized grid computes the magnitude freeze again from the visible rows. It would then ask whether the freeze should persist across form round trips and applies.
@@ -861,7 +861,7 @@ Only if it stays open. "Peek" is not in the vocabulary. The canonical wording is
 User: none. Developer or tester: closing removes an open question that the test comment at messaging-model.js:2155–2160 points to.
 
 ### Files
-`chrome-extension/content.js` (`resetTable`, `roundTable`, `applySidebarRounding`), `chrome-extension/tests/messaging-model.js`, `docs/vocabulary.md`, `docs/specs/2026-09-14-sidebar-state-removal.md`.
+`chrome-extension/content.js` (`resetTable`, `roundTable`, `applySidebarRounding`), `chrome-extension/tests/messaging-model.js`, `docs/vocabulary.md`.
 
 ### Complexity
 Keeping the freeze across a round trip adds a stored state that outlives the reset. It also adds a path that separates a toggle from an apply and a special case in `resetTable`. Net verdict for closing: neutral. Net verdict for implementing: adds.
@@ -2031,7 +2031,7 @@ P2: no user impact today. The capture path changes often (#402–#409), and a lo
 No. On `main`, the `chrome.tabs.onActivated` listener in `chrome-extension/background.js:72-76` compares the tab alone. A switch in any window publishes `intent:closeSidebar`, and that topic goes to every extension page (`ROUTE_EXTENSION_PAGES`). `sidebar.js:700` closes on it. The sidebar's own `onSwitchAway` (`sidebar.js:118-126`) skips any switch in another window, so the two rules disagree. No merged pull request touches this.
 
 ### Can it be updated
-Yes. The issue ties the fix to part two of `docs/specs/2026-09-14-sidebar-state-removal.md`. The spec's addendum has since changed part two, and part two now waits on open product questions. The sidebar already closes itself on a switch in its own window, by either entry route. Deleting the worker's switch listener therefore fixes the defect with no dependency on part two. A rewrite should say:
+Yes. The issue ties the fix to part two of the 2026-09-14 sidebar design, in which the service worker closes the sidebar by tab. Hand tests after part one (#334) changed part two: the sidebar is one panel for every tab in a window, so Chrome rejects a close that names a tab, and Chrome does not hide the sidebar on a tab switch, so the extension closes it itself. Part two now waits on open product questions. The sidebar already closes itself on a switch in its own window, by either entry route. Deleting the worker's switch listener therefore fixes the defect with no dependency on part two. A rewrite should say:
 - the defect, stated with the tab and the window;
 - one recommended fix: remove the worker's switch leg;
 - the part-two dependency is gone.
@@ -2420,7 +2420,7 @@ Yes. The count drops from three names to two, because `chainRootOf` already join
 
 A rewrite should say this: the bundle lists the detection package's public functions and holds every one except the two nomination functions. It should offer two paths. Path (a) adds both names to the bundle and the pin. Path (b) cuts the comment's claim down to "a re-export list with no production reader". It should link #214, because deriving the list from the source would stop the list from falling behind again.
 
-Vocabulary: "export object" and "detection package" are not defined terms. Use "bundle" (the term `docs/sprint-plans/decoupling-migration.md` uses) and "detection layer". "Nomination step" and "chain root" match the canon. "Scanners" should become "load-time scan and right-click path". No retired synonyms appear.
+Vocabulary: "export object" and "detection package" are not defined terms. Use "bundle" (the one named global object each extension library file publishes, such as `DR_TABLE`) and "detection layer". "Nomination step" and "chain root" match the canon. "Scanners" should become "load-time scan and right-click path". No retired synonyms appear.
 
 ### New capability
 For the user: none.
