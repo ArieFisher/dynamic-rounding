@@ -1657,11 +1657,9 @@ function resolveAmbiguousDateDecision(decision, hint) {
  *      frozen one.
  *   3. Each cell's numbers, dates, and times round and become patches.
  *
- * Core layer: reads no page and calls no Chrome. The step reads plain
- * classified cells and plain settings and returns data. It holds no reference to the page, a text piece, the registry, the
- * log buffer, or the browser. It depends only on DR_NUMBER's bare names and
- * the ladder's pickDateFormatHint and resolveAmbiguousDateDecision, loaded
- * ahead of this file.
+ * Core layer: reads no page and calls no Chrome. It depends only on
+ * DR_NUMBER's bare names and the ladder's pickDateFormatHint and
+ * resolveAmbiguousDateDecision, loaded ahead of this file.
  *
  * A classified cell is any object carrying:
  *   text  the text the cell classified (a simplified cell's stored original)
