@@ -81,7 +81,6 @@ This repository is public. Before staging a new file, answer this: does it serve
 - Keep code simple and readable.
 - Give every new Python parameter and return value a type hint. In JavaScript, write no per-parameter doc comments; a parameter's name states its meaning. The exception is `ROUND_DYNAMIC`, whose JSDoc Google Sheets reads to build the help card.
 - A comment holds only what the code cannot show: a reason, a constraint, or a fact about the page or a caller outside the file. No comment restates what the code does, because the restatement becomes false when the code changes. Before writing a comment, check whether a clearer name or a smaller function would make it unnecessary; that is a judgement, not a rule.
-- Keep existing function signatures backward compatible.
 
 ### Regression fixtures
 
