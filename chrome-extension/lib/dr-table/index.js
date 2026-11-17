@@ -6,7 +6,7 @@
  * adds a single DR_TABLE object that groups every public function and class,
  * so a consumer can depend on DR_TABLE.x instead. No file reads DR_TABLE.x yet.
  *
- * No logic lives here — this is a pure re-export list. Do not add behavior.
+ * Do not add behavior.
  */
 
 const DR_TABLE = {

@@ -7,7 +7,7 @@
  * more thing: a single DR_CAPTURE object that groups every public function
  * the package exposes, mirroring DR_NUMBER/DR_TABLE.
  *
- * No logic lives here — this is a pure re-export list. Do not add behavior.
+ * Do not add behavior.
  */
 
 const DR_CAPTURE = {
