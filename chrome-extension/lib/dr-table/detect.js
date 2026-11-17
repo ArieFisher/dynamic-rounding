@@ -299,7 +299,7 @@ function holdsRoundableCell(rows) {
       if (cellsRead >= DR_DETECTION_SETTINGS.dataTestCellBudget) break walk;
       cellsRead++;
       const { info, columnIndex } = classifyTableCell(cellObj, i, DETECTION_OPTIONS, null);
-      if (info.mode === 'date' && info.ambiguous) pending.push({ info, columnIndex });
+      if (info.ambiguous) pending.push({ info, columnIndex });
       else if (info.mode !== 'skip') return true;
     }
   }

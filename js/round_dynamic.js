@@ -1687,17 +1687,16 @@ function decisionToLegacyInfo(decision) {
 // one column into two groups that read 7/4/99 as July in one row and April in
 // another.
 function resolveAmbiguousDates(entries) {
-  const isAmbiguous = (info) => info.mode === 'date' && info.ambiguous;
   const ambiguousDatesByCol = new Map();
   for (const { info, columnIndex } of entries) {
-    if (!isAmbiguous(info)) continue;
+    if (!info.ambiguous) continue;
     if (!ambiguousDatesByCol.has(columnIndex)) ambiguousDatesByCol.set(columnIndex, []);
     ambiguousDatesByCol.get(columnIndex).push(...info.dates.filter(isAmbiguousDate));
   }
   const hintByCol = new Map(Array.from(ambiguousDatesByCol,
     ([columnIndex, ambiguousDates]) => [columnIndex, pickDateFormatHint(ambiguousDates)]));
   return entries.map((entry) => {
-    if (!isAmbiguous(entry.info)) return entry;
+    if (!entry.info.ambiguous) return entry;
     const pendingDecision = { value: { dates: entry.info.dates } };
     const info = decisionToLegacyInfo(resolveAmbiguousDateDecision(pendingDecision, hintByCol.get(entry.columnIndex)));
     return Object.assign({}, entry, { info });
