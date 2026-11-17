@@ -886,7 +886,7 @@ function writeCell(entry, patches) {
   return entry.cellObj.applyPatches(patches, { value: entry.text });
 }
 
-// The offsets and the top-band count, resolved once for the whole table.
+// The offsets and num_top, resolved once for the whole table.
 function resolveRoundingSettings(opts) {
   const offsetTop = resolveOffset(opts.offsetTop, DR_DEFAULTS.offsetTop);
   const offsetOther = resolveOffset(opts.offsetOther, offsetTop);

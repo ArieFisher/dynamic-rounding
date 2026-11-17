@@ -1752,7 +1752,7 @@ function classifiedCellPatches(entry, maxMag, settings) {
  *   text, info, and columnIndex.
  * @param {{offsetTop: number, offsetOther: number, numTop: number,
  *          dateGranularity: string, timeGranularity: string}} settings -
- *   Resolved offsets and top-band count, and the date and time granularity.
+ *   Resolved offsets and num_top, and the date and time granularity.
  * @param {number|null} [frozenMaxMag] - A max magnitude the caller holds:
  *   the table's magnitude freeze in the extension, or the max magnitude over
  *   the dataset in Sheets, number cells included. When given, the step
