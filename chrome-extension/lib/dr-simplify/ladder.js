@@ -270,9 +270,9 @@ function pickDateFormatHint(ambiguousList) {
  */
 function resolveAmbiguousDateDecision(decision, hint) {
   if (hint !== 'month-first' && hint !== 'day-first') return { mode: 'skip', reason: 'ambiguous-date' };
+  const isMonthFirst = hint === 'month-first';
   const dates = decision.value.dates.map((d) => (isAmbiguousDate(d)
-    ? { year: d.year, month: hint === 'month-first' ? d.n1 : d.n2, monthFirst: true,
-      start: d.start, end: d.end, dayCut: hint === 'month-first' ? d.n2Cut : d.n1Cut }
+    ? knownDate(d.year, isMonthFirst ? d.n1 : d.n2, true, d.start, d.end, isMonthFirst ? d.n2Cut : d.n1Cut)
     : d));
   return { mode: 'date', reason: 'simplify', value: { dates } };
 }

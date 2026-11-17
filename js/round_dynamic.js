@@ -611,11 +611,15 @@ const YEAR = `(\\d{4}${ORD})`;
 const isDay = (s) => { const d = parseInt(s, 10); return d >= 1 && d <= 31; };
 const isMonth = (s) => { const n = parseInt(s, 10); return n >= 1 && n <= 12; };
 
-// One date with a known reading: its bounds in the text, its year, its month
-// (1 to 12), whether the month stands before the year, and the span the month
-// granularity removes (null when the date holds no day).
-const datePart = (m, year, month, monthFirst, dayCut) => (
-  { year: parseInt(year, 10), month, monthFirst, start: m.index, end: m.index + m[0].length, dayCut });
+// One date with a known reading: its year, its month (1 to 12), whether the
+// month stands before the year, its bounds in the text, and the span the month
+// granularity removes (null when the date holds no day). The column post-pass
+// builds the same shape for an all-numeric date once its column settles.
+function knownDate(year, month, monthFirst, start, end, dayCut) {
+  return { year, month, monthFirst, start, end, dayCut };
+}
+const datePart = (m, year, month, monthFirst, dayCut) =>
+  knownDate(parseInt(year, 10), month, monthFirst, m.index, m.index + m[0].length, dayCut);
 
 // The date shapes findDates reads; on two matches at the same position the
 // earlier shape wins. Each regex carries the d flag, so a match holds its
@@ -1698,9 +1702,9 @@ function pickDateFormatHint(ambiguousList) {
  */
 function resolveAmbiguousDateDecision(decision, hint) {
   if (hint !== 'month-first' && hint !== 'day-first') return { mode: 'skip', reason: 'ambiguous-date' };
+  const isMonthFirst = hint === 'month-first';
   const dates = decision.value.dates.map((d) => (isAmbiguousDate(d)
-    ? { year: d.year, month: hint === 'month-first' ? d.n1 : d.n2, monthFirst: true,
-      start: d.start, end: d.end, dayCut: hint === 'month-first' ? d.n2Cut : d.n1Cut }
+    ? knownDate(d.year, isMonthFirst ? d.n1 : d.n2, true, d.start, d.end, isMonthFirst ? d.n2Cut : d.n1Cut)
     : d));
   return { mode: 'date', reason: 'simplify', value: { dates } };
 }

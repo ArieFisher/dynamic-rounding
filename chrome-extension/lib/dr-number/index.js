@@ -35,6 +35,7 @@ const DR_NUMBER = {
   resolveNumTop,
   matchUnitNumber,
   getExclusionReason,
+  knownDate,
   findDates,
   isAmbiguousDate,
   isDateLike,
