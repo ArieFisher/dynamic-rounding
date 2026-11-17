@@ -47,7 +47,7 @@ const DR_NUMBER = {
   roundISODateTime,
   roundTimeText,
   getQuoteMaskedRanges,
-  overlapsQuoteRange,
+  overlapsMaskedRange,
   extractNumbersInText,
   bracketSignSpan,
   isBracketedNegative,

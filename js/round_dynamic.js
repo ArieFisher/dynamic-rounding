@@ -934,13 +934,13 @@ function getQuoteMaskedRanges(text) {
 }
 
 /**
- * Returns true if [matchStart, matchEnd) overlaps any range in maskedRanges.
+ * Returns true if [matchStart, matchEnd) overlaps any masked range.
  * @param {{start: number, end: number}[]} maskedRanges
  * @param {number} matchStart
  * @param {number} matchEnd
  * @returns {boolean}
  */
-function overlapsQuoteRange(maskedRanges, matchStart, matchEnd) {
+function overlapsMaskedRange(maskedRanges, matchStart, matchEnd) {
   for (const range of maskedRanges) {
     if (matchStart < range.end && matchEnd > range.start) return true;
   }
@@ -1489,7 +1489,7 @@ function extractSimplifyMatches(text, superscriptRanges) {
     ...clockTimeRanges(shapeText),
   ];
   return extractNumbersInText(text)
-    .filter((m) => !overlapsQuoteRange(masked, m.index, m.index + m.numStr.length));
+    .filter((m) => !overlapsMaskedRange(masked, m.index, m.index + m.numStr.length));
 }
 
 /**

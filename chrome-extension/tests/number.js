@@ -1016,7 +1016,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   const matches = extractNumbersInText(text);
   const quoteRanges = getQuoteMaskedRanges(text);
   const filtered = matches.filter(m =>
-    !overlapsQuoteRange(quoteRanges, m.index, m.index + m.numStr.length)
+    !overlapsMaskedRange(quoteRanges, m.index, m.index + m.numStr.length)
   );
   eq('quoteFilter: before filter match count includes 42',
     matches.some(m => m.num === 42), true);
@@ -1039,7 +1039,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   eq('scope guard: single quotes not masked (zero quote ranges)',
     sqRanges.length, 0);
   eq('scope guard: 42 inside single quotes NOT excluded by filter',
-    sqMatches.filter(m => !overlapsQuoteRange(sqRanges, m.index, m.index + m.numStr.length))
+    sqMatches.filter(m => !overlapsMaskedRange(sqRanges, m.index, m.index + m.numStr.length))
       .some(m => m.num === 42), true);
 
   // Typographic quotes: “...” are NOT masked
@@ -1049,7 +1049,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
     tqRanges.length, 0);
   // Both 42 and 7 survive unfiltered
   const tqMatches = extractNumbersInText(typoQuote);
-  const tqFiltered = tqMatches.filter(m => !overlapsQuoteRange(tqRanges, m.index, m.index + m.numStr.length));
+  const tqFiltered = tqMatches.filter(m => !overlapsMaskedRange(tqRanges, m.index, m.index + m.numStr.length));
   eq('scope guard: 42 inside typographic quotes NOT excluded',
     tqFiltered.some(m => m.num === 42), true);
 
@@ -1058,7 +1058,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   const mixed = 'he said "foo 5" and 10';
   const mxRanges = getQuoteMaskedRanges(mixed);
   const mxMatches = extractNumbersInText(mixed);
-  const mxFiltered = mxMatches.filter(m => !overlapsQuoteRange(mxRanges, m.index, m.index + m.numStr.length));
+  const mxFiltered = mxMatches.filter(m => !overlapsMaskedRange(mxRanges, m.index, m.index + m.numStr.length));
   eq('scope guard: 5 inside ASCII quotes IS excluded',
     mxFiltered.some(m => m.num === 5), false);
   eq('scope guard: 10 outside ASCII quotes NOT excluded',

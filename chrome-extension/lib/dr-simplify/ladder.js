@@ -57,7 +57,7 @@ function extractSimplifyMatches(text, superscriptRanges) {
     ...clockTimeRanges(shapeText),
   ];
   return extractNumbersInText(text)
-    .filter((m) => !overlapsQuoteRange(masked, m.index, m.index + m.numStr.length));
+    .filter((m) => !overlapsMaskedRange(masked, m.index, m.index + m.numStr.length));
 }
 
 /**

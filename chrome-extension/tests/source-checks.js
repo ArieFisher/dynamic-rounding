@@ -1329,7 +1329,7 @@
     'knownDate', 'findDates', 'isAmbiguousDate',
     'isDateLike', 'isTimeLike', 'clockTimeRanges', 'parseISODateTime', 'isDateTimeLike',
     'roundDateText', 'roundISODateTime', 'roundTimeText',
-    'getQuoteMaskedRanges', 'overlapsQuoteRange', 'extractNumbersInText',
+    'getQuoteMaskedRanges', 'overlapsMaskedRange', 'extractNumbersInText',
     'bracketSignSpan', 'isBracketedNegative', 'matchBracketedNumber',
     'eraYearDigitRanges', 'formatNumber', 'pureNumberSpan',
     // identifiers.js

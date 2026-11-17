@@ -581,13 +581,13 @@ function getQuoteMaskedRanges(text) {
 }
 
 /**
- * Returns true if [matchStart, matchEnd) overlaps any range in maskedRanges.
+ * Returns true if [matchStart, matchEnd) overlaps any masked range.
  * @param {{start: number, end: number}[]} maskedRanges
  * @param {number} matchStart
  * @param {number} matchEnd
  * @returns {boolean}
  */
-function overlapsQuoteRange(maskedRanges, matchStart, matchEnd) {
+function overlapsMaskedRange(maskedRanges, matchStart, matchEnd) {
   for (const range of maskedRanges) {
     if (matchStart < range.end && matchEnd > range.start) return true;
   }

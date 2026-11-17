@@ -3092,7 +3092,7 @@ function everyRowRead(kind, largeIn) {
 (function eraYearDetection() {
   // The number at [index, index + numStr.length) sits in an era-year range.
   const isEraYear = (text, index, numStr) =>
-    overlapsQuoteRange(eraYearDigitRanges(text), index, index + numStr.length);
+    overlapsMaskedRange(eraYearDigitRanges(text), index, index + numStr.length);
 
   // The digit token bound to a marker (either order) is an era year.
   eq('era: "Kalki 2898 AD" → 2898 is an era year',
