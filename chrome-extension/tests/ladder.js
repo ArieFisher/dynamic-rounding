@@ -48,7 +48,7 @@
 })();
 
 (function classifyCell_unknownExclusionFailsClosed() {
-  // getExclusionReason today only ever returns 'firstRow' | 'firstColumn' |
+  // getExclusionReason today only ever returns 'first-row' | 'first-column' |
   // 'percent' | 'currency' | null, but classifyCell's ladder must fail
   // closed (skip) on any other non-null value a future exclusion rule
   // returns, instead of silently falling through and simplifying the cell.
@@ -63,7 +63,7 @@
   const isolatedClassifyCell = isolatedFunction(isolatedSrc)();
   eq('classifyCell: unrecognized non-null exclusion reason still skips the cell',
     isolatedClassifyCell({ text: '100', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-    { mode: 'skip', reason: 'excluded' });
+    { mode: 'skip', reason: 'someFutureReason' });
 })();
 
 (function classifyCell_quoted() {
@@ -80,7 +80,7 @@
   eq('classifyCell: unambiguous date-like cell resolves when simplifyDates is true',
     classifyCell({ text: '2020-01-01', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
     { mode: 'date', reason: 'simplify', value: { dates: [{
-      year: 2020, month: 1, monthFirst: false, start: 0, end: 10, dayCut: { start: 7, end: 10 } }] } });
+      year: 2020, month: 1, monthBeforeYear: false, start: 0, end: 10, dayCut: { start: 7, end: 10 } }] } });
   eq('classifyCell: ambiguous numeric date returns a pending decision',
     classifyCell({ text: '03/04/2020', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
     { mode: 'date', reason: 'simplify', pending: 'ambiguous-date', value: { dates: [{
@@ -106,7 +106,7 @@
     { mode: 'skip', reason: 'link' });
 })();
 
-(function classifyCell_footnoteSuperscript() {
+(function classifyCell_superscript() {
   // "10<sup>12</sup>" flattens to "1012"; the sole match spans the whole
   // string and overlaps the superscript mask, so nothing survives.
   eq('classifyCell: whole-cell exponent with no surviving match after masking is skipped',
@@ -114,12 +114,12 @@
       text: '1012', rowIndex: 1, columnIndex: 1, ranges: null,
       hasSuperscript: true, superscriptRanges: [{ start: 2, end: 4 }],
     }, LADDER_OPTS),
-    { mode: 'skip', reason: 'footnote' });
+    { mode: 'skip', reason: 'superscript' });
 
   // "20 <sup>15</sup>" flattens to "20 1015": the standalone "20" survives
   // masking even though the sup-adjacent "1015" match does not. "20 1015" is
   // not one number, since its spaced groups are outside the group shape, so
-  // the cell takes the words path, not the footnote path.
+  // the cell takes the words path, not the superscript path.
   eq('classifyCell: a superscript-flagged cell keeps non-overlapping matches',
     classifyCell({
       text: '20 1015', rowIndex: 1, columnIndex: 1, ranges: null,
@@ -128,14 +128,14 @@
     { mode: 'extracted', reason: 'simplify', value: { matches: [{ numStr: '20', num: 20, index: 0 }] } });
 
   // "5 %<sup>1</sup>" flattens to "5 %1", which the number reader reads as
-  // one number, so the cell takes the footnote path; the "5" survives the
+  // one number, so the cell takes the superscript path; the "5" survives the
   // mask over the footnote marker.
-  eq('classifyCell: a cell that reads as a number with a <sup> rounds its surviving match on the footnote path',
+  eq('classifyCell: a cell that reads as a number with a <sup> rounds its surviving match on the superscript path',
     classifyCell({
       text: '5 %1', rowIndex: 1, columnIndex: 1, ranges: null,
       hasSuperscript: true, superscriptRanges: [{ start: 3, end: 4 }],
     }, LADDER_OPTS),
-    { mode: 'extracted', reason: 'footnote', value: { matches: [{ numStr: '5', num: 5, index: 0 }] } });
+    { mode: 'extracted', reason: 'superscript', value: { matches: [{ numStr: '5', num: 5, index: 0 }] } });
 })();
 
 (function classifyCell_mixedText() {
@@ -182,26 +182,26 @@
 })();
 
 (function pickDateFormatHint_and_resolveAmbiguousDateDecision() {
-  eq('pickDateFormatHint: n1 > 12 only -> DMY', pickDateFormatHint([{ n1: 25, n2: 4 }]), 'DMY');
-  eq('pickDateFormatHint: n2 > 12 only -> MDY', pickDateFormatHint([{ n1: 3, n2: 25 }]), 'MDY');
-  eq('pickDateFormatHint: both > 12 across the column -> MIXED',
-    pickDateFormatHint([{ n1: 25, n2: 4 }, { n1: 3, n2: 25 }]), 'MIXED');
-  eq('pickDateFormatHint: neither > 12 -> AMBIGUOUS', pickDateFormatHint([{ n1: 3, n2: 4 }]), 'AMBIGUOUS');
+  eq('pickDateFormatHint: n1 > 12 only -> day-first', pickDateFormatHint([{ n1: 25, n2: 4 }]), 'day-first');
+  eq('pickDateFormatHint: n2 > 12 only -> month-first', pickDateFormatHint([{ n1: 3, n2: 25 }]), 'month-first');
+  eq('pickDateFormatHint: both > 12 across the column -> mixed',
+    pickDateFormatHint([{ n1: 25, n2: 4 }, { n1: 3, n2: 25 }]), 'mixed');
+  eq('pickDateFormatHint: neither > 12 -> ambiguous', pickDateFormatHint([{ n1: 3, n2: 4 }]), 'ambiguous');
 
   const dates0304 = findDates('03/04/2020');
-  eq('resolveAmbiguousDateDecision: MDY resolves n1 as month, n2 as day',
-    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'MDY'),
+  eq('resolveAmbiguousDateDecision: month-first resolves n1 as month, n2 as day',
+    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'month-first'),
     { mode: 'date', reason: 'simplify', value: { dates: [{
-      year: 2020, month: 3, monthFirst: true, start: 0, end: 10, dayCut: { start: 3, end: 6 } }] } });
-  eq('resolveAmbiguousDateDecision: DMY resolves n2 as month, n1 as day',
-    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'DMY'),
+      year: 2020, month: 3, monthBeforeYear: true, start: 0, end: 10, dayCut: { start: 3, end: 6 } }] } });
+  eq('resolveAmbiguousDateDecision: day-first resolves n2 as month, n1 as day',
+    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'day-first'),
     { mode: 'date', reason: 'simplify', value: { dates: [{
-      year: 2020, month: 4, monthFirst: true, start: 0, end: 10, dayCut: { start: 0, end: 3 } }] } });
-  eq('resolveAmbiguousDateDecision: MIXED downgrades to skip',
-    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'MIXED'),
+      year: 2020, month: 4, monthBeforeYear: true, start: 0, end: 10, dayCut: { start: 0, end: 3 } }] } });
+  eq('resolveAmbiguousDateDecision: mixed downgrades to skip',
+    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'mixed'),
     { mode: 'skip', reason: 'ambiguous-date' });
-  eq('resolveAmbiguousDateDecision: AMBIGUOUS downgrades to skip',
-    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'AMBIGUOUS'),
+  eq('resolveAmbiguousDateDecision: ambiguous downgrades to skip',
+    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'ambiguous'),
     { mode: 'skip', reason: 'ambiguous-date' });
 })();
 

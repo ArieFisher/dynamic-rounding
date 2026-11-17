@@ -726,8 +726,7 @@ function extractPreviewSamples(table) {
   if (cells.length === 0) {
     return { samples: { top: [], bottom: [] }, maxMag: null };
   }
-  const frozenMaxMag = DR_MODEL.getTableMaxMagnitude(table);
-  const maxMag = frozenMaxMag != null ? frozenMaxMag : datasetMaxMagnitude(entries);
+  const maxMag = datasetMaxMagnitude(entries, DR_MODEL.getTableMaxMagnitude(table));
   const { offsetTop: topOffset, offsetOther: otherOffset, numTop } =
     resolveRoundingSettings(liveSettings);
 
@@ -886,7 +885,7 @@ function writeCell(entry, patches) {
   return entry.cellObj.applyPatches(patches, { value: entry.text });
 }
 
-// The offsets and the top-band count, resolved once for the whole table.
+// The offsets and num_top, resolved once for the whole table.
 function resolveRoundingSettings(opts) {
   const offsetTop = resolveOffset(opts.offsetTop, DR_DEFAULTS.offsetTop);
   const offsetOther = resolveOffset(opts.offsetOther, offsetTop);
@@ -943,9 +942,7 @@ function watchedElement(adapter) {
 
 // One cell's patches as the page takes them: the table step's patches
 // (tablePatches, lib/dr-simplify/table.js), less a changed date or time that
-// does not sit in one text piece. A date or time cell's one patch covers its
-// trimmed text; when no single text piece holds that span, the cell stays as
-// written.
+// does not sit in one text piece, which stays as written.
 function cellPatches(stepCell) {
   return isSplitDateOrTime(stepCell) ? [] : stepCell.patches;
 }

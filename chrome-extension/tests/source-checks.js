@@ -125,7 +125,7 @@
       'lib/dr-number/index.js',
       'lib/dr-table/cells.js', 'lib/dr-table/adapters.js',
       'lib/dr-table/classify.js', 'lib/dr-table/detect.js', 'lib/dr-table/index.js',
-      'lib/dr-simplify/placement.js', 'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js', 'lib/dr-simplify/index.js',
+      'lib/dr-simplify/placement.js', 'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js',
       'lib/dr-capture/state.js', 'lib/dr-capture/render.js',
       'lib/dr-capture/index.js',
       'adapters/messaging.js', 'app/model.js',
@@ -275,7 +275,6 @@
   eq('sidebar.html does not load content-only lib/dr-table/detect.js', sidebarHtml.includes('lib/dr-table/detect.js'), false);
   eq('sidebar.html does not load content-only lib/dr-table/index.js', sidebarHtml.includes('lib/dr-table/index.js'), false);
   eq('sidebar.html does not load content-only lib/dr-simplify/ladder.js', sidebarHtml.includes('lib/dr-simplify/ladder.js'), false);
-  eq('sidebar.html does not load content-only lib/dr-simplify/index.js', sidebarHtml.includes('lib/dr-simplify/index.js'), false);
   eq('sidebar.html does not load content-only ui-pillbox.js', sidebarHtml.includes('ui-pillbox.js'), false);
   eq('sidebar.html does not load content-only ui-toast.js', sidebarHtml.includes('ui-toast.js'), false);
 })();
@@ -1234,7 +1233,7 @@
     'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
     'lib/dr-table/cells.js', 'lib/dr-table/adapters.js',
     'lib/dr-table/classify.js', 'lib/dr-table/detect.js', 'lib/dr-table/index.js',
-    'lib/dr-simplify/placement.js', 'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js', 'lib/dr-simplify/index.js',
+    'lib/dr-simplify/placement.js', 'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js',
     'adapters/messaging.js', 'app/model.js',
     'ui-pillbox.js', 'ui-toast.js', 'content.js',
   ];
@@ -1327,10 +1326,10 @@
     // parsing.js
     'lettersToColIndex', 'parseRangeEndpoint', 'parseRangeToken', 'parseRangeExpr',
     'isInRanges', 'resolveOffset', 'resolveNumTop', 'matchUnitNumber', 'getExclusionReason',
-    'findDates', 'isAmbiguousDate',
+    'knownDate', 'findDates', 'isAmbiguousDate',
     'isDateLike', 'isTimeLike', 'clockTimeRanges', 'parseISODateTime', 'isDateTimeLike',
     'roundDateText', 'roundClockTime', 'roundTimeText',
-    'getQuoteMaskedRanges', 'overlapsQuoteRange', 'extractNumbersInText',
+    'getQuoteMaskedRanges', 'overlapsMaskedRange', 'extractNumbersInText',
     'bracketSignSpan', 'isBracketedNegative', 'matchBracketedNumber',
     'eraYearDigitRanges', 'formatNumber', 'pureNumberSpan',
     // identifiers.js
@@ -1363,58 +1362,23 @@
   eq('core.js: validateOffset stays deleted', typeof validateOffset, 'undefined');
 })();
 
-// index.js's own doc comment says "No logic lives here — this is a pure
-// re-export list." That claim is only as good as index.js's grammar: the file
-// must introduce exactly one top-level binding (DR_NUMBER) and nothing else.
-// drNumberBundleIsPublished above checks DR_NUMBER's *contents*; this checks
-// that index.js could not have smuggled in a second global even if its
-// contents were otherwise correct — a stray second `const`/`function` at top
-// level would land on the shared content-script scope unnoticed by any
-// content-only assertion.
-(function indexJsDeclaresExactlyOneGlobal() {
-  const indexSrc = sourceByName('lib/dr-number/index.js');
-  if (indexSrc === null) {
-    eq('lib/dr-number/index.js: source present in manifest', false, true);
-    return;
-  }
-  const topLevelDeclarations = indexSrc.match(/^(const|let|var|function\b|class\b)/gm) || [];
-  eq('lib/dr-number/index.js: exactly one top-level declaration in the file',
-    topLevelDeclarations.length, 1);
-  eq('lib/dr-number/index.js: the sole top-level declaration is DR_NUMBER',
-    /^const DR_NUMBER\b/m.test(indexSrc), true);
-})();
+checkIndexDeclaresOnlyPackageObject('dr-number', 'DR_NUMBER');
 
-// The EXPECTED_DR_NUMBER_NAMES list in drNumberBundleIsPublished above is a
-// hand-copied literal, kept explicit on purpose. This test instead derives
-// the expected set mechanically — regex-extracting every top-level
-// `function name(...)` declaration straight from rounding.js, core.js, and
-// parsing.js — so a function added to (or removed from) one of those files
-// without a matching index.js edit fails here even if someone forgets to
-// update the hand-copied list too.
-(function drNumberBundleMatchesSourceDeclarations() {
-  const FUNCTION_DECL_RE = /^function\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm;
-  const declaredNamesIn = (src) => src === null ? [] : [...src.matchAll(FUNCTION_DECL_RE)].map((m) => m[1]);
-  const declaredNames = [
-    ...declaredNamesIn(sourceByName('lib/dr-number/rounding.js')),
-    ...declaredNamesIn(sourceByName('lib/dr-number/core.js')),
-    ...declaredNamesIn(sourceByName('lib/dr-number/parsing.js')),
-    ...declaredNamesIn(sourceByName('lib/dr-number/identifiers.js')),
-  ].sort();
-  eq('lib/dr-number bundle: source files declared at least one top-level function',
-    declaredNames.length > 0, true);
-  eq('lib/dr-number bundle: DR_NUMBER keys are exactly the top-level functions declared in rounding.js + core.js + parsing.js + identifiers.js',
-    Object.keys(globalThis.DR_NUMBER || {}).sort(), declaredNames);
-})();
+// drNumberBundleIsPublished above checks a hand-copied list, kept explicit
+// on purpose. This check derives the list from the source files instead.
+checkPackageObjectMatchesDeclarations('dr-number', 'DR_NUMBER',
+  ['rounding.js', 'core.js', 'parsing.js', 'identifiers.js']);
 
 // ---------------------------------------------------------------------------
 // Table detection lives under lib/dr-table/
 // (cells.js, adapters.js, classify.js, detect.js, index.js), mirroring the
 // lib/dr-number package structure and discipline checks above. Four groups of tests:
 //   1. DR_TABLE bundle discipline (mirrors drNumberBundleIsPublished /
-//      indexJsDeclaresExactlyOneGlobal, but against an explicit hand-written
-//      list, not a source-derived one — the package also carries write-engine
-//      helpers alongside detection, so "every top-level function" is not the
-//      right criterion here the way it is for the pure lib/dr-number files).
+//      checkIndexDeclaresOnlyPackageObject, but against an explicit
+//      hand-written list, not a source-derived one — the package also
+//      carries write-engine helpers alongside detection, so "every top-level
+//      function" is not the right criterion here the way it is for the pure
+//      lib/dr-number files).
 //   2. The jsdom-less criterion: detection runs with no Chrome globals at all.
 //   3. VendorProfiles: a custom list replaces (not merges with) the default.
 //   4. findTables' isArtifact: the default drops accessibility artifacts; a
@@ -1455,18 +1419,7 @@
     true);
 })();
 
-(function drTableIndexJsDeclaresExactlyOneGlobal() {
-  const indexSrc = sourceByName('lib/dr-table/index.js');
-  if (indexSrc === null) {
-    eq('lib/dr-table/index.js: source present in manifest', false, true);
-    return;
-  }
-  const topLevelDeclarations = indexSrc.match(/^(const|let|var|function\b|class\b)/gm) || [];
-  eq('lib/dr-table/index.js: exactly one top-level declaration in the file',
-    topLevelDeclarations.length, 1);
-  eq('lib/dr-table/index.js: the sole top-level declaration is DR_TABLE',
-    /^const DR_TABLE\b/m.test(indexSrc), true);
-})();
+checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 
 // ---------------------------------------------------------------------------
 // Every detection setting and both lookup
@@ -1751,55 +1704,6 @@
     /pending table/i.test(detectionPoint), true);
   eq('pending: the detection point names the re-test cap in the detection settings',
     /pendingRetestCap/.test(detectionPoint), true);
-})();
-
-// =============================================================================
-// Lib/dr-simplify classification ladder
-// =============================================================================
-//
-// The engine's per-cell pass in content.js and the lens preview extractor
-// (classifyPreviewCells / extractPreviewSamples) both call classifyCell
-// (lib/dr-simplify/ladder.js).
-//
-// This section has three parts:
-//   1. Package discipline — mirrors the DR_NUMBER/DR_TABLE checks.
-//   2. classifyCell unit tests — one per ladder rule, exercised directly with
-//      plain data (no DOM), matching the file's PURE contract.
-//   3. Divergence tests — each test pins the MERGED (engine-wins) behavior
-//      the lens preview extractor follows.
-
-// --- 1. Package discipline ---
-
-(function drSimplifyBundleMatchesSourceDeclarations() {
-  const FUNCTION_DECL_RE = /^function\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm;
-  const tableStepCode = sourceByName('lib/dr-simplify/table.js');
-  const placementCode = sourceByName('lib/dr-simplify/placement.js');
-  const declaredNames = [placementCode, ladderCode, tableStepCode]
-    .flatMap((code) => (code === null ? [] : [...code.matchAll(FUNCTION_DECL_RE)].map((m) => m[1])))
-    .sort();
-  eq('lib/dr-simplify/ladder.js: source present in manifest', ladderCode !== null, true);
-  eq('lib/dr-simplify/table.js: source present in manifest', tableStepCode !== null, true);
-  eq('lib/dr-simplify bundle: ladder.js declared at least one top-level function',
-    declaredNames.length > 0, true);
-  eq('lib/dr-simplify/index.js: DR_SIMPLIFY exists on the global scope after the main eval',
-    typeof globalThis.DR_SIMPLIFY, 'object');
-  eq('lib/dr-simplify bundle: DR_SIMPLIFY keys are exactly the top-level functions declared in placement.js, ladder.js, and table.js',
-    Object.keys(globalThis.DR_SIMPLIFY || {}).sort(), declaredNames);
-  eq('lib/dr-simplify bundle: every DR_SIMPLIFY entry is itself a function',
-    declaredNames.every((n) => typeof (globalThis.DR_SIMPLIFY || {})[n] === 'function'), true);
-})();
-
-(function drSimplifyIndexJsDeclaresExactlyOneGlobal() {
-  const indexSrc = sourceByName('lib/dr-simplify/index.js');
-  if (indexSrc === null) {
-    eq('lib/dr-simplify/index.js: source present in manifest', false, true);
-    return;
-  }
-  const topLevelDeclarations = indexSrc.match(/^(const|let|var|function\b|class\b)/gm) || [];
-  eq('lib/dr-simplify/index.js: exactly one top-level declaration in the file',
-    topLevelDeclarations.length, 1);
-  eq('lib/dr-simplify/index.js: the sole top-level declaration is DR_SIMPLIFY',
-    /^const DR_SIMPLIFY\b/m.test(indexSrc), true);
 })();
 
 // ---------------------------------------------------------------------------

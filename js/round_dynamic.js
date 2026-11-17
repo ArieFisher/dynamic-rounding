@@ -67,10 +67,7 @@ function roundWithOffset(num, offset) {
   return sign * result;
 }
 
-function roundCellSetAware(value, num, max_mag, offset_top, offset_other, num_top) {
-  if (value === "" || value === null) return "";
-
-  if (num === null) return value;
+function roundCellSetAware(num, max_mag, offset_top, offset_other, num_top) {
   if (num === 0) return 0;
 
   const current_mag = Math.floor(Math.log10(Math.abs(num)));
@@ -359,11 +356,12 @@ function toNumber(value) {
  */
 
 /**
- * Pure parsing/formatting helpers (no chrome.*, no DOM mutation).
+ * Parsing and formatting helpers. Core layer: reads no page and calls no
+ * Chrome.
  *
  * Loaded by manifest content_scripts AFTER core.js and BEFORE the DOM/UI
  * modules. Covers range-expression parsing, date/time detection + rounding,
- * in-text number extraction, and pure-numeric formatting. All symbols land on
+ * in-text number extraction, and number formatting. All symbols land on
  * the shared global scope consumed by content.js.
  */
 
@@ -572,8 +570,8 @@ function matchUnitNumber(text) {
 }
 
 function getExclusionReason(text, columnIndex, options, rowIndex) {
-  if (!options.simplifyFirstRow && rowIndex === 0) return 'firstRow';
-  if (!options.simplifyFirstColumn && columnIndex === 0) return 'firstColumn';
+  if (!options.simplifyFirstRow && rowIndex === 0) return 'first-row';
+  if (!options.simplifyFirstColumn && columnIndex === 0) return 'first-column';
   if (typeof text !== 'string') return null;
   const t = text.trim();
   if (!options.simplifyMixedPercent && /%/.test(t)) return 'percent';
@@ -611,11 +609,15 @@ const YEAR = `(\\d{4}${ORD})`;
 const isDay = (s) => { const d = parseInt(s, 10); return d >= 1 && d <= 31; };
 const isMonth = (s) => { const n = parseInt(s, 10); return n >= 1 && n <= 12; };
 
-// One date with a known reading: its bounds in the text, its year, its month
-// (1 to 12), whether the month stands before the year, and the span the month
-// granularity removes (null when the date holds no day).
-const datePart = (m, year, month, monthFirst, dayCut) => (
-  { year: parseInt(year, 10), month, monthFirst, start: m.index, end: m.index + m[0].length, dayCut });
+// One date with a known reading: its year, its month (1 to 12), whether the
+// month stands before the year, its bounds in the text, and the span the month
+// granularity removes (null when the date holds no day). The column post-pass
+// builds the same shape for an all-numeric date once its column settles.
+function knownDate(year, month, monthBeforeYear, start, end, dayCut) {
+  return { year, month, monthBeforeYear, start, end, dayCut };
+}
+const datePart = (m, year, month, monthBeforeYear, dayCut) =>
+  knownDate(parseInt(year, 10), month, monthBeforeYear, m.index, m.index + m[0].length, dayCut);
 
 // The date shapes findDates reads; on two matches at the same position the
 // earlier shape wins. Each regex carries the d flag, so a match holds its
@@ -687,8 +689,8 @@ const BARE_YEAR_RE = new RegExp(`^${DATE_NOISE_CLASS}*${YEAR}${DATE_NOISE_CLASS}
  *   All numeric:   7/21/2020 / 21-07-20 (read by the column post-pass)
  *   Bare year:     2020, as the whole cell
  * Each date is one of:
- *   - a date with a known reading: { year, month, monthFirst, start, end, dayCut }
- *     (a bare year holds month null and no monthFirst)
+ *   - a date with a known reading: { year, month, monthBeforeYear, start, end, dayCut }
+ *     (a bare year holds month null and no monthBeforeYear)
  *   - an all-numeric date: { year, n1, n2, start, end, n1Cut, n2Cut }
  *     (see isAmbiguousDate)
  *   - a date that cannot exist ("2020-13-45"): { impossible: true, start, end }
@@ -798,7 +800,7 @@ function isDateTimeLike(text) {
  *
  * @param {string} text          - The cell's trimmed text.
  * @param {string} granularity   - 'month' | 'quarter' | 'year' | 'decade' | 'century'.
- * @param {{year:number, month:number|null, monthFirst?:boolean, start:number, end:number,
+ * @param {{year:number, month:number|null, monthBeforeYear?:boolean, start:number, end:number,
  *   dayCut:{start:number,end:number}|null}[]} [dates]
  *   The dates the classification pass read from this text, each with a known
  *   reading, in text order. If omitted, findDates is called, and text holding
@@ -818,7 +820,7 @@ function roundDateText(text, granularity, dates) {
     } else if (granularity === 'quarter') {
       if (!d.month) continue;
       const q = 'Q' + Math.ceil(d.month / 3);
-      out = out.slice(0, d.start) + (d.monthFirst ? q + ' ' + d.year : d.year + ' ' + q) + out.slice(d.end);
+      out = out.slice(0, d.start) + (d.monthBeforeYear ? q + ' ' + d.year : d.year + ' ' + q) + out.slice(d.end);
     } else {
       out = out.slice(0, d.start) + String(Math.floor(d.year / step) * step) + out.slice(d.end);
     }
@@ -913,13 +915,13 @@ function getQuoteMaskedRanges(text) {
 }
 
 /**
- * Returns true if [matchStart, matchEnd) overlaps any range in maskedRanges.
+ * Returns true if [matchStart, matchEnd) overlaps any masked range.
  * @param {{start: number, end: number}[]} maskedRanges
  * @param {number} matchStart
  * @param {number} matchEnd
  * @returns {boolean}
  */
-function overlapsQuoteRange(maskedRanges, matchStart, matchEnd) {
+function overlapsMaskedRange(maskedRanges, matchStart, matchEnd) {
   for (const range of maskedRanges) {
     if (matchStart < range.end && matchEnd > range.start) return true;
   }
@@ -1157,7 +1159,7 @@ function pureNumberSpan(text) {
  * name of a code that fills the cell, and classifyCell
  * (lib/dr-simplify/ladder.js) skips that cell (reason: 'identifier'), after
  * the date and time checks, so a date the date parser reads ("21 June 2020")
- * stays a date, and before the bracketed-number check. getIdentifierMaskedRanges
+ * stays a date, and before the number reader. getIdentifierMaskedRanges
  * returns the codes that count inside a cell with words ("Call 416-555-1234
  * about 1,613,245 units"), and extractSimplifyMatches drops every number
  * inside one, so the code stays as written and the other numbers round.
@@ -1417,34 +1419,27 @@ function getIdentifierMaskedRanges(text) {
  */
 
 /**
- * The classification ladder: the ordered per-cell decision rules that decide
- * whether and how a cell simplifies. Before this file, the ladder existed as
- * two hand-kept-in-sync copies — the engine's per-cell loop in content.js
- * (duplicated again between the native-<table> path and the virtualized-grid
- * path, which documented itself as needing to match the native path "EXACTLY")
- * and a third, much thinner copy in the sidebar preview-sample extractor that
- * skipped most of the rules outright. All three now call classifyCell below.
+ * The classification ladder: the ordered per-cell rules that determine
+ * whether and how a cell simplifies. classifyTableCell (lib/dr-table) calls
+ * classifyCell for the rounding pass, the lens preview, and the data test,
+ * and the Sheets input step calls it for each text cell.
  *
- * PURE: classifyCell takes plain cell values (text, row/column position,
- * a pre-parsed range list, and a handful of caller-computed booleans/ranges
- * standing in for the few checks that inherently need the DOM — whole-cell
- * link, and superscript/footnote position) plus a plain options bag. It never
- * touches a page element and returns its decision as data. It depends only on
- * DR_NUMBER's bare names (parsing/rounding), loaded ahead of this file.
+ * Core layer: reads no page and calls no Chrome. classifyCell takes the
+ * cell's text, its row and column, the range list parsed once per table, and
+ * the simplification options, and returns its decision as data. In the
+ * extension the text is the rendered text (the raw text when the rendered
+ * text is empty) or a simplified cell's stored original; in Sheets it is the
+ * cell value. Four more values come from the page, and the caller derives
+ * them: whether the cell's whole text is a link (isCellWholeLink
+ * reads the anchors' text), whether the cell holds a superscript, the superscript
+ * spans in the text classifyCell reads (getSuperscriptRanges), and whether
+ * the cell's digits sit in more than one text piece (from the piece layout),
+ * so the join of numbers in separate pieces never reads as one spaced
+ * identifier. The bare names the ladder calls come from lib/dr-number's
+ * core.js, parsing.js, and identifiers.js, loaded ahead of this file.
  *
- * DOM-only work the ladder deliberately does NOT do: isCellWholeLink and
- * getSuperscriptRanges (both in lib/dr-table) require walking real text
- * nodes, so callers compute isWholeLink/hasSuperscript/superscriptRanges once
- * per cell and pass them in as plain data. filterLinkMatches (also
- * lib/dr-table) has the same requirement for the individual numbers inside a
- * cell with words; since filters are independent per-match predicates, their
- * order never changes the result, so a caller that produces 'extracted'
- * matches is expected to run filterLinkMatches over decision.value.matches
- * afterward and, if that empties the list, downgrade the decision to
- * { mode: 'skip', reason: decision.reason } itself. That single downgrade
- * check lives in one caller-side function, which the native-table path, the
- * grid path, and the preview-sample extractor all call, so it is not a
- * second copy of ladder logic.
+ * The link filter needs the page too, so the caller runs it over an extracted
+ * decision's matches (see finalizeExtractedDecision in lib/dr-table).
  */
 
 /**
@@ -1458,44 +1453,25 @@ function isWholeCellQuoted(trimmedText) {
 }
 
 /**
- * Drop any match overlapping a masked range (a quote span, an identifier
- * span, a superscript span, or an era-marked year, all in the same flat-text
- * coordinate space extractNumbersInText uses). A no-op when ranges is empty.
- */
-function filterMaskedMatches(matches, ranges) {
-  if (!ranges || ranges.length === 0) return matches;
-  return matches.filter((m) => !overlapsQuoteRange(ranges, m.index, m.index + m.numStr.length));
-}
-
-/**
- * Every text-only filter mode:'extracted' applies before a caller's DOM-only
- * link filter: pull numbers out of `text` and drop each one inside a masked
- * range — a quoted span, an identifier span ("Call 416-555-1234"; see
- * getIdentifierMaskedRanges in lib/dr-number/identifiers.js), a superscript
- * span, an era-marked year (issue #4 — "2898 AD" is a date, not a
- * quantity), or a clock time ("9:45 - 11:45 AM"; its hour and minutes are
- * not quantities, and it stays as written whatever the Times setting holds).
- * The masked ranges are one list, so a new kind of text whose
- * numbers stay as written is one more source here. superscriptRanges is
- * caller-supplied plain data (see file header); pass [] when the cell
- * holds no superscript. The identifier scan and the clock-time scan read the
- * text with each superscript span blanked to spaces, so a footnote marker
- * right after a phone number ("416-555-1234<sup>1</sup>") or a clock time
- * ("18:30<sup>2</sup>") never joins its digits; the blanks keep every
- * position in place.
+ * The masked ranges are one list, so a new kind of text whose numbers stay as
+ * written is one more source here. The identifier scan and the clock-time
+ * scan read the text with each superscript span blanked to spaces, so a
+ * footnote marker right after a phone number ("416-555-1234<sup>1</sup>") or
+ * a clock time ("18:30<sup>2</sup>") never joins its digits; the blanks keep
+ * every position in place.
  */
 function extractSimplifyMatches(text, superscriptRanges) {
-  const superscripts = superscriptRanges || [];
-  const shapeText = superscripts.reduce(
+  const shapeText = superscriptRanges.reduce(
     (t, r) => t.slice(0, r.start) + ' '.repeat(r.end - r.start) + t.slice(r.end), text);
   const masked = [
     ...getQuoteMaskedRanges(text),
     ...getIdentifierMaskedRanges(shapeText),
-    ...superscripts,
+    ...superscriptRanges,
     ...eraYearDigitRanges(text),
     ...clockTimeRanges(shapeText),
   ];
-  return filterMaskedMatches(extractNumbersInText(text), masked);
+  return extractNumbersInText(text)
+    .filter((m) => !overlapsMaskedRange(masked, m.index, m.index + m.numStr.length));
 }
 
 /**
@@ -1503,37 +1479,21 @@ function extractSimplifyMatches(text, superscriptRanges) {
  * pending? }.
  *
  *   mode: 'skip' | 'date' | 'time' | 'extracted'
- *   reason: one of the ladder's rule names — 'out-of-range', 'first-row',
- *     'first-column', 'percent', 'currency', 'quoted', 'identifier', 'link',
- *     'footnote', 'dates-disabled', 'times-disabled',
- *     'no-number', 'ambiguous-date', 'impossible-date', 'simplify' for a
- *     cell that rounds, or
- *     'unit' for a unit number (see matchUnitNumber in lib/dr-number), which
- *     rounds.
+ *   reason: the rule that gave the mode. For a skip: 'out-of-range', the
+ *     exclusion getExclusionReason returns ('first-row', 'first-column',
+ *     'percent', 'currency'), 'quoted', 'times-disabled', 'dates-disabled',
+ *     'impossible-date', 'identifier', 'link', or 'no-number'. 'superscript'
+ *     marks a cell with a superscript whose text the number reader reads as one
+ *     number, skipped or extracted. 'unit' marks a unit number, and
+ *     'simplify' every other cell that simplifies.
  *   value: mode-specific payload —
  *     'date' (resolved) → { dates }, each date with a known reading — see
  *       findDates in lib/dr-number
  *     'date' (needs the column post-pass) → { dates }, at least one of them
  *       all-numeric (isAmbiguousDate), plus pending: 'ambiguous-date'
- *     'extracted' → { matches } — matches still need a caller-side
- *       filterLinkMatches pass; see file header. A cell that is one number
- *       (plain, bracketed, or a unit number) holds one match.
- *
- * @param {object} input
- * @param {string} input.text - raw cell text (as returned by the adapter)
- * @param {number} input.rowIndex
- * @param {number} input.columnIndex
- * @param {Array|null} input.ranges - parseRangeExpr(...).ranges (already parsed once per table)
- * @param {boolean} [input.isWholeLink] - isCellWholeLink(cell) result
- * @param {boolean} [input.hasSuperscript] - true when the cell holds a <sup>
- *   or text styled vertical-align: super (see classifyTableCell)
- * @param {{start:number,end:number}[]} [input.superscriptRanges] - getSuperscriptRanges(cell) result
- * @param {boolean} [input.digitsSpanPieces] - true when the cell's digits sit
- *   in more than one text piece (see matchIdentifierShape)
- * @param {object} options - resolved rounding options (simplifyFirstRow,
- *   simplifyFirstColumn, simplifyMixedPercent, simplifyMixedCurrency,
- *   simplifyDates, simplifyTimes)
- * @returns {{mode: string, reason: string, value?: object, pending?: string}}
+ *     'extracted' → { matches } — matches still need the caller's link
+ *       filter; see file header. A cell that is one number (a pure cell, a
+ *       bracketed number, or a unit number) holds one match.
  */
 function classifyCell(input, options) {
   const {
@@ -1546,10 +1506,10 @@ function classifyCell(input, options) {
     superscriptRanges = [],
     digitsSpanPieces = false,
   } = input;
-  const trimmed = typeof text === 'string' ? text.trim() : '';
-  // A cell that is one number changes its digits alone, which is the extracted
-  // write, so a sign, a bracket, a currency sign, a percent sign, a suffix, or
-  // a currency code stays where the page put it.
+  const trimmed = text.trim();
+  // A cell that is one number gets one match over its digits alone, so the
+  // write-back leaves a sign, a bracket, a currency sign, a percent sign, a
+  // suffix, or a currency code where the page put it.
   const oneNumber = (match, reason) => (isWholeLink
     ? { mode: 'skip', reason: 'link' }
     : { mode: 'extracted', reason, value: { matches: [match] } });
@@ -1559,21 +1519,16 @@ function classifyCell(input, options) {
   }
 
   const exclusion = getExclusionReason(text, columnIndex, options, rowIndex);
-  if (exclusion === 'firstRow') return { mode: 'skip', reason: 'first-row' };
-  if (exclusion === 'firstColumn') return { mode: 'skip', reason: 'first-column' };
-  if (exclusion === 'percent') return { mode: 'skip', reason: 'percent' };
-  if (exclusion === 'currency') return { mode: 'skip', reason: 'currency' };
-  // Fail closed: any non-null exclusion reason this ladder does not recognize
-  // still skips the cell, instead of silently falling through to simplify it.
-  if (exclusion) return { mode: 'skip', reason: 'excluded' };
+  if (exclusion) return { mode: 'skip', reason: exclusion };
 
   if (isWholeCellQuoted(trimmed)) {
     return { mode: 'skip', reason: 'quoted' };
   }
 
-  if (isDateTimeLike(trimmed)) {
-    // ISO date-time follows the time instruction (date preserved). Checked
-    // before findDates, which would otherwise match a space-separated form.
+  // A clock time, or an ISO date-time with its date kept, follows the "times"
+  // switch. Checked before findDates, which would otherwise match the date of
+  // a space-separated date-time.
+  if (isDateTimeLike(trimmed) || isTimeLike(trimmed)) {
     return options.simplifyTimes
       ? { mode: 'time', reason: 'simplify' }
       : { mode: 'skip', reason: 'times-disabled' };
@@ -1582,7 +1537,6 @@ function classifyCell(input, options) {
   const dates = findDates(trimmed);
   if (dates) {
     if (!options.simplifyDates) return { mode: 'skip', reason: 'dates-disabled' };
-    // A cell holding a date that cannot exist ("2020-13-45") stays as written.
     if (dates.some((d) => d.impossible)) return { mode: 'skip', reason: 'impossible-date' };
     if (dates.some(isAmbiguousDate)) {
       return { mode: 'date', reason: 'simplify', pending: 'ambiguous-date', value: { dates } };
@@ -1590,59 +1544,34 @@ function classifyCell(input, options) {
     return { mode: 'date', reason: 'simplify', value: { dates } };
   }
 
-  if (isTimeLike(trimmed)) {
-    return options.simplifyTimes
-      ? { mode: 'time', reason: 'simplify' }
-      : { mode: 'skip', reason: 'times-disabled' };
+  // In a cell with a superscript, the text classifyCell reads joins base and
+  // exponent digits ("10<sup>12</sup>" reads "1012"), which is not the text
+  // the reader sees. So no whole-cell shape is tested against it, and
+  // extraction masks each superscript span.
+  if (hasSuperscript) {
+    const isNumber = toNumber(text) !== null;
+    if (isNumber && isWholeLink) return { mode: 'skip', reason: 'link' };
+    const matches = extractSimplifyMatches(text, superscriptRanges);
+    if (matches.length === 0) return { mode: 'skip', reason: isNumber ? 'superscript' : 'no-number' };
+    return { mode: 'extracted', reason: isNumber ? 'superscript' : 'simplify', value: { matches } };
   }
 
-  // An identifier shape (a phone number, an IP address, a web or email
-  // address, an ISBN, a postal code, a digit run with a leading zero, or a
-  // digit run split by whitespace that is not thousands grouping) reads as a
-  // code, not a quantity, so the whole cell stays as written. Checked after
-  // the date and time checks above, so a date the date parser reads ("21
-  // June 2020") stays a date, and before the bracketed-number check below,
-  // since a phone number's bracketed area code ("(416) 555-1234") is not
-  // that bracket's minus sign.
-  // matchIdentifierShape (lib/dr-number/identifiers.js) holds the one list of
-  // shapes; this is the one place that reads it. digitsSpanPieces comes from
-  // the caller's piece layout, so the join of numbers that sit in separate
-  // pieces never reads as one spaced identifier. A cell with a superscript
-  // takes the footnote path below instead: its flattened text joins base and
-  // exponent digits ("20 10<sup>15</sup>" reads "20 1015"), which is not the
-  // text the reader sees, so no shape is tested against it.
-  if (!hasSuperscript && matchIdentifierShape(trimmed, digitsSpanPieces)) {
+  // An identifier shape reads as a code, not a quantity, so the whole cell
+  // stays as written. Checked before the number reader, which also reads a
+  // digit run with a leading zero ("0012345678", "(0012345678)") as a number.
+  if (matchIdentifierShape(trimmed, digitsSpanPieces)) {
     return { mode: 'skip', reason: 'identifier' };
   }
 
-  // A bracketed number ("(1,234)", "$(1,234)") is one number whose minus sign
-  // is written as the brackets around it. A cell with a superscript takes the
-  // footnote path below instead, so its exponent stays masked;
-  // extractSimplifyMatches reads the same bracket sign there.
-  const bracketed = hasSuperscript ? null : matchBracketedNumber(text);
-  if (bracketed) return oneNumber(bracketed, 'simplify');
-
   const num = toNumber(text);
   if (num !== null) {
-    if (hasSuperscript) {
-      if (isWholeLink) return { mode: 'skip', reason: 'link' };
-      // The cell holds a superscript: the flattened text mixes base and
-      // exponent digits (e.g. "10<sup>12</sup>" -> "1012"). Route through
-      // extraction so superscript masking can protect the exponent, instead
-      // of rounding the flattened (wrong) number.
-      const matches = extractSimplifyMatches(text, superscriptRanges);
-      if (matches.length === 0) return { mode: 'skip', reason: 'footnote' };
-      return { mode: 'extracted', reason: 'footnote', value: { matches } };
-    }
-
     const span = pureNumberSpan(text);
     return oneNumber({ numStr: span.numStr, num, index: span.index }, 'simplify');
   }
 
   // A unit number ("4.91tn", "CAD45.67") is one number with a suffix or a
-  // currency code. A cell with a superscript takes the footnote path above
-  // instead, so its exponent stays masked.
-  const unit = hasSuperscript ? null : matchUnitNumber(text);
+  // currency code.
+  const unit = matchUnitNumber(text);
   if (unit) return oneNumber(unit, 'unit');
 
   const matches = extractSimplifyMatches(text, superscriptRanges);
@@ -1654,12 +1583,9 @@ function classifyCell(input, options) {
  * Decide how to read a column's ambiguous N1/N2/Y dates (e.g. "03/04/2020"),
  * given every ambiguous date's {n1, n2} found in that column. Any n > 12 in
  * one position rules out that position being the month, so a lone violator
- * pins the whole column's format; violators on both sides make the column
- * unsafe to guess ('MIXED'); no violator leaves it genuinely ambiguous
- * ('AMBIGUOUS').
- *
- * @param {{n1: number, n2: number}[]} ambiguousList
- * @returns {'MDY'|'DMY'|'MIXED'|'AMBIGUOUS'}
+ * pins the whole column's format ('month-first' or 'day-first'); violators on
+ * both sides make the column unsafe to guess ('mixed'); no violator leaves it
+ * genuinely ambiguous ('ambiguous').
  */
 function pickDateFormatHint(ambiguousList) {
   let hasN1gt12 = false;
@@ -1668,28 +1594,25 @@ function pickDateFormatHint(ambiguousList) {
     if (n1 > 12) hasN1gt12 = true;
     if (n2 > 12) hasN2gt12 = true;
   }
-  if (hasN1gt12 && !hasN2gt12) return 'DMY'; // n1 is day, n2 is month
-  if (hasN2gt12 && !hasN1gt12) return 'MDY'; // n1 is month, n2 is day
-  if (hasN1gt12 && hasN2gt12) return 'MIXED';
-  return 'AMBIGUOUS';
+  if (hasN1gt12 && !hasN2gt12) return 'day-first';
+  if (hasN2gt12 && !hasN1gt12) return 'month-first';
+  if (hasN1gt12 && hasN2gt12) return 'mixed';
+  return 'ambiguous';
 }
 
 /**
  * Turn a pending ambiguous-date decision (classifyCell's pending:
  * 'ambiguous-date') into its final decision, given the column's format hint
- * from pickDateFormatHint. MDY/DMY give each all-numeric date of the cell its
- * day and month; MIXED/AMBIGUOUS cannot be read safely and downgrade the whole cell to
- * skip, so a cell never changes some of its dates and holds others.
- *
- * @param {{value: {dates: object[]}}} decision - see findDates
- * @param {'MDY'|'DMY'|'MIXED'|'AMBIGUOUS'} hint
- * @returns {{mode: string, reason: string, value?: object}}
+ * from pickDateFormatHint. month-first and day-first give each all-numeric
+ * date of the cell its day and month; mixed and ambiguous cannot be read
+ * safely and downgrade the whole cell to skip, so a cell never changes some
+ * of its dates and holds others.
  */
 function resolveAmbiguousDateDecision(decision, hint) {
-  if (hint !== 'MDY' && hint !== 'DMY') return { mode: 'skip', reason: 'ambiguous-date' };
+  if (hint !== 'month-first' && hint !== 'day-first') return { mode: 'skip', reason: 'ambiguous-date' };
+  const isMonthFirst = hint === 'month-first';
   const dates = decision.value.dates.map((d) => (isAmbiguousDate(d)
-    ? { year: d.year, month: hint === 'MDY' ? d.n1 : d.n2, monthFirst: true,
-      start: d.start, end: d.end, dayCut: hint === 'MDY' ? d.n2Cut : d.n1Cut }
+    ? knownDate(d.year, isMonthFirst ? d.n1 : d.n2, true, d.start, d.end, isMonthFirst ? d.n2Cut : d.n1Cut)
     : d));
   return { mode: 'date', reason: 'simplify', value: { dates } };
 }
@@ -1709,34 +1632,28 @@ function resolveAmbiguousDateDecision(decision, hint) {
  *
  *   1. The column post-pass settles each ambiguous date against its
  *      column's format hint.
- *   2. The max magnitude comes from every number in the dataset, the
- *      numbers inside extracted cells included, unless the caller passes a
- *      frozen one.
+ *   2. The max magnitude comes from the numbers of the extracted cells
+ *      passed in, since a date or time adds none, unless the caller passes
+ *      one.
  *   3. Each cell's numbers, dates, and times round and become patches.
  *
- * PURE: the step reads plain classified cells and plain settings and returns
- * data. It holds no reference to the page, a text piece, the registry, the
- * log buffer, or the browser. It depends only on DR_NUMBER's bare names and
- * the ladder's pickDateFormatHint and resolveAmbiguousDateDecision, loaded
- * ahead of this file.
+ * Core layer: reads no page and calls no Chrome. It depends only on
+ * lib/dr-number's bare names and the ladder's pickDateFormatHint and
+ * resolveAmbiguousDateDecision, loaded ahead of this file.
  *
- * A classified cell is any object carrying:
- *   text  the text the cell classified (a simplified cell's stored original)
- *   info  the decisionToLegacyInfo shape of the ladder's decision
- *   col   the cell's grid column, which groups the column post-pass
+ * The step reads one entry per classified cell. An entry is any object
+ * carrying:
+ *   text         the classified text (a simplified cell's stored original)
+ *   info         the decisionToLegacyInfo shape of the ladder's decision
+ *   columnIndex  the cell's grid column, by which the column post-pass
+ *                groups cells
  * The step copies every other field through untouched, so a caller can carry
  * its own per-cell data beside them.
- *
- * Page work stays with the caller: the magnitude freeze a table keeps across
- * re-apply passes, the check that a changed date or time sits in one text piece, the
- * link filter, and the write of patches into text pieces. A date or time
- * cell's patch covers its trimmed text, so the patch's index and the length
- * of its numStr are the span that check reads.
  */
 
-// Adapts a classifyCell decision to the { mode, num, dates, ambiguous,
-// matches } shape the table step reads in its column post-pass, its max
-// magnitude, and its patches.
+// Adapts a classifyCell decision to the { mode, dates, ambiguous, matches }
+// shape the table step reads in its column post-pass, its max magnitude, and
+// its patches.
 function decisionToLegacyInfo(decision) {
   if (decision.mode === 'extracted') return { mode: 'extracted', matches: decision.value.matches };
   if (decision.mode === 'date') {
@@ -1746,32 +1663,31 @@ function decisionToLegacyInfo(decision) {
   return { mode: 'skip' };
 }
 
-// The column post-pass: resolve each ambiguous numeric date against its
-// column's format hint. Every all-numeric date in the column counts, the
-// second date of a cell included. Grouping runs on the grid column each cell carries,
-// so one visual column settles one reading for all of its cells — a merge
-// inside the table cannot split a column into two groups that read 7/4/99 as
-// July in one row and April in another.
+// The column post-pass: resolve each ambiguous date against its column's
+// format hint. It groups cells by grid column, so a merged cell cannot split
+// one column into two groups that read 7/4/99 as July in one row and April in
+// another.
 function resolveAmbiguousDates(entries) {
-  const isAmbiguous = (info) => info.mode === 'date' && info.ambiguous;
-  const readingsByCol = new Map();
-  for (const { info, col } of entries) {
-    if (!isAmbiguous(info)) continue;
-    if (!readingsByCol.has(col)) readingsByCol.set(col, []);
-    readingsByCol.get(col).push(...info.dates.filter(isAmbiguousDate));
+  const ambiguousDatesByCol = new Map();
+  for (const { info, columnIndex } of entries) {
+    if (!info.ambiguous) continue;
+    if (!ambiguousDatesByCol.has(columnIndex)) ambiguousDatesByCol.set(columnIndex, []);
+    ambiguousDatesByCol.get(columnIndex).push(...info.dates.filter(isAmbiguousDate));
   }
-  const hintByCol = new Map(Array.from(readingsByCol, ([col, readings]) => [col, pickDateFormatHint(readings)]));
+  const hintByCol = new Map(Array.from(ambiguousDatesByCol,
+    ([columnIndex, ambiguousDates]) => [columnIndex, pickDateFormatHint(ambiguousDates)]));
   return entries.map((entry) => {
-    if (!isAmbiguous(entry.info)) return entry;
+    if (!entry.info.ambiguous) return entry;
     const pendingDecision = { value: { dates: entry.info.dates } };
-    const info = decisionToLegacyInfo(resolveAmbiguousDateDecision(pendingDecision, hintByCol.get(entry.col)));
+    const info = decisionToLegacyInfo(resolveAmbiguousDateDecision(pendingDecision, hintByCol.get(entry.columnIndex)));
     return Object.assign({}, entry, { info });
   });
 }
 
-// The max magnitude over the dataset: each number of an extracted cell, from
-// every row of the table.
-function datasetMaxMagnitude(entries) {
+// passedMaxMag when the caller passes one, else the max magnitude over each
+// number of every extracted cell in entries; a date or time cell adds none.
+function datasetMaxMagnitude(entries, passedMaxMag) {
+  if (passedMaxMag != null) return passedMaxMag;
   const allNums = [];
   for (const { info } of entries) {
     if (info.mode === 'extracted') {
@@ -1781,61 +1697,58 @@ function datasetMaxMagnitude(entries) {
   return findMaxMagnitude([allNums]);
 }
 
-// One cell's patches, positioned in the text the cell classified: empty for a
-// skip cell or an unchanged value. A date or time cell takes one patch: its
-// trimmed text, replaced whole, so the text keeps its own whitespace. Every
-// number takes the one write-back, formatNumber, patched in place. An extracted
-// cell takes one patch per changed number; the patch compares the written
-// digits to the match, which catches a number that is unchanged but whose
-// display simplifies (e.g. "35.0" to "35"). The text around each match, a
-// sign, a currency sign, and a percent sign included, stays where the page
-// put it.
+// One cell's patches, positioned in the classified text: empty for a skip
+// cell or an unchanged value. A date or time cell takes one patch over its
+// trimmed text, so the text keeps its own whitespace. An extracted cell takes
+// one patch per number whose written digits differ from the match, which
+// catches a number that is unchanged but whose display simplifies (e.g.
+// "35.0" to "35").
 function classifiedCellPatches(entry, maxMag, settings) {
   const { text, info } = entry;
   const { offsetTop, offsetOther, numTop } = settings;
-  const trimmed = typeof text === 'string' ? text.trim() : '';
-  const lead = typeof text === 'string' ? text.length - text.trimStart().length : 0;
   if (info.mode === 'date' || info.mode === 'time') {
+    const trimmed = text.trim();
+    const lead = text.length - text.trimStart().length;
     const rounded = info.mode === 'date'
       ? roundDateText(trimmed, settings.dateGranularity, info.dates)
       : roundTimeText(trimmed, settings.timeGranularity);
-    if (rounded === null || rounded === trimmed) return { patches: [] };
-    return { patches: [{ index: lead, numStr: trimmed, newNum: rounded }] };
+    if (rounded === null || rounded === trimmed) return [];
+    return [{ index: lead, numStr: trimmed, newNum: rounded }];
   }
   if (info.mode === 'extracted') {
     const patches = [];
     for (const m of info.matches) {
-      const rounded = roundCellSetAware(m.num, m.num, maxMag, offsetTop, offsetOther, numTop);
+      const rounded = roundCellSetAware(m.num, maxMag, offsetTop, offsetOther, numTop);
       const newNum = formatNumber(rounded, m.numStr);
       if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
     }
-    return { patches };
+    return patches;
   }
-  return { patches: [] };
+  return [];
 }
 
 /**
  * The table step (see the file header).
  *
- * @param {object[]} entries - Classified cells in page order, each carrying
- *   text, info, and col.
+ * @param {object[]} entries - One entry per classified cell, in page order,
+ *   each carrying text, info, and columnIndex.
  * @param {{offsetTop: number, offsetOther: number, numTop: number,
  *          dateGranularity: string, timeGranularity: string}} settings -
- *   Resolved offsets and top-band count, and the date and time granularity.
- * @param {number|null} [frozenMaxMag] - A frozen max magnitude. When given,
- *   the step rounds against it and computes none of its own.
+ *   Resolved offsets and num_top, and the date and time granularity.
+ * @param {number|null} [passedMaxMag] - A max magnitude the caller holds:
+ *   the table's magnitude freeze in the extension, or the max magnitude over
+ *   the dataset in Sheets, number cells included. When given, the step
+ *   rounds against it and computes none of its own.
  * @returns {{maxMag: number|null,
  *            cells: Array<{entry: object, patches: object[]}>}}
- *   cells holds every cell in input order: the entry after the column
- *   post-pass, and its patches in the text it classified.
+ *   cells holds one result per entry, in input order: the entry after the
+ *   column post-pass, and its patches in the classified text.
  */
-function tablePatches(entries, settings, frozenMaxMag) {
+function tablePatches(entries, settings, passedMaxMag) {
   const resolved = resolveAmbiguousDates(entries);
-  const maxMag = (frozenMaxMag !== undefined && frozenMaxMag !== null)
-    ? frozenMaxMag
-    : datasetMaxMagnitude(resolved);
+  const maxMag = datasetMaxMagnitude(resolved, passedMaxMag);
   const cells = resolved.map((entry) =>
-    Object.assign({ entry }, classifiedCellPatches(entry, maxMag, settings)));
+    ({ entry, patches: classifiedCellPatches(entry, maxMag, settings) }));
   return { maxMag, cells };
 }
 
@@ -1877,7 +1790,7 @@ const SHEETS_LADDER_OPTIONS = Object.freeze({
  * [MODE 1] single value: =ROUND_DYNAMIC(value, [offset])
  * [MODE 2] dataset: =ROUND_DYNAMIC(range, [offset_top], [offset_other], [num_top])
  * [INSTRUCTIONS] HTTPS://github.com/ArieFisher/dynamic-rounding
- * [VERSION] 0.5.2
+ * [VERSION] 0.5.3
  *
  * @param {number|Array} values The value or range of values to round.
  * @param {number} offset_top The OoM offset for the single value, or, the numbers in the largest order of magnitude of a dataset (default -0.5).
@@ -1949,11 +1862,11 @@ function roundValues(range, settings) {
     } else if (typeof value === "string" && value !== "") {
       const decision = classifyCell({ text: value, rowIndex: r, columnIndex: c, ranges: null },
         SHEETS_LADDER_OPTIONS);
-      textEntries.push({ r, c, text: value, col: c, info: decisionToLegacyInfo(decision) });
+      textEntries.push({ r, columnIndex: c, text: value, info: decisionToLegacyInfo(decision) });
     }
   }));
   const maxMag = datasetMaxMagnitude(numberEntries.concat(textEntries));
-  const roundNumber = (num) => roundCellSetAware(num, num, maxMag,
+  const roundNumber = (num) => roundCellSetAware(num, maxMag,
     settings.offsetTop, settings.offsetOther, settings.numTop);
 
   const results = new Map();
@@ -1961,7 +1874,7 @@ function roundValues(range, settings) {
     results.set(r + "," + c, roundNumber(num));
   }
   for (const { entry, patches } of tablePatches(textEntries, settings, maxMag).cells) {
-    results.set(entry.r + "," + entry.c, textResult(entry, patches, roundNumber));
+    results.set(entry.r + "," + entry.columnIndex, textResult(entry, patches, roundNumber));
   }
   return range.map((row, r) => row.map((value, c) => {
     const key = r + "," + c;

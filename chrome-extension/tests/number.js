@@ -153,7 +153,7 @@ eq('toNumber: pure text -> null', toNumber('N/A'), null);
 
   const out = infos.map(info => {
     if (info.mode === 'skip') return info.text;
-    const rounded = roundCellSetAware(info.num, info.num, maxMag, -0.5, -0.5, 1);
+    const rounded = roundCellSetAware(info.num, maxMag, -0.5, -0.5, 1);
     if (rounded === info.num) return info.text;
     if (info.mode === 'pure') return writePureCell(rounded, info.text);
     const num = formatNumber(rounded, info.numStr);
@@ -174,7 +174,7 @@ eq('toNumber: pure text -> null', toNumber('N/A'), null);
   let out = text;
   for (let i = matches.length - 1; i >= 0; i--) {
     const m = matches[i];
-    const rounded = roundCellSetAware(m.num, m.num, maxMag, -0.5, -0.5, 1);
+    const rounded = roundCellSetAware(m.num, maxMag, -0.5, -0.5, 1);
     if (rounded === m.num) continue;
     const newNum = formatNumber(rounded, m.numStr);
     out = out.substring(0, m.index) + newNum + out.substring(m.index + m.numStr.length);
@@ -198,7 +198,7 @@ eq('toNumber: pure text -> null', toNumber('N/A'), null);
 
   const out = infos.map(info => {
     if (info.mode === 'skip') return info.text;
-    const rounded = roundCellSetAware(info.num, info.num, maxMag, -0.5, -0.5, 1);
+    const rounded = roundCellSetAware(info.num, maxMag, -0.5, -0.5, 1);
     return info.mode === 'pure' ? writePureCell(rounded, info.text) : info.text;
   });
 
@@ -254,7 +254,7 @@ eq('extractAll: a list of grouped numbers keeps each number\'s own separators',
   let out = text;
   for (let i = matches.length - 1; i >= 0; i--) {
     const m = matches[i];
-    const rounded = roundCellSetAware(m.num, m.num, maxMag, -0.5, -0.5, 1);
+    const rounded = roundCellSetAware(m.num, maxMag, -0.5, -0.5, 1);
     if (rounded === m.num) continue;
     const newNum = formatNumber(rounded, m.numStr);
     out = out.substring(0, m.index) + newNum + out.substring(m.index + m.numStr.length);
@@ -279,7 +279,7 @@ eq('extractAll: a list of grouped numbers keeps each number\'s own separators',
   let out = text;
   for (let i = matches.length - 1; i >= 0; i--) {
     const m = matches[i];
-    const rounded = roundCellSetAware(m.num, m.num, maxMag, -0.5, -0.5, 1);
+    const rounded = roundCellSetAware(m.num, maxMag, -0.5, -0.5, 1);
     if (rounded === m.num) continue;
     const newNum = formatNumber(rounded, m.numStr);
     out = out.substring(0, m.index) + newNum + out.substring(m.index + m.numStr.length);
@@ -361,7 +361,7 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
     simplifyDates: false, simplifyTimes: false,
     simplifyFirstColumn: false
   });
-  eq('exclude: first column with flag on', getExclusionReason('anything', 0, opts), 'firstColumn');
+  eq('exclude: first column with flag on', getExclusionReason('anything', 0, opts), 'first-column');
   eq('exclude: non-first column ignores flag', getExclusionReason('anything', 1, opts), null);
 })();
 
@@ -415,7 +415,7 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
 (function simplifyFirstRowTests() {
   // simplifyFirstRow=false: row 0 must be excluded regardless of cell content
   eq('simplifyFirstRow: row 0 excluded when flag is false',
-    getExclusionReason('1,234', 1, { simplifyFirstRow: false }, 0), 'firstRow');
+    getExclusionReason('1,234', 1, { simplifyFirstRow: false }, 0), 'first-row');
   // simplifyFirstRow=false: row 1 is not affected
   eq('simplifyFirstRow: row 1 not excluded when flag is false',
     getExclusionReason('1,234', 1, { simplifyFirstRow: false }, 1), null);
@@ -424,13 +424,13 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
     getExclusionReason('1,234', 1, { simplifyFirstRow: true }, 0), null);
   // simplifyFirstRow unset (default): row 0 IS excluded (!undefined = true, same as simplifyFirstRow=false)
   eq('simplifyFirstRow: row 0 excluded when flag is unset (default)',
-    getExclusionReason('1,234', 1, {}, 0), 'firstRow');
-  // simplifyFirstRow takes priority over firstColumn check
-  eq('simplifyFirstRow: firstRow beats firstColumn when both apply',
-    getExclusionReason('anything', 0, { simplifyFirstRow: false, simplifyFirstColumn: false }, 0), 'firstRow');
+    getExclusionReason('1,234', 1, {}, 0), 'first-row');
+  // simplifyFirstRow takes priority over the first-column check
+  eq('simplifyFirstRow: first-row beats first-column when both apply',
+    getExclusionReason('anything', 0, { simplifyFirstRow: false, simplifyFirstColumn: false }, 0), 'first-row');
 })();
 
-// First-match-wins priority: firstRow beats firstColumn beats percent beats currency
+// First-match-wins priority: first-row beats first-column beats percent beats currency
 // (dates and times are not exclusion reasons)
 (function exclusionPriority() {
   const opts = {
@@ -438,9 +438,9 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
     simplifyMixedPercent: false, simplifyMixedCurrency: false
   };
   eq('priority: first row wins even when value is a date',
-    getExclusionReason('2018', 0, opts, 0), 'firstRow');
+    getExclusionReason('2018', 0, opts, 0), 'first-row');
   eq('priority: first column wins even when value is a date (non-zero row)',
-    getExclusionReason('2018', 0, opts, 1), 'firstColumn');
+    getExclusionReason('2018', 0, opts, 1), 'first-column');
   eq('priority: year value not excluded when only first-row/col flags set (dates no longer excluded)',
     getExclusionReason('2018', 1, opts, 1), null);
 })();
@@ -962,11 +962,12 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   withLinkCreateTreeWalker(function() {
     // Cell: "1234 and " + <a>5</a>  — innerText = "1234 and 5"
     // We model: outsideText = "1234 and ", anchor = "5"; the matches count in
-    // the pieces' flat text, which filterLinkMatches reads without a layout.
+    // the pieces' flat text, which the layout holds as the original.
     const cell = makeLinkCell(['5'], '1234 and ');
+    const original = cell._textNodes.map((node) => node.nodeValue);
 
-    const matches = extractNumbersInText(cell._textNodes.map((node) => node.nodeValue).join('')); // finds 1234 and 5
-    const filtered = filterLinkMatches(cell, matches);
+    const matches = extractNumbersInText(original.join('')); // finds 1234 and 5
+    const filtered = filterLinkMatches(cell, matches, { original, toFlat: null });
 
     // '5' inside anchor must be dropped; '1234' outside must be kept.
     const nums = filtered.map(m => m.num);
@@ -1069,7 +1070,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   const matches = extractNumbersInText(text);
   const quoteRanges = getQuoteMaskedRanges(text);
   const filtered = matches.filter(m =>
-    !overlapsQuoteRange(quoteRanges, m.index, m.index + m.numStr.length)
+    !overlapsMaskedRange(quoteRanges, m.index, m.index + m.numStr.length)
   );
   eq('quoteFilter: before filter match count includes 42',
     matches.some(m => m.num === 42), true);
@@ -1092,7 +1093,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   eq('scope guard: single quotes not masked (zero quote ranges)',
     sqRanges.length, 0);
   eq('scope guard: 42 inside single quotes NOT excluded by filter',
-    sqMatches.filter(m => !overlapsQuoteRange(sqRanges, m.index, m.index + m.numStr.length))
+    sqMatches.filter(m => !overlapsMaskedRange(sqRanges, m.index, m.index + m.numStr.length))
       .some(m => m.num === 42), true);
 
   // Typographic quotes: “...” are NOT masked
@@ -1102,7 +1103,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
     tqRanges.length, 0);
   // Both 42 and 7 survive unfiltered
   const tqMatches = extractNumbersInText(typoQuote);
-  const tqFiltered = tqMatches.filter(m => !overlapsQuoteRange(tqRanges, m.index, m.index + m.numStr.length));
+  const tqFiltered = tqMatches.filter(m => !overlapsMaskedRange(tqRanges, m.index, m.index + m.numStr.length));
   eq('scope guard: 42 inside typographic quotes NOT excluded',
     tqFiltered.some(m => m.num === 42), true);
 
@@ -1111,7 +1112,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   const mixed = 'he said "foo 5" and 10';
   const mxRanges = getQuoteMaskedRanges(mixed);
   const mxMatches = extractNumbersInText(mixed);
-  const mxFiltered = mxMatches.filter(m => !overlapsQuoteRange(mxRanges, m.index, m.index + m.numStr.length));
+  const mxFiltered = mxMatches.filter(m => !overlapsMaskedRange(mxRanges, m.index, m.index + m.numStr.length));
   eq('scope guard: 5 inside ASCII quotes IS excluded',
     mxFiltered.some(m => m.num === 5), false);
   eq('scope guard: 10 outside ASCII quotes NOT excluded',
@@ -1559,12 +1560,12 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     getExclusionReason('1,234', 0, { simplifyFirstColumn: true, simplifyFirstRow: true }, 1), null);
 
   // Case 2: flag false → col 0 excluded
-  eq('simplifyFirstColumn: false + col 0 → "firstColumn"',
-    getExclusionReason('1,234', 0, { simplifyFirstRow: true, simplifyFirstColumn: false }, 1), 'firstColumn');
+  eq('simplifyFirstColumn: false + col 0 → "first-column"',
+    getExclusionReason('1,234', 0, { simplifyFirstRow: true, simplifyFirstColumn: false }, 1), 'first-column');
 
   // Case 3: flag unset → col 0 excluded (intentional default change)
-  eq('simplifyFirstColumn: unset + col 0 → "firstColumn" (new default semantics)',
-    getExclusionReason('1,234', 0, { simplifyFirstRow: true }, 1), 'firstColumn');
+  eq('simplifyFirstColumn: unset + col 0 → "first-column" (new default semantics)',
+    getExclusionReason('1,234', 0, { simplifyFirstRow: true }, 1), 'first-column');
 
   // Case 4: flag false but col 1 → null (only col 0 is affected)
   eq('simplifyFirstColumn: false + col 1 → null (non-first column unaffected)',
@@ -2110,7 +2111,7 @@ const LADDER_OPTS = {
         const nTop = params.num_top === undefined ? SHARED_DEFAULT_NUM_TOP : params.num_top;
         const nums = input.map((v) => toNumber(v));
         const maxMag = findMaxMagnitude([nums]);
-        const actual = input.map((v, i) => roundCellSetAware(v, nums[i], maxMag, oTop, oOther, nTop));
+        const actual = input.map((v, i) => (nums[i] === null ? v : roundCellSetAware(nums[i], maxMag, oTop, oOther, nTop)));
         eq(name, actual, expected);
       } else {
         const offset = params.offset_top === undefined ? SHARED_DEFAULT_OFFSET : params.offset_top;

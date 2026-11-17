@@ -6,11 +6,12 @@
  */
 
 /**
- * Pure parsing/formatting helpers (no chrome.*, no DOM mutation).
+ * Parsing and formatting helpers. Core layer: reads no page and calls no
+ * Chrome.
  *
  * Loaded by manifest content_scripts AFTER core.js and BEFORE the DOM/UI
  * modules. Covers range-expression parsing, date/time detection + rounding,
- * in-text number extraction, and pure-numeric formatting. All symbols land on
+ * in-text number extraction, and number formatting. All symbols land on
  * the shared global scope consumed by content.js.
  */
 
@@ -219,8 +220,8 @@ function matchUnitNumber(text) {
 }
 
 function getExclusionReason(text, columnIndex, options, rowIndex) {
-  if (!options.simplifyFirstRow && rowIndex === 0) return 'firstRow';
-  if (!options.simplifyFirstColumn && columnIndex === 0) return 'firstColumn';
+  if (!options.simplifyFirstRow && rowIndex === 0) return 'first-row';
+  if (!options.simplifyFirstColumn && columnIndex === 0) return 'first-column';
   if (typeof text !== 'string') return null;
   const t = text.trim();
   if (!options.simplifyMixedPercent && /%/.test(t)) return 'percent';
@@ -258,11 +259,15 @@ const YEAR = `(\\d{4}${ORD})`;
 const isDay = (s) => { const d = parseInt(s, 10); return d >= 1 && d <= 31; };
 const isMonth = (s) => { const n = parseInt(s, 10); return n >= 1 && n <= 12; };
 
-// One date with a known reading: its bounds in the text, its year, its month
-// (1 to 12), whether the month stands before the year, and the span the month
-// granularity removes (null when the date holds no day).
-const datePart = (m, year, month, monthFirst, dayCut) => (
-  { year: parseInt(year, 10), month, monthFirst, start: m.index, end: m.index + m[0].length, dayCut });
+// One date with a known reading: its year, its month (1 to 12), whether the
+// month stands before the year, its bounds in the text, and the span the month
+// granularity removes (null when the date holds no day). The column post-pass
+// builds the same shape for an all-numeric date once its column settles.
+function knownDate(year, month, monthBeforeYear, start, end, dayCut) {
+  return { year, month, monthBeforeYear, start, end, dayCut };
+}
+const datePart = (m, year, month, monthBeforeYear, dayCut) =>
+  knownDate(parseInt(year, 10), month, monthBeforeYear, m.index, m.index + m[0].length, dayCut);
 
 // The date shapes findDates reads; on two matches at the same position the
 // earlier shape wins. Each regex carries the d flag, so a match holds its
@@ -334,8 +339,8 @@ const BARE_YEAR_RE = new RegExp(`^${DATE_NOISE_CLASS}*${YEAR}${DATE_NOISE_CLASS}
  *   All numeric:   7/21/2020 / 21-07-20 (read by the column post-pass)
  *   Bare year:     2020, as the whole cell
  * Each date is one of:
- *   - a date with a known reading: { year, month, monthFirst, start, end, dayCut }
- *     (a bare year holds month null and no monthFirst)
+ *   - a date with a known reading: { year, month, monthBeforeYear, start, end, dayCut }
+ *     (a bare year holds month null and no monthBeforeYear)
  *   - an all-numeric date: { year, n1, n2, start, end, n1Cut, n2Cut }
  *     (see isAmbiguousDate)
  *   - a date that cannot exist ("2020-13-45"): { impossible: true, start, end }
@@ -445,7 +450,7 @@ function isDateTimeLike(text) {
  *
  * @param {string} text          - The cell's trimmed text.
  * @param {string} granularity   - 'month' | 'quarter' | 'year' | 'decade' | 'century'.
- * @param {{year:number, month:number|null, monthFirst?:boolean, start:number, end:number,
+ * @param {{year:number, month:number|null, monthBeforeYear?:boolean, start:number, end:number,
  *   dayCut:{start:number,end:number}|null}[]} [dates]
  *   The dates the classification pass read from this text, each with a known
  *   reading, in text order. If omitted, findDates is called, and text holding
@@ -465,7 +470,7 @@ function roundDateText(text, granularity, dates) {
     } else if (granularity === 'quarter') {
       if (!d.month) continue;
       const q = 'Q' + Math.ceil(d.month / 3);
-      out = out.slice(0, d.start) + (d.monthFirst ? q + ' ' + d.year : d.year + ' ' + q) + out.slice(d.end);
+      out = out.slice(0, d.start) + (d.monthBeforeYear ? q + ' ' + d.year : d.year + ' ' + q) + out.slice(d.end);
     } else {
       out = out.slice(0, d.start) + String(Math.floor(d.year / step) * step) + out.slice(d.end);
     }
@@ -560,13 +565,13 @@ function getQuoteMaskedRanges(text) {
 }
 
 /**
- * Returns true if [matchStart, matchEnd) overlaps any range in maskedRanges.
+ * Returns true if [matchStart, matchEnd) overlaps any masked range.
  * @param {{start: number, end: number}[]} maskedRanges
  * @param {number} matchStart
  * @param {number} matchEnd
  * @returns {boolean}
  */
-function overlapsQuoteRange(maskedRanges, matchStart, matchEnd) {
+function overlapsMaskedRange(maskedRanges, matchStart, matchEnd) {
   for (const range of maskedRanges) {
     if (matchStart < range.end && matchEnd > range.start) return true;
   }
