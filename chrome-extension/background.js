@@ -7,9 +7,8 @@
 
 importScripts('lib/dr-log/index.js', 'adapters/messaging.js');
 
-// Every context "all" covers except "action", the toolbar icon's menu: no
-// table sits under the pointer there, and a click on the toolbar icon opens
-// the sidebar.
+// Every right-click place but the toolbar icon's own menu, where no table
+// sits under the pointer.
 const PAGE_MENU_CONTEXTS = ["page", "frame", "selection", "link", "editable", "image", "video", "audio"];
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -22,13 +21,6 @@ chrome.runtime.onInstalled.addListener(() => {
     id: "dr-menu-toggle-sidebar",
     title: "Simplify and open sidebar",
     contexts: PAGE_MENU_CONTEXTS
-  });
-  // After the menu items, so a Chrome without this call still gets them.
-  // Versions before 1.7.1 stored true here, and Chrome may still hold it.
-  // With true, Chrome opens the sidebar itself on a toolbar icon click, which
-  // gives no activeTab grant, so the screenshot fails.
-  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch((e) => {
-    DR_LOG.warnError('toolbar icon click setting', e);
   });
 });
 
