@@ -1500,7 +1500,7 @@ function extractSimplifyMatches(text, superscriptRanges) {
  *   reason: the rule that gave the mode. For a skip: 'out-of-range', the
  *     exclusion getExclusionReason returns ('first-row', 'first-column',
  *     'percent', 'currency'), 'quoted', 'times-disabled', 'dates-disabled',
- *     'impossible-date', 'identifier', 'link', or 'no-number'. 'footnote'
+ *     'impossible-date', 'identifier', 'link', or 'no-number'. 'superscript'
  *     marks a cell with a <sup> whose text the number reader reads as one
  *     number, skipped or extracted. 'unit' marks a unit number, and
  *     'simplify' every other cell that simplifies.
@@ -1570,8 +1570,8 @@ function classifyCell(input, options) {
     const isNumber = toNumber(text) !== null;
     if (isNumber && isWholeLink) return { mode: 'skip', reason: 'link' };
     const matches = extractSimplifyMatches(text, superscriptRanges);
-    if (matches.length === 0) return { mode: 'skip', reason: isNumber ? 'footnote' : 'no-number' };
-    return { mode: 'extracted', reason: isNumber ? 'footnote' : 'simplify', value: { matches } };
+    if (matches.length === 0) return { mode: 'skip', reason: isNumber ? 'superscript' : 'no-number' };
+    return { mode: 'extracted', reason: isNumber ? 'superscript' : 'simplify', value: { matches } };
   }
 
   // An identifier shape reads as a code, not a quantity, so the whole cell

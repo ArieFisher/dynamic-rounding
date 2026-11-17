@@ -106,7 +106,7 @@
     { mode: 'skip', reason: 'link' });
 })();
 
-(function classifyCell_footnoteSuperscript() {
+(function classifyCell_superscript() {
   // "10<sup>12</sup>" flattens to "1012"; the sole match spans the whole
   // string and overlaps the superscript mask, so nothing survives.
   eq('classifyCell: whole-cell exponent with no surviving match after masking is skipped',
@@ -114,12 +114,12 @@
       text: '1012', rowIndex: 1, columnIndex: 1, ranges: null,
       hasSuperscript: true, superscriptRanges: [{ start: 2, end: 4 }],
     }, LADDER_OPTS),
-    { mode: 'skip', reason: 'footnote' });
+    { mode: 'skip', reason: 'superscript' });
 
   // "20 <sup>15</sup>" flattens to "20 1015": the standalone "20" survives
   // masking even though the sup-adjacent "1015" match does not. "20 1015" is
   // not one number, since its spaced groups are outside the group shape, so
-  // the cell takes the words path, not the footnote path.
+  // the cell takes the words path, not the superscript path.
   eq('classifyCell: a superscript-flagged cell keeps non-overlapping matches',
     classifyCell({
       text: '20 1015', rowIndex: 1, columnIndex: 1, ranges: null,
@@ -128,14 +128,14 @@
     { mode: 'extracted', reason: 'simplify', value: { matches: [{ numStr: '20', num: 20, index: 0 }] } });
 
   // "5 %<sup>1</sup>" flattens to "5 %1", which the number reader reads as
-  // one number, so the cell takes the footnote path; the "5" survives the
+  // one number, so the cell takes the superscript path; the "5" survives the
   // mask over the footnote marker.
-  eq('classifyCell: a cell that reads as a number with a <sup> rounds its surviving match on the footnote path',
+  eq('classifyCell: a cell that reads as a number with a <sup> rounds its surviving match on the superscript path',
     classifyCell({
       text: '5 %1', rowIndex: 1, columnIndex: 1, ranges: null,
       hasSuperscript: true, superscriptRanges: [{ start: 3, end: 4 }],
     }, LADDER_OPTS),
-    { mode: 'extracted', reason: 'footnote', value: { matches: [{ numStr: '5', num: 5, index: 0 }] } });
+    { mode: 'extracted', reason: 'superscript', value: { matches: [{ numStr: '5', num: 5, index: 0 }] } });
 })();
 
 (function classifyCell_mixedText() {
