@@ -110,7 +110,7 @@ function roundValues(range, settings) {
     }
   }));
   const maxMag = datasetMaxMagnitude(numberEntries.concat(textEntries));
-  const roundNumber = (num) => roundCellSetAware(num, num, maxMag,
+  const roundNumber = (num) => roundCellSetAware(num, maxMag,
     settings.offsetTop, settings.offsetOther, settings.numTop);
 
   const results = new Map();

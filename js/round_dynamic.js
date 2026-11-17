@@ -67,10 +67,7 @@ function roundWithOffset(num, offset) {
   return sign * result;
 }
 
-function roundCellSetAware(value, num, max_mag, offset_top, offset_other, num_top) {
-  if (value === "" || value === null) return "";
-
-  if (num === null) return value;
+function roundCellSetAware(num, max_mag, offset_top, offset_other, num_top) {
   if (num === 0) return 0;
 
   const current_mag = Math.floor(Math.log10(Math.abs(num)));
@@ -1738,7 +1735,7 @@ function classifiedCellPatches(entry, maxMag, settings) {
   if (info.mode === 'extracted') {
     const patches = [];
     for (const m of info.matches) {
-      const rounded = roundCellSetAware(m.num, m.num, maxMag, offsetTop, offsetOther, numTop);
+      const rounded = roundCellSetAware(m.num, maxMag, offsetTop, offsetOther, numTop);
       const newNum = formatNumber(rounded, m.numStr);
       if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
     }
@@ -1886,7 +1883,7 @@ function roundValues(range, settings) {
     }
   }));
   const maxMag = datasetMaxMagnitude(numberEntries.concat(textEntries));
-  const roundNumber = (num) => roundCellSetAware(num, num, maxMag,
+  const roundNumber = (num) => roundCellSetAware(num, maxMag,
     settings.offsetTop, settings.offsetOther, settings.numTop);
 
   const results = new Map();
