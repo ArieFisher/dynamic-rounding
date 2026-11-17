@@ -117,8 +117,8 @@ const DR_BUS = (function () {
   // Chrome attaches a sender record to every arriving message. The bus passes
   // on one fact from it, the number of the tab a content script sent from,
   // and keeps the rest of Chrome's record out of its own contract.
-  // The service worker and the sidebar compare that number against the bound
-  // tab. A message from an extension page has no tab, so it carries null.
+  // The sidebar compares that number against its bound tab. A message from
+  // an extension page has no tab, so it carries null.
   function senderTabId(sender) {
     return sender && sender.tab && typeof sender.tab.id === 'number' ? sender.tab.id : null;
   }
