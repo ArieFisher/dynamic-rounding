@@ -1077,7 +1077,7 @@ const supTestOpts = {
       registered && registered.isNew, false);
 
     eq('findTargetTable: a native table with nothing to simplify resolves nothing',
-      findTargetTable(words.cell(0, 1), { isRegistered: () => false }), null);
+      findTargetTable(words.cell(0, 1), { isRegistered: () => false }) === null, true);
   });
 })();
 
