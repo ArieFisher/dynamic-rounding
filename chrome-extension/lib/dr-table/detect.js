@@ -67,8 +67,7 @@ function probeRowsHoldNumber(candidateRows, opts) {
   // Each candidate row holds at least one cell, so the cell budget ends
   // within this many rows.
   const rows = candidateRows.slice(0, DR_DETECTION_SETTINGS.dataTestCellBudget);
-  return holdsRoundableCell(buildRows(rows.map((row) => Array.from(row.children)),
-    (cellEl) => makeCellObj(cellEl, port)));
+  return holdsRoundableCell(buildRows(rows.map((row) => Array.from(row.children)), port));
 }
 
 /**

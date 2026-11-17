@@ -49,7 +49,7 @@
     cellObj.applyPatches([
       { index: 2, numStr: '100', newNum: '90' },
       { index: 8, numStr: '999', newNum: '1,000' },
-    ]), 1);
+    ], { value: cellObj.getText() }), 1);
   eq('grid patch write: the landed patch changes its piece',
     el.childNodes[0].nodeValue, 'A 90 B 200');
   eq('grid patch write: the first landed write stores the record',
@@ -61,8 +61,8 @@
   // A piece the later write leaves at its original goes back to it.
   const twoEl = makeElementNode('', [makeTextNode('100'), makeTextNode(' 200')]);
   const two = makeCellObj(twoEl, adapter.originalsPort);
-  two.applyPatches([{ index: 0, numStr: '100', newNum: '90' }]);
-  two.applyPatches([{ index: 4, numStr: '200', newNum: '250' }]);
+  two.applyPatches([{ index: 0, numStr: '100', newNum: '90' }], { value: two.getText() });
+  two.applyPatches([{ index: 4, numStr: '200', newNum: '250' }], { value: two.getText() });
   eq('grid patch write: a later write records each piece\'s original and its new written text',
     port.get(twoEl).pieces, [{ text: '100', written: '100' }, { text: ' 200', written: ' 250' }]);
   eq('grid patch write: the later write gives each piece its target text',

@@ -58,6 +58,9 @@ const DR_DETECTION_SETTINGS = {
   // --- Data test ---
   dataTestCellBudget: 1000,
   // --- Vendor grids ---
+  // Known third-party grid libraries. `classToken` ends looksLikeGrid before
+  // its alignment step; `scrollContainerSelectors` and `pinnedPaneSelectors`
+  // locate GridAdapter's scroll container and pinned pane.
   vendorProfiles: [
     {
       name: 'databricks',

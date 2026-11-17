@@ -598,7 +598,6 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
 // call that reads or writes a simplified cell passes it.
 function registryOriginalsPort(table) {
   return {
-    has(cellEl) { return DR_MODEL.hasTableOriginal(table, cellEl); },
     get(cellEl) { return DR_MODEL.getTableOriginal(table, cellEl); },
     set(cellEl, record) { DR_MODEL.setTableOriginal(table, cellEl, record); },
   };
@@ -633,14 +632,14 @@ function fingerprintReadOpts(table) {
 // DOM. The cost is accepted in exchange for a single restore path.
 //
 // A cell with no registry entry (the accepted-cost case above) is left
-// completely untouched: its dr-ext-rounded marker, its title (the last
+// completely untouched: its marker class, its title (the last
 // surviving copy of the true original, if the write path is still what set
 // it), and its displayed text all stay exactly as they were. Clearing any
 // of those for a cell that was NOT actually restored would claim a recovery
 // that did not happen and destroy data that was still recoverable by eye
 // even though the registry could no longer recover it programmatically.
 function restoreTable(table) {
-  for (const cell of table.querySelectorAll('.dr-ext-rounded')) {
+  for (const cell of table.querySelectorAll(`.${SIMPLIFIED_CLASS}`)) {
     if (isUnrestorableCell(table, cell)) continue;
     releaseCell(table, cell);
   }
@@ -829,18 +828,15 @@ function buildCaptureStateResponse() {
 // Every simplification of a table runs simplifyTableCells below, on both
 // table kinds: the first simplification (roundTable) and every pass the
 // re-apply observer runs (reapplyRounding). The pass first sorts each cell
-// by its record (sortCellByRecord in lib/dr-table):
-//   fresh      no stored originals: an added row, a row scrolled into view,
-//              or a cell the page replaced with a new element. Every cell is
-//              fresh on the first simplification.
-//   held       every text piece shows its original or its written text, and
-//              the piece count matches. The cell's reads answer from its
-//              record, so its target text comes from its stored originals
-//              under the current max magnitude.
-//   rewritten  anything else: the page wrote a new value. releaseCell puts
-//              the original text back into each piece that still shows
-//              written text and drops the record, so the cell holds only the
-//              page's text, and the pass then treats it as fresh.
+// by its record (sortCellByRecord in lib/dr-table defines the three results).
+// Every cell is fresh on the first simplification; later, a fresh cell is an
+// added row, a row scrolled into view, or a cell the page replaced with a new
+// element. A held cell's reads answer from its record, so its target text
+// comes from its stored originals under the current max magnitude. A
+// rewritten cell holds a value the page wrote: releaseCell puts the original
+// text back into each piece that still shows written text and drops the
+// record, so the cell holds only the page's text, and the pass then treats it
+// as fresh.
 // The pass then classifies every cell through classifyTableCell in
 // lib/dr-table: the classification ladder (lib/dr-simplify), the placement
 // step (placeDecision), and the link filter.

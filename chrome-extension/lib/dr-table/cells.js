@@ -6,8 +6,9 @@
  */
 
 /**
- * The cell layer of the lib/dr-table package: the cell object that both
- * adapters build for every cell, and the text-piece reads and writes under it.
+ * The cell layer of the lib/dr-table package: the cell object, which both
+ * adapters build for every cell and the controller builds for a cell it
+ * releases, and the text-piece reads and writes under it.
  * Every cell write goes through the cell object. Text is written in place,
  * through nodeValue, so <sup>, <a>, and every other node keep their identity.
  */
@@ -20,20 +21,29 @@ const SIMPLIFIED_CLASS = 'dr-ext-rounded';
  * nothing stores nothing.
  *
  * @typedef {object} CellRecord
- * @property {string} value - the text the cell classified: opts.value, the
- *   text the pass read before its first write, else getText()
+ * @property {string} value - the text the pass classified (see applyPatches)
  * @property {{text: string, written: string}[]} pieces - one entry per text
  *   piece, in page order: text, its original; written, its text after this write
- * @property {string} pageTitle - the cell's hover text as the page set it,
- *   read on the first write and carried through every later write (the
- *   extension's hover text never replaces it), except that a held cell whose
- *   hover text the page changed takes the new text; '' when the page set none
+ * @property {string} pageTitle - the cell's hover text as the page set it; ''
+ *   when the page set none. A live hover text other than the extension's is
+ *   the page's: each write stores it here, and the restore leaves it in place.
+ *   A write over the extension's hover text keeps the stored value.
  */
 
 /**
- * The hover text the extension gives a simplified cell. A different live hover
- * text is the page's.
- * @param {string} value
+ * The layout of a cell's text pieces, from the cell object's getPieceLayout().
+ *
+ * @typedef {object} PieceLayout
+ * @property {string[]} original - each piece's original text: the record's
+ *   stored text for a cell with a record, else the live text
+ * @property {number[]|null} toFlat - for each position of the classified text,
+ *   its position in the join of original. A position with no known
+ *   counterpart has no entry. Null when the classified text differs from the
+ *   pieces in more than whitespace and no single piece holds the value.
+ */
+
+/**
+ * The hover text the extension gives a simplified cell.
  * @returns {string}
  */
 function originalHoverText(value) {
@@ -41,24 +51,16 @@ function originalHoverText(value) {
 }
 
 /**
- * The page's hover text for a cell about to take a write. On a held cell, a
- * live hover text other than the extension's is the page's newer text.
- * @param {Element} cellEl
- * @param {CellRecord|null} record
+ * The page's hover text for a cell about to take a write (see
+ * CellRecord.pageTitle).
  * @returns {string}
  */
 function pageHoverText(cellEl, record) {
   const live = cellEl.title || '';
   if (!record) return live;
-  return live === originalHoverText(record.value) ? (record.pageTitle || '') : live;
+  return live === originalHoverText(record.value) ? record.pageTitle : live;
 }
 
-/**
- * Whether the page marks the cell as a header cell: a TH, or the row-header or
- * column-header role.
- * @param {Element} cellEl
- * @returns {boolean}
- */
 function isHeaderCellEl(cellEl) {
   if (cellEl.tagName === 'TH') return true;
   const role = typeof cellEl.getAttribute === 'function' ? cellEl.getAttribute('role') : null;
@@ -66,19 +68,18 @@ function isHeaderCellEl(cellEl) {
 }
 
 /**
- * The cell object both table kinds hand out. Every read of the cell's text is
- * the rendered text, falling back to the raw text where the rendered text is
- * empty or the context lays out nothing.
- * @param {Element} cellEl
- * @param {{has: Function, get: Function, set: Function}} port
+ * The cell object for a cell of either table kind. getDisplayedText reads the
+ * rendered text, falling back to the raw text where the rendered text is empty
+ * or the context lays out nothing. getText returns the record's stored text
+ * for a cell with a record, else the same read.
  * @returns {{getText(): string, getPieceLayout(): PieceLayout|null,
- *            applyPatches(patches: object[], opts?: {value?: string}): number,
+ *            applyPatches(patches: object[], opts: {value: string}): number,
  *            restore(): void,
- *            getDisplayedText(): string, getRecord(): CellRecord|null, el: Element, isHeaderCell: boolean}}
+ *            getDisplayedText(): string, el: Element, isHeaderCell: boolean}}
  */
 function makeCellObj(cellEl, port) {
   const shownText = () => cellEl.innerText || cellEl.textContent || '';
-  const recordOf = () => (port.has(cellEl) ? port.get(cellEl) : null);
+  const recordOf = () => port.get(cellEl) || null;
   const getText = () => {
     const record = recordOf();
     return record ? record.value : shownText();
@@ -86,11 +87,11 @@ function makeCellObj(cellEl, port) {
   return {
     el: cellEl,
     isHeaderCell: isHeaderCellEl(cellEl),
-    getRecord: recordOf,
     getText,
     getDisplayedText: shownText,
-    // Null when the cell no longer holds as many pieces as its record; the
-    // pass sorts that cell as rewritten before it reads a layout.
+    // Null when the cell no longer holds as many pieces as its record. A
+    // caller that runs no sort first, such as the lens preview, can get null;
+    // the pass releases such a cell before it reads a layout.
     getPieceLayout() {
       const live = collectTextPieces(cellEl).map((piece) => piece.nodeValue);
       const record = recordOf();
@@ -100,45 +101,38 @@ function makeCellObj(cellEl, port) {
       const toFlat = mapRenderedToFlat(text, original.join('')) || mapValueToPiece(text, original);
       return { original, toFlat };
     },
-    // A write that lands nothing changes nothing: with every patch skipped the
-    // screen keeps its text, and storing the hover text would record a
-    // simplification that never happened.
-    // The pass passes opts.value because a rendered-text read after another
-    // cell's write lays out the whole table again: once per cell, a 10,000-cell
-    // table takes most of a minute.
-    /**
-     * @param {object[]} patches - the cell's patches, in flat-text positions
-     * @param {{value?: string}} [opts] - value: the text the pass classified;
-     *   defaults to getText()
-     * @returns {number} how many patches landed
-     */
-    applyPatches(patches, opts = {}) {
+    // Returns how many patches landed. A write that lands nothing changes
+    // nothing: with every patch skipped the screen keeps its text, and storing
+    // the hover text would record a simplification that never happened.
+    // The caller passes the text it classified as value, because a
+    // rendered-text read after another cell's write lays out the whole table
+    // again: once per cell, a 10,000-cell table takes most of a minute.
+    applyPatches(patches, { value }) {
       const record = recordOf();
-      const value = opts.value !== undefined ? opts.value : getText();
       const original = record
         ? record.pieces.map((piece) => piece.text)
         : collectTextPieces(cellEl).map((piece) => piece.nodeValue);
-      const { landed } = writePatches(cellEl, patches, original);
+      const { landed, texts } = writePatches(cellEl, patches, original);
       if (landed === 0) return 0;
-      const written = collectTextPieces(cellEl).map((piece) => piece.nodeValue);
       port.set(cellEl, {
         value,
-        pieces: original.map((text, i) => ({ text, written: written[i] })),
+        pieces: original.map((text, i) => ({ text, written: texts[i] })),
         pageTitle: pageHoverText(cellEl, record),
       });
       if (cellEl.classList) cellEl.classList.add(SIMPLIFIED_CLASS);
       cellEl.title = originalHoverText(value);
       return landed;
     },
-    // Hover text the page changed stays. A cell whose page set none ends with
-    // no title attribute: the record holds no difference between an absent
-    // attribute and an empty one. The caller drops the record.
+    // A cell whose page set no hover text ends with no title attribute: the
+    // record holds no difference between an absent attribute and an empty
+    // one. The caller drops the record.
     restore() {
       const record = recordOf();
-      if (record) restoreTextPieces(cellEl, record.pieces);
+      if (!record) return;
+      restoreTextPieces(cellEl, record.pieces);
       if (cellEl.classList) cellEl.classList.remove(SIMPLIFIED_CLASS);
-      if (record && cellEl.title !== originalHoverText(record.value)) return;
-      if (record && record.pageTitle) cellEl.title = record.pageTitle;
+      if (cellEl.title !== originalHoverText(record.value)) return;
+      if (record.pageTitle) cellEl.title = record.pageTitle;
       else cellEl.removeAttribute('title');
     },
   };
@@ -148,13 +142,12 @@ function makeCellObj(cellEl, port) {
  * The cell's text pieces in page order: every Text node under the cell,
  * whitespace-only and empty ones included. The walk falls back to child nodes
  * where no tree walker exists (a plain Node context).
- * @param {Element} cell
  * @returns {Text[]}
  */
 function collectTextPieces(cell) {
   const pieces = [];
   const walker = typeof document !== 'undefined'
-    ? document.createTreeWalker?.(cell, NodeFilter.SHOW_TEXT, null, false) : null;
+    ? document.createTreeWalker?.(cell, NodeFilter.SHOW_TEXT) : null;
   if (walker) {
     let node;
     while ((node = walker.nextNode())) pieces.push(node);
@@ -176,8 +169,6 @@ function collectTextPieces(cell) {
  * boundary, so a pretty-printed cell's rendered text is shorter than its flat
  * text. Returns null when the texts differ in more than whitespace (hidden
  * text, a CSS text transform).
- * @param {string} rendered
- * @param {string} flat
  * @returns {number[]|null}
  */
 function mapRenderedToFlat(rendered, flat) {
@@ -206,16 +197,15 @@ function mapRenderedToFlat(rendered, flat) {
  * "7,002,300"). The value sits in the one piece whose trimmed text equals it,
  * else in the one piece that holds it exactly once; null when no single piece
  * qualifies.
- * @param {string} rendered
- * @param {string[]} pieces
  * @returns {number[]|null}
  */
 function mapValueToPiece(rendered, pieces) {
   const value = rendered.trim();
   if (value === '') return null;
-  let candidates = pieces.map((text, i) => i).filter((i) => pieces[i].trim() === value);
+  const indexes = pieces.map((_, i) => i);
+  let candidates = indexes.filter((i) => pieces[i].trim() === value);
   if (candidates.length !== 1) {
-    candidates = pieces.map((text, i) => i).filter((i) => {
+    candidates = indexes.filter((i) => {
       const at = pieces[i].indexOf(value);
       return at >= 0 && pieces[i].indexOf(value, at + 1) < 0;
     });
@@ -232,76 +222,54 @@ function mapValueToPiece(rendered, pieces) {
 
 /**
  * The patch writer: applies patches {index, numStr, newNum} to the text pieces
- * of a cell. Each index is a position in the cell's flat text. `original`,
- * when given, lists each piece's original text; without it the live pieces
- * serve. A patch is skipped when no piece holds its position or numStr is not
- * at that position. With no patch landed, or with a piece count that differs
- * from `original`, nothing is written. The caller records the cell as
- * simplified only on a landed count above zero.
- *
- * @param {Element} cell
- * @param {{index: number, numStr: string, newNum: string}[]} patches
- * @param {string[]} [original]
- * @returns {{landed: number, pieces: {i: number, before: string, after: string}[]}}
+ * of a cell. `original` lists each piece's original text, and each index is a
+ * position in their join. A patch is skipped when no piece holds its position
+ * or numStr is not at that position. With no patch landed, or with a piece
+ * count that differs from `original`, nothing is written.
+ * @returns {{landed: number, texts: string[]}} the landed count, and each
+ *   piece's text after the call
  */
 function writePatches(cell, patches, original) {
-  if (!patches || patches.length === 0) return { landed: 0, pieces: [] };
   const pieces = collectTextPieces(cell);
   const live = pieces.map((piece) => piece.nodeValue);
-  const from = original || live;
-  if (from.length !== live.length) return { landed: 0, pieces: [] };
-  const { texts, landed } = patchPieceTexts(from, patches);
-  if (landed === 0) return { landed: 0, pieces: [] };
-  const touched = [];
+  if (original.length !== live.length) return { landed: 0, texts: live };
+  const { texts, landed } = patchPieceTexts(original, patches);
+  if (landed === 0) return { landed: 0, texts: live };
   texts.forEach((after, i) => {
-    if (live[i] === after) return;
-    pieces[i].nodeValue = after;
-    touched.push({ i, before: live[i], after });
+    if (live[i] !== after) pieces[i].nodeValue = after;
   });
-  return { landed, pieces: touched };
+  return { landed, texts };
 }
 
 /**
  * Each piece's text with its patches applied, and how many patches landed.
  * Patches apply right to left, so an earlier position is unaffected by a change
  * at a later one.
- * @param {string[]} texts
- * @param {{index: number, numStr: string, newNum: string}[]} patches
  * @returns {{texts: string[], landed: number}}
  */
 function patchPieceTexts(texts, patches) {
   const spans = pieceSpans(texts);
-  const byPiece = new Map();
-  for (const patch of patches) {
-    const span = pieceAt(spans, patch.index);
-    if (!span) continue;
-    if (!byPiece.has(span.i)) byPiece.set(span.i, []);
-    byPiece.get(span.i).push(patch);
-  }
   const out = texts.slice();
   let landed = 0;
-  for (const [i, piecePatches] of byPiece) {
-    let after = texts[i];
-    for (const { index, numStr, newNum } of piecePatches.slice().sort((x, y) => y.index - x.index)) {
-      const at = index - spans[i].start;
-      if (after.substring(at, at + numStr.length) !== numStr) continue;
-      after = after.substring(0, at) + newNum + after.substring(at + numStr.length);
-      landed++;
-    }
-    out[i] = after;
+  for (const { index, numStr, newNum } of patches.slice().sort((x, y) => y.index - x.index)) {
+    const span = pieceAt(spans, index);
+    if (!span) continue;
+    const text = out[span.i];
+    const at = index - span.start;
+    if (text.substring(at, at + numStr.length) !== numStr) continue;
+    out[span.i] = text.substring(0, at) + newNum + text.substring(at + numStr.length);
+    landed++;
   }
   return { texts: out, landed };
 }
 
 /**
- * Sort a cell by its record, the first step of every pass and every restore:
+ * Sort a cell by its record, the first step of every pass:
  *   'fresh'      the cell holds no record.
  *   'held'       the cell holds as many text pieces as its record, and each
  *                piece shows its original or its written text.
  *   'rewritten'  anything else: a piece holds text that is neither, or the
  *                piece count changed.
- * @param {Element} cell
- * @param {CellRecord|null|undefined} record
  * @returns {'fresh'|'held'|'rewritten'}
  */
 function sortCellByRecord(cell, record) {
@@ -318,8 +286,6 @@ function sortCellByRecord(cell, record) {
  * extension's written text. A piece the page rewrote keeps the page's text.
  * With the piece count changed, live pieces pair with stored pieces by text,
  * in page order and at most once per stored piece.
- * @param {Element} cell
- * @param {{text: string, written: string}[]} storedPieces
  */
 function restoreTextPieces(cell, storedPieces) {
   const pieces = collectTextPieces(cell);
@@ -338,19 +304,6 @@ function restoreTextPieces(cell, storedPieces) {
     next = at + 1;
   }
 }
-
-/**
- * The layout of a cell's text pieces, returned by the cell object's
- * getPieceLayout(). With no known counterpart for a rendered position, the
- * position stands, and a patch that misses there does not land.
- *
- * @typedef {object} PieceLayout
- * @property {string[]} original - each piece's text as the classified text saw it
- * @property {number[]|null} toFlat - for each position of the classified
- *   text, its position in the join of original; null when the classified text
- *   differs from the pieces in more than whitespace and holds no single-piece
- *   value, and no entry for a position with no known counterpart
- */
 
 function pieceSpans(texts) {
   let at = 0;

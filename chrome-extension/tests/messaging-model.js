@@ -511,14 +511,14 @@
   const cellObj = adapter.getRows()[0].getCells()[0];
 
   // First write: original should be stored
-  cellObj.applyPatches([{ index: 0, numStr: '12345', newNum: '12000' }]);
+  cellObj.applyPatches([{ index: 0, numStr: '12345', newNum: '12000' }], { value: cellObj.getText() });
   eq('registry original stored on first write',
     DR_MODEL.getTableOriginalText(grid.wrapperEl, grid.cellEls[0]), '12345');
 
   // Second write, against the piece's patched text: the piece no longer
   // shows its stored original, so nothing lands.
   eq('a second write into the patched piece lands nothing',
-    cellObj.applyPatches([{ index: 0, numStr: '12000', newNum: '10000' }]), 0);
+    cellObj.applyPatches([{ index: 0, numStr: '12000', newNum: '10000' }], { value: cellObj.getText() }), 0);
   eq('registry original NOT overwritten on second write',
     DR_MODEL.getTableOriginalText(grid.wrapperEl, grid.cellEls[0]), '12345');
   eq('nodeValue keeps the first write',
@@ -1949,7 +1949,7 @@ const PENDING_FILL_ROWS = [
 
     // Simulate scroll bringing a magnitude-9 row into view alongside the
     // still-visible 555 row — appended to the wrapper's children, the
-    // fallback _getRowEls path this unlabelled-grid shape uses.
+    // fallback _getRowEntries path this unlabelled-grid shape uses.
     const hugeCell = makeGridCellWithTextNode('5000000000');
     const hugeRow = makeElementNode('row', [hugeCell]);
     hugeRow.dataset = { row: '1' };
@@ -3809,7 +3809,7 @@ function issue328SettingsOf(table) {
   // Grid cell, rounded: the engine's read answers with the original through
   // the port; the displayed read answers with what the screen shows now.
   const rounded = makeCellObj(makeGridCellEl('98,765'), adapter.originalsPort);
-  rounded.applyPatches([{ index: 0, numStr: '98,765', newNum: '99,000' }]);
+  rounded.applyPatches([{ index: 0, numStr: '98,765', newNum: '99,000' }], { value: rounded.getText() });
   eq('capture-reads: a rounded grid cell keeps engine text = original, displayed text = live',
     typeof rounded.getDisplayedText === 'function'
       ? { engine: rounded.getText(), displayed: rounded.getDisplayedText() } : null,
