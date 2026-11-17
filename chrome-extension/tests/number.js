@@ -425,12 +425,12 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
   // simplifyFirstRow unset (default): row 0 IS excluded (!undefined = true, same as simplifyFirstRow=false)
   eq('simplifyFirstRow: row 0 excluded when flag is unset (default)',
     getExclusionReason('1,234', 1, {}, 0), 'first-row');
-  // simplifyFirstRow takes priority over firstColumn check
-  eq('simplifyFirstRow: firstRow beats firstColumn when both apply',
+  // simplifyFirstRow takes priority over the first-column check
+  eq('simplifyFirstRow: first-row beats first-column when both apply',
     getExclusionReason('anything', 0, { simplifyFirstRow: false, simplifyFirstColumn: false }, 0), 'first-row');
 })();
 
-// First-match-wins priority: firstRow beats firstColumn beats percent beats currency
+// First-match-wins priority: first-row beats first-column beats percent beats currency
 // (dates and times are not exclusion reasons)
 (function exclusionPriority() {
   const opts = {
@@ -1506,11 +1506,11 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     getExclusionReason('1,234', 0, { simplifyFirstColumn: true, simplifyFirstRow: true }, 1), null);
 
   // Case 2: flag false → col 0 excluded
-  eq('simplifyFirstColumn: false + col 0 → "firstColumn"',
+  eq('simplifyFirstColumn: false + col 0 → "first-column"',
     getExclusionReason('1,234', 0, { simplifyFirstRow: true, simplifyFirstColumn: false }, 1), 'first-column');
 
   // Case 3: flag unset → col 0 excluded (intentional default change)
-  eq('simplifyFirstColumn: unset + col 0 → "firstColumn" (new default semantics)',
+  eq('simplifyFirstColumn: unset + col 0 → "first-column" (new default semantics)',
     getExclusionReason('1,234', 0, { simplifyFirstRow: true }, 1), 'first-column');
 
   // Case 4: flag false but col 1 → null (only col 0 is affected)
