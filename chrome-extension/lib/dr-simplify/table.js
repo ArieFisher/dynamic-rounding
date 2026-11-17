@@ -41,12 +41,10 @@ function decisionToLegacyInfo(decision) {
   return { mode: 'skip' };
 }
 
-// The column post-pass: resolve each ambiguous numeric date against its
-// column's format hint. Every all-numeric date in the column counts, the
-// second date of a cell included. Grouping runs on the grid column each cell carries,
-// so one visual column settles one reading for all of its cells — a merge
-// inside the table cannot split a column into two groups that read 7/4/99 as
-// July in one row and April in another.
+// The column post-pass: resolve each ambiguous date against its column's
+// format hint. It groups cells by grid column, so a merged cell cannot split
+// one column into two groups that read 7/4/99 as July in one row and April in
+// another.
 function resolveAmbiguousDates(entries) {
   const isAmbiguous = (info) => info.mode === 'date' && info.ambiguous;
   const readingsByCol = new Map();
