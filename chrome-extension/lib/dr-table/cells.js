@@ -304,16 +304,3 @@ function restoreTextPieces(cell, storedPieces) {
     next = at + 1;
   }
 }
-
-function pieceSpans(texts) {
-  let at = 0;
-  return texts.map((text, i) => {
-    const span = { i, start: at, text };
-    at += text.length;
-    return span;
-  });
-}
-
-function pieceAt(spans, at) {
-  return spans.find((span) => span.start <= at && at < span.start + span.text.length) || null;
-}
