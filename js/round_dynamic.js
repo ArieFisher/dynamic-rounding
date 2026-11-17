@@ -1652,9 +1652,9 @@ function resolveAmbiguousDateDecision(decision, hint) {
  *
  *   1. The column post-pass settles each ambiguous date against its
  *      column's format hint.
- *   2. The max magnitude comes from every number in the dataset, the
- *      numbers inside extracted cells included, unless the caller passes a
- *      frozen one.
+ *   2. The max magnitude comes from the numbers of the extracted cells
+ *      passed in, since a date or time adds none, unless the caller passes
+ *      a frozen one.
  *   3. Each cell's numbers, dates, and times round and become patches.
  *
  * Core layer: reads no page and calls no Chrome. It depends only on
@@ -1710,8 +1710,8 @@ function resolveAmbiguousDates(entries) {
   });
 }
 
-// The max magnitude over the dataset: each number of an extracted cell, from
-// every row of the table.
+// The max magnitude over each number of every extracted cell in entries; a
+// date or time cell adds none.
 function datasetMaxMagnitude(entries) {
   const allNums = [];
   for (const { info } of entries) {
