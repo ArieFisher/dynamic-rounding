@@ -1007,7 +1007,7 @@ function makeGridWrapper(rowData, opts) {
   wrapper.children = rowEls;
 
   // querySelectorAll stubs on the wrapper (used by GridAdapter._getScrollContainer
-  // and _getRowEls / _getPinnedPane)
+  // and _getRowEntries / _getPinnedPane)
   wrapper.querySelector = function(sel) { return null; };   // no sub-containers
   wrapper.querySelectorAll = function(sel) {
     if (useDgClasses && sel === '.dg--virtual-row') return rowEls;
@@ -1283,7 +1283,7 @@ function makeE2EGridWrapper(rowData) {
         return c.classList.contains('dr-ext-rounded');
       });
     }
-    // _getRowEls fallback path in GridAdapter uses children, not querySelectorAll,
+    // _getRowEntries fallback path in GridAdapter uses children, not querySelectorAll,
     // so returning [] for other selectors is safe.
     return [];
   };
@@ -1640,7 +1640,7 @@ function makeAriaGrid(embeddedTables) {
       if (sel === 'table') return embeddedTables || [];
       return [];
     },
-    // children: the two rows — used by GridAdapter._getRowEls as fallback
+    // children: the two rows — used by GridAdapter._getRowEntries as fallback
     children: rowEls,
     getBoundingClientRect() {
       return { top: 50, right: 300, bottom: 100, left: 50 };

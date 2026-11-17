@@ -8,43 +8,33 @@
 /**
  * The adapter layer of the lib/dr-table package: NativeTableAdapter and
  * GridAdapter (chosen by makeAdapter) present a table's rows and cells through
- * one interface. Loaded after cells.js and before classify.js and detect.js.
- *
- * Ports (DEFAULT_STYLE_PROBE and the originals port) have working defaults, so
- * the adapters run in a plain Node context with no Chrome globals. Every other
- * page read goes to the page directly.
+ * one interface.
  *
  * GRID_VENDOR_PROFILES reads DR_DETECTION_SETTINGS at the top level, so a
  * missing object fails at load, before any function here runs.
  */
 
-// All four roles count as cells, so a labelled row's label is column A the
-// way a native table's row header is.
+// All four roles count as cells, so a header cell at the start of a grid row is
+// column A, as a <th> at the start of a native table row is.
 const GRID_CELL_SELECTOR = '[role="cell"], [role="gridcell"], [role="rowheader"], [role="columnheader"]';
 
-/**
- * The node above `node`: its parent element, else its parent node, else null.
- * @param {Node} node
- * @returns {Node|null}
- */
 function parentOf(node) {
   return node.parentElement || node.parentNode || null;
 }
 
 /**
  * The style probe: every guarded style, offsetWidth, and box read goes here.
- * With no real getComputedStyle it reports a visible, statically-positioned
- * block element, so detection runs in a context with no styles.
+ * With no real getComputedStyle it reports a statically-positioned block
+ * element, so detection runs in a context with no styles.
  * getBox returns null when the element draws no box (hidden, or a
- * `display: contents` row). A probe without getBox reads every grid as
- * row-first.
+ * `display: contents` row).
  */
 const DEFAULT_STYLE_PROBE = {
   getComputedStyle(el) {
     if (typeof getComputedStyle === 'function') {
       try { return getComputedStyle(el) || null; } catch (e) { return null; }
     }
-    return { display: 'block', visibility: 'visible', position: 'static', left: '', verticalAlign: '' };
+    return { display: 'block', position: 'static', left: '', verticalAlign: '' };
   },
   getOffsetWidth(el) {
     return (el && typeof el.offsetWidth === 'number') ? el.offsetWidth : -1;
@@ -61,25 +51,16 @@ const DEFAULT_STYLE_PROBE = {
 /**
  * The originals port: per-cell storage for a simplified cell's record
  * (CellRecord). The default WeakMap suits a caller with no application model;
- * content.js passes a port backed by DR_MODEL's registry entry, so originals
- * survive a toggle without a page attribute.
+ * content.js passes a port backed by DR_MODEL's registry entry, because the
+ * registry holds each table's originals.
  */
-function makeDefaultOriginalsPort() {
-  const store = new WeakMap();
-  return {
-    has(cellEl) { return store.has(cellEl); },
-    get(cellEl) { return store.get(cellEl); },
-    set(cellEl, record) { store.set(cellEl, record); },
-  };
-}
-const DEFAULT_ORIGINALS_PORT = makeDefaultOriginalsPort();
+const DEFAULT_ORIGINALS_PORT = new WeakMap();
 
 /**
  * The children that hold the most common non-zero child count, with that
  * count and how many children hold it. The geometry probe and the grid
  * adapter both call it, so the two read the same set.
  *
- * @param {Element[]} children
  * @returns {{modalChildCount: number, modalFreq: number, candidates: Element[]}}
  */
 function childCountCandidates(children) {
@@ -100,17 +81,16 @@ function childCountCandidates(children) {
 }
 
 /**
- * Whether an element's children run side by side as columns (column-first)
- * instead of stacking as rows: the first two children that draw a box share a
- * top, with a larger left on the second. The geometry probe and the grid
- * adapter both call it, so the two read one direction for one grid.
+ * The direction reader: true for a column-first grid, false for a row-first
+ * grid. The grid is column-first when the first two children that draw a box
+ * share a top, with a larger left on the second. The geometry probe and the
+ * grid adapter both call it, so the two read one direction for one grid. A
+ * style probe without getBox reads every grid as row-first.
  *
- * @param {Element[]} children
- * @param {object} styleProbe
  * @returns {boolean}
  */
 function isColumnFirst(children, styleProbe) {
-  if (!styleProbe || typeof styleProbe.getBox !== 'function') return false;
+  if (typeof styleProbe.getBox !== 'function') return false;
   const sample = children.slice(0, DR_DETECTION_SETTINGS.gridSampleSize);
   const boxes = [];
   for (const child of sample) {
@@ -122,21 +102,16 @@ function isColumnFirst(children, styleProbe) {
   return boxes[1].top === boxes[0].top && boxes[1].left > boxes[0].left;
 }
 
-// Known third-party grid libraries. `classToken` ends looksLikeGrid before its
-// alignment step; `scrollContainerSelectors` and `pinnedPaneSelectors` locate
-// GridAdapter's scroll container and pinned pane. A caller may pass another
-// list as opts.vendorProfiles.
+// A caller may pass another list as opts.vendorProfiles.
 const GRID_VENDOR_PROFILES = DR_DETECTION_SETTINGS.vendorProfiles;
 
 /**
  * Read one span value. A missing or unreadable value is 1. An explicit zero
  * is the "to the end" form, which HTML and ARIA define for rowspan and
  * neither honours for colspan, so the caller passes what zero means. The cap
- * of 1000 is the most a table cell allows, so a malformed value cannot
- * stretch the column cursor.
+ * of 1000, the most HTML allows for colspan, keeps a malformed value from
+ * stretching the column cursor.
  *
- * @param {string|number|null|undefined} raw
- * @param {number} whenZero
  * @returns {number}
  */
 function normalizeSpan(raw, whenZero) {
@@ -150,7 +125,6 @@ function normalizeSpan(raw, whenZero) {
 // A td's span property reads 1 with no colspan attribute, so the attribute decides.
 function cellSpans(cellEl) {
   const read = (property, htmlAttribute, ariaAttribute) => {
-    if (!cellEl) return null;
     const declares = typeof cellEl.hasAttribute === 'function'
       ? cellEl.hasAttribute(htmlAttribute) : cellEl[property] != null;
     if (declares && cellEl[property] != null) return cellEl[property];
@@ -164,11 +138,10 @@ function cellSpans(cellEl) {
 
 /**
  * Number every cell by the column the browser lays it out in (issue #330).
- * Both table kinds call this with their own span read, so one rule numbers
- * the columns. Without it, a merge in the data area shifts every later cell
+ * Both table kinds reach it through buildRows, so one rule numbers the
+ * columns. Without it, a merge in the data area shifts every later cell
  * off its column, and the table rounds at the wrong step.
  *
- * @param {{colSpan: number, rowSpan: number}[][]} rowSpans
  * @returns {{columnIndex: number, columnSpan: number}[][]}
  */
 function assignGridColumns(rowSpans) {
@@ -179,8 +152,8 @@ function assignGridColumns(rowSpans) {
     const placed = cells.map(({ colSpan, rowSpan }) => {
       while (held[cursor] > 0) cursor += 1;
       const columnIndex = cursor;
-      // Matters where a cell merged across reaches a column a merge above
-      // still holds: the table model keeps the longer hold on the shared slot.
+      // Where a cell merged across reaches a column that a merge above still
+      // holds, the column keeps the longer of the two holds.
       for (let col = cursor; col < cursor + colSpan; col++) {
         held[col] = Math.max(held[col] || 0, rowSpan);
       }
@@ -198,17 +171,13 @@ function assignGridColumns(rowSpans) {
  * The rows of one table, built from each row's cell elements. The caller
  * reads each row's cell elements once, so the column plan and the cell
  * objects count the same row shape.
- * @param {Element[][]} rowCellEls - each row's cell elements, in column order
- * @param {(cellEl: Element) => object} makeCell - the cell object of the
- *   table kind (see makeCellObj)
- * @param {object[]} [rowProps] - fields to add to each row, by row position
  * @returns {{getCells(): object[]}[]}
  */
-function buildRows(rowCellEls, makeCell, rowProps) {
+function buildRows(rowCellEls, originalsPort, rowProps) {
   const plan = assignGridColumns(rowCellEls.map((cellEls) => cellEls.map(cellSpans)));
   return rowCellEls.map((cellEls, r) => Object.assign({}, rowProps && rowProps[r], {
     getCells() {
-      return cellEls.map((cellEl, c) => Object.assign({}, plan[r][c], makeCell(cellEl)));
+      return cellEls.map((cellEl, c) => Object.assign({}, plan[r][c], makeCellObj(cellEl, originalsPort)));
     },
   }));
 }
@@ -221,9 +190,8 @@ class NativeTableAdapter {
   getElement() { return this.el; }
   isGrid() { return false; }
   getRows() {
-    const port = this.originalsPort;
     const rows = Array.from(this.el.rows);
-    return buildRows(rows.map((row) => Array.from(row.cells)), (cell) => makeCellObj(cell, port),
+    return buildRows(rows.map((row) => Array.from(row.cells)), this.originalsPort,
       rows.map((row) => {
         const parent = parentOf(row);
         return { isOutside: !!parent && parent.tagName === 'THEAD', isGrouped: true };
@@ -236,7 +204,6 @@ class NativeTableAdapter {
  * a cell of another grid is a separate table, as with a native table. Every
  * walk that sorts elements between nested grids reads this one predicate.
  *
- * @param {Element} el
  * @returns {boolean}
  */
 function _isCellAncestor(el) {
@@ -250,8 +217,6 @@ function _isCellAncestor(el) {
  * in that cell. Each ancestor is resolved once, so the work grows with the
  * tree under `root`, not with matches times depth.
  *
- * @param {Element} root
- * @param {string} selector
  * @returns {Element[]}
  */
 function _ownDescendants(root, selector) {
@@ -285,8 +250,6 @@ class GridAdapter {
   getElement() { return this.el; }
   isGrid() { return true; }
 
-  // The first descendant matching a vendor scrollContainerSelectors entry,
-  // then [role="grid"]; else the grid element.
   _getScrollContainer() {
     const el = this.el;
     const knownSelectors = [
@@ -300,22 +263,21 @@ class GridAdapter {
     return el;
   }
 
-  // The pinned pane inside this grid, or null; a single-pane grid has none.
   _getPinnedPane(scrollContainer) {
     const pinnedSelectors = this.vendorProfiles.flatMap((p) => p.pinnedPaneSelectors || []);
     const el = this.el;
     for (const sel of pinnedSelectors) {
       const found = _ownDescendants(el, sel)[0];
+      // A pinned pane that is the scroll container would join each row's
+      // cells to themselves.
       if (found && found !== scrollContainer) return found;
     }
     return null;
   }
 
   /**
-   * The container's rows from the first selector that matches rows:
-   * [role="row"], .dg--virtual-row, <tr>, then the container's children. The
-   * <tr> source covers a grid whose rows are bare <tr> elements with no row
-   * role.
+   * The <tr> selector covers a grid whose rows are bare <tr> elements with no
+   * row role.
    *
    * With row groups present, the selector is chosen from rows inside a group,
    * so a stray role="row" block outside every group (a description panel)
@@ -328,7 +290,6 @@ class GridAdapter {
    * A row from the children fallback on a column-first grid has no row
    * element: its entry holds el: null and cellEls.
    *
-   * @param {Element} container
    * @returns {{el: Element|null, isOutside: boolean, isGrouped: boolean, cellEls?: Element[]}[]}
    */
   _getRowEntries(container) {
@@ -346,13 +307,13 @@ class GridAdapter {
         rows = rows.concat(_ownDescendants(scope, sel));
       }
       if (rows.length === 0) continue;
-      if (!isGrouped) return rows.map((el) => ({ el, isOutside: false, isGrouped }));
       const inGroup = new Set(rows);
-      return _ownDescendants(container, sel)
-        .map((el) => ({ el, isOutside: !inGroup.has(el), isGrouped }));
+      const matches = isGrouped ? _ownDescendants(container, sel) : rows;
+      return matches.map((el) => ({ el, isOutside: !inGroup.has(el), isGrouped }));
     }
-    // Row groups that hold no rows are non-conforming markup, so only the
-    // first group's children count.
+    // With no row group, scopes[0] is the container. Row groups that hold no
+    // row elements are non-conforming markup, and only the first group's
+    // children count.
     return this._childRowEntries(scopes[0]);
   }
 
@@ -361,7 +322,6 @@ class GridAdapter {
    * matches. On a column-first grid each child is a column; only columns with
    * the most common item count count, so every row holds one cell per column.
    *
-   * @param {Element} parent
    * @returns {{el: Element|null, isOutside: boolean, isGrouped: boolean, cellEls?: Element[]}[]}
    */
   _childRowEntries(parent) {
@@ -378,20 +338,7 @@ class GridAdapter {
     return rows;
   }
 
-  /**
-   * @param {Element} container
-   * @returns {Element[]}
-   */
-  _getRowEls(container) {
-    return this._getRowEntries(container).map((entry) => entry.el);
-  }
-
-  /**
-   * @param {Element} rowEl
-   * @returns {Element[]}
-   */
   _getCellEls(rowEl) {
-    if (!rowEl) return [];
     let cells = _ownDescendants(rowEl, GRID_CELL_SELECTOR);
     if (cells.length > 0) return cells;
     cells = _ownDescendants(rowEl, '.dg--cell');
@@ -400,11 +347,6 @@ class GridAdapter {
     return [];
   }
 
-  /**
-   * @param {Element} rowEl
-   * @param {number} domIndex
-   * @returns {string}
-   */
   _getRowKey(rowEl, domIndex) {
     if (rowEl && rowEl.dataset) {
       if (rowEl.dataset.row !== undefined) return rowEl.dataset.row;
@@ -420,27 +362,19 @@ class GridAdapter {
     const scrollEntries = this._getRowEntries(scrollContainer);
     if (scrollEntries.length === 0) return [];
 
-    let pinnedRows = [];
-    const pinnedByKey = new Map();
-    if (pinnedPane) {
-      pinnedRows = this._getRowEls(pinnedPane);
-      pinnedRows.forEach((pr, idx) => {
-        const key = this._getRowKey(pr, idx);
-        pinnedByKey.set(key, pr);
-      });
-    }
+    const pinnedRows = pinnedPane ? this._getRowEntries(pinnedPane).map((entry) => entry.el) : [];
+    const pinnedByKey = new Map(pinnedRows.map((pr, idx) => [this._getRowKey(pr, idx), pr]));
 
-    const adapter = this;
     // A row read from a column-first grid has no row element, so it takes no
     // pinned cells.
     const rowCellEls = scrollEntries.map(({ el: rowEl, cellEls }, idx) => {
       if (cellEls) return cellEls;
-      const scrollKey = adapter._getRowKey(rowEl, idx);
+      const scrollKey = this._getRowKey(rowEl, idx);
       const pinnedRowEl = pinnedByKey.get(scrollKey) || (pinnedRows[idx] || null);
-      const pinned = pinnedRowEl ? adapter._getCellEls(pinnedRowEl) : [];
-      return pinned.concat(adapter._getCellEls(rowEl));
+      const pinned = pinnedRowEl ? this._getCellEls(pinnedRowEl) : [];
+      return pinned.concat(this._getCellEls(rowEl));
     });
-    return buildRows(rowCellEls, (cellEl) => makeCellObj(cellEl, adapter.originalsPort),
+    return buildRows(rowCellEls, this.originalsPort,
       scrollEntries.map(({ isOutside, isGrouped }) => ({ isOutside, isGrouped })));
   }
 }

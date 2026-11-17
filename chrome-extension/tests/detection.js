@@ -83,10 +83,10 @@
     const { landed } = writePatches({}, [
       { index: 2, numStr: '100', newNum: '90' },
       { index: 8, numStr: '999', newNum: '1,000' },
-    ]);
+    ], ['A 100 B 200']);
     eq('patch-honesty: writePatches returns the landed count', landed, 1);
     eq('patch-honesty: an empty patch list lands zero patches',
-      writePatches({}, []).landed, 0);
+      writePatches({}, [], ['A 100 B 200']).landed, 0);
   } finally {
     delete global.document.createTreeWalker;
   }
@@ -624,7 +624,7 @@ const supTestOpts = {
   // AP1: single text node, single patch
   withSupCreateTreeWalker(function() {
     const cell = makeExtractedCell([{ text: 'Revenue 1500 USD' }]);
-    writePatches(cell, [{ index: 8, numStr: '1500', newNum: '2k' }]);
+    writePatches(cell, [{ index: 8, numStr: '1500', newNum: '2k' }], ['Revenue 1500 USD']);
     eq('AP1: single node patch replaces number', cell._textNodes[0].nodeValue, 'Revenue 2k USD');
   });
 
@@ -634,7 +634,7 @@ const supTestOpts = {
     writePatches(cell, [
       { index: 0,  numStr: '1500', newNum: '2k' },
       { index: 9,  numStr: '2500', newNum: '3k' },
-    ]);
+    ], ['1500 and 2500']);
     eq('AP2: two patches in same node', cell._textNodes[0].nodeValue, '2k and 3k');
   });
 
@@ -648,7 +648,7 @@ const supTestOpts = {
       { text: ' m' },
       { text: '3', inSup: true },
     ]);
-    writePatches(cell, [{ index: 0, numStr: '1.5', newNum: '2' }]);
+    writePatches(cell, [{ index: 0, numStr: '1.5', newNum: '2' }], ['1.5×10', '31', ' m', '3']);
     eq('AP3: base node updated', cell._textNodes[0].nodeValue, '2×10');
     eq('AP3: sup "31" node untouched', cell._textNodes[1].nodeValue, '31');
     eq('AP3: " m" node untouched',     cell._textNodes[2].nodeValue, ' m');
@@ -663,7 +663,7 @@ const supTestOpts = {
       { text: 'text, ' },
       { text: '1500' },
     ]);
-    writePatches(cell, [{ index: 6, numStr: '1500', newNum: '2k' }]);
+    writePatches(cell, [{ index: 6, numStr: '1500', newNum: '2k' }], ['text, ', '1500']);
     eq('AP4: first node untouched', cell._textNodes[0].nodeValue, 'text, ');
     eq('AP4: second node patched',  cell._textNodes[1].nodeValue, '2k');
   });
@@ -671,14 +671,14 @@ const supTestOpts = {
   // AP5: defensive — wrong numStr at index → node unchanged
   withSupCreateTreeWalker(function() {
     const cell = makeExtractedCell([{ text: 'abc 1500 def' }]);
-    writePatches(cell, [{ index: 4, numStr: '9999', newNum: '10k' }]);
+    writePatches(cell, [{ index: 4, numStr: '9999', newNum: '10k' }], ['abc 1500 def']);
     eq('AP5: wrong numStr → no change', cell._textNodes[0].nodeValue, 'abc 1500 def');
   });
 
   // AP6: empty patches array → no-op
   withSupCreateTreeWalker(function() {
     const cell = makeExtractedCell([{ text: 'abc 1500 def' }]);
-    writePatches(cell, []);
+    writePatches(cell, [], ['abc 1500 def']);
     eq('AP6: empty patches → unchanged', cell._textNodes[0].nodeValue, 'abc 1500 def');
   });
 
@@ -1583,9 +1583,8 @@ const supTestOpts = {
     threw, false);
 })();
 
-// The writer groups patches by piece, writes each touched piece once, and
-// returns the landed count with each touched piece's text before and after.
-(function applyExtractedPatchesReturnsTouchedPieces() {
+// The writer returns the landed count with each piece's text after the write.
+(function applyExtractedPatchesReturnsPieceTexts() {
   const cell = makeElementNode('', [makeTextNode('A 100 B 200'), makeTextNode(' C 300')]);
   const [first, second] = cell.childNodes;
   // The pieces walk runs with no tree walker in this suite's document.
@@ -1596,19 +1595,18 @@ const supTestOpts = {
       { index: 8, numStr: '200', newNum: '250' },
       { index: 14, numStr: '300', newNum: '999' },
       { index: 14, numStr: '777', newNum: '1' },
-    ]);
+    ], ['A 100 B 200', ' C 300']);
   } catch (e) {
     eq('patch writer: the writer runs without a tree walker', String(e), null);
     return;
   }
   eq('patch writer: the result carries the landed count', result.landed, 3);
-  eq('patch writer: the result lists each touched piece once, in piece order',
-    result.pieces,
-    [{ i: 0, before: 'A 100 B 200', after: 'A 90 B 250' }, { i: 1, before: ' C 300', after: ' C 999' }]);
+  eq('patch writer: the result lists each piece text after the write, in piece order',
+    result.texts, ['A 90 B 250', ' C 999']);
   eq('patch writer: the pieces hold the patched text',
     [first.nodeValue, second.nodeValue], ['A 90 B 250', ' C 999']);
-  eq('patch writer: an empty patch list lands nothing',
-    writePatches(cell, []), { landed: 0, pieces: [] });
+  eq('patch writer: an empty patch list lands nothing and leaves the pieces as they stand',
+    writePatches(cell, [], ['A 100 B 200', ' C 300']), { landed: 0, texts: ['A 90 B 250', ' C 999'] });
 })();
 
 // ---------------------------------------------------------------------------
@@ -1648,7 +1646,7 @@ const supTestOpts = {
     cells0[1].getText(), '286');
 
   // Now round via applyPatches and confirm nodeValue changed
-  cells0[0].applyPatches([{ index: 0, numStr: '8584629', newNum: '8500000' }]);
+  cells0[0].applyPatches([{ index: 0, numStr: '8584629', newNum: '8500000' }], { value: cells0[0].getText() });
   const tn0 = grid.cellEls[0].childNodes[0];
   eq('after applyPatches, text node nodeValue is rounded value',
     tn0.nodeValue, '8500000');
@@ -1701,7 +1699,7 @@ const supTestOpts = {
   const childCountBefore = grid.cellEls[0].childNodes.length;
 
   // Round via applyPatches
-  cellObj.applyPatches([{ index: 0, numStr: '9876543', newNum: '9900000' }]);
+  cellObj.applyPatches([{ index: 0, numStr: '9876543', newNum: '9900000' }], { value: cellObj.getText() });
 
   // The Text node reference must be the SAME object.
   const textNodeAfter = grid.cellEls[0].childNodes[0];
@@ -1766,7 +1764,7 @@ const supTestOpts = {
 
   let threw = false;
   try {
-    cellObj.applyPatches([{ index: 0, numStr: '123', newNum: 'should-be-noop' }]);
+    cellObj.applyPatches([{ index: 0, numStr: '123', newNum: 'should-be-noop' }], { value: cellObj.getText() });
   } catch (e) {
     threw = true;
   }
@@ -1814,7 +1812,7 @@ const supTestOpts = {
   eq('(setup): getText before applyPatches returns original',
     cellObj.getText(), '9876543');
 
-  cellObj.applyPatches([{ index: 0, numStr: '9876543', newNum: '9900000' }]);
+  cellObj.applyPatches([{ index: 0, numStr: '9876543', newNum: '9900000' }], { value: cellObj.getText() });
 
   // getText after the write returns the ORIGINAL so re-rounding uses the right base.
   eq('getText after applyPatches returns stored original (for re-round safety)',
@@ -2270,7 +2268,7 @@ const supTestOpts = {
 })();
 
 // ---------------------------------------------------------------------------
-// GridAdapter._getRowEls handles ARIA grids
+// GridAdapter._getRowEntries handles ARIA grids
 // whose data rows are bare <tr> inside a [role="rowgroup"], with header/summary
 // rows OUTSIDE the rowgroup (e.g. Kaggle's Data Explorer). Standard ARIA only.
 // ---------------------------------------------------------------------------

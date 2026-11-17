@@ -2078,7 +2078,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   // Round all cells
   rows.forEach(function(row) {
     row.getCells().forEach(function(c) {
-      c.applyPatches([{ index: 0, numStr: c.getText(), newNum: 'ROUNDED' }]);
+      c.applyPatches([{ index: 0, numStr: c.getText(), newNum: 'ROUNDED' }], { value: c.getText() });
     });
   });
 
@@ -2258,13 +2258,13 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 
   const withNode = makeCellObj(makeGridCellWithTextNode('8584629'), adapter.originalsPort);
   eq('grid-honesty: applyPatches returns a landed count when the write lands',
-    withNode.applyPatches([{ index: 0, numStr: '8584629', newNum: '8,500,000' }]), 1);
+    withNode.applyPatches([{ index: 0, numStr: '8584629', newNum: '8,500,000' }], { value: withNode.getText() }), 1);
 
   const bareEl = makeElementNode('', []);
   bareEl.textContent = '8584629';
   const bare = makeCellObj(bareEl, adapter.originalsPort);
   eq('grid-honesty: applyPatches returns zero when the cell has no text piece',
-    bare.applyPatches([{ index: 0, numStr: '8584629', newNum: '8,500,000' }]), 0);
+    bare.applyPatches([{ index: 0, numStr: '8584629', newNum: '8,500,000' }], { value: bare.getText() }), 0);
   eq('grid-honesty: a skipped write adds no marker and no record',
     { marked: bareEl.classList.contains('dr-ext-rounded'), recorded: port.has(bareEl) },
     { marked: false, recorded: false });
