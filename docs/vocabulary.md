@@ -139,7 +139,7 @@ Figures that describe what one lens does to one dataset. Each one reads a list o
 
 | Term | Meaning | Not | Example | Search pattern | Block pattern |
 | --- | --- | --- | --- | --- | --- |
-| simplify | Apply the full treatment to a table under its table settings: rounding for numbers, granularity for dates and times. | — | The user simplifies the table, and its numbers round and its dates coarsen. | `\bsimplify(s\|es)?\b` | — |
+| simplify | Change any relevant values (e.g. round, format, change granularity, etc.) according to the current settings. | — | The user can press a table's pillbox to simplify the table. | `\bsimplify(s\|es)?\b` | — |
 | apply | Write the sidebar's values to the bound table's table settings, through a sidebar gesture. | — | After an apply, the bound table shows the sidebar's values. | `\bapply(s\|es)?\b` | — |
 | patch | One replacement inside a text piece: the position in the flat text, the characters to replace, and the new characters. Every cell, on a native table or a grid, changes through patches alone, so every text piece the page drew stays in place. | — | One patch holds position 3, the characters "12345", and the new characters "10,000". | `\bpatch(s\|es)?\b` | — |
 | patch writer | The write step that applies patches, each inside one text piece. It applies a cell's patches to the cell's originals and writes each text piece whose text differs from the result. The patch writer skips a patch whose characters are not at its position in the originals. | — | The patch writer writes "10,000" into the text piece that held "12345". | `\bpatch writer(s\|es)?\b` | — |
