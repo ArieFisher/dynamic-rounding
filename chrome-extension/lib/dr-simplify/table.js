@@ -92,8 +92,8 @@ function classifiedCellPatches(entry, maxMag, settings) {
     const rounded = info.mode === 'date'
       ? roundDateText(trimmed, settings.dateGranularity, info.dates)
       : roundTimeText(trimmed, settings.timeGranularity);
-    if (rounded === null || rounded === trimmed) return { patches: [] };
-    return { patches: [{ index: lead, numStr: trimmed, newNum: rounded }] };
+    if (rounded === null || rounded === trimmed) return [];
+    return [{ index: lead, numStr: trimmed, newNum: rounded }];
   }
   if (info.mode === 'extracted') {
     const patches = [];
@@ -102,9 +102,9 @@ function classifiedCellPatches(entry, maxMag, settings) {
       const newNum = formatNumber(rounded, m.numStr);
       if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
     }
-    return { patches };
+    return patches;
   }
-  return { patches: [] };
+  return [];
 }
 
 /**
@@ -130,6 +130,6 @@ function tablePatches(entries, settings, frozenMaxMag) {
     ? frozenMaxMag
     : datasetMaxMagnitude(resolved);
   const cells = resolved.map((entry) =>
-    Object.assign({ entry }, classifiedCellPatches(entry, maxMag, settings)));
+    ({ entry, patches: classifiedCellPatches(entry, maxMag, settings) }));
   return { maxMag, cells };
 }
