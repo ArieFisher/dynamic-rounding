@@ -487,8 +487,7 @@ function revalidateTableShape(table, opts = {}) {
   // covers a native table and a grid alike.
   const root = table.tagName === 'TABLE' ? table : (chainRootOf(table) || table);
   let fresh = null;
-  for (const { handle, isNew } of findTables(root, { isRegistered: DR_MODEL.hasTable })) {
-    if (!isNew) continue;
+  for (const handle of findTables(root, { isRegistered: DR_MODEL.hasTable })) {
     registerDataTable(handle);
     // registerDataTable registers only what passes the data test, so the
     // registry records whether this element registered.

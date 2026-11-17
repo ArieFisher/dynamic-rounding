@@ -141,7 +141,7 @@ function findTargetTable(el, opts = {}) {
   const registered = registeredAncestor(el, docBody, isRegistered);
   if (registered) return { handle: registered, isNew: false };
   const nominated = nominatedInNest(el, { ...opts, isRegistered });
-  if (nominated) return { handle: nominated, isNew: !isRegistered(nominated) };
+  if (nominated) return { handle: nominated, isNew: true };
   const outermost = outermostGridAbove(el, docBody, opts);
   return outermost && { handle: outermost, isNew: !isRegistered(outermost) };
 }
@@ -176,8 +176,7 @@ function registeredAncestor(el, docBody, isRegistered) {
  */
 function nominatedInNest(el, opts) {
   const chainRoot = chainRootOf(el, opts);
-  const nominated = chainRoot && findTables(chainRoot, opts)[0];
-  return nominated ? nominated.handle : null;
+  return (chainRoot && findTables(chainRoot, opts)[0]) || null;
 }
 
 /**
@@ -685,23 +684,19 @@ function scanTables(root, opts = {}) {
  * controller, which holds a pending table for an empty nest — reads
  * scanTables.
  *
- * Each result is { handle, isNew }; isNew is !opts.isRegistered(handle),
- * where opts.isRegistered is a caller-supplied registered check (e.g.
- * DR_MODEL.hasTable). Without opts.isRegistered every result reports
- * isNew: true, since detection keeps no registry.
+ * The step reports a nest with a registered member as 'registered', so no
+ * handle is one opts.isRegistered (e.g. DR_MODEL.hasTable) reports.
  *
  * @param {Element|Document} root
  * @param {{isArtifact?: (table: Element, opts: object) => boolean,
  *          isRegistered?: (handle: Element) => boolean, nestingDepth?: number,
  *          doc?: Document, styleProbe?: object, vendorProfiles?: object[]}} [opts]
- * @returns {{handle: Element, isNew: boolean}[]}
+ * @returns {Element[]}
  */
 function findTables(root, opts = {}) {
-  const isRegistered = opts.isRegistered || (() => false);
   const handles = scanTables(root, opts).filter(({ outcome }) => outcome === 'selected').map(({ selected }) => selected);
   // A table root yields itself alone, so a shape-change re-registration covers
   // that one table.
   const isTableRoot = root && root.tagName === 'TABLE';
-  return handles.filter((handle) => !isTableRoot || handle === root || handle.tagName !== 'TABLE')
-    .map((handle) => ({ handle, isNew: !isRegistered(handle) }));
+  return handles.filter((handle) => !isTableRoot || handle === root || handle.tagName !== 'TABLE');
 }
