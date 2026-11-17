@@ -109,10 +109,10 @@ function filterLinkMatches(cell, matches, layout) {
 }
 
 // classifyCell (lib/dr-simplify) reads only text, which holds no <a> element,
-// so the link filter runs here. Each filter is an independent per-match
-// predicate, so running this one after the ladder's gives the same final set
-// (see the lib/dr-simplify/ladder.js header). placeDecision returns a skip for
-// a cell with no layout, so an extracted decision always arrives with one.
+// so the link filter runs here, after the ladder and the placement step. Each
+// of the three keeps or drops a match on that match alone, so their order does
+// not change which matches remain. placeDecision returns a skip for a cell
+// with no layout, so an extracted decision always arrives with one.
 /** @param {PieceLayout} layout - the cell's piece layout (cellObj.getPieceLayout()) */
 function finalizeExtractedDecision(decision, cell, layout) {
   if (decision.mode !== 'extracted') return decision;
