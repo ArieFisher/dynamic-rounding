@@ -116,8 +116,8 @@
   }
 
   // Eval into a local object using an IIFE so the const declarations bind in
-  // function scope (not global) and the new Function body can hold them.
-  // toNumber is passed in from the already-evaled content-script scope.
+  // function scope (not global) and the compiled function body can hold them.
+  // toNumber is passed in from the content scripts the setup runs.
   // Note: string concatenation is used (not a template literal) to avoid any
   // back-tick/interpolation issues with the extracted source text.
   const helperSrc = '(function() {\n' +
@@ -125,7 +125,7 @@
     formatOriginalFn[0] + '\n' +
     'return { formatOriginal: formatOriginal };\n' +
     '})()';
-  const helpers = (new Function(
+  const helpers = (isolatedFunction(
     'toNumber',
     'return ' + helperSrc + ';'
   ))(toNumber);
@@ -382,7 +382,7 @@
 
   // --- Extract stopPosition() from sidebar.js and instantiate it for runtime testing ---
   // We locate the function body with a regex (same pattern used elsewhere for
-  // source-level extraction) and wrap it in a new Function so we can call it.
+  // source-level extraction) and wrap it in isolatedFunction so we can call it.
   const pctMatch = sidebarJsSrc.match(/function stopPosition\(v\)\s*\{([\s\S]*?)\n\}/);
   if (!pctMatch) {
     failed++;
@@ -395,7 +395,7 @@
     // stopPosition() closes over STOPS and snap(); supply both so the extracted body
     // runs standalone. snap() is the nearest-stop fallback for non-stop inputs.
     const snap = (v) => stops.reduce((b, s) => Math.abs(s - v) < Math.abs(b - v) ? s : b, stops[0]);
-    const pctRaw = new Function('STOPS', 'snap', 'v', pctMatch[1]);
+    const pctRaw = isolatedFunction('STOPS', 'snap', 'v', pctMatch[1]);
     const stopPosition = (v) => pctRaw(stops, snap, v);
     const TOL = 1e-6;
 
@@ -1282,7 +1282,7 @@ const SINGLE_READ_SAMPLES = {
   eq('bound tab: createBoundTab extracted from sidebar.js', !!factory, true);
   if (!factory) return;
 
-  const createBoundTab = (new Function('return ' + factory[0] + ';'))();
+  const createBoundTab = (isolatedFunction('return ' + factory[0] + ';'))();
   eq('bound tab: createBoundTab is a function', typeof createBoundTab, 'function');
 
   // A bus stub recording every subscription, so a test can deliver a report

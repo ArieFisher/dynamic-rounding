@@ -2,7 +2,7 @@
  * Test suite for chrome-extension content.js pure helpers.
  * Run: node tests.js
  *
- * Stubs out browser globals so we can eval content.js in Node and exercise
+ * Stubs out browser globals so the content scripts run in Node and exercise
  * the pure functions (extractNumbersInText, formatNumber, toNumber,
  * roundCellSetAware, findMaxMagnitude, pureNumberSpan).
  */
@@ -55,9 +55,9 @@ global.NodeFilter = { SHOW_TEXT: 4 };
 console.debug = () => {};
 console.warn = () => {};
 
-// Stub observer constructors BEFORE eval so that content.js module-level code
-// (guarded by `typeof MutationObserver !== 'undefined'`) sees them and runs
-// the initialisation block. The stubs are no-ops; tests never exercise the
+// Stub observer constructors BEFORE the content scripts run so that content.js
+// module-level code (guarded by `typeof MutationObserver !== 'undefined'`) sees
+// them and runs the initialisation block. The stubs are no-ops; tests never exercise the
 // real observer callbacks.
 global.MutationObserver = class { observe() {} disconnect() {} };
 global.ResizeObserver  = class { observe() {} unobserve() {} disconnect() {} };
@@ -66,11 +66,10 @@ global.Node = { ELEMENT_NODE: 1 };
 // In a browser/extension the content scripts share a single top-level scope,
 // loaded in the order manifest.json lists them under content_scripts[0].js.
 // Read that list from the manifest instead of hardcoding filenames, so
-// renaming a content script only requires a manifest update. We evaluate
-// them together here, and re-expose DR_DEFAULTS on globalThis so test
-// assertions outside the eval can read it.
-// We also expose the per-table pillbox infrastructure declared with const/let
-// inside the eval'd code so the table pillbox test section can access them.
+// renaming a content script only requires a manifest update. After the
+// content scripts run below, one more script copies DR_DEFAULTS and the
+// per-table pillbox infrastructure, declared with const/let, onto globalThis
+// for the test pieces that read them.
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
 const contentScriptFiles = manifest.content_scripts[0].js;
 // Map from manifest filename to its individual source text, built FROM the
@@ -113,7 +112,13 @@ const uiPillboxCode = sourceByName('ui-pillbox.js');
 // Combined source for "source-includes" assertions that do not care which
 // content-script file holds a symbol.
 const allContentSrc = contentScriptBundle;
-eval(contentScriptBundle + `
+// Each content script runs as its own script under its real path, so the
+// coverage report attributes its lines to that file.
+const vm = require('vm');
+for (const file of contentScriptFiles) {
+  vm.runInThisContext(contentScriptSources.get(file), { filename: path.join(__dirname, file) });
+}
+vm.runInThisContext(`
 globalThis.DR_DEFAULTS = DR_DEFAULTS;
 globalThis.DR_DETECTION_SETTINGS = DR_DETECTION_SETTINGS;
 globalThis.DR_NUMBER = DR_NUMBER;
@@ -233,9 +238,7 @@ globalThis.chainRootOf = chainRootOf;
 globalThis.nominateNest = nominateNest;
 globalThis.nominateNests = nominateNests;
 // Expose the controller's pending-table state and the two functions that
-// hold and drop a pending record. The
-// content-script bundle evaluates in its own scope, so the pending suite
-// reaches these names only through this list.
+// hold and drop a pending record.
 globalThis.holdPendingTable = holdPendingTable;
 globalThis.dropPendingTable = dropPendingTable;
 globalThis.pendingRoots = pendingRoots;

@@ -1562,7 +1562,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 
   // -------------------------------------------------------------------------
   // Extract formatOomLabel from sidebar.js source. It depends on trimNum
-  // (from rounding.js), which we pass as a parameter to new Function.
+  // (from rounding.js), which we pass as a parameter to isolatedFunction.
   // -------------------------------------------------------------------------
   const constBlock = sidebarSrc.match(
     /const OOM_LABEL_CLASS\s*=[\s\S]*?const STEP_HEADER_CLASS\s*=.*?;/
@@ -1587,11 +1587,11 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 
   let apHelpers;
   try {
-    apHelpers = (new Function('trimNum', 'stepForOffset', 'formatStep',
+    apHelpers = (isolatedFunction('trimNum', 'stepForOffset', 'formatStep',
       'return ' + apHelperSrc + ';'
     ))(trimNum, stepForOffset, formatStep);
   } catch (e) {
-    eq('sidebar-ap-extract: new Function eval succeeded', false, true);
+    eq('sidebar-ap-extract: isolatedFunction eval succeeded', false, true);
     return;
   }
 
@@ -1743,9 +1743,9 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
       formatOriginalFn2[0] + '\n' +
       'return formatOriginal;\n' +
       '})(toNumber)';
-    realFormatOriginal = (new Function('toNumber', 'return ' + fmtOrigSrc + ';'))(toNumber);
+    realFormatOriginal = (isolatedFunction('toNumber', 'return ' + fmtOrigSrc + ';'))(toNumber);
 
-    renderHelpers = (new Function(
+    renderHelpers = (isolatedFunction(
       'document', 'formatOriginal', 'roundWithOffset', 'stepForOffset',
       'formatStep', 'trimNum', 'cachedMaxMag',
       'return ' + renderSrc + '(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, cachedMaxMag);'
@@ -1886,7 +1886,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   // exercise the header path.
   let renderHelpersWithMag;
   try {
-    renderHelpersWithMag = (new Function(
+    renderHelpersWithMag = (isolatedFunction(
       'document', 'formatOriginal', 'roundWithOffset', 'stepForOffset',
       'formatStep', 'trimNum', 'cachedMaxMag',
       'return ' + renderSrc + '(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, cachedMaxMag);'
