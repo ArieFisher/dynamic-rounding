@@ -18,7 +18,7 @@ Apply this to the file named in the input. Read that file in full.
 
 Do not edit any files. Write your findings to `docs/private/asx-<YYYYMMDD>-<input file name>.md`, and create no other file.
 
-Report what you find, and leave fixes for a later step. For each finding, say where it is and what it is in one line, and mark it A or B (see Categorize below). Follow a finding into other files when it leads there. When a section has no findings, write "none found".
+Report what you find, and leave fixes for a later step. For each finding, say where it is and what it is in one line, and mark it A or B (see Categorize below). Follow a finding into other files when it leads there.
 
 ### Coherent Vocabulary
 
