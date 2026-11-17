@@ -1664,7 +1664,7 @@ function resolveAmbiguousDateDecision(decision, hint) {
  * A classified cell is any object carrying:
  *   text  the classified text (a simplified cell's stored original)
  *   info  the decisionToLegacyInfo shape of the ladder's decision
- *   col   the cell's grid column, which groups the column post-pass
+ *   col   the cell's grid column, by which the column post-pass groups cells
  * The step copies every other field through untouched, so a caller can carry
  * its own per-cell data beside them.
  *
