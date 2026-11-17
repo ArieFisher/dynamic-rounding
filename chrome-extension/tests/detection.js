@@ -2270,7 +2270,7 @@ const supTestOpts = {
 })();
 
 // ---------------------------------------------------------------------------
-// GridAdapter._getRowEls handles ARIA grids
+// GridAdapter._getRowEntries handles ARIA grids
 // whose data rows are bare <tr> inside a [role="rowgroup"], with header/summary
 // rows OUTSIDE the rowgroup (e.g. Kaggle's Data Explorer). Standard ARIA only.
 // ---------------------------------------------------------------------------

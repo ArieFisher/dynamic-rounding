@@ -1949,7 +1949,7 @@ const PENDING_FILL_ROWS = [
 
     // Simulate scroll bringing a magnitude-9 row into view alongside the
     // still-visible 555 row — appended to the wrapper's children, the
-    // fallback _getRowEls path this unlabelled-grid shape uses.
+    // fallback _getRowEntries path this unlabelled-grid shape uses.
     const hugeCell = makeGridCellWithTextNode('5000000000');
     const hugeRow = makeElementNode('row', [hugeCell]);
     hugeRow.dataset = { row: '1' };
