@@ -30,7 +30,6 @@ const DR_TABLE = {
   findTargetTable,
   findTables,
   scanTables,
-  registrableTables,
   chainRootOf,
   isAccessibilityArtifact,
   isDataTable,

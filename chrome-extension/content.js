@@ -134,7 +134,8 @@ const reapplyTimers = new WeakMap();
 
 // Pending table state, keyed by chain root. A chain root whose chain is empty
 // — no element of its nest passes the data test — becomes a pending table:
-// the grid arrived before its rows, and the rows may still arrive.
+// the table arrived before its rows or its numbers, and they may still arrive.
+// A native table is a chain root of its own.
 // pendingObservers:   chainRootEl → MutationObserver watching the whole subtree.
 // pendingRetestTimers: chainRootEl → { id, burstStartMs }: the pending setTimeout
 //                      id for the debounced re-test, and its burst's start.
@@ -147,6 +148,9 @@ const pendingObservers = new WeakMap();
 const pendingRetestTimers = new WeakMap();
 const pendingRetestCounts = new WeakMap();
 const pendingRoots = new Set();
+// True once a table past DR_DETECTION_SETTINGS.pendingTableCap went unwatched
+// on this page, so the cap writes one log row per page.
+let pendingTableCapLogged = false;
 
 // The changes both observers watch: rows arrive as added nodes, and a cell
 // filled in place changes text alone.
@@ -182,8 +186,8 @@ function cancelSettleWait(key, waits) {
   waits.delete(key);
 }
 
-// findTargetTable() only reports what it found and registers nothing. A grid
-// root it finds for the first time (found.isNew) registers here.
+// findTargetTable() only reports what it found and registers nothing. A table
+// of either kind it finds for the first time (found.isNew) registers here.
 function registerIfNew(found) {
   if (found.isNew) registerDataTable(found.handle);
   return found.handle;
@@ -309,26 +313,15 @@ function registerDataTable(table, hasPassedDataTest = false) {
 // The load-time scan, and the added-node pass for each added element.
 /** @param {Document|Element} [root] The node whose subtree the scan reads. */
 function injectTablePillboxes(root = document) {
-  const { tables, nominations } = scanTables(root, { isRegistered: DR_MODEL.hasTable });
-  tables.forEach(table => {
-    if (!DR_MODEL.hasTable(table)) registerDataTable(table);
-  });
-  consumeNominations(nominations);
+  scanTables(root, { isRegistered: DR_MODEL.hasTable }).forEach(consumeNomination);
 }
 
-// The one consumer of the nomination step's per-nest outcomes. The table
-// scan above routes its grid pass through here, for the load-time scan and
-// the added-node pass alike, so the pending record and its clearing sit
-// behind the step's outcome and never in a caller. The step returns
-// outcomes; this is where an outcome becomes a registration or a watch.
+// The one consumer of the nomination step's per-nest outcomes, for both table
+// kinds, the load-time scan, the added-node pass, and the re-test of a pending
+// table alike, so the pending record and its clearing sit behind the step's
+// outcome and never in a caller. The step returns outcomes; this is where an
+// outcome becomes a registration or a watch.
 //
-// The step's results hold grids alone: each scanner's own pass 1 covers native
-// <table> elements, and the nomination step's two guards keep a native table
-// out of a nest. So no tagName check sits here.
-function consumeNominations(results) {
-  for (const result of results) consumeNomination(result);
-}
-
 // One nest's outcome:
 //   'selected'   register the element the step selected and drop any pending
 //                record the nest carried.
@@ -368,6 +361,10 @@ function consumeNomination({ chainRoot, selected, outcome }) {
 // One observer per chain root, whatever the number of qualifying elements
 // under it: the nomination step keys its results by chain root, so a nest of
 // three role-bearing elements produces one outcome and one watch.
+//
+// A new record past DR_DETECTION_SETTINGS.pendingTableCap does not start, and
+// the first such table on the page writes one row. A record that drops frees
+// its place.
 function holdPendingTable(chainRoot) {
   if (pendingRoots.has(chainRoot)) {
     const count = (pendingRetestCounts.get(chainRoot) || 0) + 1;
@@ -379,6 +376,13 @@ function holdPendingTable(chainRoot) {
     return;
   }
   if (typeof MutationObserver === 'undefined') return;
+  if (pendingRoots.size >= DR_DETECTION_SETTINGS.pendingTableCap) {
+    if (!pendingTableCapLogged) {
+      pendingTableCapLogged = true;
+      DR_LOG.debug(DR_LOG.formatRow('pending table cap', { tables: DR_DETECTION_SETTINGS.pendingTableCap }));
+    }
+    return;
+  }
   // No longest wait: a pending table under constant page changes waits for
   // the page to go quiet, and the re-test cap bounds only the failed re-tests.
   const observer = new MutationObserver(

@@ -1594,6 +1594,8 @@
     </table>
 
     <h3>17c. No numbers anywhere</h3>
+    <p class="expect">Expect: right-click any cell: nothing on the page
+      changes. A failure flashes the table.</p>
     <table>
       <tr>
         <th>City</th>
@@ -4339,6 +4341,67 @@ TSLA,75,"248.09","18,606.75"
           <span role="cell">East</span>
           <span role="cell">427,808</span>
           <span role="cell">431,552</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>37. Tables that fill in after they appear</h2>
+    <p>A native table and a grid holding the same rows: a Region column and
+      a Units column. Every Units cell starts empty. Press the Fill the tables
+      button to put a number in every Units cell of both tables.</p>
+    <p class="expect">Expect: no table pillbox on either table until the
+      button press. After it, both tables get a table pillbox within a moment.
+      A failure shows no table pillbox on one of the tables after the
+      press.</p>
+    <div class="rw-buttons">
+      <button type="button" id="late-fill">Fill the tables</button>
+    </div>
+    <script>
+      (function () {
+        var UNITS = ['2,418,906', '731,254', '86,317'];
+        document.getElementById('late-fill').addEventListener('click', function () {
+          var native = document.querySelectorAll('#late-fill-native tbody td:nth-child(2)');
+          var grid = document.querySelectorAll('#late-fill-grid [role="rowgroup"] [role="cell"]:nth-child(2)');
+          UNITS.forEach(function (units, i) {
+            native[i].textContent = units;
+            grid[i].textContent = units;
+          });
+        });
+      })();
+    </script>
+
+    <table id="late-fill-native">
+      <thead>
+        <tr>
+          <th scope="col">Region</th>
+          <th scope="col">Units</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>North</td><td></td></tr>
+        <tr><td>South</td><td></td></tr>
+        <tr><td>East</td><td></td></tr>
+      </tbody>
+    </table>
+    <div id="late-fill-grid" class="aria-grid" role="grid" aria-label="Units by region, filled in later">
+      <div class="g-row" role="row">
+        <span role="columnheader">Region</span>
+        <span role="columnheader">Units</span>
+      </div>
+      <div role="rowgroup">
+        <div class="g-row" role="row">
+          <span role="cell">North</span>
+          <span role="cell"></span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">South</span>
+          <span role="cell"></span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">East</span>
+          <span role="cell"></span>
         </div>
       </div>
     </div>

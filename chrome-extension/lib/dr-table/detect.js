@@ -108,17 +108,16 @@ function firstCellsAlign(children, candidateRows, styleProbe) {
 
 /**
  * Find the grid or table root for the element `el` was right-clicked inside.
- * Four routes apply in order: the nearest <table> ancestor that is not an
- * accessibility artifact (an artifact is passed over for the table around
- * it); the nearest registered ancestor; the nomination step over the nest `el`
- * sits in, which finds a marked grid the load-time scan missed; and the
- * outermost looksLikeGrid match above `el`.
+ * Four routes apply in order: the nomination step over each <table> ancestor,
+ * nearest first; the nearest registered ancestor; the nomination step over
+ * the nest `el` sits in, which finds a marked grid the load-time scan missed;
+ * and the outermost looksLikeGrid match above `el`. A native table that is an
+ * accessibility artifact or fails the data test is passed over for the table
+ * around it, the way a grid nest that selects nothing falls to the next route.
  *
  * `isNew` is true when the caller still has to mark the element and build its
- * table pillbox. The first route returns isNew: false for every native table,
- * registered or not, because the load-time scan and the added-node pass
- * register native tables. Without opts.isRegistered the last two routes
- * return isNew: true. Returns null if nothing matches.
+ * table pillbox. Without opts.isRegistered every result reports isNew: true.
+ * Returns null if nothing matches.
  *
  * @param {Element} el
  * @param {{styleProbe?: object, vendorProfiles?: object[], doc?: Document, isRegistered?: (handle: Element) => boolean}} [opts]
@@ -130,13 +129,14 @@ function findTargetTable(el, opts = {}) {
   const isRegistered = opts.isRegistered || (() => false);
   const docBody = doc && doc.body;
 
-  if (typeof el.closest === 'function') {
-    let tableAncestor = el.closest('table');
-    while (tableAncestor && !registrableTables([tableAncestor], opts).length) {
-      const above = parentOf(tableAncestor);
-      tableAncestor = above && typeof above.closest === 'function' ? above.closest('table') : null;
+  let tableAncestor = typeof el.closest === 'function' ? el.closest('table') : null;
+  while (tableAncestor) {
+    const { outcome } = nominateNest(tableAncestor, { ...opts, isRegistered });
+    if (outcome === 'selected' || outcome === 'registered') {
+      return { handle: tableAncestor, isNew: outcome === 'selected' };
     }
-    if (tableAncestor) return { handle: tableAncestor, isNew: false };
+    const above = parentOf(tableAncestor);
+    tableAncestor = above && typeof above.closest === 'function' ? above.closest('table') : null;
   }
   const registered = registeredAncestor(el, docBody, isRegistered);
   if (registered) return { handle: registered, isNew: false };
@@ -431,7 +431,7 @@ function sameTableFingerprint(a, b) {
 /**
  * The three guards of a qualifying element: it is not a native table, it is
  * not an accessibility artifact, and every native table it holds is one
- * isArtifact drops (pass 1 reports the others).
+ * isArtifact drops (the scan runs each of the others as a nest of one).
  *
  * @param {Element} el
  * @param {(table: Element, opts: object) => boolean} isArtifact
@@ -554,9 +554,11 @@ function chainRootOf(el, opts = {}, isQualifying = false) {
  * Run the nomination step on the nest under `chainRoot` and report the
  * outcome.
  *
- * The nest is `chainRoot` plus every qualifying element under it that no cell
- * separates from it: a qualifying element inside a cell belongs to a nest
- * of its own. The chain is the nest's elements that pass the data test,
+ * The nest of a grid is `chainRoot` plus every qualifying element under it
+ * that no cell separates from it: a qualifying element inside a cell belongs
+ * to a nest of its own. A native table is a nest of one, at depth 0, so a
+ * table inside one of its cells is a nest of its own as well. The chain is the
+ * nest's elements that pass the data test,
  * grouped by nesting depth; _selectAtNestingDepth applies
  * DR_DETECTION_SETTINGS.nestingDepth with its two edge rules.
  *
@@ -598,15 +600,14 @@ function nominateNest(chainRoot, opts = {}) {
     return { chainRoot, selected: null, outcome: 'artifact', chainSize: 0 };
   }
 
-  // An element nested in a cell is out of this nest (_depthInChain returns
-  // -1), so a registered grid inside a cell never makes the grid around it
-  // read as registered.
-  const nested = typeof chainRoot.querySelectorAll === 'function'
-    ? Array.from(chainRoot.querySelectorAll(GRID_ARIA_SELECTOR)) : [];
-  const nest = [chainRoot].concat(nested)
-    .filter((el) => _passesAriaGuards(el, isArtifact, opts))
-    .map((el) => ({ el, depth: _depthInChain(el, chainRoot, isArtifact, opts) }))
-    .filter((member) => member.depth >= 0);
+  // A native table is a nest of one. An element nested in a cell is out of a
+  // grid's nest (_depthInChain returns -1), so a registered grid inside a cell
+  // never makes the grid around it read as registered.
+  const nest = chainRoot.tagName === 'TABLE' ? [{ el: chainRoot, depth: 0 }]
+    : [chainRoot].concat(Array.from(chainRoot.querySelectorAll?.(GRID_ARIA_SELECTOR) || []))
+      .filter((el) => _passesAriaGuards(el, isArtifact, opts))
+      .map((el) => ({ el, depth: _depthInChain(el, chainRoot, isArtifact, opts) }))
+      .filter((member) => member.depth >= 0);
 
   // A second registration would put a second table pillbox on one grid.
   if (nest.some(({ el }) => isRegistered(el))) {
@@ -628,59 +629,6 @@ function nominateNest(chainRoot, opts = {}) {
 }
 
 /**
- * Run the nomination step over every nest under `root` and report one result
- * per nest, in document order.
- *
- * From `root` this lists the qualifying elements: `root` itself when it
- * carries the role, plus every descendant carrying it, each past the two
- * guards in _passesAriaGuards. It walks each one up to its chain root and runs
- * nominateNest on every chain root once. A chain root can sit outside `root`
- * (an added node inside a wrapper already in the page), so a second run over
- * the same nest evaluates the whole nest again.
- *
- * Both live scanners (the load-time scan and the added-node pass, both in
- * content.js) reach the grids on a page through this function, and the
- * controller turns each outcome into a registration or a pending table.
- *
- * @param {Element|Document} root
- * @param {{isArtifact?: (table: Element, opts: object) => boolean,
- *          isRegistered?: (handle: Element) => boolean, nestingDepth?: number,
- *          doc?: Document, styleProbe?: object, vendorProfiles?: object[]}} [opts]
- * @returns {{chainRoot: Element, selected: Element|null, outcome: string, chainSize: number}[]}
- */
-function nominateNests(root, opts = {}) {
-  if (!root || typeof root.querySelectorAll !== 'function') return [];
-  const isArtifact = opts.isArtifact || isAccessibilityArtifact;
-
-  const rootCarriesRole = root.tagName !== 'TABLE' && typeof root.matches === 'function' && root.matches(GRID_ARIA_SELECTOR);
-  const roleBearing = (rootCarriesRole ? [root] : []).concat(Array.from(root.querySelectorAll(GRID_ARIA_SELECTOR)));
-  const qualifying = roleBearing.filter((el) => _passesAriaGuards(el, isArtifact, opts));
-
-  // A Set keeps insertion order, so the results stay in document order.
-  const chainRoots = new Set();
-  for (const el of qualifying) chainRoots.add(chainRootOf(el, opts, true));
-
-  const results = [];
-  for (const chainRoot of chainRoots) results.push(nominateNest(chainRoot, opts));
-  return results;
-}
-
-/**
- * The native tables in `tables` that are not accessibility artifacts, in
- * their order. Every scan of native tables filters through this function, so
- * the artifact filter runs in this file alone.
- *
- * @param {Element[]} tables
- * @param {{isArtifact?: (table: Element, opts: object) => boolean,
- *          styleProbe?: object}} [opts]
- * @returns {Element[]}
- */
-function registrableTables(tables, opts = {}) {
-  const isArtifact = opts.isArtifact || isAccessibilityArtifact;
-  return tables.filter((table) => !isArtifact(table, opts));
-}
-
-/**
  * The native tables in `root`: `root` itself when it is a table, then every
  * descendant table, in document order. The one native-table query in the
  * extension.
@@ -694,41 +642,53 @@ function _nativeTablesIn(root) {
 }
 
 /**
- * The one table scan. Both live scanners (the load-time scan and the
- * added-node pass) and findTables read it.
+ * The one table scan: run the nomination step over every nest under `root`
+ * and report one result per nest, native tables first, then grids, each kind
+ * in document order. Both live scanners (the load-time scan and the
+ * added-node pass, both in content.js) and findTables read it, and the
+ * controller turns each outcome into a registration or a pending table.
  *
- * `tables` holds the native tables that are not accessibility artifacts:
- * `root` when it is a table, then its descendant tables. `nominations` holds
- * one nominateNests result per nest under `root`, with every outcome, so a
- * caller can act on 'empty' (pending table) as well as 'selected'. Neither list
- * checks the registry; the caller does.
+ * Each native table under `root`, `root` included, is a nest of one. For the
+ * grids, this lists the qualifying elements: `root` itself when it carries the
+ * role, plus every descendant carrying it, each past the two guards in
+ * _passesAriaGuards. It walks each one up to its chain root and runs
+ * nominateNest on every chain root once. A chain root can sit outside `root`
+ * (an added node inside a wrapper already in the page), so a second run over
+ * the same nest evaluates the whole nest again. No result checks the
+ * registry beyond the step's own 'registered' outcome; the caller does.
  *
  * @param {Element|Document} root
  * @param {{isArtifact?: (table: Element, opts: object) => boolean,
  *          isRegistered?: (handle: Element) => boolean, nestingDepth?: number,
  *          doc?: Document, styleProbe?: object, vendorProfiles?: object[]}} [opts]
- * @returns {{tables: Element[], nominations: {chainRoot: Element, selected: Element|null, outcome: string, chainSize: number}[]}}
+ * @returns {{chainRoot: Element, selected: Element|null, outcome: string, chainSize: number}[]}
  */
 function scanTables(root, opts = {}) {
-  if (!root || typeof root.querySelectorAll !== 'function') return { tables: [], nominations: [] };
-  return {
-    tables: registrableTables(_nativeTablesIn(root), opts),
-    nominations: nominateNests(root, opts),
-  };
+  if (!root || typeof root.querySelectorAll !== 'function') return [];
+  const isArtifact = opts.isArtifact || isAccessibilityArtifact;
+
+  const rootCarriesRole = root.tagName !== 'TABLE' && typeof root.matches === 'function' && root.matches(GRID_ARIA_SELECTOR);
+  const roleBearing = (rootCarriesRole ? [root] : []).concat(Array.from(root.querySelectorAll(GRID_ARIA_SELECTOR)));
+  const qualifying = roleBearing.filter((el) => _passesAriaGuards(el, isArtifact, opts));
+
+  // A Set keeps insertion order, so the results stay in the order above.
+  const chainRoots = new Set(_nativeTablesIn(root));
+  for (const el of qualifying) chainRoots.add(chainRootOf(el, opts, true));
+
+  return Array.from(chainRoots, (chainRoot) => nominateNest(chainRoot, opts));
 }
 
 /**
- * The handles scanTables finds under `root`, native tables first, then the
- * nests the nomination step reports as 'selected'. A table root yields itself
+ * The handles scanTables finds under `root`: the nests the nomination step
+ * reports as 'selected', native tables first. A table root yields itself
  * alone among the native tables. A caller that acts on the other outcomes — the
  * controller, which holds a pending table for an empty nest — reads
  * scanTables.
  *
  * Each result is { handle, isNew }; isNew is !opts.isRegistered(handle),
  * where opts.isRegistered is a caller-supplied registered check (e.g.
- * DR_MODEL.hasTable) for native tables and grid roots alike. Without
- * opts.isRegistered every result reports isNew: true, since detection keeps
- * no registry.
+ * DR_MODEL.hasTable). Without opts.isRegistered every result reports
+ * isNew: true, since detection keeps no registry.
  *
  * @param {Element|Document} root
  * @param {{isArtifact?: (table: Element, opts: object) => boolean,
@@ -738,10 +698,10 @@ function scanTables(root, opts = {}) {
  */
 function findTables(root, opts = {}) {
   const isRegistered = opts.isRegistered || (() => false);
-  const { tables, nominations } = scanTables(root, opts);
+  const handles = scanTables(root, opts).filter(({ outcome }) => outcome === 'selected').map(({ selected }) => selected);
   // A table root yields itself alone, so a shape-change re-registration covers
   // that one table.
-  const native = root && root.tagName === 'TABLE' ? tables.filter((table) => table === root) : tables;
-  const handles = native.concat(nominations.filter(({ outcome }) => outcome === 'selected').map(({ selected }) => selected));
-  return handles.map((handle) => ({ handle, isNew: !isRegistered(handle) }));
+  const isTableRoot = root && root.tagName === 'TABLE';
+  return handles.filter((handle) => !isTableRoot || handle === root || handle.tagName !== 'TABLE')
+    .map((handle) => ({ handle, isNew: !isRegistered(handle) }));
 }

@@ -1402,7 +1402,6 @@ checkPackageObjectMatchesDeclarations('dr-number', 'DR_NUMBER',
     'findTargetTable',
     'findTables',
     'scanTables',
-    'registrableTables',
     'chainRootOf',
     'isAccessibilityArtifact',
     'isDataTable',
@@ -1575,9 +1574,8 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
     controllerSrc !== null &&
       (controllerSrc.includes('GRID_ARIA_SELECTOR') || controllerSrc.includes('role="grid"')),
     false);
-  // The step's page-wide entry point is nominateNests, which scanTables
-  // composes. The load-time scan and the added-node pass share one function,
-  // and that function calls scanTables.
+  // The step's page-wide entry point is scanTables. The load-time scan and
+  // the added-node pass share one function, and that function calls it.
   eq('nesting: the load-time scan calls the table scan',
     controllerSrc !== null && /scanTables\s*\(/.test(controllerSrc), true);
   eq('nesting: the added-node pass passes each added element to the load-time scan function',
@@ -1907,7 +1905,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
     return;
   }
   const FORBIDDEN_CONTROLLER_CALLS = ['applySidebarRounding', 'resetTable', 'roundTable',
-    'registerDataTable', 'injectTablePillboxes', 'consumeNominations'];
+    'registerDataTable', 'injectTablePillboxes', 'consumeNomination'];
   // Sanity check on the scan itself: every forbidden name is a real function
   // in the content-script stack, so the filter below tests something.
   const missingFromController = FORBIDDEN_CONTROLLER_CALLS.filter(
