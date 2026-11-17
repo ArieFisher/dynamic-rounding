@@ -263,11 +263,11 @@ const isMonth = (s) => { const n = parseInt(s, 10); return n >= 1 && n <= 12; };
 // month stands before the year, its bounds in the text, and the span the month
 // granularity removes (null when the date holds no day). The column post-pass
 // builds the same shape for an all-numeric date once its column settles.
-function knownDate(year, month, monthFirst, start, end, dayCut) {
-  return { year, month, monthFirst, start, end, dayCut };
+function knownDate(year, month, monthBeforeYear, start, end, dayCut) {
+  return { year, month, monthBeforeYear, start, end, dayCut };
 }
-const datePart = (m, year, month, monthFirst, dayCut) =>
-  knownDate(parseInt(year, 10), month, monthFirst, m.index, m.index + m[0].length, dayCut);
+const datePart = (m, year, month, monthBeforeYear, dayCut) =>
+  knownDate(parseInt(year, 10), month, monthBeforeYear, m.index, m.index + m[0].length, dayCut);
 
 // The date shapes findDates reads; on two matches at the same position the
 // earlier shape wins. Each regex carries the d flag, so a match holds its
@@ -339,8 +339,8 @@ const BARE_YEAR_RE = new RegExp(`^${DATE_NOISE_CLASS}*${YEAR}${DATE_NOISE_CLASS}
  *   All numeric:   7/21/2020 / 21-07-20 (read by the column post-pass)
  *   Bare year:     2020, as the whole cell
  * Each date is one of:
- *   - a date with a known reading: { year, month, monthFirst, start, end, dayCut }
- *     (a bare year holds month null and no monthFirst)
+ *   - a date with a known reading: { year, month, monthBeforeYear, start, end, dayCut }
+ *     (a bare year holds month null and no monthBeforeYear)
  *   - an all-numeric date: { year, n1, n2, start, end, n1Cut, n2Cut }
  *     (see isAmbiguousDate)
  *   - a date that cannot exist ("2020-13-45"): { impossible: true, start, end }
@@ -450,7 +450,7 @@ function isDateTimeLike(text) {
  *
  * @param {string} text          - The cell's trimmed text.
  * @param {string} granularity   - 'month' | 'quarter' | 'year' | 'decade' | 'century'.
- * @param {{year:number, month:number|null, monthFirst?:boolean, start:number, end:number,
+ * @param {{year:number, month:number|null, monthBeforeYear?:boolean, start:number, end:number,
  *   dayCut:{start:number,end:number}|null}[]} [dates]
  *   The dates the classification pass read from this text, each with a known
  *   reading, in text order. If omitted, findDates is called, and text holding
@@ -470,7 +470,7 @@ function roundDateText(text, granularity, dates) {
     } else if (granularity === 'quarter') {
       if (!d.month) continue;
       const q = 'Q' + Math.ceil(d.month / 3);
-      out = out.slice(0, d.start) + (d.monthFirst ? q + ' ' + d.year : d.year + ' ' + q) + out.slice(d.end);
+      out = out.slice(0, d.start) + (d.monthBeforeYear ? q + ' ' + d.year : d.year + ' ' + q) + out.slice(d.end);
     } else {
       out = out.slice(0, d.start) + String(Math.floor(d.year / step) * step) + out.slice(d.end);
     }

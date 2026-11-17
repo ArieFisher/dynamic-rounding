@@ -80,7 +80,7 @@
   eq('classifyCell: unambiguous date-like cell resolves when simplifyDates is true',
     classifyCell({ text: '2020-01-01', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
     { mode: 'date', reason: 'simplify', value: { dates: [{
-      year: 2020, month: 1, monthFirst: false, start: 0, end: 10, dayCut: { start: 7, end: 10 } }] } });
+      year: 2020, month: 1, monthBeforeYear: false, start: 0, end: 10, dayCut: { start: 7, end: 10 } }] } });
   eq('classifyCell: ambiguous numeric date returns a pending decision',
     classifyCell({ text: '03/04/2020', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
     { mode: 'date', reason: 'simplify', pending: 'ambiguous-date', value: { dates: [{
@@ -192,11 +192,11 @@
   eq('resolveAmbiguousDateDecision: month-first resolves n1 as month, n2 as day',
     resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'month-first'),
     { mode: 'date', reason: 'simplify', value: { dates: [{
-      year: 2020, month: 3, monthFirst: true, start: 0, end: 10, dayCut: { start: 3, end: 6 } }] } });
+      year: 2020, month: 3, monthBeforeYear: true, start: 0, end: 10, dayCut: { start: 3, end: 6 } }] } });
   eq('resolveAmbiguousDateDecision: day-first resolves n2 as month, n1 as day',
     resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'day-first'),
     { mode: 'date', reason: 'simplify', value: { dates: [{
-      year: 2020, month: 4, monthFirst: true, start: 0, end: 10, dayCut: { start: 0, end: 3 } }] } });
+      year: 2020, month: 4, monthBeforeYear: true, start: 0, end: 10, dayCut: { start: 0, end: 3 } }] } });
   eq('resolveAmbiguousDateDecision: mixed downgrades to skip',
     resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'mixed'),
     { mode: 'skip', reason: 'ambiguous-date' });
