@@ -141,7 +141,7 @@ function findTargetTable(el, opts = {}) {
   const registered = registeredAncestor(el, docBody, isRegistered);
   if (registered) return { handle: registered, isNew: false };
   const nominated = nominatedInNest(el, { ...opts, isRegistered });
-  if (nominated) return { handle: nominated, isNew: !isRegistered(nominated) };
+  if (nominated) return { handle: nominated, isNew: true };
   const outermost = outermostGridAbove(el, docBody, opts);
   return outermost && { handle: outermost, isNew: !isRegistered(outermost) };
 }
