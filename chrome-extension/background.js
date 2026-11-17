@@ -18,7 +18,7 @@ chrome.runtime.onInstalled.addListener(() => {
   // gives no activeTab grant, so the screenshot fails.
   if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
     chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch((e) => {
-      DR_LOG.warn(DR_LOG.formatRow('error', { step: 'icon click setting', error: DR_LOG.errorType(e) }));
+      DR_LOG.warnError('icon click setting', e);
     });
   }
   chrome.contextMenus.create({
@@ -43,7 +43,7 @@ async function openSidebarOnTab(tabId) {
   try {
     await chrome.sidePanel.open({ tabId });
   } catch (e) {
-    DR_LOG.warn(DR_LOG.formatRow('error', { step: 'open sidebar', error: DR_LOG.errorType(e) }));
+    DR_LOG.warnError('open sidebar', e);
   }
   DR_BUS.publish('state:sidebarOpened', {}, { tabId });
 }

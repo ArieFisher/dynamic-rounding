@@ -2078,9 +2078,11 @@
   const source = sidebarSrc.match(/function takeCaptureScreenshot\([\s\S]*?\n\}/);
   eq('capture-shot: takeCaptureScreenshot extracted from sidebar.js', !!source, true);
   if (!source) return;
+  // A separate instance of the log module, writing to a console stub, so the
+  // take's rows stay out of the suite's shared log buffer.
   const warned = [];
-  const logStub = { warn: (text) => { warned.push(text); }, debug: () => {},
-    formatRow: DR_LOG.formatRow, errorType: DR_LOG.errorType };
+  const logStub = (new Function('console', sourceByName('lib/dr-log/index.js') + '\nreturn DR_LOG;'))(
+    { warn: (text) => { warned.push(text); }, debug: () => {}, log: () => {}, error: () => {} });
   // The quality constant sits beside the take in the source; the take reads
   // it as a bare name, so the extracted function receives it the same way.
   const quality = sidebarSrc.match(/const CAPTURE_SCREENSHOT_QUALITY = (\d+);/);
@@ -2286,6 +2288,18 @@
     eq('dr-log: an error row carries the stack trace',
       /errorStackProbeCaller/.test(LOG.snapshot().entries.slice(-1)[0].stack || ''), true);
 
+    function failedStepProbeCaller() { LOG.warnError('probe step', new TypeError('x')); }
+    failedStepProbeCaller();
+    const failedStepRow = LOG.snapshot().entries.slice(-1)[0];
+    eq('dr-log: warnError writes a warn row naming the step and the error type',
+      [failedStepRow.level, failedStepRow.text],
+      ['warn', 'Dynamic Rounding: error · step: probe step · error: TypeError']);
+    eq('dr-log: the stack trace of a warnError row starts at its caller',
+      /failedStepProbeCaller/.test(String(failedStepRow.stack).split('\n')[0]), true);
+    LOG.warnError('probe step');
+    eq('dr-log: warnError with no thrown value leaves the error label out',
+      LOG.snapshot().entries.slice(-1)[0].text, 'Dynamic Rounding: error · step: probe step');
+
     LOG.debug('no stack probe');
     eq('dr-log: a debug row carries no stack trace',
       LOG.snapshot().entries.slice(-1)[0].stack, null);
@@ -2451,11 +2465,9 @@
   eq('worker log row: importScripts loads the log module',
     /importScripts\([^)]*lib\/dr-log\/index\.js/.test(bgSrc), true);
   eq('worker log row: the open-sidebar failure records the one row format in the log buffer',
-    /DR_LOG\.warn\(DR_LOG\.formatRow\('error', \{ step: 'open sidebar', error: DR_LOG\.errorType\(e\) \}\)\)/
-      .test(bgSrc), true);
+    /DR_LOG\.warnError\('open sidebar', e\)/.test(bgSrc), true);
   eq('worker log row: the icon click setting failure records the one row format in the log buffer',
-    /DR_LOG\.warn\(DR_LOG\.formatRow\('error', \{ step: 'icon click setting', error: DR_LOG\.errorType\(e\) \}\)\)/
-      .test(bgSrc), true);
+    /DR_LOG\.warnError\('icon click setting', e\)/.test(bgSrc), true);
   eq('worker log row: the worker writes no row to the console directly',
     /console\.(warn|error|log|debug|info)\(/.test(bgSrc), false);
   eq('worker on bus: no raw chrome.tabs.sendMessage call',

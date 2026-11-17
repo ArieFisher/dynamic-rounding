@@ -770,7 +770,7 @@ const CAPTURE_SCREENSHOT_QUALITY = 85;
 function takeCaptureScreenshot(tabsApi, windowId, done) {
   const fail = (reason) => {
     const text = reason && reason.message ? reason.message : String(reason);
-    DR_LOG.warn(DR_LOG.formatRow('error', { step: 'screenshot', error: DR_LOG.errorType(reason) }));
+    DR_LOG.warnError('screenshot', reason);
     done({ dataUrl: null, record: { taken: false, reason: text } });
   };
   if (!tabsApi || typeof tabsApi.captureVisibleTab !== 'function') {
@@ -851,7 +851,7 @@ function assembleAndSaveCapture(mark, remarks, pageState, shot) {
       html: html,
     });
   } catch (e) {
-    DR_LOG.warn(DR_LOG.formatRow('error', { step: 'capture save', error: DR_LOG.errorType(e) }));
+    DR_LOG.warnError('capture save', e);
     writeStatus('Capture failed; nothing was saved.');
     return;
   }
@@ -880,7 +880,7 @@ function saveCapture() {
     if (pending === 0) assembleAndSaveCapture(mark, remarks, pageAnswer, shot);
   };
   DR_BUS.request('request:captureState', {}, (answer) => {
-    if (!answer) DR_LOG.warn(DR_LOG.formatRow('error', { step: 'state pull' }));
+    if (!answer) DR_LOG.warnError('state pull');
     pageAnswer = answer || null;
     settle();
   }, { tabId: boundTab.tabId() });

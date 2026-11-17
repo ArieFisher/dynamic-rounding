@@ -823,7 +823,7 @@ function buildCaptureStateResponse() {
     try {
       lensPreview = extractPreviewSamples(selected);
     } catch (e) {
-      DR_LOG.warn(DR_LOG.formatRow('error', { step: 'lens preview', error: DR_LOG.errorType(e) }));
+      DR_LOG.warnError('lens preview', e);
     }
   }
   return Object.assign({
