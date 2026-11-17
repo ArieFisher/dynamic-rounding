@@ -21,7 +21,7 @@
  * resolveAmbiguousDateDecision, loaded ahead of this file.
  *
  * A classified cell is any object carrying:
- *   text  the text the cell classified (a simplified cell's stored original)
+ *   text  the classified text (a simplified cell's stored original)
  *   info  the decisionToLegacyInfo shape of the ladder's decision
  *   col   the cell's grid column, which groups the column post-pass
  * The step copies every other field through untouched, so a caller can carry
@@ -81,7 +81,7 @@ function datasetMaxMagnitude(entries) {
   return findMaxMagnitude([allNums]);
 }
 
-// One cell's patches, positioned in the text the cell classified: empty for a
+// One cell's patches, positioned in the classified text: empty for a
 // skip cell or an unchanged value. A date or time cell takes one patch: its
 // trimmed text, replaced whole, so the text keeps its own whitespace. Every
 // number takes the one write-back, formatNumber, patched in place. An extracted
@@ -129,7 +129,7 @@ function classifiedCellPatches(entry, maxMag, settings) {
  * @returns {{maxMag: number|null,
  *            cells: Array<{entry: object, patches: object[]}>}}
  *   cells holds every cell in input order: the entry after the column
- *   post-pass, and its patches in the text it classified.
+ *   post-pass, and its patches in the classified text.
  */
 function tablePatches(entries, settings, frozenMaxMag) {
   const resolved = resolveAmbiguousDates(entries);
