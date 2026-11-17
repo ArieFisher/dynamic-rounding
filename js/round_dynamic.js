@@ -1755,7 +1755,7 @@ function classifiedCellPatches(entry, maxMag, settings) {
  * @param {{offsetTop: number, offsetOther: number, numTop: number,
  *          dateGranularity: string, timeGranularity: string}} settings -
  *   Resolved offsets and num_top, and the date and time granularity.
- * @param {number|null} [frozenMaxMag] - A max magnitude the caller holds:
+ * @param {number|null} [passedMaxMag] - A max magnitude the caller holds:
  *   the table's magnitude freeze in the extension, or the max magnitude over
  *   the dataset in Sheets, number cells included. When given, the step
  *   rounds against it and computes none of its own.
@@ -1764,9 +1764,9 @@ function classifiedCellPatches(entry, maxMag, settings) {
  *   cells holds one result per entry, in input order: the entry after the
  *   column post-pass, and its patches in the classified text.
  */
-function tablePatches(entries, settings, frozenMaxMag) {
+function tablePatches(entries, settings, passedMaxMag) {
   const resolved = resolveAmbiguousDates(entries);
-  const maxMag = datasetMaxMagnitude(resolved, frozenMaxMag);
+  const maxMag = datasetMaxMagnitude(resolved, passedMaxMag);
   const cells = resolved.map((entry) =>
     ({ entry, patches: classifiedCellPatches(entry, maxMag, settings) }));
   return { maxMag, cells };
