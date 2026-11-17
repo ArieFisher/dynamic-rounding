@@ -495,16 +495,19 @@ const consistentCellCountStepPasses = (children) =>
 // Helpers for building mock cells that contain <sup> children.
 //
 // The developer's getSuperscriptRanges(cell) walks document.createTreeWalker
-// text nodes and checks parentNode/parentElement upward for tagName === 'SUP'.
-// The roundTable branch guard uses cell.querySelector('sup') to decide whether
-// a cell needs <sup>-aware handling.
+// text nodes and checks parentNode/parentElement upward for tagName === 'SUP'
+// or a computed vertical-align of 'super'. classifyTableCell treats a cell as
+// holding a superscript when those ranges are non-empty or
+// cell.querySelector('sup') finds one.
 //
 // makeSuperscriptCell(segments) builds a mock cell where each segment is
-//   { text: string, inSup: boolean }.
+//   { text: string, inSup: boolean, styledSup?: boolean }.
 // The resulting cell:
 //   - cell.innerText / cell.textContent: concatenation of all segment texts
 //   - cell._textNodes: list of mock text nodes; nodes with inSup:true have
-//     parentNode.tagName === 'SUP'; others have parentNode === cell
+//     parentNode.tagName === 'SUP'; nodes with styledSup:true have a SPAN
+//     parent whose style holds verticalAlign 'super'; others have
+//     parentNode === cell
 //   - cell.querySelector('sup'): returns a truthy object when any inSup:true
 //     segment exists; null otherwise
 //   - cell.querySelectorAll('a'): returns [] (no anchors, so filterLinkMatches

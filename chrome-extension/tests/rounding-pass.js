@@ -1080,6 +1080,31 @@ const SEAT_ROWS = [
   });
 })();
 
+// A native cell whose raised digits sit in a span styled vertical-align:
+// super rounds exactly like the same cell written with a <sup>.
+(function supStyled_nativeCellRoundsLikeASupCell() {
+  const roundOne = (raised) => {
+    const cell = makeSuperscriptCell([
+      { text: '4,523,789 ', inSup: false },
+      Object.assign({ text: '12', inSup: false }, raised),
+    ]);
+    roundTable({ rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} }, supTestOpts);
+    return cell._textNodes.map((node) => node.nodeValue);
+  };
+  const saved = global.getComputedStyle;
+  global.getComputedStyle = inlineStyleProbe.getComputedStyle;
+  try {
+    withSupCreateTreeWalker(function() {
+      const sup = roundOne({ inSup: true });
+      const styled = roundOne({ styledSup: true });
+      eq('styled superscript (native): the base rounds and the raised digits stay', styled, ['4,500,000 ', '12']);
+      eq('styled superscript (native): the cell rounds the same as a <sup> cell', styled, sup);
+    });
+  } finally {
+    global.getComputedStyle = saved;
+  }
+})();
+
 // ---------------------------------------------------------------------------
 // SimplifyDates / simplifyTimes boolean wiring
 //
@@ -1947,6 +1972,44 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     if (saved === undefined) delete global.document.createTreeWalker;
     else global.document.createTreeWalker = saved;
     DR_MODEL.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+// A grid cell whose raised digits sit in a span styled vertical-align: super
+// rounds exactly like the same cell written with a <sup>.
+(function gridStyledSuperscript_roundsLikeASupCell() {
+  const roundOne = (raisedEl) => {
+    const grid = makeE2EGridWrapper([['4,523,789 12']]);
+    const [cell] = grid.cellEls;
+    raisedEl.childNodes[0].parentElement = raisedEl;
+    setGridCellPieces(cell, [makeTextNode('4,523,789 '), raisedEl]);
+    cell.querySelector = (sel) => (sel === 'sup' && raisedEl.tagName === 'SUP' ? raisedEl : null);
+    try {
+      roundTableUnder(grid.wrapperEl, PATCH_GRID_OPTS);
+      return pieceTextsOf(cell);
+    } finally {
+      DR_MODEL.unregisterTable(grid.wrapperEl);
+    }
+  };
+  const sup = Object.assign(makeElementNode('sup', [makeTextNode('12')]), { tagName: 'SUP' });
+  const styled = Object.assign(makeElementNode('raised', [makeTextNode('12')]),
+    { tagName: 'SPAN', style: { verticalAlign: 'super' } });
+  const savedWalker = global.document.createTreeWalker;
+  const savedStyle = global.getComputedStyle;
+  global.document.createTreeWalker = (root) => {
+    const nodes = gridCellTextPieces(root);
+    return { nextNode() { return nodes.shift() || null; } };
+  };
+  global.getComputedStyle = inlineStyleProbe.getComputedStyle;
+  try {
+    const supTexts = roundOne(sup);
+    const styledTexts = roundOne(styled);
+    eq('styled superscript (grid): the base rounds and the raised digits stay', styledTexts, ['4,500,000 ', '12']);
+    eq('styled superscript (grid): the cell rounds the same as a <sup> cell', styledTexts, supTexts);
+  } finally {
+    if (savedWalker === undefined) delete global.document.createTreeWalker;
+    else global.document.createTreeWalker = savedWalker;
+    global.getComputedStyle = savedStyle;
   }
 })();
 
