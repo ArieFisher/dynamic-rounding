@@ -62,9 +62,10 @@ function resolveAmbiguousDates(entries) {
   });
 }
 
-// The max magnitude over each number of every extracted cell in entries; a
-// date or time cell adds none.
-function datasetMaxMagnitude(entries) {
+// passedMaxMag when the caller passes one, else the max magnitude over each
+// number of every extracted cell in entries; a date or time cell adds none.
+function datasetMaxMagnitude(entries, passedMaxMag) {
+  if (passedMaxMag != null) return passedMaxMag;
   const allNums = [];
   for (const { info } of entries) {
     if (info.mode === 'extracted') {
@@ -123,9 +124,7 @@ function classifiedCellPatches(entry, maxMag, settings) {
  */
 function tablePatches(entries, settings, frozenMaxMag) {
   const resolved = resolveAmbiguousDates(entries);
-  const maxMag = (frozenMaxMag !== undefined && frozenMaxMag !== null)
-    ? frozenMaxMag
-    : datasetMaxMagnitude(resolved);
+  const maxMag = datasetMaxMagnitude(resolved, frozenMaxMag);
   const cells = resolved.map((entry) =>
     ({ entry, patches: classifiedCellPatches(entry, maxMag, settings) }));
   return { maxMag, cells };

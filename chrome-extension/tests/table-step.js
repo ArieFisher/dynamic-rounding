@@ -191,7 +191,6 @@ function applyTableStepPatches(text, patches) {
   // A stub declared after the real one replaces it in the same scope, so a
   // call to it throws.
   const loaded = loadTableStepAlone(
-    'function datasetMaxMagnitude() { throw new Error("the table step computed a max magnitude"); }\n' +
     'function findMaxMagnitude() { throw new Error("the table step computed a max magnitude"); }\n');
   if (loaded === null) return;
   const { api } = loaded;

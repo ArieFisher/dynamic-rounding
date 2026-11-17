@@ -726,8 +726,7 @@ function extractPreviewSamples(table) {
   if (cells.length === 0) {
     return { samples: { top: [], bottom: [] }, maxMag: null };
   }
-  const frozenMaxMag = DR_MODEL.getTableMaxMagnitude(table);
-  const maxMag = frozenMaxMag != null ? frozenMaxMag : datasetMaxMagnitude(entries);
+  const maxMag = datasetMaxMagnitude(entries, DR_MODEL.getTableMaxMagnitude(table));
   const { offsetTop: topOffset, offsetOther: otherOffset, numTop } =
     resolveRoundingSettings(liveSettings);
 
