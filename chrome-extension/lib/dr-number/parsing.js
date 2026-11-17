@@ -487,22 +487,25 @@ const TIME_STEP_SECONDS = { minute: SECONDS_PER_MINUTE, hour: SECONDS_PER_HOUR }
  * date-time. The time rounds to the nearest hour or minute, half up. A time in
  * the last hour of the clock goes down at hour, and a time in its last minute
  * goes down at minute, so no time passes midnight. The last hour is an hour of
- * 23, or an hour of 11 as written with PM or with no AM/PM. The seconds drop.
+ * 23, or an hour of 11 as written with PM or, off the twenty-four hour clock,
+ * with no AM/PM. The seconds drop.
  *
- * @param {{hour:number, minute:number, second:number, isPm?:boolean}} time
+ * @param {{hour:number, minute:number, second:number, isPm?:boolean, isTwentyFourHour?:boolean}} time
  *   The hour as written; isPm is true or false with an AM/PM and absent without.
+ *   isTwentyFourHour is true for an ISO date-time, which is always on the
+ *   twenty-four hour clock.
  * @param {string} granularity - 'minute' | 'hour'.
  * @returns {{hour:number, minute:number, isPm:boolean|null}|null}
  *   The hour in the convention it came in, or null for a part out of range or
  *   an unknown granularity.
  */
-function roundClockTime({ hour, minute, second, isPm }, granularity) {
+function roundClockTime({ hour, minute, second, isPm, isTwentyFourHour }, granularity) {
   const step = TIME_STEP_SECONDS[granularity];
   const hasMeridiem = typeof isPm === 'boolean';
   const hourInRange = hasMeridiem ? hour >= 1 && hour <= 12 : hour >= 0 && hour <= 23;
   if (!step || !hourInRange || minute > 59 || second > 59) return null;
   const hour24 = hasMeridiem ? (hour % 12) + (isPm ? 12 : 0) : hour;
-  const isLastHour = hour24 === 23 || (!hasMeridiem && hour === 11);
+  const isLastHour = hour24 === 23 || (!hasMeridiem && !isTwentyFourHour && hour === 11);
   const isLastStep = isLastHour && (granularity === 'hour' || minute === 59);
   const total = hour24 * SECONDS_PER_HOUR + minute * SECONDS_PER_MINUTE + second;
   const down = total - (total % step);
@@ -528,7 +531,7 @@ function roundTimeText(text, granularity) {
   const m = dt ? null : trimmed.match(WHOLE_CELL_TIME_RE);
   if (!dt && !m) return null;
   const meridiem = m ? m[4] || '' : '';
-  const time = dt || {
+  const time = dt ? { ...dt, isTwentyFourHour: true } : {
     hour: parseInt(m[1], 10), minute: parseInt(m[2], 10), second: m[3] ? parseInt(m[3], 10) : 0,
     isPm: meridiem ? /p/i.test(meridiem) : undefined,
   };
