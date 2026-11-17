@@ -13,12 +13,6 @@ importScripts('lib/dr-log/index.js', 'adapters/messaging.js');
 const PAGE_MENU_CONTEXTS = ["page", "frame", "selection", "link", "editable", "image", "video", "audio"];
 
 chrome.runtime.onInstalled.addListener(() => {
-  // Versions before 1.7.1 stored true here, and Chrome may still hold it.
-  // With true, Chrome opens the sidebar itself on a toolbar icon click, which
-  // gives no activeTab grant, so the screenshot fails.
-  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch((e) => {
-    DR_LOG.warnError('toolbar icon click setting', e);
-  });
   chrome.contextMenus.create({
     id: "dr-menu-toggle",
     title: "Simplify",
@@ -29,14 +23,20 @@ chrome.runtime.onInstalled.addListener(() => {
     title: "Simplify and open sidebar",
     contexts: PAGE_MENU_CONTEXTS
   });
+  // After the menu items, so a Chrome without this call still gets them.
+  // Versions before 1.7.1 stored true here, and Chrome may still hold it.
+  // With true, Chrome opens the sidebar itself on a toolbar icon click, which
+  // gives no activeTab grant, so the screenshot fails.
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch((e) => {
+    DR_LOG.warnError('toolbar icon click setting', e);
+  });
 });
 
 /**
  * Opens the sidebar for a tab and, once the open succeeds, tells the tab's
- * content script. Chrome
- * gives the activeTab grant the screenshot needs, and accepts the open, only
- * as a direct response to the user's click, so a caller runs this before
- * any await of its own.
+ * content script. Chrome gives the activeTab grant the screenshot needs, and
+ * accepts the open, only as a direct response to the user's click, so a
+ * caller runs this before any await of its own.
  */
 async function openSidebarOnTab(tabId) {
   try {
