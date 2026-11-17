@@ -27,13 +27,7 @@
   // covers the whole extension, service worker and sidebar included, not
   // just the content script.
   const SIDEBAR_STATE_NAMES = /sidebarOpen|isSidebarOpen|setSidebarOpen|state:sidebarOpenChanged/;
-  // The bus topic for "the sidebar was opened" shares the scan's
-  // prefix and is a different thing: an event that happened, named once, not
-  // a stored answer to "is it open". Its exact spelling is struck from the
-  // source before the scan, so every other name carrying the prefix — a bare
-  // sidebarOpened field included — still fails here.
-  const SIDEBAR_OPENED_TOPIC = /state:sidebarOpened/g;
-  const namesSidebarState = (src) => SIDEBAR_STATE_NAMES.test(src.replace(SIDEBAR_OPENED_TOPIC, ''));
+  const namesSidebarState = (src) => SIDEBAR_STATE_NAMES.test(src);
   eq('sidebar-state removal: app/model.js declares no sidebar-open field',
     namesSidebarState(modelSrc), false);
   eq('sidebar-state removal: the content-script stack names no sidebar-open value',
@@ -42,15 +36,8 @@
     namesSidebarState(sidebarSrc), false);
   eq('sidebar-state removal: background.js names no sidebar-open value',
     namesSidebarState(fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8')), false);
-  // The struck spelling is the topic name alone: a bare field carrying it
-  // still trips the scan.
   eq('sidebar-state removal: a reintroduced sidebarOpened field still fails the scan',
     namesSidebarState('let sidebarOpened = false;'), true);
-
-  // state:sidebarOpened survives — it still runs the shape check and tells the
-  // sidebar to re-read — but it records nothing about the sidebar.
-  eq('sidebar-state removal: state:sidebarOpened still tells the sidebar to re-read',
-    /state:sidebarOpened[\s\S]{0,700}state:previewSamplesChanged/.test(contentSrc), true);
 
   // The merged press path: one settings write, and no read of any sidebar
   // value. The behavioral pins live in the part-one block further down; this

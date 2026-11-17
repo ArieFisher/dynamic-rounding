@@ -60,9 +60,8 @@ const DR_BUS = (function () {
     'request:applySettings': { family: REQUEST, route: ROUTE_TAB },
     'request:activeTable': { family: REQUEST, route: ROUTE_TAB },
     'request:captureState': { family: REQUEST, route: ROUTE_TAB },
-    // Topics between the service worker and the other two contexts.
+    // The service worker's one topic, for the tab's content script.
     'intent:menuClicked': { family: INTENT, route: ROUTE_TAB },
-    'state:sidebarOpened': { family: STATE_CHANGE, route: ROUTE_TAB },
     // The content script's topics for the sidebar. Each takes the
     // extension-pages route: the content script has no chrome.tabs, and the
     // sidebar is an extension page.
@@ -196,8 +195,8 @@ const DR_BUS = (function () {
   }
 
   // A tab-routed send needs a tab number. A caller holding one passes it as
-  // opts.tabId: the service worker does, for the right-clicked tab and the
-  // bound tab, and the sidebar does, for its bound tab. Otherwise the bus
+  // opts.tabId: the service worker does, for the right-clicked tab, and the
+  // sidebar does, for its bound tab. Otherwise the bus
   // queries the tab in front of the current window.
   //
   // onReply, when given, receives the responder's answer, or undefined on

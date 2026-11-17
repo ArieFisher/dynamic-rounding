@@ -264,8 +264,6 @@ globalThis.applySidebarRounding = applySidebarRounding;
 let passed = 0;
 let failed = 0;
 const failures = [];
-// The checks afterSettle holds back; the report waits for every one.
-const pendingChecks = [];
 
 function eq(name, actual, expected) {
   const ok = JSON.stringify(actual) === JSON.stringify(expected);

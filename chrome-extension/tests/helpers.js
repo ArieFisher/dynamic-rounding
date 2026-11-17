@@ -4,13 +4,6 @@
 // says. A new helper goes here; a test section goes in the piece for the
 // area it tests.
 
-// Runs check once every promise callback already queued has run, for code
-// under test that acts after an await. A macrotask runs only after the
-// microtask queue is empty, so one setImmediate is enough.
-function afterSettle(check) {
-  pendingChecks.push(new Promise((resolve) => setImmediate(resolve)).then(check));
-}
-
 // A mock cell's one text piece, the way a page element holds its text: a
 // text node child whose value reads and writes the cell's text. The placement
 // step reads a native cell's text pieces, so a mock cell with no text node

@@ -32,24 +32,18 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-/**
- * Opens the sidebar for a tab and, once the open succeeds, tells the tab's
- * content script. Chrome gives the activeTab grant the screenshot needs, and
- * accepts the open, only as a direct response to the user's click, so a
- * caller runs this before any await of its own.
- */
+// Chrome gives the activeTab grant the screenshot needs, and accepts the
+// open, only as a direct response to the user's click, so a caller runs this
+// before any await of its own.
 async function openSidebarOnTab(tabId) {
   try {
     await chrome.sidePanel.open({ tabId });
-    DR_BUS.publish('state:sidebarOpened', {}, { tabId });
   } catch (e) {
     DR_LOG.warnError('open sidebar', e);
   }
 }
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  // The toggle goes before the sidebar-opened topic, so the redraw read that
-  // topic triggers returns the toggled settings.
   DR_BUS.publish('intent:menuClicked', {}, { tabId: tab.id });
   if (info.menuItemId === "dr-menu-toggle-sidebar") openSidebarOnTab(tab.id);
 });
