@@ -2,13 +2,10 @@
  * DynamicRounding lib/dr-number package bundle.
  *
  * Loaded LAST within lib/dr-number, after rounding.js, core.js, parsing.js,
- * and identifiers.js. Those four files still declare their functions as bare
- * top-level names on the shared global scope (content.js and sidebar.js
- * keep consuming those bare names unchanged — this sprint does not migrate
- * any consumer). This file adds one more thing:
- * a single DR_NUMBER object that groups every public function the package
- * exposes, so future consumers can start depending on DR_NUMBER.x instead of
- * the bare name without another move.
+ * and identifiers.js. Those four files declare their functions as bare
+ * top-level names on the shared global scope, and their callers call those
+ * bare names. This file adds a single DR_NUMBER object that groups every
+ * public function the package exposes. No file reads DR_NUMBER.x yet.
  *
  * No logic lives here — this is a pure re-export list. Do not add behavior.
  */

@@ -3558,3 +3558,42 @@ const AF_VISIBLE_FORMS = [
 function afSame(actual, expected) {
   return actual.length === expected.length && actual.every((el, i) => el === expected[i]);
 }
+
+// A package's index.js must declare exactly one top-level name, its package
+// object. A check of the object's keys alone would miss a stray second
+// top-level const or function, which lands on the shared content-script scope.
+function checkIndexDeclaresOnlyPackageObject(packageDir, objectName) {
+  const indexPath = `lib/${packageDir}/index.js`;
+  const indexSrc = sourceByName(indexPath);
+  if (indexSrc === null) {
+    eq(`${indexPath}: source present in manifest`, false, true);
+    return;
+  }
+  const topLevelDeclarations = indexSrc.match(/^(const|let|var|function\b|class\b)/gm) || [];
+  eq(`${indexPath}: exactly one top-level declaration in the file`,
+    topLevelDeclarations.length, 1);
+  eq(`${indexPath}: the sole top-level declaration is ${objectName}`,
+    new RegExp(`^const ${objectName}\\b`, 'm').test(indexSrc), true);
+}
+
+// Derives the expected keys of a package object from the top-level
+// `function name(...)` declarations in the package's source files, so a
+// function added to or removed from one of them without a matching index.js
+// edit fails here.
+function checkPackageObjectMatchesDeclarations(packageDir, objectName, sourceFiles) {
+  const FUNCTION_DECL_RE = /^function\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm;
+  const declaredNames = sourceFiles.flatMap((file) => {
+    const code = sourceByName(`lib/${packageDir}/${file}`);
+    eq(`lib/${packageDir}/${file}: source present in manifest`, code !== null, true);
+    return code === null ? [] : [...code.matchAll(FUNCTION_DECL_RE)].map((m) => m[1]);
+  }).sort();
+  const packageObject = globalThis[objectName] || {};
+  eq(`lib/${packageDir} bundle: source files declared at least one top-level function`,
+    declaredNames.length > 0, true);
+  eq(`lib/${packageDir}/index.js: ${objectName} exists on the global scope after the main eval`,
+    typeof globalThis[objectName], 'object');
+  eq(`lib/${packageDir} bundle: ${objectName} keys are exactly the top-level functions declared in ${sourceFiles.join(', ')}`,
+    Object.keys(packageObject).sort(), declaredNames);
+  eq(`lib/${packageDir} bundle: every ${objectName} entry is itself a function`,
+    declaredNames.every((n) => typeof packageObject[n] === 'function'), true);
+}
