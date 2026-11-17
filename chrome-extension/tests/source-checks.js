@@ -876,8 +876,8 @@
   };
 
   const PANEL_TAB = 99;
-  new Function('chrome', messagingCode + '\n' +
-    fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'))(captureChromeBg);
+  isolatedFunction('chrome', 'importScripts', messagingCode + '\n' +
+    fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'))(captureChromeBg, importScripts);
   eq('active table runtime: the bus listener is the worker\'s only message listener',
     typeof capturedBgHandler, 'function');
   if (typeof capturedBgHandler !== 'function') return;
@@ -1106,9 +1106,10 @@
         onActivated: { addListener: (fn) => { listeners.activated = fn; } },
       },
     };
-    new Function('chrome', 'console', messagingCode + '\n' + bgSrc)(
+    isolatedFunction('chrome', 'console', 'importScripts', messagingCode + '\n' + bgSrc)(
       chromeStub,
-      { warn: () => {}, debug: () => {}, log: () => {} }
+      { warn: () => {}, debug: () => {}, log: () => {} },
+      importScripts
     );
     return { tabSends, listeners };
   }
@@ -1140,8 +1141,8 @@
         sendMessage: (tabId, msg, cb) => { if (cb) cb(undefined); },
       },
     };
-    new Function('chrome', 'console', messagingCode + '\n' + bgSrc)(
-      chromeStub, { warn: () => {}, debug: () => {}, log: () => {} });
+    isolatedFunction('chrome', 'console', 'importScripts', messagingCode + '\n' + bgSrc)(
+      chromeStub, { warn: () => {}, debug: () => {}, log: () => {} }, importScripts);
     if (installed) installed();
     eq('menu items: the menu toggle and the menu toggle with sidebar carry fixed labels',
       created.map(({ id, title }) => ({ id, title })), [
@@ -2041,15 +2042,16 @@
   eq('capture-shot: takeCaptureScreenshot extracted from sidebar.js', !!source, true);
   if (!source) return;
   // A separate instance of the log module, writing to a console stub, so the
-  // take's rows stay out of the suite's shared log buffer.
+  // take's rows stay out of the suite's shared log buffer. It receives the
+  // suite's Error so its instanceof check matches the errors the tests throw.
   const warned = [];
-  const logStub = (new Function('console', sourceByName('lib/dr-log/index.js') + '\nreturn DR_LOG;'))(
-    { warn: (text) => { warned.push(text); }, debug: () => {}, log: () => {}, error: () => {} });
+  const logStub = (isolatedFunction('console', 'Error', sourceByName('lib/dr-log/index.js') + '\nreturn DR_LOG;'))(
+    { warn: (text) => { warned.push(text); }, debug: () => {}, log: () => {}, error: () => {} }, Error);
   // The quality constant sits beside the take in the source; the take reads
   // it as a bare name, so the extracted function receives it the same way.
   const quality = sidebarSrc.match(/const CAPTURE_SCREENSHOT_QUALITY = (\d+);/);
   eq('capture-shot: the quality constant sits beside the take', !!quality, true);
-  const take = (new Function('DR_LOG', 'CAPTURE_SCREENSHOT_QUALITY', 'return ' + source[0] + ';'))(
+  const take = (isolatedFunction('DR_LOG', 'CAPTURE_SCREENSHOT_QUALITY', 'return ' + source[0] + ';'))(
     logStub, quality ? Number(quality[1]) : 0);
 
   const drive = (tabsApi, windowId) => {

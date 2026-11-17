@@ -60,7 +60,7 @@
   const isolatedSrc = coreCode + '\n' + parsingCode + '\n' +
     'function getExclusionReason() { return "someFutureReason"; }\n' +
     ladderCode + '\nreturn classifyCell;';
-  const isolatedClassifyCell = new Function(isolatedSrc)();
+  const isolatedClassifyCell = isolatedFunction(isolatedSrc)();
   eq('classifyCell: unrecognized non-null exclusion reason still skips the cell',
     isolatedClassifyCell({ text: '100', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
     { mode: 'skip', reason: 'excluded' });

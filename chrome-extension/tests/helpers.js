@@ -4,6 +4,15 @@
 // says. A new helper goes here; a test section goes in the piece for the
 // area it tests.
 
+// Takes the same arguments as new Function, but compiles in an empty context.
+// The setup runs the content scripts in the suite's global scope, so under
+// new Function a name the test forgets to pass in would reach the real
+// extension code; here it throws a ReferenceError and the test fails.
+function isolatedFunction(...paramsAndBody) {
+  const body = paramsAndBody.pop();
+  return vm.compileFunction(body, paramsAndBody, { parsingContext: vm.createContext({}) });
+}
+
 // A mock cell's one text piece, the way a page element holds its text: a
 // text node child whose value reads and writes the cell's text. The placement
 // step reads a native cell's text pieces, so a mock cell with no text node
