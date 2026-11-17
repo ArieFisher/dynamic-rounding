@@ -134,9 +134,10 @@ function classifyCell(input, options) {
     return { mode: 'skip', reason: 'quoted' };
   }
 
-  if (isDateTimeLike(trimmed)) {
-    // ISO date-time follows the time instruction (date preserved). Checked
-    // before findDates, which would otherwise match a space-separated form.
+  // A clock time, or an ISO date-time with its date kept, follows the "times"
+  // switch. Checked before findDates, which would otherwise match the date of
+  // a space-separated date-time.
+  if (isDateTimeLike(trimmed) || isTimeLike(trimmed)) {
     return options.simplifyTimes
       ? { mode: 'time', reason: 'simplify' }
       : { mode: 'skip', reason: 'times-disabled' };
@@ -151,12 +152,6 @@ function classifyCell(input, options) {
       return { mode: 'date', reason: 'simplify', pending: 'ambiguous-date', value: { dates } };
     }
     return { mode: 'date', reason: 'simplify', value: { dates } };
-  }
-
-  if (isTimeLike(trimmed)) {
-    return options.simplifyTimes
-      ? { mode: 'time', reason: 'simplify' }
-      : { mode: 'skip', reason: 'times-disabled' };
   }
 
   // An identifier shape (a phone number, an IP address, a web or email
