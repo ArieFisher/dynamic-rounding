@@ -587,14 +587,17 @@
       A failure reads 9:45 - 10:45 AM.
 
       Timestamps are matched before dates, round by the same rule as clock
-      times, and keep their date. The seconds, the fraction of a second, and
-      the zone offset drop.
+      times, and keep their date. They are on the 24-hour clock, so only
+      hour 23 is the last hour: hour 11 rounds up like any other hour. The
+      seconds, the fraction of a second, and the zone offset drop.
                                       hour                minute
         2024-11-03T14:29:00           -> 2024-11-03 14:00 -> 2024-11-03 14:29
         2024-11-03 14:31:00           -> 2024-11-03 15:00 -> 2024-11-03 14:31
         2024-11-03T23:45:00Z          -> 2024-11-03 23:00 -> 2024-11-03 23:45
+        2024-11-03T11:45:00           -> 2024-11-03 12:00 -> 2024-11-03 11:45
         2024-11-03T08:15:30.250-05:00 -> 2024-11-03 08:00 -> 2024-11-03 08:16
-      A failure in the last hour shows 2024-11-03 23:59 or 2024-11-04.
+      A failure in the last hour shows 2024-11-03 23:59 or 2024-11-04. A
+      failure at hour 11 shows 2024-11-03 11:00.
     -->
     <table>
       <thead>
@@ -758,6 +761,11 @@
         <tr>
           <th scope="row">Timestamp, UTC marker</th>
           <td>2024-11-03T23:45:00Z</td>
+          <td>Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Timestamp, hour 11</th>
+          <td>2024-11-03T11:45:00</td>
           <td>Times</td>
         </tr>
         <tr>
