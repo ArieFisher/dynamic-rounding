@@ -1715,15 +1715,12 @@ function datasetMaxMagnitude(entries) {
   return findMaxMagnitude([allNums]);
 }
 
-// One cell's patches, positioned in the classified text: empty for a
-// skip cell or an unchanged value. A date or time cell takes one patch: its
-// trimmed text, replaced whole, so the text keeps its own whitespace. Every
-// number takes the one write-back, formatNumber, patched in place. An extracted
-// cell takes one patch per changed number; the patch compares the written
-// digits to the match, which catches a number that is unchanged but whose
-// display simplifies (e.g. "35.0" to "35"). The text around each match, a
-// sign, a currency sign, and a percent sign included, stays where the page
-// put it.
+// One cell's patches, positioned in the classified text: empty for a skip
+// cell or an unchanged value. A date or time cell takes one patch over its
+// trimmed text, so the text keeps its own whitespace. An extracted cell takes
+// one patch per number whose written digits differ from the match, which
+// catches a number that is unchanged but whose display simplifies (e.g.
+// "35.0" to "35").
 function classifiedCellPatches(entry, maxMag, settings) {
   const { text, info } = entry;
   const { offsetTop, offsetOther, numTop } = settings;
