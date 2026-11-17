@@ -11,12 +11,13 @@
  * classifyCell for the rounding pass, the lens preview, and the data test,
  * and the Sheets input step calls it for each text cell.
  *
- * PURE: classifyCell takes the cell's text, its row and column, the range
- * list parsed once per table, and the simplification options, and returns
- * its decision as data. In the extension the text is the rendered text (the
- * raw text when the rendered text is empty) or a simplified cell's stored
- * original; in Sheets it is the cell value. Four more values come from the page, and the caller
- * derives them: whether the cell's whole text is a link (isCellWholeLink
+ * Core layer: reads no page and calls no Chrome. classifyCell takes the
+ * cell's text, its row and column, the range list parsed once per table, and
+ * the simplification options, and returns its decision as data. In the
+ * extension the text is the rendered text (the raw text when the rendered
+ * text is empty) or a simplified cell's stored original; in Sheets it is the
+ * cell value. Four more values come from the page, and the caller derives
+ * them: whether the cell's whole text is a link (isCellWholeLink
  * reads the anchors' text), whether the cell holds a <sup>, the superscript
  * spans in the text classifyCell reads (getSuperscriptRanges), and whether
  * the cell's digits sit in more than one text piece (from the piece layout),

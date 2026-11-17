@@ -359,11 +359,12 @@ function toNumber(value) {
  */
 
 /**
- * Pure parsing/formatting helpers (no chrome.*, no DOM mutation).
+ * Parsing and formatting helpers. Core layer: reads no page and calls no
+ * Chrome.
  *
  * Loaded by manifest content_scripts AFTER core.js and BEFORE the DOM/UI
  * modules. Covers range-expression parsing, date/time detection + rounding,
- * in-text number extraction, and pure-numeric formatting. All symbols land on
+ * in-text number extraction, and number formatting. All symbols land on
  * the shared global scope consumed by content.js.
  */
 
@@ -1443,12 +1444,13 @@ function getIdentifierMaskedRanges(text) {
  * classifyCell for the rounding pass, the lens preview, and the data test,
  * and the Sheets input step calls it for each text cell.
  *
- * PURE: classifyCell takes the cell's text, its row and column, the range
- * list parsed once per table, and the simplification options, and returns
- * its decision as data. In the extension the text is the rendered text (the
- * raw text when the rendered text is empty) or a simplified cell's stored
- * original; in Sheets it is the cell value. Four more values come from the page, and the caller
- * derives them: whether the cell's whole text is a link (isCellWholeLink
+ * Core layer: reads no page and calls no Chrome. classifyCell takes the
+ * cell's text, its row and column, the range list parsed once per table, and
+ * the simplification options, and returns its decision as data. In the
+ * extension the text is the rendered text (the raw text when the rendered
+ * text is empty) or a simplified cell's stored original; in Sheets it is the
+ * cell value. Four more values come from the page, and the caller derives
+ * them: whether the cell's whole text is a link (isCellWholeLink
  * reads the anchors' text), whether the cell holds a <sup>, the superscript
  * spans in the text classifyCell reads (getSuperscriptRanges), and whether
  * the cell's digits sit in more than one text piece (from the piece layout),
@@ -1655,8 +1657,8 @@ function resolveAmbiguousDateDecision(decision, hint) {
  *      frozen one.
  *   3. Each cell's numbers, dates, and times round and become patches.
  *
- * PURE: the step reads plain classified cells and plain settings and returns
- * data. It holds no reference to the page, a text piece, the registry, the
+ * Core layer: reads no page and calls no Chrome. The step reads plain
+ * classified cells and plain settings and returns data. It holds no reference to the page, a text piece, the registry, the
  * log buffer, or the browser. It depends only on DR_NUMBER's bare names and
  * the ladder's pickDateFormatHint and resolveAmbiguousDateDecision, loaded
  * ahead of this file.

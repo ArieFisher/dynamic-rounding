@@ -118,7 +118,7 @@ function finalizeExtractedDecision(decision, cell, layout) {
   return { mode: 'extracted', reason: decision.reason, value: { matches: filtered } };
 }
 
-// The page reads the pure ladder cannot make pass in as plain data (see the
+// The page reads the ladder cannot make pass in as plain data (see the
 // lib/dr-simplify/ladder.js header). This writes nothing: the pass counts a
 // split number (entry.split) afterward.
 //

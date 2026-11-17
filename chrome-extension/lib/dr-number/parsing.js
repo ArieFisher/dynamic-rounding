@@ -6,11 +6,12 @@
  */
 
 /**
- * Pure parsing/formatting helpers (no chrome.*, no DOM mutation).
+ * Parsing and formatting helpers. Core layer: reads no page and calls no
+ * Chrome.
  *
  * Loaded by manifest content_scripts AFTER core.js and BEFORE the DOM/UI
  * modules. Covers range-expression parsing, date/time detection + rounding,
- * in-text number extraction, and pure-numeric formatting. All symbols land on
+ * in-text number extraction, and number formatting. All symbols land on
  * the shared global scope consumed by content.js.
  */
 
