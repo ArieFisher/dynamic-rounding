@@ -1122,7 +1122,6 @@
   // --- The menu holds two fixed labels. ---
   (function menuItemsCarryFixedLabels() {
     const created = [];
-    const panelBehaviors = [];
     let installed = null;
     const chromeStub = {
       runtime: {
@@ -1136,9 +1135,6 @@
         onClicked: { addListener: () => {} },
       },
       action: { onClicked: { addListener: () => {} } },
-      sidePanel: {
-        setPanelBehavior: (behavior) => { panelBehaviors.push(behavior); return Promise.resolve(); },
-      },
       tabs: {
         query: (q, cb) => { cb([]); },
         sendMessage: (tabId, msg, cb) => { if (cb) cb(undefined); },
@@ -1152,14 +1148,11 @@
         { id: 'dr-menu-toggle', title: 'Simplify' },
         { id: 'dr-menu-toggle-sidebar', title: 'Simplify and open sidebar' },
       ]);
-    // In the toolbar icon's menu no table sits under the pointer, and a click
-    // on the icon opens the sidebar.
+    // In the toolbar icon's menu no table sits under the pointer.
     eq('menu items: neither item appears in the toolbar icon menu',
       created.filter((item) => !Array.isArray(item.contexts) ||
         item.contexts.includes('all') || item.contexts.includes('action')).map((item) => item.id),
       []);
-    eq('toolbar icon: install leaves the icon click to the service worker, not to Chrome',
-      panelBehaviors, [{ openPanelOnActionClick: false }]);
   })();
 
   // --- The toolbar icon click opens the sidebar on the clicked tab, with no
@@ -2435,8 +2428,6 @@
     /importScripts\([^)]*lib\/dr-log\/index\.js/.test(bgSrc), true);
   eq('worker log row: the open-sidebar failure records the one row format in the log buffer',
     /DR_LOG\.warnError\('open sidebar', e\)/.test(bgSrc), true);
-  eq('worker log row: the toolbar icon click setting failure records the one row format in the log buffer',
-    /DR_LOG\.warnError\('toolbar icon click setting', e\)/.test(bgSrc), true);
   eq('worker log row: the worker writes no row to the console directly',
     /console\.(warn|error|log|debug|info)\(/.test(bgSrc), false);
   eq('worker on bus: no raw chrome.tabs.sendMessage call',
