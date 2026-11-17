@@ -2,7 +2,7 @@
  * Test suite for chrome-extension content.js pure helpers.
  * Run: node tests.js
  *
- * Stubs out browser globals so we can eval content.js in Node and exercise
+ * Stubs out browser globals so the content scripts run in Node and exercise
  * the pure functions (extractNumbersInText, formatNumber, toNumber,
  * roundCellSetAware, findMaxMagnitude, pureNumberSpan).
  */
@@ -238,9 +238,7 @@ globalThis.chainRootOf = chainRootOf;
 globalThis.nominateNest = nominateNest;
 globalThis.nominateNests = nominateNests;
 // Expose the controller's pending-table state and the two functions that
-// hold and drop a pending record. The
-// content-script bundle evaluates in its own scope, so the pending suite
-// reaches these names only through this list.
+// hold and drop a pending record.
 globalThis.holdPendingTable = holdPendingTable;
 globalThis.dropPendingTable = dropPendingTable;
 globalThis.pendingRoots = pendingRoots;

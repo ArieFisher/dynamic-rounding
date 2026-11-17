@@ -2237,7 +2237,7 @@ const PENDING_FILL_ROWS = [
     // Expose this eval's own DR_MODEL/tablePillboxes bindings
     // (distinct instances from the file-level ones the rest of the suite
     // uses) onto globalThis so this function can drive and inspect them
-    // after eval() returns — same trick the top-of-file eval already uses.
+    // after eval() returns — same trick the setup's exposure script uses.
     eval(contentScriptBundle + `
       globalThis.__rt_DR_MODEL = DR_MODEL;
       globalThis.__rt_tablePillboxes = tablePillboxButtons(tablePillboxViews);

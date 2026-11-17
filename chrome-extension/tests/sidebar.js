@@ -117,7 +117,7 @@
 
   // Eval into a local object using an IIFE so the const declarations bind in
   // function scope (not global) and the new Function body can hold them.
-  // toNumber is passed in from the already-evaled content-script scope.
+  // toNumber is passed in from the content scripts the setup runs.
   // Note: string concatenation is used (not a template literal) to avoid any
   // back-tick/interpolation issues with the extracted source text.
   const helperSrc = '(function() {\n' +
