@@ -308,8 +308,8 @@ class GridAdapter {
       }
       if (rows.length === 0) continue;
       const inGroup = new Set(rows);
-      return _ownDescendants(container, sel)
-        .map((el) => ({ el, isOutside: !inGroup.has(el), isGrouped }));
+      const matches = isGrouped ? _ownDescendants(container, sel) : rows;
+      return matches.map((el) => ({ el, isOutside: !inGroup.has(el), isGrouped }));
     }
     // With no row group, scopes[0] is the container. Row groups that hold no
     // row elements are non-conforming markup, and only the first group's
