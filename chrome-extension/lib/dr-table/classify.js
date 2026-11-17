@@ -135,8 +135,8 @@ function classifyTableCell(cellObj, rowIndex, opts, ranges) {
   const cell = cellObj.el;
   const text = cellObj.getText();
   const layout = cellObj.getPieceLayout();
-  const hasSuperscript = !!(cell.querySelector && cell.querySelector('sup'));
-  const superscriptRanges = hasSuperscript && layout ? getSuperscriptRanges(cell, { layout }) : [];
+  const superscriptRanges = layout ? getSuperscriptRanges(cell, { layout }) : [];
+  const hasSuperscript = superscriptRanges.length > 0 || !!(cell.querySelector && cell.querySelector('sup'));
   // The join of numbers that sit in separate pieces is not one spaced
   // identifier (see matchIdentifierShape).
   const digitsSpanPieces = !!layout && layout.original.filter((piece) => /\d/.test(piece)).length > 1;

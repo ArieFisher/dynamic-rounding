@@ -1495,7 +1495,7 @@ function filterMaskedMatches(matches, ranges) {
  * The masked ranges are one list, so a new kind of text whose
  * numbers stay as written is one more source here. superscriptRanges is
  * caller-supplied plain data (see file header); pass [] when the cell
- * carries no <sup>. The identifier scan and the clock-time scan read the
+ * holds no superscript. The identifier scan and the clock-time scan read the
  * text with each superscript span blanked to spaces, so a footnote marker
  * right after a phone number ("416-555-1234<sup>1</sup>") or a clock time
  * ("18:30<sup>2</sup>") never joins its digits; the blanks keep every
@@ -1542,7 +1542,8 @@ function extractSimplifyMatches(text, superscriptRanges) {
  * @param {number} input.columnIndex
  * @param {Array|null} input.ranges - parseRangeExpr(...).ranges (already parsed once per table)
  * @param {boolean} [input.isWholeLink] - isCellWholeLink(cell) result
- * @param {boolean} [input.hasSuperscript] - !!cell.querySelector('sup')
+ * @param {boolean} [input.hasSuperscript] - true when the cell holds a <sup>
+ *   or text styled vertical-align: super (see classifyTableCell)
  * @param {{start:number,end:number}[]} [input.superscriptRanges] - getSuperscriptRanges(cell) result
  * @param {boolean} [input.digitsSpanPieces] - true when the cell's digits sit
  *   in more than one text piece (see matchIdentifierShape)
@@ -1623,16 +1624,16 @@ function classifyCell(input, options) {
   // matchIdentifierShape (lib/dr-number/identifiers.js) holds the one list of
   // shapes; this is the one place that reads it. digitsSpanPieces comes from
   // the caller's piece layout, so the join of numbers that sit in separate
-  // pieces never reads as one spaced identifier. A cell with a <sup> takes the
-  // footnote path below instead: its flattened text joins base and exponent
-  // digits ("20 10<sup>15</sup>" reads "20 1015"), which is not the text the
-  // reader sees, so no shape is tested against it.
+  // pieces never reads as one spaced identifier. A cell with a superscript
+  // takes the footnote path below instead: its flattened text joins base and
+  // exponent digits ("20 10<sup>15</sup>" reads "20 1015"), which is not the
+  // text the reader sees, so no shape is tested against it.
   if (!hasSuperscript && matchIdentifierShape(trimmed, digitsSpanPieces)) {
     return { mode: 'skip', reason: 'identifier' };
   }
 
   // A bracketed number ("(1,234)", "$(1,234)") is one number whose minus sign
-  // is written as the brackets around it. A cell with a <sup> takes the
+  // is written as the brackets around it. A cell with a superscript takes the
   // footnote path below instead, so its exponent stays masked;
   // extractSimplifyMatches reads the same bracket sign there.
   const bracketed = hasSuperscript ? null : matchBracketedNumber(text);
@@ -1642,7 +1643,7 @@ function classifyCell(input, options) {
   if (num !== null) {
     if (hasSuperscript) {
       if (isWholeLink) return { mode: 'skip', reason: 'link' };
-      // The cell contains a <sup> element: the flattened text mixes base and
+      // The cell holds a superscript: the flattened text mixes base and
       // exponent digits (e.g. "10<sup>12</sup>" -> "1012"). Route through
       // extraction so superscript masking can protect the exponent, instead
       // of rounding the flattened (wrong) number.
@@ -1656,8 +1657,8 @@ function classifyCell(input, options) {
   }
 
   // A unit number ("4.91tn", "CAD45.67") is one number with a suffix or a
-  // currency code. A cell with a <sup> takes the footnote path above instead,
-  // so its exponent stays masked.
+  // currency code. A cell with a superscript takes the footnote path above
+  // instead, so its exponent stays masked.
   const unit = hasSuperscript ? null : matchUnitNumber(text);
   if (unit) return oneNumber(unit, 'unit');
 
