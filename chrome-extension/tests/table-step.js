@@ -67,7 +67,7 @@ function tableStepCells(api, rows) {
   const cells = [];
   rows.forEach((row, rowIndex) => row.forEach((text, columnIndex) => {
     const decision = api.classifyCell({ text, rowIndex, columnIndex, ranges: null }, TABLE_STEP_LADDER_OPTS);
-    cells.push({ text, info: api.decisionToLegacyInfo(decision), col: columnIndex });
+    cells.push({ text, info: api.decisionToLegacyInfo(decision), columnIndex });
   }));
   return cells;
 }
@@ -161,12 +161,12 @@ function applyTableStepPatches(text, patches) {
   const loaded = loadTableStepAlone();
   if (loaded === null) return;
   const { api } = loaded;
-  const cells = tableStepCells(api, TABLE_STEP_ROWS).map((cell) => Object.assign({ carried: cell.col }, cell));
+  const cells = tableStepCells(api, TABLE_STEP_ROWS).map((cell) => Object.assign({ carried: cell.columnIndex }, cell));
   const before = JSON.stringify(cells);
   const result = api.tablePatches(cells, TABLE_STEP_SETTINGS);
   eq('table step alone: the classified cells passed in stay unchanged', JSON.stringify(cells), before);
   eq('table step alone: every other field of a cell passes through to its entry',
-    result.cells.every((cell, k) => cell.entry.carried === cells[k].col), true);
+    result.cells.every((cell, k) => cell.entry.carried === cells[k].columnIndex), true);
 })();
 
 // --- A frozen max magnitude. ---

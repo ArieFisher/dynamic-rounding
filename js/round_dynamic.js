@@ -1662,9 +1662,10 @@ function resolveAmbiguousDateDecision(decision, hint) {
  * resolveAmbiguousDateDecision, loaded ahead of this file.
  *
  * A classified cell is any object carrying:
- *   text  the classified text (a simplified cell's stored original)
- *   info  the decisionToLegacyInfo shape of the ladder's decision
- *   col   the cell's grid column, by which the column post-pass groups cells
+ *   text         the classified text (a simplified cell's stored original)
+ *   info         the decisionToLegacyInfo shape of the ladder's decision
+ *   columnIndex  the cell's grid column, by which the column post-pass
+ *                groups cells
  * The step copies every other field through untouched, so a caller can carry
  * its own per-cell data beside them.
  *
@@ -1696,16 +1697,17 @@ function decisionToLegacyInfo(decision) {
 function resolveAmbiguousDates(entries) {
   const isAmbiguous = (info) => info.mode === 'date' && info.ambiguous;
   const readingsByCol = new Map();
-  for (const { info, col } of entries) {
+  for (const { info, columnIndex } of entries) {
     if (!isAmbiguous(info)) continue;
-    if (!readingsByCol.has(col)) readingsByCol.set(col, []);
-    readingsByCol.get(col).push(...info.dates.filter(isAmbiguousDate));
+    if (!readingsByCol.has(columnIndex)) readingsByCol.set(columnIndex, []);
+    readingsByCol.get(columnIndex).push(...info.dates.filter(isAmbiguousDate));
   }
-  const hintByCol = new Map(Array.from(readingsByCol, ([col, readings]) => [col, pickDateFormatHint(readings)]));
+  const hintByCol = new Map(Array.from(readingsByCol,
+    ([columnIndex, readings]) => [columnIndex, pickDateFormatHint(readings)]));
   return entries.map((entry) => {
     if (!isAmbiguous(entry.info)) return entry;
     const pendingDecision = { value: { dates: entry.info.dates } };
-    const info = decisionToLegacyInfo(resolveAmbiguousDateDecision(pendingDecision, hintByCol.get(entry.col)));
+    const info = decisionToLegacyInfo(resolveAmbiguousDateDecision(pendingDecision, hintByCol.get(entry.columnIndex)));
     return Object.assign({}, entry, { info });
   });
 }
@@ -1759,7 +1761,7 @@ function classifiedCellPatches(entry, maxMag, settings) {
  * The table step (see the file header).
  *
  * @param {object[]} entries - Classified cells in page order, each carrying
- *   text, info, and col.
+ *   text, info, and columnIndex.
  * @param {{offsetTop: number, offsetOther: number, numTop: number,
  *          dateGranularity: string, timeGranularity: string}} settings -
  *   Resolved offsets and top-band count, and the date and time granularity.
@@ -1892,7 +1894,7 @@ function roundValues(range, settings) {
     } else if (typeof value === "string" && value !== "") {
       const decision = classifyCell({ text: value, rowIndex: r, columnIndex: c, ranges: null },
         SHEETS_LADDER_OPTIONS);
-      textEntries.push({ r, c, text: value, col: c, info: decisionToLegacyInfo(decision) });
+      textEntries.push({ r, columnIndex: c, text: value, info: decisionToLegacyInfo(decision) });
     }
   }));
   const maxMag = datasetMaxMagnitude(numberEntries.concat(textEntries));
@@ -1904,7 +1906,7 @@ function roundValues(range, settings) {
     results.set(r + "," + c, roundNumber(num));
   }
   for (const { entry, patches } of tablePatches(textEntries, settings, maxMag).cells) {
-    results.set(entry.r + "," + entry.c, textResult(entry, patches, roundNumber));
+    results.set(entry.r + "," + entry.columnIndex, textResult(entry, patches, roundNumber));
   }
   return range.map((row, r) => row.map((value, c) => {
     const key = r + "," + c;

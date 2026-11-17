@@ -155,6 +155,6 @@ function classifyTableCell(cellObj, rowIndex, opts, ranges) {
     info: decisionToLegacyInfo(finalizeExtractedDecision(placed, cell, layout)),
     split: !!placed.split,
     layout,
-    col: cellObj.columnIndex,
+    columnIndex: cellObj.columnIndex,
   };
 }
