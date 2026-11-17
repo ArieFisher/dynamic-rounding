@@ -20,7 +20,8 @@
  * lib/dr-number's bare names and the ladder's pickDateFormatHint and
  * resolveAmbiguousDateDecision, loaded ahead of this file.
  *
- * A classified cell is any object carrying:
+ * The step reads one entry per classified cell. An entry is any object
+ * carrying:
  *   text         the classified text (a simplified cell's stored original)
  *   info         the decisionToLegacyInfo shape of the ladder's decision
  *   columnIndex  the cell's grid column, by which the column post-pass
@@ -108,8 +109,8 @@ function classifiedCellPatches(entry, maxMag, settings) {
 /**
  * The table step (see the file header).
  *
- * @param {object[]} entries - Classified cells in page order, each carrying
- *   text, info, and columnIndex.
+ * @param {object[]} entries - One entry per classified cell, in page order,
+ *   each carrying text, info, and columnIndex.
  * @param {{offsetTop: number, offsetOther: number, numTop: number,
  *          dateGranularity: string, timeGranularity: string}} settings -
  *   Resolved offsets and num_top, and the date and time granularity.
@@ -119,8 +120,8 @@ function classifiedCellPatches(entry, maxMag, settings) {
  *   rounds against it and computes none of its own.
  * @returns {{maxMag: number|null,
  *            cells: Array<{entry: object, patches: object[]}>}}
- *   cells holds every cell in input order: the entry after the column
- *   post-pass, and its patches in the classified text.
+ *   cells holds one result per entry, in input order: the entry after the
+ *   column post-pass, and its patches in the classified text.
  */
 function tablePatches(entries, settings, frozenMaxMag) {
   const resolved = resolveAmbiguousDates(entries);
