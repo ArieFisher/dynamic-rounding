@@ -1562,7 +1562,7 @@ function classifyCell(input, options) {
     superscriptRanges = [],
     digitsSpanPieces = false,
   } = input;
-  const trimmed = typeof text === 'string' ? text.trim() : '';
+  const trimmed = text.trim();
   // A cell that is one number changes its digits alone, which is the extracted
   // write, so a sign, a bracket, a currency sign, a percent sign, a suffix, or
   // a currency code stays where the page put it.
