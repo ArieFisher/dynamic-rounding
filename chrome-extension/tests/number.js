@@ -908,11 +908,12 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   withLinkCreateTreeWalker(function() {
     // Cell: "1234 and " + <a>5</a>  — innerText = "1234 and 5"
     // We model: outsideText = "1234 and ", anchor = "5"; the matches count in
-    // the pieces' flat text, which filterLinkMatches reads without a layout.
+    // the pieces' flat text, which the layout holds as the original.
     const cell = makeLinkCell(['5'], '1234 and ');
+    const original = cell._textNodes.map((node) => node.nodeValue);
 
-    const matches = extractNumbersInText(cell._textNodes.map((node) => node.nodeValue).join('')); // finds 1234 and 5
-    const filtered = filterLinkMatches(cell, matches);
+    const matches = extractNumbersInText(original.join('')); // finds 1234 and 5
+    const filtered = filterLinkMatches(cell, matches, { original, toFlat: null });
 
     // '5' inside anchor must be dropped; '1234' outside must be kept.
     const nums = filtered.map(m => m.num);

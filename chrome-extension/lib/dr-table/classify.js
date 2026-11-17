@@ -88,9 +88,7 @@ function isCellWholeLink(cell) {
  * cell. A match that no single piece holds stays: the patch writer skips it.
  * @param {Element} cell
  * @param {{index: number, numStr: string}[]} matches - positions in the classified text
- * @param {PieceLayout} [layout] - the cell's piece layout; with none, the
- *   cell's live pieces stand for the original and positions count in the live
- *   flat text
+ * @param {PieceLayout} layout - the cell's piece layout
  */
 function filterLinkMatches(cell, matches, layout) {
   if (!matches || matches.length === 0) return matches;
@@ -99,9 +97,8 @@ function filterLinkMatches(cell, matches, layout) {
   if (!anchors || anchors.length === 0) return matches;
 
   const pieces = collectTextPieces(cell);
-  const placement = layout || { original: pieces.map((piece) => piece.nodeValue), toFlat: null };
   return matches.filter((match) => {
-    const held = layoutPieceHolding(placement, match.index, match.numStr.length);
+    const held = layoutPieceHolding(layout, match.index, match.numStr.length);
     const piece = held && pieces[held.i];
     const anchor = piece && piece.parentElement && piece.parentElement.closest('a');
     return !(anchor && cell.contains(anchor));

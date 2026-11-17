@@ -52,14 +52,15 @@
 (function ac3_inlineLinkPreservesLinkedNumber() {
   withLinkCreateTreeWalker(function() {
     // Cell: "Revenue 3000 " + <a>5</a>; the matches count in the pieces' flat
-    // text, "Revenue 3000 5", which is what filterLinkMatches reads without a layout.
+    // text, "Revenue 3000 5", which the layout holds as the original.
     const cell = makeLinkCell(['5'], 'Revenue 3000 ');
+    const original = cell._textNodes.map((node) => node.nodeValue);
 
     eq('isCellWholeLink is false for mixed cell',
       isCellWholeLink(cell), false);
 
-    const matches = extractNumbersInText(cell._textNodes.map((node) => node.nodeValue).join(''));
-    const filtered = filterLinkMatches(cell, matches);
+    const matches = extractNumbersInText(original.join(''));
+    const filtered = filterLinkMatches(cell, matches, { original, toFlat: null });
     const nums = filtered.map(m => m.num);
     eq('linked number 5 is absent from filtered matches', nums.includes(5), false);
     eq('non-linked 3000 survives filtering', nums.includes(3000), true);
