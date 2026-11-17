@@ -233,7 +233,7 @@ globalThis.GRID_REAPPLY_DEBOUNCE_MS = DR_DETECTION_SETTINGS.settleDelayMs;
 // suites read them here rather than through findTables.
 globalThis.chainRootOf = chainRootOf;
 globalThis.nominateNest = nominateNest;
-globalThis.nominateNests = nominateNests;
+globalThis.scanTables = scanTables;
 // Expose the controller's pending-table state and the two functions that
 // hold and drop a pending record.
 globalThis.holdPendingTable = holdPendingTable;
@@ -242,6 +242,13 @@ globalThis.pendingRoots = pendingRoots;
 globalThis.pendingObservers = pendingObservers;
 globalThis.pendingRetestTimers = pendingRetestTimers;
 globalThis.pendingRetestCounts = pendingRetestCounts;
+// pendingTableCapLogged is a let; expose a getter/setter so the page cap case
+// can start from a page that has not yet written the cap row.
+Object.defineProperty(globalThis, 'pendingTableCapLogged', {
+  get() { return pendingTableCapLogged; },
+  set(v) { pendingTableCapLogged = v; },
+  configurable: true,
+});
 // Expose the accessibility artifact predicate and its threshold constant for tests
 globalThis.isAccessibilityArtifact = isAccessibilityArtifact;
 globalThis.OFFSCREEN_LEFT_PX_THRESHOLD = DR_DETECTION_SETTINGS.offscreenLeftPx;

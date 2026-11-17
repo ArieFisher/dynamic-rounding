@@ -1055,33 +1055,43 @@ const supTestOpts = {
   });
 })();
 
-// FT3: findTargetTable — prefers native <table> ancestor over grid heuristic
-// When the element has a <table> ancestor, closest('table') must be returned
-// immediately without engaging the looksLikeGrid walk-up.
-(function findTargetTable_prefersNativeTable() {
+// FT3: findTargetTable — a native <table> ancestor goes through the
+// nomination step, as a nest of one, before the grid heuristic. A data table
+// resolves, new or registered; a table with nothing to simplify resolves
+// nothing, the way a grid nest that selects nothing does.
+(function findTargetTable_sendsANativeTableThroughTheNominationStep() {
   withFindTargetEnv([], function() {
-    const tableEl = { tagName: 'TABLE', rows: [], dataset: {} };
+    const data = rwBuildTable('native', [['North', '4,281,905'], ['South', '622,148']], { header: ['Region', 'Units'] });
+    const words = rwBuildTable('native', [['North', 'alpha'], ['South', 'bravo']], { header: ['Region', 'Code'] });
 
-    // A click target that has a <table> ancestor.
-    const clickTarget = {
-      tagName: 'TD',
-      nodeType: 1,
-      parentElement: tableEl,
-      parentNode: tableEl,
-      closest: function(sel) {
-        if (sel === 'table') return tableEl;
-        return null;
-      },
-    };
+    const fresh = findTargetTable(data.cell(1, 1), { isRegistered: () => false });
+    eq('findTargetTable: a native data table resolves through the nomination step',
+      fresh && fresh.handle === data.table, true);
+    eq('findTargetTable: an unregistered native data table reports isNew: true',
+      fresh && fresh.isNew, true);
 
-    const result = findTargetTable(clickTarget);
+    const registered = findTargetTable(data.cell(1, 1), { isRegistered: (el) => el === data.table });
+    eq('findTargetTable: a registered native table resolves itself',
+      registered && registered.handle === data.table, true);
+    eq('findTargetTable: a registered native table reports isNew: false',
+      registered && registered.isNew, false);
 
-    eq('findTargetTable: prefers native <table> ancestor over grid heuristic',
-      result.handle, tableEl);
-    // A bare <table> ancestor is a case the caller already knows how to
-    // handle; isNew is always false.
-    eq('findTargetTable: native <table> ancestor reports isNew: false',
-      result.isNew, false);
+    eq('findTargetTable: a native table with nothing to simplify resolves nothing',
+      findTargetTable(words.cell(0, 1), { isRegistered: () => false }), null);
+  });
+})();
+
+// FT3b: a click in a native table with nothing to simplify, inside a cell of
+// a native data table, resolves the data table around it.
+(function findTargetTable_passesOverANativeTableWithNothingToSimplify() {
+  withFindTargetEnv([], function() {
+    const inner = rwBuildTable('native', [['North', 'alpha'], ['South', 'bravo']]);
+    const outer = rwBuildTable('native', [['West', '4,281,905'], ['East', '622,148']]);
+    rwSetChildren(outer.cell(0, 0), [inner.table]);
+
+    const result = findTargetTable(inner.cell(0, 1), { isRegistered: () => false });
+    eq('findTargetTable: the walk passes over the inner table for the data table around it',
+      result && result.handle === outer.table, true);
   });
 })();
 
@@ -2633,6 +2643,7 @@ const PRE_MOVE_DETECTION_SETTINGS = {
   reapplyCellCap: 10000,
   passTargetMs: 200,
   pendingRetestCap: 100,
+  pendingTableCap: 50,
   offscreenLeftPx: -9999,
 };
 
@@ -2761,9 +2772,9 @@ const PRE_MOVE_DETECTION_SETTINGS = {
   );
 
   eq('detection settings: the combined sandbox does not throw', sandbox.threw, null);
-  eq('detection settings: DR_DETECTION_SETTINGS exposes exactly fifteen keys, the nine pre-move keys plus nestingDepth, dataTestCellBudget, pendingRetestCap, reapplyMaxWaitMs, reapplyCellCap, and passTargetMs',
+  eq('detection settings: DR_DETECTION_SETTINGS exposes exactly sixteen keys, the nine pre-move keys plus nestingDepth, dataTestCellBudget, pendingRetestCap, pendingTableCap, reapplyMaxWaitMs, reapplyCellCap, and passTargetMs',
     sandbox.outcomes.settingsKeys, Object.keys(PRE_MOVE_DETECTION_SETTINGS).sort());
-  eq('detection settings: DR_DETECTION_SETTINGS carries every pre-move value unchanged, plus nestingDepth at 1, dataTestCellBudget at 1000, pendingRetestCap at 100, reapplyMaxWaitMs at 1000, reapplyCellCap at 10000, and passTargetMs at 200',
+  eq('detection settings: DR_DETECTION_SETTINGS carries every pre-move value unchanged, plus nestingDepth at 1, dataTestCellBudget at 1000, pendingRetestCap at 100, pendingTableCap at 50, reapplyMaxWaitMs at 1000, reapplyCellCap at 10000, and passTargetMs at 200',
     sandbox.outcomes.settings, PRE_MOVE_DETECTION_SETTINGS);
   eq('detection settings: looksLikeGrid rejects 4 children (below gridMinChildren)',
     sandbox.outcomes.minChildrenBelowFails, false);
@@ -3602,7 +3613,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 (function nominationStep_reportsOneResultPerNestInDocumentOrder() {
   const first = makeDatabaseQueryGrid();
   const second = makeDatabaseQueryGrid();
-  const results = nominateNests(makeNestingHost([first.wrapperEl, second.wrapperEl]));
+  const results = scanTables(makeNestingHost([first.wrapperEl, second.wrapperEl]));
 
   eq('nomination: a host holding two grids reports two results', results.length, 2);
   eq('nomination: the results carry the two chain roots in document order',
@@ -3726,7 +3737,7 @@ function cnAdapterCellEls(tableEl) {
   eq('cell nest: the inner nest selects the inner grid', innerResult.selected === page.inner, true);
   eq('cell nest: the inner nest\'s chain holds the inner grid alone', innerResult.chainSize, 1);
 
-  const results = nominateNests(page.host);
+  const results = scanTables(page.host);
   eq('cell nest: the nomination step reports one result per grid',
     results.map((r) => [r.chainRoot === page.outer || r.chainRoot === page.inner, r.outcome]),
     [[true, 'selected'], [true, 'selected']]);
@@ -3772,7 +3783,7 @@ function cnAdapterCellEls(tableEl) {
 
   const both = new Set([page.outer, page.inner]);
   eq('cell nest: with both grids registered, every nest reports the registered outcome',
-    nominateNests(page.host, { isRegistered: (el) => both.has(el) }).map((r) => r.outcome),
+    scanTables(page.host, { isRegistered: (el) => both.has(el) }).map((r) => r.outcome),
     ['registered', 'registered']);
   eq('cell nest: with both grids registered, a second run reports no table',
     findTables(page.host, { isRegistered: (el) => both.has(el) }).length, 0);
@@ -4093,10 +4104,12 @@ function cnAdapterCellEls(tableEl) {
     global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
     global.Node = { ELEMENT_NODE: 1 };
     global.NodeFilter = { SHOW_TEXT: 4 };
+    // postEvalLine runs in this scope, so it can reach the fixture.
+    const target = makeFixtureTarget();
     try {
       eval(bundle + postEvalLine);
       if (typeof capturedHandler !== 'function') return null;
-      capturedHandler({ target: makeFixtureTarget() });
+      capturedHandler({ target });
       return sentMessages;
     } finally {
       global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
@@ -4105,7 +4118,9 @@ function cnAdapterCellEls(tableEl) {
     }
   }
 
-  const headMessages = runContextmenuFixture(contentScriptBundle, '');
+  // The fixture holds no rows, so it resolves only as a registered table: a
+  // native table with nothing to simplify activates nothing.
+  const headMessages = runContextmenuFixture(contentScriptBundle, '\nDR_MODEL.registerTable(target);');
 
   eq("parent-equivalence: HEAD's contextmenu handler was captured",
     headMessages !== null, true);
@@ -5054,7 +5069,11 @@ function makeSparselyBoxedGrid(boxed) {
 (function artifactFilter_anArtifactInsideAVisibleTableCellResolvesTheOuterTable() {
   for (const kind of ['native', 'grid']) {
     const inner = afMark(afTable(kind), { 'aria-hidden': 'true' });
-    const outer = rwEl('table', {}, [rwEl('tbody', {}, [rwEl('tr', {}, [rwEl('td', {}, [inner])])])]);
+    // The outer table holds numbers, so it passes the data test on its own.
+    const outer = rwEl('table', {}, [rwEl('tbody', {}, [
+      rwEl('tr', {}, [rwEl('td', {}, [inner]), rwEl('td', {}, [rwText('4,281,905')])]),
+      rwEl('tr', {}, [rwEl('td', {}, [rwText('South')]), rwEl('td', {}, [rwText('622,148')])]),
+    ])]);
     const page = afPage([outer]);
     const resolved = afRightClick(page, inner);
     eq(`artifact filter, right-click, ${kind} artifact in a native table cell: resolves the outer table`,

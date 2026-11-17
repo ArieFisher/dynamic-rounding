@@ -1586,13 +1586,14 @@ function runPass1WithTables(tables) {
   return { tables };
 }
 
-// Helper: clean up tablePillboxes for a list of table objects so
-// they do not pollute subsequent tests.
+// Helper: clean up tablePillboxes and pending records for a list of table
+// objects so they do not pollute subsequent tests.
 function cleanupPass1Tables(tables) {
   for (const t of tables) {
     if (tablePillboxes.has(t)) {
       tablePillboxes.delete(t);
     }
+    dropPendingTable(t);
   }
 }
 

@@ -97,6 +97,13 @@ const DR_DETECTION_SETTINGS = {
   // ten seconds and half a second of processing. A lower cap leaves a slow
   // query unregistered when its loading state keeps changing the subtree.
   pendingRetestCap: 100,
+  // The most pending tables of both kinds on one page at once. A page that
+  // draws its data tables before their rows holds a few; a page that lays
+  // itself out with tables, such as an email client, can hold hundreds that
+  // never pass the data test. 50 is an estimate between the two: it leaves
+  // room for the first and stops the extension watching every layout table on
+  // the second. Past it, a table that fails the data test is not watched.
+  pendingTableCap: 50,
   // --- Accessibility artifact check ---
   offscreenLeftPx: -9999,
 };

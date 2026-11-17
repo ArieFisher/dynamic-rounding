@@ -1258,6 +1258,149 @@ const PENDING_FILL_ROWS = [
   forgetRegisteredTable(grid.scrollPaneEl);
 })();
 
+// --- A table of either kind whose cells fill in after it appears registers ---
+//
+// The table arrives with its number column empty, so it fails the data test,
+// and the page fills those cells in place afterwards, the way a folder listing
+// fills its date column after the table appears. Invented values.
+
+const LATE_FILL_HEADER = ['Region', 'Units'];
+const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
+
+(function pendingRetest_aTableFilledLaterRegistersOnBothKinds() {
+  const results = {};
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(LATE_FILL_EMPTY_ROWS, { header: LATE_FILL_HEADER });
+    const read = () => ({
+      registered: DR_MODEL.hasTable(t.table),
+      pillbox: tablePillboxes.has(t.table),
+      pending: pendingRoots.has(t.table),
+    });
+    withTablePillboxDocumentMock(() => {
+      injectTablePillboxes(t.table);
+      const beforeFill = read();
+      t.write(0, 1, '4,281,905');
+      t.write(1, 1, '622,148');
+      page.settle();
+      results[kind] = { beforeFill, afterFill: read() };
+      dropPendingTable(t.table);
+    });
+  });
+
+  for (const kind of RW_KINDS) {
+    eq(`late fill (${kind}): no table pillbox before the fill, a table pillbox after it`,
+      results[kind], {
+        beforeFill: { registered: false, pillbox: false, pending: true },
+        afterFill: { registered: true, pillbox: true, pending: false },
+      });
+  }
+  eq('late fill: a native table and a grid drawn from the same rows give the same result',
+    results.native, results.grid);
+})();
+
+// --- A table of either kind that never fills stops being watched at the cap ---
+
+(function pendingRetest_aTableThatNeverFillsStopsAtTheCapOnBothKinds() {
+  const results = {};
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(LATE_FILL_EMPTY_ROWS, { header: LATE_FILL_HEADER });
+    withTablePillboxDocumentMock(() => {
+      injectTablePillboxes(t.table);
+      const heldAtStart = pendingRoots.has(t.table);
+      // Each change rewrites a label, so every re-test still finds no number.
+      for (let i = 0; i < DR_DETECTION_SETTINGS.pendingRetestCap - 1; i++) {
+        t.write(0, 0, `North ${String.fromCharCode(97 + (i % 26))}`);
+        page.settle();
+      }
+      const heldOneShortOfTheCap = pendingRoots.has(t.table);
+      t.write(0, 0, 'North');
+      page.settle();
+      results[kind] = {
+        heldAtStart, heldOneShortOfTheCap,
+        heldAtTheCap: pendingRoots.has(t.table),
+        registered: DR_MODEL.hasTable(t.table),
+      };
+      dropPendingTable(t.table);
+    });
+  });
+
+  for (const kind of RW_KINDS) {
+    eq(`re-test cap (${kind}): the table is watched until the cap and dropped at it`,
+      results[kind], { heldAtStart: true, heldOneShortOfTheCap: true, heldAtTheCap: false, registered: false });
+  }
+})();
+
+// --- The page cap bounds how many tables are pending at once ---
+//
+// The cap counts both table kinds together. A table that fails the data test
+// past the cap is not held, the first such table writes one row, and a pending
+// table that registers frees its place.
+
+(function pendingTableCap_aTablePastTheCapIsNotWatchedUntilAPlaceFrees() {
+  const savedCap = DR_DETECTION_SETTINGS.pendingTableCap;
+  const recordedRows = () => {
+    const snapshot = DR_LOG.snapshot();
+    return snapshot.dropped + snapshot.entries.length;
+  };
+  const capRowsSince = (before) => {
+    const added = recordedRows() - before;
+    const entries = DR_LOG.snapshot().entries;
+    return entries.slice(Math.max(0, entries.length - added))
+      .filter((row) => /pending table cap/.test(row.text)).map((row) => row.text);
+  };
+  const built = [];
+  eq('page cap: the detection settings ship a pending table cap of 50',
+    savedCap, 50);
+
+  withRewritePage((page) => {
+    withTablePillboxDocumentMock(() => {
+      try {
+        eq('page cap: the case starts with no pending table', pendingRoots.size, 0);
+        DR_DETECTION_SETTINGS.pendingTableCap = 2;
+        pendingTableCapLogged = false;
+        const build = (kind) => {
+          const t = rwBuildTable(kind, LATE_FILL_EMPTY_ROWS, { header: LATE_FILL_HEADER });
+          built.push(t);
+          return t;
+        };
+        const first = build('native');
+        const second = build('grid');
+        const third = build('native');
+        const fourth = build('grid');
+        const rowsBefore = recordedRows();
+
+        [first, second, third].forEach((t) => injectTablePillboxes(t.table));
+        eq('page cap: the tables up to the cap are watched, of both kinds',
+          [first, second].map((t) => pendingRoots.has(t.table)), [true, true]);
+        eq('page cap: a table past the cap is not watched', pendingRoots.has(third.table), false);
+        eq('page cap: the first table past the cap writes one row',
+          capRowsSince(rowsBefore), ['Dynamic Rounding: pending table cap · tables: 2']);
+
+        injectTablePillboxes(fourth.table);
+        eq('page cap: a second table past the cap is not watched', pendingRoots.has(fourth.table), false);
+        eq('page cap: a second table past the cap writes no second row',
+          capRowsSince(rowsBefore).length, 1);
+
+        first.write(0, 1, '4,281,905');
+        page.settle();
+        eq('page cap: the pending table that fills registers', DR_MODEL.hasTable(first.table), true);
+        eq('page cap: its registration frees a place', pendingRoots.has(first.table), false);
+
+        injectTablePillboxes(third.table);
+        eq('page cap: a table past the cap is watched once a place frees', pendingRoots.has(third.table), true);
+      } finally {
+        DR_DETECTION_SETTINGS.pendingTableCap = savedCap;
+        for (const t of built) {
+          dropPendingTable(t.table);
+          resetTable(t.table);
+          forgetRegisteredTable(t.table);
+        }
+      }
+    });
+  });
+  eq('page cap: the case leaves no pending table behind', pendingRoots.size, 0);
+})();
+
 // --- Adversarial: a re-test that finds the depth crowded ends the record ---
 //
 // A crowded nest registers nothing, by product decision, and

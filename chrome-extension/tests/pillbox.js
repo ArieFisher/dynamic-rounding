@@ -2480,7 +2480,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     // Eval content scripts; the contextmenu listener is registered against captureDoc.
     // contentScriptBundle is already the manifest-order concatenation of all
     // content scripts (see the bootstrap section above).
-    eval(contentScriptBundle);
+    eval(contentScriptBundle + '\nglobalThis.__tca_DR_MODEL = DR_MODEL;');
 
     eq('table-activation runtime: contextmenu handler was captured',
       typeof capturedHandler, 'function');
@@ -2509,6 +2509,9 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
       querySelector() { return null; },
       querySelectorAll() { return []; },
     };
+    // The mock holds no rows, so it resolves only as a registered table: a
+    // native table with nothing to simplify activates nothing.
+    global.__tca_DR_MODEL.registerTable(mockTable);
     sentMessages.length = 0;
     capturedHandler({ target: mockTable });
 
@@ -2543,6 +2546,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     // Restore globals after all handler calls are done.
     global.document = savedDoc;
     global.chrome   = savedChrome;
+    delete global.__tca_DR_MODEL;
   }
 })();
 
@@ -2820,6 +2824,53 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
       ctx.tablePillboxes.has(noNumber), false);
     eq('right-click runtime: neither click reports a table as activated',
       ctx.sentMessages.some((m) => m.topic === 'state:tableActivated'), false);
+  });
+})();
+
+// --- a native table goes through the same step as a grid ---
+//
+// A native table with nothing to simplify activates nothing and flashes
+// nothing, the way a grid with nothing to simplify does. A native table the
+// scans have not registered registers through the right-click.
+
+(function rightClickRegisters_runtime_aNativeTableWithNothingToSimplifyActivatesNothing() {
+  withRightClickSandbox(function (ctx) {
+    const t = rwBuildTable('native', [['North', 'alpha'], ['South', 'bravo']], { header: ['Region', 'Code'] });
+
+    eq('right-click runtime: the contextmenu handler was captured',
+      typeof ctx.contextmenuHandler, 'function');
+    if (typeof ctx.contextmenuHandler !== 'function') return;
+
+    ctx.contextmenuHandler({ target: t.cell(0, 1) });
+
+    eq('right-click runtime: a click on a native table with nothing to simplify registers nothing',
+      ctx.model.getRegisteredTables().length, 0);
+    eq('right-click runtime: that click leaves no active table', ctx.model.getActiveTable() === null, true);
+    eq('right-click runtime: that click flashes nothing',
+      t.table.classList.contains('dr-ext-active-flash'), false);
+    eq('right-click runtime: that click reports no table as activated',
+      ctx.sentMessages.some((m) => m.topic === 'state:tableActivated'), false);
+  });
+})();
+
+(function rightClickRegisters_runtime_anUnregisteredNativeTableRegisters() {
+  withRightClickSandbox(function (ctx) {
+    const t = rwBuildTable('native', [['North', '4,281,905'], ['South', '622,148']], { header: ['Region', 'Units'] });
+
+    eq('right-click runtime: the contextmenu handler was captured',
+      typeof ctx.contextmenuHandler, 'function');
+    if (typeof ctx.contextmenuHandler !== 'function') return;
+
+    ctx.contextmenuHandler({ target: t.cell(1, 1) });
+
+    eq('right-click runtime: a click on an unregistered native data table registers it',
+      ctx.model.hasTable(t.table), true);
+    eq('right-click runtime: that native table becomes the active table',
+      ctx.model.getActiveTable() === t.table, true);
+    eq('right-click runtime: that native table carries a table pillbox',
+      ctx.tablePillboxes.has(t.table), true);
+    eq('right-click runtime: that click reports the table as activated',
+      ctx.sentMessages.some((m) => m.topic === 'state:tableActivated'), true);
   });
 })();
 
