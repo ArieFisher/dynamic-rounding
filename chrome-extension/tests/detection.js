@@ -2589,8 +2589,7 @@ const detectionSandboxCode = [
       results = {
         isDataTable: isDataTable(fakeTable),
         tablesFound: found.length,
-        firstIsFakeTable: found[0] && found[0].handle === fakeTable,
-        firstIsNew: found[0] && found[0].isNew,
+        firstIsFakeTable: found[0] === fakeTable,
       };
     } catch (e) {
       threw = e.message;
@@ -2607,8 +2606,6 @@ const detectionSandboxCode = [
     sandbox.results && sandbox.results.tablesFound, 1);
   eq('jsdom-less: findTables resolves to the same table object',
     sandbox.results && sandbox.results.firstIsFakeTable, true);
-  eq('jsdom-less: findTables reports the plain table as isNew (no registry supplied)',
-    sandbox.results && sandbox.results.firstIsNew, true);
 })();
 
 // The detection settings' expected values, written out as literals, so the
@@ -2912,14 +2909,12 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   const fromHost = findTables(makeNestingHost([grid.wrapperEl]));
   eq('nesting: a root holding the nest reports one table', fromHost.length, 1);
   eq('nesting: the reported table is the scrolling pane',
-    fromHost[0] && fromHost[0].handle === grid.scrollPaneEl, true);
-  eq('nesting: with no registry supplied the result reports isNew',
-    fromHost[0] && fromHost[0].isNew, true);
+    fromHost[0] === grid.scrollPaneEl, true);
 
   const fromWrapper = findTables(grid.wrapperEl);
   eq('nesting: the chain root as root reports one table', fromWrapper.length, 1);
   eq('nesting: the chain root as root reports the scrolling pane',
-    fromWrapper[0] && fromWrapper[0].handle === grid.scrollPaneEl, true);
+    fromWrapper[0] === grid.scrollPaneEl, true);
 
   // The registered element read through the grid adapter: its first column is
   // the identifier column, not the pinned pane's row-number gutter.
@@ -2981,7 +2976,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   const results = findTables(makeNestingHost([grid.wrapperEl]), { nestingDepth: 0 });
   eq('nesting: depth 0 reports one table', results.length, 1);
   eq('nesting: depth 0 reports the wrapper',
-    results[0] && results[0].handle === grid.wrapperEl, true);
+    results[0] === grid.wrapperEl, true);
 
   const rows = makeAdapter(grid.wrapperEl).getRows();
   eq('nesting: the wrapper stitches the pinned cells first, so row 0 cell 0 is a row number',
@@ -2998,7 +2993,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   const results = findTables(makeNestingHost([grid.wrapperEl]));
   eq('nesting: a depth holding two elements still reports one table', results.length, 1);
   eq('nesting: the fall-back outward lands on the wrapper',
-    results[0] && results[0].handle === grid.wrapperEl, true);
+    results[0] === grid.wrapperEl, true);
 })();
 
 // --- a chain shorter than the configured depth clamps to its innermost ---
@@ -3010,13 +3005,13 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   eq('nesting: a one-element chain at the shipped depth reports one table',
     loneResults.length, 1);
   eq('nesting: a one-element chain at the shipped depth reports itself',
-    loneResults[0] && loneResults[0].handle === lone, true);
+    loneResults[0] === lone, true);
 
   const grid = makeDatabaseQueryGrid();
   const deepResults = findTables(makeNestingHost([grid.wrapperEl]), { nestingDepth: 5 });
   eq('nesting: a depth past the chain reports one table', deepResults.length, 1);
   eq('nesting: a depth past the chain clamps to the scrolling pane',
-    deepResults[0] && deepResults[0].handle === grid.scrollPaneEl, true);
+    deepResults[0] === grid.scrollPaneEl, true);
 })();
 
 // --- Adversarial: a plain element between two qualifying elements adds no depth ---
@@ -3042,12 +3037,12 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   const shipped = findTables(host);
   eq('nesting: a plain layer inside the wrapper still reports one table', shipped.length, 1);
   eq('nesting: the shipped depth reports the scrolling pane past the plain layer',
-    shipped[0] && shipped[0].handle === grid.scrollPaneEl, true);
+    shipped[0] === grid.scrollPaneEl, true);
 
   eq('nesting: depth 0 past the plain layer reports the wrapper',
-    findTables(host, { nestingDepth: 0 }).map((r) => r.handle === grid.wrapperEl), [true]);
+    findTables(host, { nestingDepth: 0 }).map((handle) => handle === grid.wrapperEl), [true]);
   eq('nesting: depth 2 past the plain layer clamps to the scrolling pane',
-    findTables(host, { nestingDepth: 2 }).map((r) => r.handle === grid.scrollPaneEl), [true]);
+    findTables(host, { nestingDepth: 2 }).map((handle) => handle === grid.scrollPaneEl), [true]);
 })();
 
 // --- two nests under one plain parent report separately ---
@@ -3058,10 +3053,10 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   const results = findTables(makeNestingHost([first.wrapperEl, second.wrapperEl]));
   eq('nesting: two nests under one plain parent report two tables', results.length, 2);
   eq('nesting: each nest reports its own scrolling pane',
-    results.map((r) => r.handle === first.scrollPaneEl || r.handle === second.scrollPaneEl),
+    results.map((handle) => handle === first.scrollPaneEl || handle === second.scrollPaneEl),
     [true, true]);
   eq('nesting: the two reported tables are different elements',
-    results.length === 2 && results[0].handle !== results[1].handle, true);
+    results.length === 2 && results[0] !== results[1], true);
 })();
 
 (function gridNesting_loadTimeScanBuildsOneTablePillbox() {
@@ -3135,7 +3130,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   eq('nesting: a nest whose pinned pane is registered reports nothing',
     findTables(grid.wrapperEl, { isRegistered: (el) => el === grid.pinnedPaneEl }).length, 0);
   eq('nesting: a nest holding no registered element still reports the scrolling pane',
-    findTables(grid.wrapperEl, { isRegistered: () => false }).map((r) => r.handle === grid.scrollPaneEl),
+    findTables(grid.wrapperEl, { isRegistered: () => false }).map((handle) => handle === grid.scrollPaneEl),
     [true]);
 })();
 
@@ -3176,9 +3171,9 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   eq('nesting: a root holding one native table and one nest reports two tables',
     results.length, 2);
   eq('nesting: pass 1 reports the native table first',
-    results.length === 2 && results[0].handle === nativeTable, true);
+    results.length === 2 && results[0] === nativeTable, true);
   eq('nesting: pass 2 reports the scrolling pane second',
-    results.length === 2 && results[1].handle === grid.scrollPaneEl, true);
+    results.length === 2 && results[1] === grid.scrollPaneEl, true);
 })();
 
 // --- Adversarial: the step reports and registers nothing ---
@@ -3717,7 +3712,7 @@ function cnAdapterCellEls(tableEl) {
   eq('cell nest: both grids pass the data test (sanity)',
     [isDataTable(page.outer), isDataTable(page.inner)], [true, true]);
 
-  const handles = findTables(page.host).map((r) => r.handle);
+  const handles = findTables(page.host);
   eq('cell nest: a page holding a grid inside a cell of another grid reports two tables',
     handles.length, 2);
   eq('cell nest: the two tables are the outer grid and the inner grid, in document order',
@@ -3790,10 +3785,10 @@ function cnAdapterCellEls(tableEl) {
 
   const innerOnly = findTables(page.host, { isRegistered: (el) => el === page.inner });
   eq('cell nest: a registered inner grid leaves the outer grid to register',
-    innerOnly.map((r) => r.handle === page.outer), [true]);
+    innerOnly.map((handle) => handle === page.outer), [true]);
   const outerOnly = findTables(page.host, { isRegistered: (el) => el === page.outer });
   eq('cell nest: a registered outer grid leaves the inner grid to register',
-    outerOnly.map((r) => r.handle === page.inner), [true]);
+    outerOnly.map((handle) => handle === page.inner), [true]);
 })();
 
 (function cellNest_theLoadTimeScanRegistersBothGridsOnce() {
@@ -3837,7 +3832,7 @@ function cnAdapterCellEls(tableEl) {
   rwSetChildren(holdingCell, [grid.wrapperEl]);
   const host = rwEl('div', {}, [outer]);
 
-  const handles = findTables(host).map((r) => r.handle);
+  const handles = findTables(host);
   eq('cell nest: an outer grid holding the database query shape in a cell reports two tables',
     handles.length, 2);
   eq('cell nest: the outer grid registers',
@@ -3861,12 +3856,12 @@ function cnAdapterCellEls(tableEl) {
   eq('cell nest: a cell role above the wrapper leaves the wrapper the chain root',
     chainRootOf(grid.scrollRowEls[0].children[0]) === grid.wrapperEl, true);
   eq('cell nest: a cell role above the wrapper still selects the scrolling pane at the configured depth',
-    findTables(strayCell).map((r) => r.handle === grid.scrollPaneEl), [true]);
+    findTables(strayCell).map((handle) => handle === grid.scrollPaneEl), [true]);
   const result = nominateNest(grid.wrapperEl);
   eq('cell nest: the nest still holds the wrapper and the scrolling pane in its chain',
     [result.outcome, result.chainSize], ['selected', 2]);
   eq('cell nest: depth 0 still selects the wrapper',
-    findTables(strayCell, { nestingDepth: 0 }).map((r) => r.handle === grid.wrapperEl), [true]);
+    findTables(strayCell, { nestingDepth: 0 }).map((handle) => handle === grid.wrapperEl), [true]);
 
   const lone = makeLoneGrid();
   rwEl('div', { role: 'gridcell' }, [lone]);
@@ -3893,7 +3888,7 @@ function cnAdapterCellEls(tableEl) {
   eq('cell nest: the fixture nests three grids, each inside a cell of the one around it (sanity)',
     [middle.parentElement.getAttribute('role'), innermost.parentElement.getAttribute('role')], ['cell', 'cell']);
 
-  const handles = findTables(host).map((r) => r.handle);
+  const handles = findTables(host);
   eq('cell nest: three nested grids report three tables', handles.length, 3);
   eq('cell nest: the three tables are the three grids, outermost first',
     handles.length === 3 && handles[0] === outer && handles[1] === middle && handles[2] === innermost, true);
@@ -3936,7 +3931,7 @@ function cnAdapterCellEls(tableEl) {
   rwSetChildren(holdingCell, [grid]);
   const host = rwEl('div', {}, [nativeTable]);
 
-  const handles = findTables(host).map((r) => r.handle);
+  const handles = findTables(host);
   eq('cell nest: a native table holding a grid in a cell reports two tables', handles.length, 2);
   eq('cell nest: the native table reports first and the grid second',
     handles.length === 2 && handles[0] === nativeTable && handles[1] === grid, true);
@@ -5004,7 +4999,7 @@ function makeSparselyBoxedGrid(boxed) {
       eq(`artifact filter, ${kind}: ${name} registers on the load-time scan`, afSame(afRegistered(page), [table]), true);
       afForget(page);
       eq(`artifact filter, ${kind}: ${name} is listed by findTables`,
-        afSame(findTables(page, { styleProbe: inlineStyleProbe }).map((found) => found.handle), [table]), true);
+        afSame(findTables(page, { styleProbe: inlineStyleProbe }), [table]), true);
     }
   }
 })();
@@ -5040,7 +5035,7 @@ function makeSparselyBoxedGrid(boxed) {
   eq('native load-time scan: the data tables register in document order and the artifacts stay out',
     afSame(order, [first, second, third.querySelectorAll('table')[0]]), true);
   eq('native load-time scan: findTables lists the same tables in the same order',
-    afSame(findTables(page, { styleProbe: inlineStyleProbe }).map((found) => found.handle), order), true);
+    afSame(findTables(page, { styleProbe: inlineStyleProbe }), order), true);
   afForget(page);
 })();
 
