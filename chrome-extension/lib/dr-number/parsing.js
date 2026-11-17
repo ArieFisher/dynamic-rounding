@@ -219,8 +219,8 @@ function matchUnitNumber(text) {
 }
 
 function getExclusionReason(text, columnIndex, options, rowIndex) {
-  if (!options.simplifyFirstRow && rowIndex === 0) return 'firstRow';
-  if (!options.simplifyFirstColumn && columnIndex === 0) return 'firstColumn';
+  if (!options.simplifyFirstRow && rowIndex === 0) return 'first-row';
+  if (!options.simplifyFirstColumn && columnIndex === 0) return 'first-column';
   if (typeof text !== 'string') return null;
   const t = text.trim();
   if (!options.simplifyMixedPercent && /%/.test(t)) return 'percent';

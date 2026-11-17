@@ -361,7 +361,7 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
     simplifyDates: false, simplifyTimes: false,
     simplifyFirstColumn: false
   });
-  eq('exclude: first column with flag on', getExclusionReason('anything', 0, opts), 'firstColumn');
+  eq('exclude: first column with flag on', getExclusionReason('anything', 0, opts), 'first-column');
   eq('exclude: non-first column ignores flag', getExclusionReason('anything', 1, opts), null);
 })();
 
@@ -415,7 +415,7 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
 (function simplifyFirstRowTests() {
   // simplifyFirstRow=false: row 0 must be excluded regardless of cell content
   eq('simplifyFirstRow: row 0 excluded when flag is false',
-    getExclusionReason('1,234', 1, { simplifyFirstRow: false }, 0), 'firstRow');
+    getExclusionReason('1,234', 1, { simplifyFirstRow: false }, 0), 'first-row');
   // simplifyFirstRow=false: row 1 is not affected
   eq('simplifyFirstRow: row 1 not excluded when flag is false',
     getExclusionReason('1,234', 1, { simplifyFirstRow: false }, 1), null);
@@ -424,10 +424,10 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
     getExclusionReason('1,234', 1, { simplifyFirstRow: true }, 0), null);
   // simplifyFirstRow unset (default): row 0 IS excluded (!undefined = true, same as simplifyFirstRow=false)
   eq('simplifyFirstRow: row 0 excluded when flag is unset (default)',
-    getExclusionReason('1,234', 1, {}, 0), 'firstRow');
+    getExclusionReason('1,234', 1, {}, 0), 'first-row');
   // simplifyFirstRow takes priority over firstColumn check
   eq('simplifyFirstRow: firstRow beats firstColumn when both apply',
-    getExclusionReason('anything', 0, { simplifyFirstRow: false, simplifyFirstColumn: false }, 0), 'firstRow');
+    getExclusionReason('anything', 0, { simplifyFirstRow: false, simplifyFirstColumn: false }, 0), 'first-row');
 })();
 
 // First-match-wins priority: firstRow beats firstColumn beats percent beats currency
@@ -438,9 +438,9 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
     simplifyMixedPercent: false, simplifyMixedCurrency: false
   };
   eq('priority: first row wins even when value is a date',
-    getExclusionReason('2018', 0, opts, 0), 'firstRow');
+    getExclusionReason('2018', 0, opts, 0), 'first-row');
   eq('priority: first column wins even when value is a date (non-zero row)',
-    getExclusionReason('2018', 0, opts, 1), 'firstColumn');
+    getExclusionReason('2018', 0, opts, 1), 'first-column');
   eq('priority: year value not excluded when only first-row/col flags set (dates no longer excluded)',
     getExclusionReason('2018', 1, opts, 1), null);
 })();
@@ -1506,11 +1506,11 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 
   // Case 2: flag false → col 0 excluded
   eq('simplifyFirstColumn: false + col 0 → "firstColumn"',
-    getExclusionReason('1,234', 0, { simplifyFirstRow: true, simplifyFirstColumn: false }, 1), 'firstColumn');
+    getExclusionReason('1,234', 0, { simplifyFirstRow: true, simplifyFirstColumn: false }, 1), 'first-column');
 
   // Case 3: flag unset → col 0 excluded (intentional default change)
   eq('simplifyFirstColumn: unset + col 0 → "firstColumn" (new default semantics)',
-    getExclusionReason('1,234', 0, { simplifyFirstRow: true }, 1), 'firstColumn');
+    getExclusionReason('1,234', 0, { simplifyFirstRow: true }, 1), 'first-column');
 
   // Case 4: flag false but col 1 → null (only col 0 is affected)
   eq('simplifyFirstColumn: false + col 1 → null (non-first column unaffected)',

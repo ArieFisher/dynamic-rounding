@@ -48,7 +48,7 @@
 })();
 
 (function classifyCell_unknownExclusionFailsClosed() {
-  // getExclusionReason today only ever returns 'firstRow' | 'firstColumn' |
+  // getExclusionReason today only ever returns 'first-row' | 'first-column' |
   // 'percent' | 'currency' | null, but classifyCell's ladder must fail
   // closed (skip) on any other non-null value a future exclusion rule
   // returns, instead of silently falling through and simplifying the cell.
@@ -63,7 +63,7 @@
   const isolatedClassifyCell = isolatedFunction(isolatedSrc)();
   eq('classifyCell: unrecognized non-null exclusion reason still skips the cell',
     isolatedClassifyCell({ text: '100', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-    { mode: 'skip', reason: 'excluded' });
+    { mode: 'skip', reason: 'someFutureReason' });
 })();
 
 (function classifyCell_quoted() {
