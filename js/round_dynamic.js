@@ -1670,9 +1670,9 @@ function resolveAmbiguousDateDecision(decision, hint) {
  * its own per-cell data beside them.
  */
 
-// Adapts a classifyCell decision to the { mode, num, dates, ambiguous,
-// matches } shape the table step reads in its column post-pass, its max
-// magnitude, and its patches.
+// Adapts a classifyCell decision to the { mode, dates, ambiguous, matches }
+// shape the table step reads in its column post-pass, its max magnitude, and
+// its patches.
 function decisionToLegacyInfo(decision) {
   if (decision.mode === 'extracted') return { mode: 'extracted', matches: decision.value.matches };
   if (decision.mode === 'date') {
