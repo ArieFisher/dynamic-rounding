@@ -1727,9 +1727,9 @@ function datasetMaxMagnitude(entries) {
 function classifiedCellPatches(entry, maxMag, settings) {
   const { text, info } = entry;
   const { offsetTop, offsetOther, numTop } = settings;
-  const trimmed = typeof text === 'string' ? text.trim() : '';
-  const lead = typeof text === 'string' ? text.length - text.trimStart().length : 0;
   if (info.mode === 'date' || info.mode === 'time') {
+    const trimmed = text.trim();
+    const lead = text.length - text.trimStart().length;
     const rounded = info.mode === 'date'
       ? roundDateText(trimmed, settings.dateGranularity, info.dates)
       : roundTimeText(trimmed, settings.timeGranularity);

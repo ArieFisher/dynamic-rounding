@@ -151,7 +151,7 @@ function classifyTableCell(cellObj, rowIndex, opts, ranges) {
   return {
     cellObj,
     text,
-    trimmed: typeof text === 'string' ? text.trim() : '',
+    trimmed: text.trim(),
     info: decisionToLegacyInfo(finalizeExtractedDecision(placed, cell, layout)),
     split: !!placed.split,
     layout,
