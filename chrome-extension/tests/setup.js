@@ -217,9 +217,6 @@ globalThis.GridAdapter = GridAdapter;
 globalThis.GRID_CELL_SELECTOR = GRID_CELL_SELECTOR;
 // Expose the lib/dr-table package bundle, mirroring DR_NUMBER below.
 globalThis.DR_TABLE = DR_TABLE;
-// Expose the lib/dr-simplify package bundle (the classification ladder),
-// mirroring DR_NUMBER/DR_TABLE above.
-globalThis.DR_SIMPLIFY = DR_SIMPLIFY;
 globalThis.classifyCell = classifyCell;
 globalThis.pickDateFormatHint = pickDateFormatHint;
 globalThis.resolveAmbiguousDateDecision = resolveAmbiguousDateDecision;

@@ -125,7 +125,7 @@
       'lib/dr-number/index.js',
       'lib/dr-table/cells.js', 'lib/dr-table/adapters.js',
       'lib/dr-table/classify.js', 'lib/dr-table/detect.js', 'lib/dr-table/index.js',
-      'lib/dr-simplify/placement.js', 'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js', 'lib/dr-simplify/index.js',
+      'lib/dr-simplify/placement.js', 'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js',
       'lib/dr-capture/state.js', 'lib/dr-capture/render.js',
       'lib/dr-capture/index.js',
       'adapters/messaging.js', 'app/model.js',
@@ -275,7 +275,6 @@
   eq('sidebar.html does not load content-only lib/dr-table/detect.js', sidebarHtml.includes('lib/dr-table/detect.js'), false);
   eq('sidebar.html does not load content-only lib/dr-table/index.js', sidebarHtml.includes('lib/dr-table/index.js'), false);
   eq('sidebar.html does not load content-only lib/dr-simplify/ladder.js', sidebarHtml.includes('lib/dr-simplify/ladder.js'), false);
-  eq('sidebar.html does not load content-only lib/dr-simplify/index.js', sidebarHtml.includes('lib/dr-simplify/index.js'), false);
   eq('sidebar.html does not load content-only ui-pillbox.js', sidebarHtml.includes('ui-pillbox.js'), false);
   eq('sidebar.html does not load content-only ui-toast.js', sidebarHtml.includes('ui-toast.js'), false);
 })();
@@ -1234,7 +1233,7 @@
     'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
     'lib/dr-table/cells.js', 'lib/dr-table/adapters.js',
     'lib/dr-table/classify.js', 'lib/dr-table/detect.js', 'lib/dr-table/index.js',
-    'lib/dr-simplify/placement.js', 'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js', 'lib/dr-simplify/index.js',
+    'lib/dr-simplify/placement.js', 'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js',
     'adapters/messaging.js', 'app/model.js',
     'ui-pillbox.js', 'ui-toast.js', 'content.js',
   ];
@@ -1706,28 +1705,6 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
   eq('pending: the detection point names the re-test cap in the detection settings',
     /pendingRetestCap/.test(detectionPoint), true);
 })();
-
-// =============================================================================
-// Lib/dr-simplify classification ladder
-// =============================================================================
-//
-// The engine's per-cell pass in content.js and the lens preview extractor
-// (classifyPreviewCells / extractPreviewSamples) both call classifyCell
-// (lib/dr-simplify/ladder.js).
-//
-// This section has three parts:
-//   1. Package discipline — mirrors the DR_NUMBER/DR_TABLE checks.
-//   2. classifyCell unit tests — one per ladder rule, exercised directly with
-//      plain data (no DOM), matching the file's PURE contract.
-//   3. Divergence tests — each test pins the MERGED (engine-wins) behavior
-//      the lens preview extractor follows.
-
-// --- 1. Package discipline ---
-
-checkPackageObjectMatchesDeclarations('dr-simplify', 'DR_SIMPLIFY',
-  ['placement.js', 'ladder.js', 'table.js']);
-
-checkIndexDeclaresOnlyPackageObject('dr-simplify', 'DR_SIMPLIFY');
 
 // ---------------------------------------------------------------------------
 // Static purity scan.
