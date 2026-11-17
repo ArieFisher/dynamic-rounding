@@ -106,11 +106,11 @@ function roundValues(range, settings) {
     } else if (typeof value === "string" && value !== "") {
       const decision = classifyCell({ text: value, rowIndex: r, columnIndex: c, ranges: null },
         SHEETS_LADDER_OPTIONS);
-      textEntries.push({ r, c, text: value, col: c, info: decisionToLegacyInfo(decision) });
+      textEntries.push({ r, columnIndex: c, text: value, info: decisionToLegacyInfo(decision) });
     }
   }));
   const maxMag = datasetMaxMagnitude(numberEntries.concat(textEntries));
-  const roundNumber = (num) => roundCellSetAware(num, num, maxMag,
+  const roundNumber = (num) => roundCellSetAware(num, maxMag,
     settings.offsetTop, settings.offsetOther, settings.numTop);
 
   const results = new Map();
@@ -118,7 +118,7 @@ function roundValues(range, settings) {
     results.set(r + "," + c, roundNumber(num));
   }
   for (const { entry, patches } of tablePatches(textEntries, settings, maxMag).cells) {
-    results.set(entry.r + "," + entry.c, textResult(entry, patches, roundNumber));
+    results.set(entry.r + "," + entry.columnIndex, textResult(entry, patches, roundNumber));
   }
   return range.map((row, r) => row.map((value, c) => {
     const key = r + "," + c;
