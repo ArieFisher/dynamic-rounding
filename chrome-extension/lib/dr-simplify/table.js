@@ -13,7 +13,7 @@
  *      column's format hint.
  *   2. The max magnitude comes from the numbers of the extracted cells
  *      passed in, since a date or time adds none, unless the caller passes
- *      a frozen one.
+ *      one.
  *   3. Each cell's numbers, dates, and times round and become patches.
  *
  * Core layer: reads no page and calls no Chrome. It depends only on
@@ -122,8 +122,10 @@ function classifiedCellPatches(entry, maxMag, settings) {
  * @param {{offsetTop: number, offsetOther: number, numTop: number,
  *          dateGranularity: string, timeGranularity: string}} settings -
  *   Resolved offsets and top-band count, and the date and time granularity.
- * @param {number|null} [frozenMaxMag] - A frozen max magnitude. When given,
- *   the step rounds against it and computes none of its own.
+ * @param {number|null} [frozenMaxMag] - A max magnitude the caller holds:
+ *   the table's magnitude freeze in the extension, or the max magnitude over
+ *   the dataset in Sheets, number cells included. When given, the step
+ *   rounds against it and computes none of its own.
  * @returns {{maxMag: number|null,
  *            cells: Array<{entry: object, patches: object[]}>}}
  *   cells holds every cell in input order: the entry after the column
