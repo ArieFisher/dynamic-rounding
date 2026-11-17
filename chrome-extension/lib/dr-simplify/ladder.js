@@ -182,11 +182,6 @@ function classifyCell(input, options) {
     return { mode: 'skip', reason: 'identifier' };
   }
 
-  // A bracketed number ("(1,234)", "$(1,234)") is one number whose minus sign
-  // is written as the brackets around it.
-  const bracketed = matchBracketedNumber(text);
-  if (bracketed) return oneNumber(bracketed, 'simplify');
-
   const num = toNumber(text);
   if (num !== null) {
     const span = pureNumberSpan(text);
