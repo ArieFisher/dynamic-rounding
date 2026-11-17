@@ -47,14 +47,14 @@ function decisionToLegacyInfo(decision) {
 // another.
 function resolveAmbiguousDates(entries) {
   const isAmbiguous = (info) => info.mode === 'date' && info.ambiguous;
-  const readingsByCol = new Map();
+  const ambiguousDatesByCol = new Map();
   for (const { info, columnIndex } of entries) {
     if (!isAmbiguous(info)) continue;
-    if (!readingsByCol.has(columnIndex)) readingsByCol.set(columnIndex, []);
-    readingsByCol.get(columnIndex).push(...info.dates.filter(isAmbiguousDate));
+    if (!ambiguousDatesByCol.has(columnIndex)) ambiguousDatesByCol.set(columnIndex, []);
+    ambiguousDatesByCol.get(columnIndex).push(...info.dates.filter(isAmbiguousDate));
   }
-  const hintByCol = new Map(Array.from(readingsByCol,
-    ([columnIndex, readings]) => [columnIndex, pickDateFormatHint(readings)]));
+  const hintByCol = new Map(Array.from(ambiguousDatesByCol,
+    ([columnIndex, ambiguousDates]) => [columnIndex, pickDateFormatHint(ambiguousDates)]));
   return entries.map((entry) => {
     if (!isAmbiguous(entry.info)) return entry;
     const pendingDecision = { value: { dates: entry.info.dates } };
