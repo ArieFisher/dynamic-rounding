@@ -17,7 +17,7 @@ chrome.runtime.onInstalled.addListener(() => {
   // With true, Chrome opens the sidebar itself on a toolbar icon click, which
   // gives no activeTab grant, so the screenshot fails.
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch((e) => {
-    DR_LOG.warnError('icon click setting', e);
+    DR_LOG.warnError('toolbar icon click setting', e);
   });
   chrome.contextMenus.create({
     id: "dr-menu-toggle",

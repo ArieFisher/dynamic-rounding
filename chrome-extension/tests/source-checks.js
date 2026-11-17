@@ -2473,8 +2473,8 @@
     /importScripts\([^)]*lib\/dr-log\/index\.js/.test(bgSrc), true);
   eq('worker log row: the open-sidebar failure records the one row format in the log buffer',
     /DR_LOG\.warnError\('open sidebar', e\)/.test(bgSrc), true);
-  eq('worker log row: the icon click setting failure records the one row format in the log buffer',
-    /DR_LOG\.warnError\('icon click setting', e\)/.test(bgSrc), true);
+  eq('worker log row: the toolbar icon click setting failure records the one row format in the log buffer',
+    /DR_LOG\.warnError\('toolbar icon click setting', e\)/.test(bgSrc), true);
   eq('worker log row: the worker writes no row to the console directly',
     /console\.(warn|error|log|debug|info)\(/.test(bgSrc), false);
   eq('worker on bus: no raw chrome.tabs.sendMessage call',
