@@ -574,60 +574,124 @@ eq('roundDateText: December 13, 2096 at decade -> 2090',
 eq('roundDateText: December 13, 2096 at century -> 2000',
   roundDateText('December 13, 2096', 'century'), '2000');
 
-// Time granularity
-eq('roundTimeText: minute granularity is a no-op',
+// Time granularity: one rule for a clock time and an ISO date-time. A time
+// rounds to the nearest hour or minute; a time in the last hour or the last
+// minute of the clock goes down, so no time passes midnight; seconds drop.
+const CLOCK_TIME_CASES = [
+  // [input, granularity, expected, what the case covers]
+  ['14:29:30', 'hour', '14:00', 'minutes and seconds read once, below the half hour'],
+  ['14:30:00', 'hour', '15:00', 'the half hour rounds up'],
+  ['14:30', 'hour', '15:00', 'the half hour rounds up with no seconds'],
+  ['14:31', 'hour', '15:00', 'past the half hour rounds up'],
+  ['14:29', 'hour', '14:00', 'below the half hour rounds down'],
+  ['3:45 PM', 'hour', '4:00 PM', 'a twelve-hour time keeps its meridiem'],
+  ['2:45pm', 'hour', '3:00pm', 'a lowercase meridiem keeps its case'],
+  ['11:45 AM', 'hour', '12:00 PM', 'the morning rounds up across noon'],
+  ['12:45 PM', 'hour', '1:00 PM', 'noon hour rounds up to one'],
+  ['12:45 AM', 'hour', '1:00 AM', 'midnight hour rounds up to one'],
+  ['09:05', 'hour', '09:00', 'a padded hour keeps its padding'],
+  ['02:30', 'hour', '03:00', 'a padded hour keeps its padding when it rounds up'],
+  ['22:45', 'hour', '23:00', 'the hour before the last hour rounds up'],
+  ['10:45 PM', 'hour', '11:00 PM', 'the hour before the last twelve-hour hour rounds up'],
+  ['23:45', 'hour', '23:00', 'the last hour goes down'],
+  ['23:30', 'hour', '23:00', 'the last hour goes down at the half hour'],
+  ['11:45 PM', 'hour', '11:00 PM', 'the last hour goes down with PM'],
+  ['11:58 p.m.', 'hour', '11:00 p.m.', 'the last hour goes down with a dotted meridiem'],
+  ['11:45', 'hour', '11:00', 'an hour of 11 with no meridiem goes down'],
+  ['23:59:45', 'hour', '23:00', 'the last minute goes down at hour'],
+  ['14:29:30', 'minute', '14:30', 'thirty seconds rounds up'],
+  ['14:29:29', 'minute', '14:29', 'below thirty seconds rounds down'],
+  ['14:59:30', 'minute', '15:00', 'the minute carries into the hour'],
+  ['11:59:30 AM', 'minute', '12:00 PM', 'the minute carries across noon'],
+  ['12:59:30 AM', 'minute', '1:00 AM', 'the minute carries out of the midnight hour'],
+  ['23:58:45', 'minute', '23:59', 'the last hour still rounds up to its last minute'],
+  ['23:59:45', 'minute', '23:59', 'the last minute goes down'],
+  ['11:59:45 PM', 'minute', '11:59 PM', 'the last minute goes down with PM'],
+  ['11:59:45', 'minute', '11:59', 'the last minute of an hour of 11 with no meridiem goes down'],
+  ['09:05:40', 'minute', '09:06', 'a padded hour keeps its padding at minute'],
+];
+
+for (const [input, granularity, expected, covers] of CLOCK_TIME_CASES) {
+  eq(`roundTimeText: ${input} at ${granularity} -> ${expected} (${covers})`,
+    roundTimeText(input, granularity), expected);
+}
+
+eq('roundTimeText: a time with no seconds is unchanged at minute',
   roundTimeText('14:30', 'minute'), null);
-
-eq('roundTimeText: hour rounds 14:30 up (round-half-up)',
-  roundTimeText('14:30', 'hour'), '15:00');
-
-eq('roundTimeText: hour rounds 14:31 up',
-  roundTimeText('14:31', 'hour'), '15:00');
-
-eq('roundTimeText: hour rounds 14:29 down',
-  roundTimeText('14:29', 'hour'), '14:00');
-
-eq('roundTimeText: hour with seconds',
-  roundTimeText('14:29:30', 'hour'), '15:00:00');
-
-eq('roundTimeText: hour with AM/PM preserved',
-  roundTimeText('2:45 PM', 'hour'), '3:00 PM');
-
-eq('roundTimeText: zero-pad preserved',
-  roundTimeText('02:30', 'hour'), '03:00');
-
+eq('roundTimeText: a twelve-hour time with no seconds is unchanged at minute',
+  roundTimeText('3:45 PM', 'minute'), null);
+eq('roundTimeText: a time already on the hour is unchanged at hour',
+  roundTimeText('14:00', 'hour'), null);
 eq('roundTimeText: invalid input -> null',
   roundTimeText('not a time', 'hour'), null);
+eq('roundTimeText: an hour past 23 stays as written',
+  roundTimeText('25:30', 'hour'), null);
+eq('roundTimeText: a minute past 59 stays as written',
+  roundTimeText('14:75', 'hour'), null);
+eq('roundTimeText: a second past 59 stays as written',
+  roundTimeText('14:29:75', 'minute'), null);
+eq('roundTimeText: a twelve-hour hour of 0 stays as written',
+  roundTimeText('0:15 AM', 'hour'), null);
+eq('roundTimeText: a twelve-hour hour past 12 stays as written',
+  roundTimeText('13:15 PM', 'hour'), null);
+eq('roundTimeText: an ISO date-time with a second past 59 stays as written',
+  roundTimeText('2026-01-01T14:29:75', 'minute'), null);
 
-// Edge cases (12-hour and 24-hour wrap)
-eq('roundTimeText: 12:45 PM wraps to 1:00 PM',
-  roundTimeText('12:45 PM', 'hour'), '1:00 PM');
+// No time passes midnight: every second of the last hour, at either
+// granularity, stays inside it.
+(function noTimePassesMidnight() {
+  const pad = (n) => String(n).padStart(2, '0');
+  const crossed = [];
+  for (const granularity of ['hour', 'minute']) {
+    for (let minute = 0; minute < 60; minute++) {
+      for (let second = 0; second < 60; second++) {
+        const text = `23:${pad(minute)}:${pad(second)}`;
+        const twelve = `11:${pad(minute)}:${pad(second)} PM`;
+        const iso = `2026-11-09T23:${pad(minute)}:${pad(second)}`;
+        const out24 = roundTimeText(text, granularity) || text;
+        const out12 = roundTimeText(twelve, granularity) || twelve;
+        const outIso = roundTimeText(iso, granularity) || iso;
+        if (!out24.startsWith('23:')) crossed.push(text + ' ' + granularity + ' -> ' + out24);
+        if (!/^11:\d\d PM$/.test(out12)) crossed.push(twelve + ' ' + granularity + ' -> ' + out12);
+        if (!outIso.startsWith('2026-11-09 23:')) crossed.push(iso + ' ' + granularity + ' -> ' + outIso);
+      }
+    }
+  }
+  eq('roundTimeText: no time in the last hour passes midnight', crossed, []);
+})();
 
-eq('roundTimeText: 11:45 AM crosses noon to 12:00 PM',
-  roundTimeText('11:45 AM', 'hour'), '12:00 PM');
+// roundClockTime: the one rounding rule both paths call. It takes the hour as
+// written and returns it in the same convention.
+eq('roundClockTime: twenty-four hour, hour',
+  roundClockTime({ hour: 14, minute: 29, second: 30 }, 'hour'), { hour: 14, minute: 0, isPm: null });
+eq('roundClockTime: twelve hour carries across noon at minute',
+  roundClockTime({ hour: 11, minute: 59, second: 30, isPm: false }, 'minute'), { hour: 12, minute: 0, isPm: true });
+eq('roundClockTime: an unknown granularity -> null',
+  roundClockTime({ hour: 14, minute: 29, second: 30 }, 'second'), null);
+eq('roundClockTime: a twelve-hour hour of 0 -> null',
+  roundClockTime({ hour: 0, minute: 15, second: 0, isPm: false }, 'hour'), null);
+eq('roundClockTime: an hour of 11 with no AM/PM goes down',
+  roundClockTime({ hour: 11, minute: 45, second: 0 }, 'hour'), { hour: 11, minute: 0, isPm: null });
+eq('roundClockTime: an hour of 11 on the twenty-four hour clock rounds up',
+  roundClockTime({ hour: 11, minute: 45, second: 0, isTwentyFourHour: true }, 'hour'),
+  { hour: 12, minute: 0, isPm: null });
+eq('roundClockTime: hour 23 on the twenty-four hour clock goes down',
+  roundClockTime({ hour: 23, minute: 45, second: 0, isTwentyFourHour: true }, 'hour'),
+  { hour: 23, minute: 0, isPm: null });
 
-eq('roundTimeText: 11:45 PM wraps past midnight to 12:00 AM',
-  roundTimeText('11:45 PM', 'hour'), '12:00 AM');
-
-eq('roundTimeText: 12:45 AM wraps to 1:00 AM',
-  roundTimeText('12:45 AM', 'hour'), '1:00 AM');
-
-eq('roundTimeText: 23:30 wraps to 00:00 (24-hour)',
-  roundTimeText('23:30', 'hour'), '00:00');
-
-eq('roundTimeText: lowercase pm suffix preserved',
-  roundTimeText('2:45pm', 'hour'), '3:00pm');
-
-// --- ISO 8601 date-time: follows the time instruction, date preserved ---
+// --- ISO 8601 date-time: follows the time rule, date preserved ---
 eq('parseISODateTime: full offset timestamp',
   parseISODateTime('2025-11-26T16:16:00.000-05:00'),
-  { year: 2025, month: 11, day: 26, hour: 16, minute: 16 });
+  { year: 2025, month: 11, day: 26, hour: 16, minute: 16, second: 0 });
 
 eq('parseISODateTime: Z suffix', parseISODateTime('2025-11-26T16:16:00Z'),
-  { year: 2025, month: 11, day: 26, hour: 16, minute: 16 });
+  { year: 2025, month: 11, day: 26, hour: 16, minute: 16, second: 0 });
 
 eq('parseISODateTime: space separator', parseISODateTime('2025-11-26 16:16'),
-  { year: 2025, month: 11, day: 26, hour: 16, minute: 16 });
+  { year: 2025, month: 11, day: 26, hour: 16, minute: 16, second: 0 });
+
+eq('parseISODateTime: seconds read', parseISODateTime('2026-01-01T14:29:30'),
+  { year: 2026, month: 1, day: 1, hour: 14, minute: 29, second: 30 });
 
 eq('parseISODateTime: not a datetime -> null',
   parseISODateTime('2025-11-26'), null);
@@ -642,23 +706,34 @@ eq('isDateTimeLike: bare date -> false', isDateTimeLike('2025-11-26'), false);
 
 eq('isDateTimeLike: bare time -> false', isDateTimeLike('16:16'), false);
 
-eq('roundTimeText: ISO datetime minute -> drops seconds/ms/offset, T->space',
-  roundTimeText('2025-11-26T16:16:00.000-05:00', 'minute'), '2025-11-26 16:16');
+const ISO_DATE_TIME_CASES = [
+  // [input, granularity, expected, what the case covers]
+  ['2026-01-01T14:29:30', 'hour', '2026-01-01 14:00', 'minutes and seconds read once'],
+  ['2026-01-01T14:29:30', 'minute', '2026-01-01 14:30', 'thirty seconds rounds up'],
+  ['2026-01-01T14:29:29', 'minute', '2026-01-01 14:29', 'below thirty seconds rounds down'],
+  ['2026-11-09T23:45', 'hour', '2026-11-09 23:00', 'the last hour goes down'],
+  ['2026-11-09T23:59:45', 'minute', '2026-11-09 23:59', 'the last minute goes down'],
+  ['2026-11-09T23:59:45', 'hour', '2026-11-09 23:00', 'the last minute goes down at hour'],
+  ['2026-11-09T22:45', 'hour', '2026-11-09 23:00', 'the hour before the last hour rounds up'],
+  ['2026-11-09T11:45', 'hour', '2026-11-09 12:00', 'an hour of 11 rounds up on the 24-hour clock'],
+  ['2026-11-09T11:30', 'hour', '2026-11-09 12:00', 'an hour of 11 rounds up at the half hour'],
+  ['2026-11-09T11:59:45', 'minute', '2026-11-09 12:00', 'minute 11:59 carries into 12:00 on the 24-hour clock'],
+  ['2026-11-09T14:59:30', 'minute', '2026-11-09 15:00', 'the minute carries into the hour'],
+  ['2025-11-26T16:16:00.000-05:00', 'minute', '2025-11-26 16:16', 'the fraction and offset drop'],
+  ['2025-11-26T16:16:00.000-05:00', 'hour', '2025-11-26 16:00', 'below the half hour rounds down'],
+  ['2025-11-26T16:30:00Z', 'hour', '2025-11-26 17:00', 'the half hour rounds up'],
+  ['2025-11-26T23:15:00Z', 'hour', '2025-11-26 23:00', 'the last hour goes down below the half hour'],
+  ['2024-11-03T08:15:29.999-05:00', 'minute', '2024-11-03 08:15', 'a fraction of a second never rounds up'],
+  ['2024-11-03T08:15:30.250-05:00', 'hour', '2024-11-03 08:00', 'the fraction and offset drop at hour'],
+];
 
-eq('roundTimeText: ISO datetime hour rounds 16:16 down',
-  roundTimeText('2025-11-26T16:16:00.000-05:00', 'hour'), '2025-11-26 16:00');
+for (const [input, granularity, expected, covers] of ISO_DATE_TIME_CASES) {
+  eq(`roundTimeText: ${input} at ${granularity} -> ${expected} (${covers})`,
+    roundTimeText(input, granularity), expected);
+}
 
-eq('roundTimeText: ISO datetime hour rounds 16:30 up (half-up)',
-  roundTimeText('2025-11-26T16:30:00Z', 'hour'), '2025-11-26 17:00');
-
-eq('roundTimeText: ISO datetime hour-up at end of day clamps to 23:59 same day',
-  roundTimeText('2025-11-26T23:45:00Z', 'hour'), '2025-11-26 23:59');
-
-eq('roundTimeText: ISO datetime 23:15 hour rounds down to 23:00 (same day)',
-  roundTimeText('2025-11-26T23:15:00Z', 'hour'), '2025-11-26 23:00');
-
-eq('roundTimeText: ISO datetime minute is idempotent on space form',
-  roundTimeText('2025-11-26 16:16', 'minute'), '2025-11-26 16:16');
+eq('roundTimeText: an ISO date-time already in the result form is unchanged',
+  roundTimeText('2025-11-26 16:16', 'minute'), null);
 
 // --- Advanced parameter resolvers ---
 

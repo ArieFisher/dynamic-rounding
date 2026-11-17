@@ -518,8 +518,11 @@
       shaped like dates that are not. The Governed by column names the setting
       that covers the row.</p>
     <p class="expect">Expect: table pillbox at load. Each date shows its own year. Each
-      time stays as written until the Times setting is on. The cell holding
-      two clock times stays as written with Times on or off.</p>
+      time stays as written until the Times setting is on. With Times on, a
+      time in the last hour of the clock stays in that hour at hour and at
+      minute; a failure shows 00:00, 12:00 a.m., 12:00 AM, or the next day's
+      date. The cell holding two clock times stays as written with Times on
+      or off.</p>
 
     <!--
       Expected output at the shipped defaults: dates on at year granularity, times
@@ -564,24 +567,37 @@
         3/9/2021 11:59                -> 2021 11:59  -> 3/2021 11:59 -> Q1 2021 11:59
       A column carrying evidence for both readings stays unchanged rather than guessed.
 
-      Clock times round to the hour at the half-hour mark, and the original
-      meridiem style, hour padding, and seconds field are all preserved:
-        14:29                         -> 14:00
-        14:29:30                      -> 15:00:00
-        3:45 PM                       -> 4:00 PM
-        11:58 p.m.                    -> 12:00 a.m.
-        09:05                         -> 09:00
+      Clock times round to the nearest hour or minute, half up, and drop
+      their seconds. The meridiem style and the hour padding stay. A time in
+      the last hour of the clock goes down to that hour at hour, and a time
+      in its last minute goes down to that minute at minute, so no time
+      passes midnight. A time with no seconds stays as written at minute.
+                                      hour           minute
+        14:29                         -> 14:00       -> 14:29
+        14:29:30                      -> 14:00       -> 14:30
+        3:45 PM                       -> 4:00 PM     -> 3:45 PM
+        11:58 p.m.                    -> 11:00 p.m.  -> 11:58 p.m.
+        09:05                         -> 09:00       -> 09:05
+        23:45                         -> 23:00       -> 23:45
+        23:59:45                      -> 23:00       -> 23:59
+        11:45 PM                      -> 11:00 PM    -> 11:45 PM
+      A failure in the last hour shows 00:00, 12:00 a.m., or 12:00 AM.
       A clock time inside other text stays as written with Times on or off:
         9:45 - 11:45 AM               -> 9:45 - 11:45 AM
       A failure reads 9:45 - 10:45 AM.
 
-      Timestamps are matched before dates, follow the time setting, and keep their
-      date. Seconds, milliseconds, and the zone offset are dropped. Rounding up
-      out of the last hour clamps to the same day rather than rolling over:
-        2024-11-03T14:29:00           -> 2024-11-03 14:00
-        2024-11-03 14:31:00           -> 2024-11-03 15:00
-        2024-11-03T23:45:00Z          -> 2024-11-03 23:59
-        2024-11-03T08:15:30.250-05:00 -> 2024-11-03 08:00
+      Timestamps are matched before dates, round by the same rule as clock
+      times, and keep their date. They are on the 24-hour clock, so only
+      hour 23 is the last hour: hour 11 rounds up like any other hour. The
+      seconds, the fraction of a second, and the zone offset drop.
+                                      hour                minute
+        2024-11-03T14:29:00           -> 2024-11-03 14:00 -> 2024-11-03 14:29
+        2024-11-03 14:31:00           -> 2024-11-03 15:00 -> 2024-11-03 14:31
+        2024-11-03T23:45:00Z          -> 2024-11-03 23:00 -> 2024-11-03 23:45
+        2024-11-03T11:45:00           -> 2024-11-03 12:00 -> 2024-11-03 11:45
+        2024-11-03T08:15:30.250-05:00 -> 2024-11-03 08:00 -> 2024-11-03 08:16
+      A failure in the last hour shows 2024-11-03 23:59 or 2024-11-04. A
+      failure at hour 11 shows 2024-11-03 11:00.
     -->
     <table>
       <thead>
@@ -713,6 +729,21 @@
           <td>Times</td>
         </tr>
         <tr>
+          <th scope="row">Clock, last hour</th>
+          <td>23:45</td>
+          <td>Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Clock, last minute</th>
+          <td>23:59:45</td>
+          <td>Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Clock, twelve hour, last hour</th>
+          <td>11:45 PM</td>
+          <td>Times</td>
+        </tr>
+        <tr>
           <th scope="row">Two clock times, held back</th>
           <td>9:45 - 11:45 AM</td>
           <td>Nothing</td>
@@ -730,6 +761,11 @@
         <tr>
           <th scope="row">Timestamp, UTC marker</th>
           <td>2024-11-03T23:45:00Z</td>
+          <td>Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Timestamp, hour 11</th>
+          <td>2024-11-03T11:45:00</td>
           <td>Times</td>
         </tr>
         <tr>

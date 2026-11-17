@@ -758,15 +758,14 @@ function clockTimeRanges(text) {
 /**
  * Parse an ISO 8601 date-time string into its wall-clock components.
  * Accepts "YYYY-MM-DDTHH:MM[:SS[.fff]][Z|±HH[:]MM]"; the date/time separator
- * may be "T" or a single space. Seconds, fractional seconds, and the timezone
- * offset are recognised but discarded — simplification keeps only the
- * wall-clock date plus HH:MM.
- * @returns {{year:number, month:number, day:number, hour:number, minute:number}|null}
+ * may be "T" or a single space. The fraction of a second and the timezone
+ * offset are recognised but discarded; a missing seconds field reads as 0.
+ * @returns {{year:number, month:number, day:number, hour:number, minute:number, second:number}|null}
  */
 function parseISODateTime(text) {
   if (typeof text !== 'string') return null;
   const m = text.trim().match(
-    /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?$/
+    /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?$/
   );
   if (!m) return null;
   const year = parseInt(m[1], 10);
@@ -774,9 +773,10 @@ function parseISODateTime(text) {
   const day = parseInt(m[3], 10);
   const hour = parseInt(m[4], 10);
   const minute = parseInt(m[5], 10);
+  const second = m[6] ? parseInt(m[6], 10) : 0;
   if (month < 1 || month > 12 || day < 1 || day > 31) return null;
   if (hour > 23 || minute > 59) return null;
-  return { year, month, day, hour, minute };
+  return { year, month, day, hour, minute, second };
 }
 
 function isDateTimeLike(text) {
@@ -828,89 +828,71 @@ function roundDateText(text, granularity, dates) {
   return out;
 }
 
+const SECONDS_PER_MINUTE = 60;
+const SECONDS_PER_HOUR = 3600;
+const TIME_STEP_SECONDS = { minute: SECONDS_PER_MINUTE, hour: SECONDS_PER_HOUR };
+
 /**
- * Simplify an already-parsed ISO 8601 date-time per the time granularity,
- * preserving the date. Returns "YYYY-MM-DD HH:MM" ('minute') or the hour-rounded
- * "YYYY-MM-DD HH:00" ('hour', round-half-up). The date is never changed: when
- * rounding up the final hour would cross midnight, the time is clamped to 23:59
- * on the same day instead of rolling into the next day.
- * The original seconds, milliseconds, and timezone offset are dropped.
+ * The one rounding rule for a time of day, read by every clock time and ISO
+ * date-time. The time rounds to the nearest hour or minute, half up. A time in
+ * the last hour of the clock goes down at hour, and a time in its last minute
+ * goes down at minute, so no time passes midnight. The last hour is an hour of
+ * 23, or an hour of 11 as written with PM or, off the twenty-four hour clock,
+ * with no AM/PM. The seconds drop.
+ *
+ * The hour arrives as written: isPm is true or false with an AM/PM and absent
+ * without, and isTwentyFourHour is true for an ISO date-time, which is always
+ * on the twenty-four hour clock. The result gives the hour in the convention
+ * it came in, or null for a part out of range or an unknown granularity.
  */
-function roundISODateTime(dt, granularity) {
-  let { year, month, day, hour, minute } = dt;
-  if (granularity === 'hour') {
-    if (minute >= 30) {
-      if (hour === 23) {
-        // Rounding up would advance the date; clamp to the last minute of the
-        // same day instead.
-        minute = 59;
-      } else {
-        hour += 1;
-        minute = 0;
-      }
-    } else {
-      minute = 0;
-    }
-  }
-  const pad = n => String(n).padStart(2, '0');
-  return `${year}-${pad(month)}-${pad(day)} ${pad(hour)}:${pad(minute)}`;
+function roundClockTime({ hour, minute, second, isPm, isTwentyFourHour }, granularity) {
+  const step = TIME_STEP_SECONDS[granularity];
+  const hasMeridiem = typeof isPm === 'boolean';
+  const hourInRange = hasMeridiem ? hour >= 1 && hour <= 12 : hour >= 0 && hour <= 23;
+  if (!step || !hourInRange || minute > 59 || second > 59) return null;
+  const hour24 = hasMeridiem ? (hour % 12) + (isPm ? 12 : 0) : hour;
+  const isLastHour = hour24 === 23 || (!hasMeridiem && !isTwentyFourHour && hour === 11);
+  const isLastStep = isLastHour && (granularity === 'hour' || minute === 59);
+  const total = hour24 * SECONDS_PER_HOUR + minute * SECONDS_PER_MINUTE + second;
+  const down = total - (total % step);
+  const rounded = !isLastStep && total - down >= step / 2 ? down + step : down;
+  const roundedHour = Math.floor(rounded / SECONDS_PER_HOUR);
+  const roundedMinute = (rounded % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE;
+  if (!hasMeridiem) return { hour: roundedHour, minute: roundedMinute, isPm: null };
+  return { hour: roundedHour % 12 || 12, minute: roundedMinute, isPm: roundedHour >= 12 };
 }
 
+/**
+ * Simplify a cell holding one clock time or one ISO date-time per the time
+ * granularity, through roundClockTime. A clock time keeps its AM/PM style and
+ * its hour padding: "11:59:30 a.m." becomes "12:00 p.m." at minute. An ISO
+ * date-time keeps its date and becomes "YYYY-MM-DD HH:MM". Returns null when
+ * the text holds neither or the result equals the text.
+ */
 function roundTimeText(text, granularity) {
   if (typeof text !== 'string') return null;
-
-  // ISO 8601 date-time cells follow the time instruction but keep their date.
-  // Unlike a bare clock time, 'minute' granularity is not a no-op here: it still
-  // normalises the cell to "YYYY-MM-DD HH:MM" (dropping seconds/ms/offset).
-  const dt = parseISODateTime(text);
-  if (dt) return roundISODateTime(dt, granularity);
-
-  if (granularity === 'minute' || !granularity) return null;
-  if (granularity !== 'hour') return null;
   const trimmed = text.trim();
-  const m = trimmed.match(WHOLE_CELL_TIME_RE);
-  if (!m) return null;
-  const origHourStr = m[1];
-  const origHour = parseInt(origHourStr, 10);
-  const minutes = parseInt(m[2], 10);
-  const seconds = m[3] ? parseInt(m[3], 10) : 0;
-  const ampmRaw = m[4] || '';
-  const has12HourSuffix = ampmRaw !== '';
-  const isPm = has12HourSuffix && /p/i.test(ampmRaw);
-
-  // Round up if at or past the half-hour mark.
-  const roundUp = minutes > 30 || (minutes === 30 && seconds >= 0) || (minutes === 29 && seconds >= 30);
-
-  let hour24;
-  if (has12HourSuffix) {
-    // 12-hour clock: 12 AM = 0, 1-11 AM = 1-11, 12 PM = 12, 1-11 PM = 13-23.
-    hour24 = (origHour % 12) + (isPm ? 12 : 0);
+  const pad = (n) => String(n).padStart(2, '0');
+  const dt = parseISODateTime(trimmed);
+  const m = dt ? null : trimmed.match(WHOLE_CELL_TIME_RE);
+  if (!dt && !m) return null;
+  const meridiem = m ? m[4] || '' : '';
+  const time = dt ? { ...dt, isTwentyFourHour: true } : {
+    hour: parseInt(m[1], 10), minute: parseInt(m[2], 10), second: m[3] ? parseInt(m[3], 10) : 0,
+    isPm: meridiem ? /p/i.test(meridiem) : undefined,
+  };
+  const rounded = roundClockTime(time, granularity);
+  if (!rounded) return null;
+  let result;
+  if (dt) {
+    result = `${dt.year}-${pad(dt.month)}-${pad(dt.day)} ${pad(rounded.hour)}:${pad(rounded.minute)}`;
   } else {
-    hour24 = origHour;
+    const hour = !meridiem && m[1].length === 2 ? pad(rounded.hour) : String(rounded.hour);
+    // Swap the a/p letter alone, so the suffix keeps its case, dots, and spacing.
+    const suffix = rounded.isPm ? meridiem.replace(/a/i, (c) => (c === 'A' ? 'P' : 'p'))
+      : meridiem.replace(/p/i, (c) => (c === 'P' ? 'A' : 'a'));
+    result = `${hour}:${pad(rounded.minute)}${suffix}`;
   }
-  if (roundUp) hour24 = (hour24 + 1) % 24;
-  else hour24 = hour24 % 24;
-
-  let displayHour;
-  let displayAmpm = '';
-  if (has12HourSuffix) {
-    const newIsPm = hour24 >= 12;
-    let h12 = hour24 % 12;
-    if (h12 === 0) h12 = 12;
-    displayHour = String(h12);
-    // Preserve the original AM/PM token style ("AM", "am", "a.m.", " PM", etc.)
-    // by swapping the a/p letter but keeping the rest of the original suffix.
-    displayAmpm = newIsPm ? ampmRaw.replace(/a/i, c => c === 'A' ? 'P' : 'p')
-                          : ampmRaw.replace(/p/i, c => c === 'P' ? 'A' : 'a');
-  } else {
-    displayHour = origHourStr.length === 2
-      ? String(hour24).padStart(2, '0')
-      : String(hour24);
-  }
-
-  let result = `${displayHour}:00`;
-  if (m[3]) result += ':00';
-  result += displayAmpm;
   return result === trimmed ? null : result;
 }
 

@@ -1328,7 +1328,7 @@
     'isInRanges', 'resolveOffset', 'resolveNumTop', 'matchUnitNumber', 'getExclusionReason',
     'knownDate', 'findDates', 'isAmbiguousDate',
     'isDateLike', 'isTimeLike', 'clockTimeRanges', 'parseISODateTime', 'isDateTimeLike',
-    'roundDateText', 'roundISODateTime', 'roundTimeText',
+    'roundDateText', 'roundClockTime', 'roundTimeText',
     'getQuoteMaskedRanges', 'overlapsMaskedRange', 'extractNumbersInText',
     'bracketSignSpan', 'isBracketedNegative', 'matchBracketedNumber',
     'eraYearDigitRanges', 'formatNumber', 'pureNumberSpan',
