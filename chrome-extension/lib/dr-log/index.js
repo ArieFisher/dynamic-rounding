@@ -147,8 +147,14 @@ const DR_LOG = (function () {
     return thrown instanceof Error ? thrown.name : null;
   }
 
+  // Calls record() rather than warn(), so the stack trace starts at this
+  // function's caller and not at this function.
+  function warnError(step, thrown) {
+    record('warn', formatRow('error', { step, error: errorType(thrown) }), warnError);
+  }
+
   return {
-    debug, info, warn, error, snapshot, onRow, formatRow, errorType,
+    debug, info, warn, error, snapshot, onRow, formatRow, errorType, warnError,
     ERROR_LEVELS: ERROR_LEVELS.slice(),
   };
 })();

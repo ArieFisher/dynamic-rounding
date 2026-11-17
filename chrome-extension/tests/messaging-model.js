@@ -77,7 +77,7 @@
     true);
 
   eq('pull (inverted): content.js answers request:activeTable with the active table\'s settings',
-    /respond\('request:activeTable'[\s\S]{0,100}const active = DR_MODEL\.getActiveTable\(\);\s*const settings = DR_MODEL\.getTableSettings\(active\)/.test(contentSrc), true);
+    /respond\('request:activeTable'[\s\S]{0,400}const active = DR_MODEL\.getActiveTable\(\);\s*const settings = DR_MODEL\.getTableSettings\(active\)/.test(contentSrc), true);
 
   // --- Unified rounding path ---
 
@@ -1396,8 +1396,8 @@ const PENDING_FILL_ROWS = [
      'state:errorRecorded',
      // The sidebar's three requests, each answered by the tab's content script.
      'request:applySettings', 'request:activeTable', 'request:captureState',
-     // The service worker's two.
-     'intent:menuClicked', 'state:sidebarOpened',
+     // The service worker's one.
+     'intent:menuClicked',
      // The content script's six reports to the sidebar, the settings
      // notice among them.
      'state:settingsChanged', 'state:tableActivated', 'state:tableSwitched',
@@ -1409,7 +1409,6 @@ const PENDING_FILL_ROWS = [
   // so a wrong one here delivers to the wrong audience in silence.
   const WORKER_TOPICS = {
     'intent:menuClicked': ['intent', 'tab'],
-    'state:sidebarOpened': ['state-change', 'tab'],
     // The content script's six reports. Every one broadcasts: the content
     // script holds no tabs interface, and the sidebar is an extension page.
     'state:settingsChanged': ['state-change', 'extension-pages'],
@@ -2440,10 +2439,6 @@ const PENDING_FILL_ROWS = [
     eq('page rows: a menu click with no table at the right-click writes one no table found row',
       rows(() => ctx.bus.publish('intent:menuClicked', {})), ['Dynamic Rounding: no table found']);
 
-    ctx.model.setActiveTable(null);
-    eq('page rows: opening the sidebar with no active table writes one no active table row',
-      rows(() => ctx.bus.publish('state:sidebarOpened', {})), ['Dynamic Rounding: no active table']);
-
     const tables = [{ tagName: 'DIV' }, { tagName: 'DIV' }];
     tables.forEach((table) => ctx.model.registerTable(table));
     const pendingRoots = [{ nodeType: 1, tagName: 'DIV' }, { nodeType: 1, tagName: 'DIV' }];
@@ -2990,9 +2985,9 @@ function issue328SettingsOf(table) {
       const press = countChecks(() => DR_BUS.publish('intent:toggleTable', { table }));
       const apply = countChecks(() => askContentScript({ topic: 'request:applySettings',
         settings: Object.assign({}, DR_DEFAULTS, ISSUE328_LIGHT) }));
-      const reopen = countChecks(() => askContentScript({ topic: 'state:sidebarOpened' }));
-      eq('shape check: a table pillbox press, a sidebar change, and a sidebar reopen each run it once',
-        [press, apply, reopen], [1, 1, 1]);
+      const read = countChecks(() => askContentScript({ topic: 'request:activeTable' }));
+      eq('shape check: a table pillbox press, a sidebar change, and a redraw read each run it once',
+        [press, apply, read], [1, 1, 1]);
     } finally {
       DR_MODEL.getTableFingerprint = origRead;
     }
@@ -3000,37 +2995,71 @@ function issue328SettingsOf(table) {
 })();
 
 // A table no one has turned on reads off: the shipped on/off value is off,
-// so the sidebar pillbox matches a table showing the original, and opening the sidebar on an
-// untouched table leaves it showing the original. Only a toggle or the sidebar pillbox turns it on.
+// so the sidebar pillbox matches a table showing the original, and the
+// sidebar's redraw read on an untouched table leaves it showing the original.
+// Only a toggle or the sidebar pillbox turns it on.
 (function issue328_anUntouchedTableReadsOff() {
   runPressFixture(() => {
     const table = makePressTable('8,584,629');
     DR_MODEL.setActiveTable(table);
     eq('defaults: a table with no settings reads off',
       DR_MODEL.getTableSettings(table).enabled, false);
-    withCreateTreeWalker(() => askContentScript({ topic: 'state:sidebarOpened' }));
-    eq('defaults: opening the sidebar on an untouched table leaves it showing the original',
+    withCreateTreeWalker(() => askContentScript({ topic: 'request:activeTable' }));
+    eq('defaults: a redraw read on an untouched table leaves it showing the original',
       [showsSimplified(table), table._cells[3].innerText], [false, '8,584,629']);
   });
 })();
 
-// Opening the sidebar runs no apply. The toggle already simplified the table
-// under its own settings, and the sidebar reads those settings itself, so an
-// apply on open would rebuild cells that already match. The open still tells
-// the sidebar to re-read.
-(function issue328_openingTheSidebarRunsNoApply() {
+// The redraw read runs no apply. The toggle already simplified the table
+// under its own settings, and the read answers those settings, so an apply
+// would rebuild cells that already match.
+(function issue328_theRedrawReadRunsNoApply() {
   runPressFixture(({ sent }) => {
     const table = makePressTable('8,584,629');
     withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table }); });
     const simplified = table._cells[3].innerText;
     sent.length = 0;
-    withCreateTreeWalker(() => askContentScript({ topic: 'state:sidebarOpened' }));
-    eq('sidebar open: no apply runs on the simplified table',
+    withCreateTreeWalker(() => askContentScript({ topic: 'request:activeTable' }));
+    eq('redraw read: no apply runs on the simplified table',
       sent.filter((m) => ['state:rangeOk', 'state:rangeError'].includes(m.topic)).length, 0);
-    eq('sidebar open: the simplified cells stay as the toggle left them',
+    eq('redraw read: the simplified cells stay as the toggle left them',
       [showsSimplified(table), table._cells[3].innerText], [true, simplified]);
-    eq('sidebar open: the sidebar is told to re-read the active table',
-      sent.some((m) => m.topic === 'state:previewSamplesChanged'), true);
+  });
+})();
+
+// The redraw read runs the shape check before it answers, so a table the page
+// gave a new column registers fresh and the answer reads the fresh entry. On
+// this grid the fresh registration lands on the same element, so the fresh
+// entry shows in its settings and its fingerprint. The check publishes a
+// table switch, which makes the sidebar send a second read; that read finds
+// the fresh fingerprint unchanged and publishes nothing.
+(function issue328_theRedrawReadAnswersFromAFreshTable() {
+  runPressFixture(({ sent }) => {
+    const grid = makeDatabaseQueryGrid();
+    registerFingerprintedTable(grid.scrollPaneEl);
+    DR_MODEL.setTableSettings(grid.scrollPaneEl,
+      Object.assign({}, ISSUE328_LIGHT, { rangeExpr: 'B2' }), 'page');
+    DR_MODEL.setActiveTable(grid.scrollPaneEl);
+    grid.scrollRowEls.forEach((rowEl, i) => dgAppendRowCell(rowEl, String((i + 1) * 101)));
+
+    sent.length = 0;
+    let answer = null;
+    withTablePillboxDocumentMock(function () { answer = askContentScript({ topic: 'request:activeTable' }); });
+    const fresh = DR_MODEL.getActiveTable();
+    eq('redraw read: a changed shape registers fresh and leaves the fresh table active',
+      [fresh === grid.scrollPaneEl, (DR_MODEL.getTableFingerprint(grid.scrollPaneEl) || {}).columnCount],
+      [true, 4]);
+    eq('redraw read: the answer holds the fresh entry\'s settings, the shipped defaults',
+      answer && answer.settings, Object.assign({}, DR_DEFAULTS));
+    eq('redraw read: the shape change sends the table switch to the sidebar',
+      sent.some((m) => m.topic === 'state:tableSwitched'), true);
+
+    sent.length = 0;
+    withTablePillboxDocumentMock(function () { askContentScript({ topic: 'request:activeTable' }); });
+    eq('redraw read: the next read finds the shape unchanged and sends nothing',
+      [DR_MODEL.getActiveTable() === fresh, sent.map((m) => m.topic)], [true, []]);
+
+    if (fresh) forgetRegisteredTable(fresh);
   });
 })();
 

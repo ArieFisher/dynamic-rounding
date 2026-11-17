@@ -872,52 +872,26 @@
       query(q, cb) { cb([{ id: 1 }]); },
       sendMessage(tabId, msg, cb) { sentTabMessages.push({ tabId, msg }); if (cb) cb(undefined); },
     },
-    // Omitted deliberately: with it absent the open call throws before any
-    // await, so the sidebar-open handler's catch runs at once and the handler
-    // has sent its topic by the time the call returns.
+    sidePanel: { open: () => Promise.resolve() },
   };
 
-  // Every handler call runs while the stub is the global chrome. The bus reads
-  // chrome at send time, not at load time, so a call made after the restore
-  // below would send through the suite's bare default stub and reach nothing.
   const PANEL_TAB = 99;
-  const result = {};
-  const savedChrome = global.chrome;
-  global.chrome = captureChromeBg;
-  try {
-    eval(messagingCode + '\n' +
-      fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'));
-    result.listenerType = typeof capturedBgHandler;
-    if (result.listenerType === 'function') {
-      // Case A: before the sidebar opens.
-      sentTabMessages.length = 0;
-      capturedBgHandler({ topic: 'state:tableActivated' }, {}, () => {});
-      result.relaysBeforeOpen = sentTabMessages.length;
-
-      // Case B: after the sidebar opens. The handler runs to completion
-      // synchronously with chrome.sidePanel absent: the open call throws and
-      // the catch writes a warn row.
-      sentTabMessages.length = 0;
-      capturedClickHandler({ menuItemId: 'dr-menu-toggle-sidebar' }, { id: PANEL_TAB });
-      result.sentOpenedReport = sentTabMessages.some(m => m.tabId === PANEL_TAB &&
-        m.msg && m.msg.topic === 'state:sidebarOpened');
-
-      sentTabMessages.length = 0;
-      capturedBgHandler({ topic: 'state:tableActivated' }, {}, () => {});
-      result.relaysAfterOpen = sentTabMessages.length;
-    }
-  } finally {
-    global.chrome = savedChrome;
-  }
-
+  new Function('chrome', messagingCode + '\n' +
+    fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'))(captureChromeBg);
   eq('active table runtime: the bus listener is the worker\'s only message listener',
-    result.listenerType, 'function');
+    typeof capturedBgHandler, 'function');
+  if (typeof capturedBgHandler !== 'function') return;
+
+  sentTabMessages.length = 0;
+  capturedBgHandler({ topic: 'state:tableActivated' }, {}, () => {});
   eq('active table runtime: no relay before the sidebar opens',
-    result.relaysBeforeOpen, 0);
-  eq('active table runtime: opening the sidebar sends its report to that tab',
-    result.sentOpenedReport, true);
+    sentTabMessages.length, 0);
+
+  capturedClickHandler({ menuItemId: 'dr-menu-toggle-sidebar' }, { id: PANEL_TAB });
+  sentTabMessages.length = 0;
+  capturedBgHandler({ topic: 'state:tableActivated' }, {}, () => {});
   eq('active table runtime: still no relay after the sidebar opens',
-    result.relaysAfterOpen, 0);
+    sentTabMessages.length, 0);
 })();
 
 // ---------------------------------------------------------------------------
@@ -1093,10 +1067,7 @@
 (function backgroundMessageRouting() {
   const bgSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
 
-  // Evaluate background.js against a capturing stub. sidePanel is deliberately
-  // omitted: the open call then throws before any await and the catch runs
-  // at once, so the menu handler runs to completion synchronously, letting us
-  // assert without async plumbing.
+  // Evaluate background.js against a capturing stub.
   //
   // The worker runs on the bus, so the bus source goes into the same
   // function scope ahead of it, standing in for the importScripts the browser
@@ -1105,8 +1076,9 @@
   // publish here names its tab, because a tab-routed send with no query
   // interface throws.
   //
-  // sidePanel, when given, stands in for chrome.sidePanel.
-  function loadBackground({ sidePanel } = {}) {
+  // sidePanel, when given, stands in for chrome.sidePanel; by default the
+  // open succeeds.
+  function loadBackground({ sidePanel = { open: () => Promise.resolve() } } = {}) {
     const tabSends = [];
     const listeners = {};
     const chromeStub = {
@@ -1195,9 +1167,8 @@
   (function iconClickOpensWithoutToggle() {
     const ctx = loadBackground();
     ctx.listeners.iconClicked({ id: PANEL_TAB });
-    eq('toolbar icon: the click sends only the sidebar-opened topic to that tab',
-      ctx.tabSends.filter((s) => s.tabId === PANEL_TAB).map((s) => s.msg.topic),
-      ['state:sidebarOpened']);
+    eq('toolbar icon: the click sends nothing to the tab',
+      ctx.tabSends.map((s) => s.msg.topic), []);
   })();
 
   // Chrome accepts the open only as a direct response to the click, so each
@@ -1217,16 +1188,14 @@
       opensFor(openPanel), [{ tabId: PANEL_TAB }]);
   })();
 
-  // --- The menu toggle with sidebar does both: the same toggle the menu toggle
-  // sends, then the sidebar-opened topic, to the tab the right-click
-  // happened in and in that order, so the sidebar's re-read on open reads
-  // the toggled settings. ---
-  (function toggleAndOpenSidebarTogglesThenOpens() {
+  // --- The menu toggle with sidebar sends the same toggle the menu toggle
+  // sends, to the tab the right-click happened in. ---
+  (function toggleAndOpenSidebarToggles() {
     const ctx = loadBackground();
     openPanel(ctx);
-    eq('bg routing: the menu toggle with sidebar sends the toggle, then the sidebar-opened topic, to that tab',
+    eq('bg routing: the menu toggle with sidebar sends the toggle to that tab',
       ctx.tabSends.filter((s) => s.tabId === PANEL_TAB).map((s) => s.msg.topic),
-      ['intent:menuClicked', 'state:sidebarOpened']);
+      ['intent:menuClicked']);
   })();
 
   // --- A tab switch, a reload, and a tab close each close the sidebar through
@@ -2078,9 +2047,11 @@
   const source = sidebarSrc.match(/function takeCaptureScreenshot\([\s\S]*?\n\}/);
   eq('capture-shot: takeCaptureScreenshot extracted from sidebar.js', !!source, true);
   if (!source) return;
+  // A separate instance of the log module, writing to a console stub, so the
+  // take's rows stay out of the suite's shared log buffer.
   const warned = [];
-  const logStub = { warn: (text) => { warned.push(text); }, debug: () => {},
-    formatRow: DR_LOG.formatRow, errorType: DR_LOG.errorType };
+  const logStub = (new Function('console', sourceByName('lib/dr-log/index.js') + '\nreturn DR_LOG;'))(
+    { warn: (text) => { warned.push(text); }, debug: () => {}, log: () => {}, error: () => {} });
   // The quality constant sits beside the take in the source; the take reads
   // it as a bare name, so the extracted function receives it the same way.
   const quality = sidebarSrc.match(/const CAPTURE_SCREENSHOT_QUALITY = (\d+);/);
@@ -2286,6 +2257,18 @@
     eq('dr-log: an error row carries the stack trace',
       /errorStackProbeCaller/.test(LOG.snapshot().entries.slice(-1)[0].stack || ''), true);
 
+    function failedStepProbeCaller() { LOG.warnError('probe step', new TypeError('x')); }
+    failedStepProbeCaller();
+    const failedStepRow = LOG.snapshot().entries.slice(-1)[0];
+    eq('dr-log: warnError writes a warn row naming the step and the error type',
+      [failedStepRow.level, failedStepRow.text],
+      ['warn', 'Dynamic Rounding: error · step: probe step · error: TypeError']);
+    eq('dr-log: the stack trace of a warnError row starts at its caller',
+      /failedStepProbeCaller/.test(String(failedStepRow.stack).split('\n')[0]), true);
+    LOG.warnError('probe step');
+    eq('dr-log: warnError with no thrown value leaves the error label out',
+      LOG.snapshot().entries.slice(-1)[0].text, 'Dynamic Rounding: error · step: probe step');
+
     LOG.debug('no stack probe');
     eq('dr-log: a debug row carries no stack trace',
       LOG.snapshot().entries.slice(-1)[0].stack, null);
@@ -2451,11 +2434,9 @@
   eq('worker log row: importScripts loads the log module',
     /importScripts\([^)]*lib\/dr-log\/index\.js/.test(bgSrc), true);
   eq('worker log row: the open-sidebar failure records the one row format in the log buffer',
-    /DR_LOG\.warn\(DR_LOG\.formatRow\('error', \{ step: 'open sidebar', error: DR_LOG\.errorType\(e\) \}\)\)/
-      .test(bgSrc), true);
-  eq('worker log row: the icon click setting failure records the one row format in the log buffer',
-    /DR_LOG\.warn\(DR_LOG\.formatRow\('error', \{ step: 'icon click setting', error: DR_LOG\.errorType\(e\) \}\)\)/
-      .test(bgSrc), true);
+    /DR_LOG\.warnError\('open sidebar', e\)/.test(bgSrc), true);
+  eq('worker log row: the toolbar icon click setting failure records the one row format in the log buffer',
+    /DR_LOG\.warnError\('toolbar icon click setting', e\)/.test(bgSrc), true);
   eq('worker log row: the worker writes no row to the console directly',
     /console\.(warn|error|log|debug|info)\(/.test(bgSrc), false);
   eq('worker on bus: no raw chrome.tabs.sendMessage call',
@@ -2479,8 +2460,6 @@
   }
   eq('content on bus: the menu click arrives as a subscription',
     /DR_BUS\.subscribe\(\s*'intent:menuClicked'/.test(contentSrc), true);
-  eq('content on bus: the sidebar-opened topic arrives as a subscription',
-    /DR_BUS\.subscribe\(\s*'state:sidebarOpened'/.test(contentSrc), true);
   // The application model publishes the settings notice from its one setter; the
   // controller publishes none of its own.
   const modelSrc = sourceByName('app/model.js');

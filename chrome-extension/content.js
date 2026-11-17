@@ -231,22 +231,6 @@ DR_BUS.subscribe('intent:menuClicked', () => {
   DR_BUS.publish('intent:toggleTable', { table: registerIfNew(found) });
 });
 
-// Reconnect: the sidebar reads the active table's settings itself, and the
-// table already shows them, so the open runs no apply. It runs the shape
-// check, so a table the page redrew since the last look registers fresh
-// before the sidebar reads it, then tells the sidebar to re-read.
-DR_BUS.subscribe('state:sidebarOpened', () => {
-  const active = DR_MODEL.getActiveTable();
-  if (!active) {
-    DR_LOG.debug(DR_LOG.formatRow('no active table'));
-    return;
-  }
-  revalidateTableShape(active);
-  // Tell the sidebar its view is stale; it reads the active table's settings
-  // and lens preview again, in one read.
-  DR_BUS.publish('state:previewSamplesChanged', {});
-});
-
 // The sidebar's two reads of the model: the redraw read here and the capture
 // state pull below. Each answers from the tab's own copy — the sidebar holds
 // none of its own, so a close and reopen loses nothing.
@@ -257,6 +241,9 @@ DR_BUS.subscribe('state:sidebarOpened', () => {
 // a null samples field as the unbound state, and an unanswered request
 // reaches it as that same unbound state by a different path.
 DR_BUS.respond('request:activeTable', () => {
+  // A table the page redrew since the last read registers fresh, and the
+  // check makes the fresh table active, before the answer reads it.
+  if (DR_MODEL.getActiveTable()) revalidateTableShape(DR_MODEL.getActiveTable());
   const active = DR_MODEL.getActiveTable();
   const settings = DR_MODEL.getTableSettings(active);
   if (!active) return { settings, samples: null, maxMag: null };
@@ -823,7 +810,7 @@ function buildCaptureStateResponse() {
     try {
       lensPreview = extractPreviewSamples(selected);
     } catch (e) {
-      DR_LOG.warn(DR_LOG.formatRow('error', { step: 'lens preview', error: DR_LOG.errorType(e) }));
+      DR_LOG.warnError('lens preview', e);
     }
   }
   return Object.assign({
