@@ -34,7 +34,8 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 /**
- * Opens the sidebar for a tab and tells the tab's content script. Chrome
+ * Opens the sidebar for a tab and, once the open succeeds, tells the tab's
+ * content script. Chrome
  * gives the activeTab grant the screenshot needs, and accepts the open, only
  * as a direct response to the user's click, so a caller runs this before
  * any await of its own.
@@ -42,10 +43,10 @@ chrome.runtime.onInstalled.addListener(() => {
 async function openSidebarOnTab(tabId) {
   try {
     await chrome.sidePanel.open({ tabId });
+    DR_BUS.publish('state:sidebarOpened', {}, { tabId });
   } catch (e) {
     DR_LOG.warnError('open sidebar', e);
   }
-  DR_BUS.publish('state:sidebarOpened', {}, { tabId });
 }
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {

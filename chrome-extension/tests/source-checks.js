@@ -872,52 +872,34 @@
       query(q, cb) { cb([{ id: 1 }]); },
       sendMessage(tabId, msg, cb) { sentTabMessages.push({ tabId, msg }); if (cb) cb(undefined); },
     },
-    // Omitted deliberately: with it absent the open call throws before any
-    // await, so the sidebar-open handler's catch runs at once and the handler
-    // has sent its topic by the time the call returns.
+    sidePanel: { open: () => Promise.resolve() },
   };
 
-  // Every handler call runs while the stub is the global chrome. The bus reads
-  // chrome at send time, not at load time, so a call made after the restore
-  // below would send through the suite's bare default stub and reach nothing.
+  // The stub goes in as the chrome parameter, not the global, so the worker's
+  // publish after the open's await still sends through it.
   const PANEL_TAB = 99;
-  const result = {};
-  const savedChrome = global.chrome;
-  global.chrome = captureChromeBg;
-  try {
-    eval(messagingCode + '\n' +
-      fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'));
-    result.listenerType = typeof capturedBgHandler;
-    if (result.listenerType === 'function') {
-      // Case A: before the sidebar opens.
-      sentTabMessages.length = 0;
-      capturedBgHandler({ topic: 'state:tableActivated' }, {}, () => {});
-      result.relaysBeforeOpen = sentTabMessages.length;
-
-      // Case B: after the sidebar opens. The handler runs to completion
-      // synchronously with chrome.sidePanel absent: the open call throws and
-      // the catch writes a warn row.
-      sentTabMessages.length = 0;
-      capturedClickHandler({ menuItemId: 'dr-menu-toggle-sidebar' }, { id: PANEL_TAB });
-      result.sentOpenedReport = sentTabMessages.some(m => m.tabId === PANEL_TAB &&
-        m.msg && m.msg.topic === 'state:sidebarOpened');
-
-      sentTabMessages.length = 0;
-      capturedBgHandler({ topic: 'state:tableActivated' }, {}, () => {});
-      result.relaysAfterOpen = sentTabMessages.length;
-    }
-  } finally {
-    global.chrome = savedChrome;
-  }
-
+  new Function('chrome', messagingCode + '\n' +
+    fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'))(captureChromeBg);
   eq('active table runtime: the bus listener is the worker\'s only message listener',
-    result.listenerType, 'function');
+    typeof capturedBgHandler, 'function');
+  if (typeof capturedBgHandler !== 'function') return;
+
+  sentTabMessages.length = 0;
+  capturedBgHandler({ topic: 'state:tableActivated' }, {}, () => {});
   eq('active table runtime: no relay before the sidebar opens',
-    result.relaysBeforeOpen, 0);
-  eq('active table runtime: opening the sidebar sends its report to that tab',
-    result.sentOpenedReport, true);
-  eq('active table runtime: still no relay after the sidebar opens',
-    result.relaysAfterOpen, 0);
+    sentTabMessages.length, 0);
+
+  sentTabMessages.length = 0;
+  capturedClickHandler({ menuItemId: 'dr-menu-toggle-sidebar' }, { id: PANEL_TAB });
+  afterSettle(() => {
+    eq('active table runtime: opening the sidebar sends the sidebar-opened topic to that tab',
+      sentTabMessages.some(m => m.tabId === PANEL_TAB &&
+        m.msg && m.msg.topic === 'state:sidebarOpened'), true);
+    sentTabMessages.length = 0;
+    capturedBgHandler({ topic: 'state:tableActivated' }, {}, () => {});
+    eq('active table runtime: still no relay after the sidebar opens',
+      sentTabMessages.length, 0);
+  });
 })();
 
 // ---------------------------------------------------------------------------
@@ -1093,10 +1075,9 @@
 (function backgroundMessageRouting() {
   const bgSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
 
-  // Evaluate background.js against a capturing stub. sidePanel is deliberately
-  // omitted: the open call then throws before any await and the catch runs
-  // at once, so the menu handler runs to completion synchronously, letting us
-  // assert without async plumbing.
+  // Evaluate background.js against a capturing stub. The worker publishes the
+  // sidebar-opened topic after the open's await, so a check of that topic runs
+  // under afterSettle.
   //
   // The worker runs on the bus, so the bus source goes into the same
   // function scope ahead of it, standing in for the importScripts the browser
@@ -1105,8 +1086,9 @@
   // publish here names its tab, because a tab-routed send with no query
   // interface throws.
   //
-  // sidePanel, when given, stands in for chrome.sidePanel.
-  function loadBackground({ sidePanel } = {}) {
+  // sidePanel, when given, stands in for chrome.sidePanel; by default the
+  // open succeeds.
+  function loadBackground({ sidePanel = { open: () => Promise.resolve() } } = {}) {
     const tabSends = [];
     const listeners = {};
     const chromeStub = {
@@ -1195,9 +1177,32 @@
   (function iconClickOpensWithoutToggle() {
     const ctx = loadBackground();
     ctx.listeners.iconClicked({ id: PANEL_TAB });
-    eq('toolbar icon: the click sends only the sidebar-opened topic to that tab',
-      ctx.tabSends.filter((s) => s.tabId === PANEL_TAB).map((s) => s.msg.topic),
-      ['state:sidebarOpened']);
+    afterSettle(() => {
+      eq('toolbar icon: the click sends only the sidebar-opened topic to that tab',
+        ctx.tabSends.filter((s) => s.tabId === PANEL_TAB).map((s) => s.msg.topic),
+        ['state:sidebarOpened']);
+    });
+  })();
+
+  // --- A failed open sends no sidebar-opened topic and writes one warn row. ---
+  (function failedOpenSendsNoOpenedTopic() {
+    const openFailedRow = 'Dynamic Rounding: error · step: open sidebar · error: Error';
+    const rows = [];
+    const offRow = DR_LOG.onRow((row) => { if (row.text === openFailedRow) rows.push(row.level); });
+    const failingPanel = { open: () => Promise.reject(new Error('open refused')) };
+    const iconCtx = loadBackground({ sidePanel: failingPanel });
+    iconCtx.listeners.iconClicked({ id: PANEL_TAB });
+    const menuCtx = loadBackground({ sidePanel: failingPanel });
+    openPanel(menuCtx);
+    afterSettle(() => {
+      offRow();
+      eq('toolbar icon: a failed open sends nothing to the tab',
+        iconCtx.tabSends.map((s) => s.msg.topic), []);
+      eq('bg routing: a failed open from the menu toggle with sidebar sends the toggle alone',
+        menuCtx.tabSends.filter((s) => s.tabId === PANEL_TAB).map((s) => s.msg.topic),
+        ['intent:menuClicked']);
+      eq('bg routing: each failed open writes one warn row', rows, ['warn', 'warn']);
+    });
   })();
 
   // Chrome accepts the open only as a direct response to the click, so each
@@ -1224,9 +1229,11 @@
   (function toggleAndOpenSidebarTogglesThenOpens() {
     const ctx = loadBackground();
     openPanel(ctx);
-    eq('bg routing: the menu toggle with sidebar sends the toggle, then the sidebar-opened topic, to that tab',
-      ctx.tabSends.filter((s) => s.tabId === PANEL_TAB).map((s) => s.msg.topic),
-      ['intent:menuClicked', 'state:sidebarOpened']);
+    afterSettle(() => {
+      eq('bg routing: the menu toggle with sidebar sends the toggle, then the sidebar-opened topic, to that tab',
+        ctx.tabSends.filter((s) => s.tabId === PANEL_TAB).map((s) => s.msg.topic),
+        ['intent:menuClicked', 'state:sidebarOpened']);
+    });
   })();
 
   // --- A tab switch, a reload, and a tab close each close the sidebar through
