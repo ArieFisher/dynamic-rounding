@@ -1586,6 +1586,18 @@ function classifyCell(input, options) {
     return { mode: 'date', reason: 'simplify', value: { dates } };
   }
 
+  // In a cell with a <sup>, the text classifyCell reads joins base and
+  // exponent digits ("10<sup>12</sup>" reads "1012"), which is not the text
+  // the reader sees. So no whole-cell shape is tested against it, and
+  // extraction masks each superscript span.
+  if (hasSuperscript) {
+    const isNumber = toNumber(text) !== null;
+    if (isNumber && isWholeLink) return { mode: 'skip', reason: 'link' };
+    const matches = extractSimplifyMatches(text, superscriptRanges);
+    if (matches.length === 0) return { mode: 'skip', reason: isNumber ? 'footnote' : 'no-number' };
+    return { mode: 'extracted', reason: isNumber ? 'footnote' : 'simplify', value: { matches } };
+  }
+
   // An identifier shape (a phone number, an IP address, a web or email
   // address, an ISBN, a postal code, a digit run with a leading zero, or a
   // digit run split by whitespace that is not thousands grouping) reads as a
@@ -1597,42 +1609,25 @@ function classifyCell(input, options) {
   // matchIdentifierShape (lib/dr-number/identifiers.js) holds the one list of
   // shapes; this is the one place that reads it. digitsSpanPieces comes from
   // the caller's piece layout, so the join of numbers that sit in separate
-  // pieces never reads as one spaced identifier. A cell with a <sup> takes the
-  // footnote path below instead: its flattened text joins base and exponent
-  // digits ("20 10<sup>15</sup>" reads "20 1015"), which is not the text the
-  // reader sees, so no shape is tested against it.
-  if (!hasSuperscript && matchIdentifierShape(trimmed, digitsSpanPieces)) {
+  // pieces never reads as one spaced identifier.
+  if (matchIdentifierShape(trimmed, digitsSpanPieces)) {
     return { mode: 'skip', reason: 'identifier' };
   }
 
   // A bracketed number ("(1,234)", "$(1,234)") is one number whose minus sign
-  // is written as the brackets around it. A cell with a <sup> takes the
-  // footnote path below instead, so its exponent stays masked;
-  // extractSimplifyMatches reads the same bracket sign there.
-  const bracketed = hasSuperscript ? null : matchBracketedNumber(text);
+  // is written as the brackets around it.
+  const bracketed = matchBracketedNumber(text);
   if (bracketed) return oneNumber(bracketed, 'simplify');
 
   const num = toNumber(text);
   if (num !== null) {
-    if (hasSuperscript) {
-      if (isWholeLink) return { mode: 'skip', reason: 'link' };
-      // The cell contains a <sup> element: the flattened text mixes base and
-      // exponent digits (e.g. "10<sup>12</sup>" -> "1012"). Route through
-      // extraction so superscript masking can protect the exponent, instead
-      // of rounding the flattened (wrong) number.
-      const matches = extractSimplifyMatches(text, superscriptRanges);
-      if (matches.length === 0) return { mode: 'skip', reason: 'footnote' };
-      return { mode: 'extracted', reason: 'footnote', value: { matches } };
-    }
-
     const span = pureNumberSpan(text);
     return oneNumber({ numStr: span.numStr, num, index: span.index }, 'simplify');
   }
 
   // A unit number ("4.91tn", "CAD45.67") is one number with a suffix or a
-  // currency code. A cell with a <sup> takes the footnote path above instead,
-  // so its exponent stays masked.
-  const unit = hasSuperscript ? null : matchUnitNumber(text);
+  // currency code.
+  const unit = matchUnitNumber(text);
   if (unit) return oneNumber(unit, 'unit');
 
   const matches = extractSimplifyMatches(text, superscriptRanges);
