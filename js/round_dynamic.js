@@ -1479,44 +1479,25 @@ function isWholeCellQuoted(trimmedText) {
 }
 
 /**
- * Drop any match overlapping a masked range (a quote span, an identifier
- * span, a superscript span, or an era-marked year, all in the same flat-text
- * coordinate space extractNumbersInText uses). A no-op when ranges is empty.
- */
-function filterMaskedMatches(matches, ranges) {
-  if (!ranges || ranges.length === 0) return matches;
-  return matches.filter((m) => !overlapsQuoteRange(ranges, m.index, m.index + m.numStr.length));
-}
-
-/**
- * Every text-only filter mode:'extracted' applies before a caller's DOM-only
- * link filter: pull numbers out of `text` and drop each one inside a masked
- * range — a quoted span, an identifier span ("Call 416-555-1234"; see
- * getIdentifierMaskedRanges in lib/dr-number/identifiers.js), a superscript
- * span, an era-marked year (issue #4 — "2898 AD" is a date, not a
- * quantity), or a clock time ("9:45 - 11:45 AM"; its hour and minutes are
- * not quantities, and it stays as written whatever the Times setting holds).
- * The masked ranges are one list, so a new kind of text whose
- * numbers stay as written is one more source here. superscriptRanges is
- * caller-supplied plain data (see file header); pass [] when the cell
- * carries no <sup>. The identifier scan and the clock-time scan read the
- * text with each superscript span blanked to spaces, so a footnote marker
- * right after a phone number ("416-555-1234<sup>1</sup>") or a clock time
- * ("18:30<sup>2</sup>") never joins its digits; the blanks keep every
- * position in place.
+ * The masked ranges are one list, so a new kind of text whose numbers stay as
+ * written is one more source here. The identifier scan and the clock-time
+ * scan read the text with each superscript span blanked to spaces, so a
+ * footnote marker right after a phone number ("416-555-1234<sup>1</sup>") or
+ * a clock time ("18:30<sup>2</sup>") never joins its digits; the blanks keep
+ * every position in place.
  */
 function extractSimplifyMatches(text, superscriptRanges) {
-  const superscripts = superscriptRanges || [];
-  const shapeText = superscripts.reduce(
+  const shapeText = superscriptRanges.reduce(
     (t, r) => t.slice(0, r.start) + ' '.repeat(r.end - r.start) + t.slice(r.end), text);
   const masked = [
     ...getQuoteMaskedRanges(text),
     ...getIdentifierMaskedRanges(shapeText),
-    ...superscripts,
+    ...superscriptRanges,
     ...eraYearDigitRanges(text),
     ...clockTimeRanges(shapeText),
   ];
-  return filterMaskedMatches(extractNumbersInText(text), masked);
+  return extractNumbersInText(text)
+    .filter((m) => !overlapsQuoteRange(masked, m.index, m.index + m.numStr.length));
 }
 
 /**
