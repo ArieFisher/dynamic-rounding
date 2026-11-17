@@ -840,14 +840,10 @@ const TIME_STEP_SECONDS = { minute: SECONDS_PER_MINUTE, hour: SECONDS_PER_HOUR }
  * 23, or an hour of 11 as written with PM or, off the twenty-four hour clock,
  * with no AM/PM. The seconds drop.
  *
- * @param {{hour:number, minute:number, second:number, isPm?:boolean, isTwentyFourHour?:boolean}} time
- *   The hour as written; isPm is true or false with an AM/PM and absent without.
- *   isTwentyFourHour is true for an ISO date-time, which is always on the
- *   twenty-four hour clock.
- * @param {string} granularity - 'minute' | 'hour'.
- * @returns {{hour:number, minute:number, isPm:boolean|null}|null}
- *   The hour in the convention it came in, or null for a part out of range or
- *   an unknown granularity.
+ * The hour arrives as written: isPm is true or false with an AM/PM and absent
+ * without, and isTwentyFourHour is true for an ISO date-time, which is always
+ * on the twenty-four hour clock. The result gives the hour in the convention
+ * it came in, or null for a part out of range or an unknown granularity.
  */
 function roundClockTime({ hour, minute, second, isPm, isTwentyFourHour }, granularity) {
   const step = TIME_STEP_SECONDS[granularity];
