@@ -590,6 +590,9 @@ function makeSuperscriptCell(segments) {
       // A fake <sup> element: tagName matches SUPERSCRIPT_TAG ('SUP'), parent is cell
       const supEl = { tagName: 'SUP', parentNode: cell, parentElement: cell };
       parentNode = supEl;
+    } else if (seg.styledSup) {
+      // A span the page raises through its style alone; inlineStyleProbe reports it.
+      parentNode = { tagName: 'SPAN', style: { verticalAlign: 'super' }, parentNode: cell, parentElement: cell };
     } else {
       // Direct child of the cell — the ancestor walk hits cell immediately and stops
       parentNode = cell;

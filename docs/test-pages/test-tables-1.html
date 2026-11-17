@@ -902,7 +902,10 @@
     <p class="expect">Expect: table pillbox at load. A number with a letter or star
       footnote rounds and keeps its footnote. A number with a numeric footnote
       stays as written, and so does a power of ten; the coefficient before a power
-      of ten rounds.</p>
+      of ten rounds. The last row raises its footnote with the style
+      <code>vertical-align: super</code> and no <code>&lt;sup&gt;</code>: with a
+      space before the footnote, 5,432 rounds and the raised 12 stays. A failure
+      shows 10 in place of the raised 12.</p>
 
     <!--
       1,234 with letter footnote     -> rounds; the sup element survives
@@ -913,6 +916,7 @@
                                         than round a corrupted value
       Ten to the twelfth             -> held: the only digit run overlaps the exponent
       3.5 times ten to the sixth     -> 3.5 rounds; the power of ten holds
+      5,432, a space, a styled 12    -> 5,432 rounds; the raised 12 holds
     -->
     <table>
       <thead>
@@ -941,6 +945,10 @@
         <tr>
           <th scope="row">Coefficient rounds, exponent holds</th>
           <td>3.5 × 10<sup>6</sup></td>
+        </tr>
+        <tr>
+          <th scope="row">Footnote raised by style, after a space</th>
+          <td>5,432 <span style="vertical-align: super">12</span></td>
         </tr>
       </tbody>
     </table>

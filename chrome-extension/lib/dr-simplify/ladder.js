@@ -18,7 +18,7 @@
  * text is empty) or a simplified cell's stored original; in Sheets it is the
  * cell value. Four more values come from the page, and the caller derives
  * them: whether the cell's whole text is a link (isCellWholeLink
- * reads the anchors' text), whether the cell holds a <sup>, the superscript
+ * reads the anchors' text), whether the cell holds a superscript, the superscript
  * spans in the text classifyCell reads (getSuperscriptRanges), and whether
  * the cell's digits sit in more than one text piece (from the piece layout),
  * so the join of numbers in separate pieces never reads as one spaced
@@ -70,7 +70,7 @@ function extractSimplifyMatches(text, superscriptRanges) {
  *     exclusion getExclusionReason returns ('first-row', 'first-column',
  *     'percent', 'currency'), 'quoted', 'times-disabled', 'dates-disabled',
  *     'impossible-date', 'identifier', 'link', or 'no-number'. 'superscript'
- *     marks a cell with a <sup> whose text the number reader reads as one
+ *     marks a cell with a superscript whose text the number reader reads as one
  *     number, skipped or extracted. 'unit' marks a unit number, and
  *     'simplify' every other cell that simplifies.
  *   value: mode-specific payload —
@@ -131,7 +131,7 @@ function classifyCell(input, options) {
     return { mode: 'date', reason: 'simplify', value: { dates } };
   }
 
-  // In a cell with a <sup>, the text classifyCell reads joins base and
+  // In a cell with a superscript, the text classifyCell reads joins base and
   // exponent digits ("10<sup>12</sup>" reads "1012"), which is not the text
   // the reader sees. So no whole-cell shape is tested against it, and
   // extraction masks each superscript span.
