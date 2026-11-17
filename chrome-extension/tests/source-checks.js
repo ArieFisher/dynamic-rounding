@@ -1329,7 +1329,7 @@
     'isInRanges', 'resolveOffset', 'resolveNumTop', 'matchUnitNumber', 'getExclusionReason',
     'findDates', 'isAmbiguousDate',
     'isDateLike', 'isTimeLike', 'clockTimeRanges', 'parseISODateTime', 'isDateTimeLike',
-    'roundDateText', 'roundISODateTime', 'roundTimeText',
+    'roundDateText', 'roundClockTime', 'roundTimeText',
     'getQuoteMaskedRanges', 'overlapsQuoteRange', 'extractNumbersInText',
     'bracketSignSpan', 'isBracketedNegative', 'matchBracketedNumber',
     'eraYearDigitRanges', 'formatNumber', 'pureNumberSpan',

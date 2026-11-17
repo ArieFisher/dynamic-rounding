@@ -4451,6 +4451,31 @@ const RW_CAP_ROW = /^Dynamic Rounding: above cell cap · cells: [\d,]+$/;
   });
 })();
 
+// --- Times at minute granularity, on both table kinds: each clock time and
+// ISO date-time rounds to the nearest minute, the last minute of the clock
+// goes down, and the seconds drop. ---
+(function timeRounding_minuteGranularityRoundsOnBothKinds() {
+  const opts = Object.assign({}, RW_OPTS, { simplifyTimes: true, timeGranularity: 'minute' });
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build([['14:29:30', '23:59:45'], ['11:59:30 AM', '2026-01-01T14:29:30']]);
+    roundTableUnder(t.table, opts);
+    eq(`time rounding (${kind}): times round to the nearest minute and the last minute goes down`,
+      t.rowTexts(), [['14:30', '23:59'], ['12:00 PM', '2026-01-01 14:30']]);
+  });
+})();
+
+// --- Times at hour granularity, on both table kinds: the last hour of the
+// clock goes down. ---
+(function timeRounding_hourGranularityKeepsTheLastHourOnBothKinds() {
+  const opts = Object.assign({}, RW_OPTS, { simplifyTimes: true, timeGranularity: 'hour' });
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build([['14:29:30', '23:45'], ['11:58 p.m.', '2026-11-09T23:45']]);
+    roundTableUnder(t.table, opts);
+    eq(`time rounding (${kind}): times round to the nearest hour and the last hour goes down`,
+      t.rowTexts(), [['14:00', '23:00'], ['11:00 p.m.', '2026-11-09 23:00']]);
+  });
+})();
+
 // --- Hover text the page set: a cell that carries the page's own hover text
 // shows its original as hover text while simplified, and a restore puts the
 // page's hover text back exactly. A cell with none ends with none. A write to
