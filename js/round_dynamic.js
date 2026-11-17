@@ -1665,11 +1665,11 @@ function classifyCell(input, options) {
  * given every ambiguous date's {n1, n2} found in that column. Any n > 12 in
  * one position rules out that position being the month, so a lone violator
  * pins the whole column's format; violators on both sides make the column
- * unsafe to guess ('MIXED'); no violator leaves it genuinely ambiguous
- * ('AMBIGUOUS').
+ * unsafe to guess ('mixed'); no violator leaves it genuinely ambiguous
+ * ('ambiguous').
  *
  * @param {{n1: number, n2: number}[]} ambiguousList
- * @returns {'MDY'|'DMY'|'MIXED'|'AMBIGUOUS'}
+ * @returns {'month-first'|'day-first'|'mixed'|'ambiguous'}
  */
 function pickDateFormatHint(ambiguousList) {
   let hasN1gt12 = false;
@@ -1678,28 +1678,29 @@ function pickDateFormatHint(ambiguousList) {
     if (n1 > 12) hasN1gt12 = true;
     if (n2 > 12) hasN2gt12 = true;
   }
-  if (hasN1gt12 && !hasN2gt12) return 'DMY'; // n1 is day, n2 is month
-  if (hasN2gt12 && !hasN1gt12) return 'MDY'; // n1 is month, n2 is day
-  if (hasN1gt12 && hasN2gt12) return 'MIXED';
-  return 'AMBIGUOUS';
+  if (hasN1gt12 && !hasN2gt12) return 'day-first';
+  if (hasN2gt12 && !hasN1gt12) return 'month-first';
+  if (hasN1gt12 && hasN2gt12) return 'mixed';
+  return 'ambiguous';
 }
 
 /**
  * Turn a pending ambiguous-date decision (classifyCell's pending:
  * 'ambiguous-date') into its final decision, given the column's format hint
- * from pickDateFormatHint. MDY/DMY give each all-numeric date of the cell its
- * day and month; MIXED/AMBIGUOUS cannot be read safely and downgrade the whole cell to
- * skip, so a cell never changes some of its dates and holds others.
+ * from pickDateFormatHint. month-first and day-first give each all-numeric
+ * date of the cell its day and month; mixed and ambiguous cannot be read
+ * safely and downgrade the whole cell to skip, so a cell never changes some
+ * of its dates and holds others.
  *
  * @param {{value: {dates: object[]}}} decision - see findDates
- * @param {'MDY'|'DMY'|'MIXED'|'AMBIGUOUS'} hint
+ * @param {'month-first'|'day-first'|'mixed'|'ambiguous'} hint
  * @returns {{mode: string, reason: string, value?: object}}
  */
 function resolveAmbiguousDateDecision(decision, hint) {
-  if (hint !== 'MDY' && hint !== 'DMY') return { mode: 'skip', reason: 'ambiguous-date' };
+  if (hint !== 'month-first' && hint !== 'day-first') return { mode: 'skip', reason: 'ambiguous-date' };
   const dates = decision.value.dates.map((d) => (isAmbiguousDate(d)
-    ? { year: d.year, month: hint === 'MDY' ? d.n1 : d.n2, monthFirst: true,
-      start: d.start, end: d.end, dayCut: hint === 'MDY' ? d.n2Cut : d.n1Cut }
+    ? { year: d.year, month: hint === 'month-first' ? d.n1 : d.n2, monthFirst: true,
+      start: d.start, end: d.end, dayCut: hint === 'month-first' ? d.n2Cut : d.n1Cut }
     : d));
   return { mode: 'date', reason: 'simplify', value: { dates } };
 }

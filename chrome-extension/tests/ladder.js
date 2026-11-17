@@ -182,26 +182,26 @@
 })();
 
 (function pickDateFormatHint_and_resolveAmbiguousDateDecision() {
-  eq('pickDateFormatHint: n1 > 12 only -> DMY', pickDateFormatHint([{ n1: 25, n2: 4 }]), 'DMY');
-  eq('pickDateFormatHint: n2 > 12 only -> MDY', pickDateFormatHint([{ n1: 3, n2: 25 }]), 'MDY');
-  eq('pickDateFormatHint: both > 12 across the column -> MIXED',
-    pickDateFormatHint([{ n1: 25, n2: 4 }, { n1: 3, n2: 25 }]), 'MIXED');
-  eq('pickDateFormatHint: neither > 12 -> AMBIGUOUS', pickDateFormatHint([{ n1: 3, n2: 4 }]), 'AMBIGUOUS');
+  eq('pickDateFormatHint: n1 > 12 only -> day-first', pickDateFormatHint([{ n1: 25, n2: 4 }]), 'day-first');
+  eq('pickDateFormatHint: n2 > 12 only -> month-first', pickDateFormatHint([{ n1: 3, n2: 25 }]), 'month-first');
+  eq('pickDateFormatHint: both > 12 across the column -> mixed',
+    pickDateFormatHint([{ n1: 25, n2: 4 }, { n1: 3, n2: 25 }]), 'mixed');
+  eq('pickDateFormatHint: neither > 12 -> ambiguous', pickDateFormatHint([{ n1: 3, n2: 4 }]), 'ambiguous');
 
   const dates0304 = findDates('03/04/2020');
-  eq('resolveAmbiguousDateDecision: MDY resolves n1 as month, n2 as day',
-    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'MDY'),
+  eq('resolveAmbiguousDateDecision: month-first resolves n1 as month, n2 as day',
+    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'month-first'),
     { mode: 'date', reason: 'simplify', value: { dates: [{
       year: 2020, month: 3, monthFirst: true, start: 0, end: 10, dayCut: { start: 3, end: 6 } }] } });
-  eq('resolveAmbiguousDateDecision: DMY resolves n2 as month, n1 as day',
-    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'DMY'),
+  eq('resolveAmbiguousDateDecision: day-first resolves n2 as month, n1 as day',
+    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'day-first'),
     { mode: 'date', reason: 'simplify', value: { dates: [{
       year: 2020, month: 4, monthFirst: true, start: 0, end: 10, dayCut: { start: 0, end: 3 } }] } });
-  eq('resolveAmbiguousDateDecision: MIXED downgrades to skip',
-    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'MIXED'),
+  eq('resolveAmbiguousDateDecision: mixed downgrades to skip',
+    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'mixed'),
     { mode: 'skip', reason: 'ambiguous-date' });
-  eq('resolveAmbiguousDateDecision: AMBIGUOUS downgrades to skip',
-    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'AMBIGUOUS'),
+  eq('resolveAmbiguousDateDecision: ambiguous downgrades to skip',
+    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'ambiguous'),
     { mode: 'skip', reason: 'ambiguous-date' });
 })();
 
