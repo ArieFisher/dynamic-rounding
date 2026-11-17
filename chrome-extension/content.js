@@ -943,9 +943,7 @@ function watchedElement(adapter) {
 
 // One cell's patches as the page takes them: the table step's patches
 // (tablePatches, lib/dr-simplify/table.js), less a changed date or time that
-// does not sit in one text piece. A date or time cell's one patch covers its
-// trimmed text; when no single text piece holds that span, the cell stays as
-// written.
+// does not sit in one text piece, which stays as written.
 function cellPatches(stepCell) {
   return isSplitDateOrTime(stepCell) ? [] : stepCell.patches;
 }
