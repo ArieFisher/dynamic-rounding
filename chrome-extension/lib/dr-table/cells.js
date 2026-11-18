@@ -206,8 +206,7 @@ function mapValueToPiece(rendered, pieces) {
   }
   if (candidates.length !== 1) return null;
   const i = candidates[0];
-  let flatStart = pieces[i].indexOf(value);
-  for (let k = 0; k < i; k++) flatStart += pieces[k].length;
+  const flatStart = pieceSpans(pieces)[i].start + pieces[i].indexOf(value);
   const lead = rendered.length - rendered.trimStart().length;
   const toFlat = [];
   for (let k = 0; k < value.length; k++) toFlat[lead + k] = flatStart + k;
