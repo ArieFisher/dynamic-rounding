@@ -18,23 +18,15 @@
  * The step reads one entry per classified cell. An entry is any object
  * carrying:
  *   text         the classified text (a simplified cell's stored original)
- *   info         the decisionToLegacyInfo shape of the ladder's decision
+ *   decision     the ladder's decision (classifyCell)
  *   columnIndex  the cell's grid column, by which the column post-pass
  *                groups cells
  * The step copies every other field through untouched, so a caller can carry
  * its own per-cell data beside them.
  */
 
-// Adapts a classifyCell decision to the { mode, dates, ambiguous, matches }
-// shape the table step reads in its column post-pass, its max magnitude, and
-// its patches.
-function decisionToLegacyInfo(decision) {
-  if (decision.mode === 'extracted') return { mode: 'extracted', matches: decision.value.matches };
-  if (decision.mode === 'date') {
-    return { mode: 'date', dates: decision.value.dates, ambiguous: decision.pending === 'ambiguous-date' };
-  }
-  if (decision.mode === 'time') return { mode: 'time' };
-  return { mode: 'skip' };
+function isAmbiguousDateDecision(decision) {
+  return decision.pending === 'ambiguous-date';
 }
 
 // The column post-pass: resolve each ambiguous date against its column's
@@ -43,18 +35,17 @@ function decisionToLegacyInfo(decision) {
 // another.
 function resolveAmbiguousDates(entries) {
   const ambiguousDatesByCol = new Map();
-  for (const { info, columnIndex } of entries) {
-    if (!info.ambiguous) continue;
+  for (const { decision, columnIndex } of entries) {
+    if (!isAmbiguousDateDecision(decision)) continue;
     if (!ambiguousDatesByCol.has(columnIndex)) ambiguousDatesByCol.set(columnIndex, []);
-    ambiguousDatesByCol.get(columnIndex).push(...info.dates.filter(isAmbiguousDate));
+    ambiguousDatesByCol.get(columnIndex).push(...decision.value.dates.filter(isAmbiguousDate));
   }
   const hintByCol = new Map(Array.from(ambiguousDatesByCol,
     ([columnIndex, ambiguousDates]) => [columnIndex, pickDateFormatHint(ambiguousDates)]));
   return entries.map((entry) => {
-    if (!entry.info.ambiguous) return entry;
-    const pendingDecision = { value: { dates: entry.info.dates } };
-    const info = decisionToLegacyInfo(resolveAmbiguousDateDecision(pendingDecision, hintByCol.get(entry.columnIndex)));
-    return Object.assign({}, entry, { info });
+    if (!isAmbiguousDateDecision(entry.decision)) return entry;
+    const decision = resolveAmbiguousDateDecision(entry.decision, hintByCol.get(entry.columnIndex));
+    return Object.assign({}, entry, { decision });
   });
 }
 
@@ -63,9 +54,9 @@ function resolveAmbiguousDates(entries) {
 function datasetMaxMagnitude(entries, passedMaxMag) {
   if (passedMaxMag != null) return passedMaxMag;
   const allNums = [];
-  for (const { info } of entries) {
-    if (info.mode === 'extracted') {
-      for (const m of info.matches) allNums.push(m.num);
+  for (const { decision } of entries) {
+    if (decision.mode === 'extracted') {
+      for (const m of decision.value.matches) allNums.push(m.num);
     }
   }
   return findMaxMagnitude([allNums]);
@@ -78,20 +69,20 @@ function datasetMaxMagnitude(entries, passedMaxMag) {
 // catches a number that is unchanged but whose display simplifies (e.g.
 // "35.0" to "35").
 function classifiedCellPatches(entry, maxMag, settings) {
-  const { text, info } = entry;
+  const { text, decision } = entry;
   const { offsetTop, offsetOther, numTop } = settings;
-  if (info.mode === 'date' || info.mode === 'time') {
+  if (decision.mode === 'date' || decision.mode === 'time') {
     const trimmed = text.trim();
     const lead = text.length - text.trimStart().length;
-    const rounded = info.mode === 'date'
-      ? roundDateText(trimmed, settings.dateGranularity, info.dates)
+    const rounded = decision.mode === 'date'
+      ? roundDateText(trimmed, settings.dateGranularity, decision.value.dates)
       : roundTimeText(trimmed, settings.timeGranularity);
     if (rounded === null || rounded === trimmed) return [];
     return [{ index: lead, numStr: trimmed, newNum: rounded }];
   }
-  if (info.mode === 'extracted') {
+  if (decision.mode === 'extracted') {
     const patches = [];
-    for (const m of info.matches) {
+    for (const m of decision.value.matches) {
       const rounded = roundValueSetAware(m.num, maxMag, offsetTop, offsetOther, numTop);
       const newNum = formatNumber(rounded, m.numStr);
       if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
@@ -105,7 +96,7 @@ function classifiedCellPatches(entry, maxMag, settings) {
  * The table step (see the file header).
  *
  * @param {object[]} entries - One entry per classified cell, in page order,
- *   each carrying text, info, and columnIndex.
+ *   each carrying text, decision, and columnIndex.
  * @param {{offsetTop: number, offsetOther: number, numTop: number,
  *          dateGranularity: string, timeGranularity: string}} settings -
  *   Resolved offsets and num_top, and the date and time granularity.

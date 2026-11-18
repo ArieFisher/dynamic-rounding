@@ -102,11 +102,11 @@ function roundValues(range, settings) {
   const textEntries = [];
   range.forEach((row, r) => row.forEach((value, c) => {
     if (typeof value === "number" && isFinite(value)) {
-      numberEntries.push({ r, c, num: value, info: { mode: "extracted", matches: [{ num: value }] } });
+      numberEntries.push({ r, c, num: value, decision: { mode: "extracted", value: { matches: [{ num: value }] } } });
     } else if (typeof value === "string" && value !== "") {
       const decision = classifyCell({ text: value, rowIndex: r, columnIndex: c, ranges: null },
         SHEETS_LADDER_OPTIONS);
-      textEntries.push({ r, columnIndex: c, text: value, info: decisionToLegacyInfo(decision) });
+      textEntries.push({ r, columnIndex: c, text: value, decision });
     }
   }));
   const maxMag = datasetMaxMagnitude(numberEntries.concat(textEntries));
@@ -133,7 +133,7 @@ function roundValues(range, settings) {
  * returns its text with the patches applied.
  */
 function textResult(entry, patches, roundNumber) {
-  if (RESULT_KIND === "number" && entry.info.mode === "extracted") {
+  if (RESULT_KIND === "number" && entry.decision.mode === "extracted") {
     const bracketed = matchBracketedNumber(entry.text);
     const num = bracketed ? bracketed.num : toNumber(entry.text);
     if (num !== null) return roundNumber(num);

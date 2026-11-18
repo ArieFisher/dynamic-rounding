@@ -292,12 +292,12 @@ function holdsRoundableCell(rows) {
     for (const cellObj of rows[i].getCells()) {
       if (cellsRead >= DR_DETECTION_SETTINGS.dataTestCellBudget) break walk;
       cellsRead++;
-      const { info, columnIndex } = classifyTableCell(cellObj, i, DETECTION_OPTIONS, null);
-      if (info.ambiguous) pending.push({ info, columnIndex });
-      else if (info.mode !== 'skip') return true;
+      const { decision, columnIndex } = classifyTableCell(cellObj, i, DETECTION_OPTIONS, null);
+      if (isAmbiguousDateDecision(decision)) pending.push({ decision, columnIndex });
+      else if (decision.mode !== 'skip') return true;
     }
   }
-  return resolveAmbiguousDates(pending).some((entry) => entry.info.mode !== 'skip');
+  return resolveAmbiguousDates(pending).some((entry) => entry.decision.mode !== 'skip');
 }
 
 /**

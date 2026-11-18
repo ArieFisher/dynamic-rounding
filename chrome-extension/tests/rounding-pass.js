@@ -708,7 +708,7 @@ const SEAT_ROWS = [
   }
   eq('extractPreviewSamples (table step max magnitude): one call', passed.length, 1);
   eq('extractPreviewSamples (table step max magnitude): the call reads the classified cells',
-    (passed[0] || []).filter((entry) => entry.info.mode === 'extracted').flatMap((entry) => entry.info.matches.map((m) => m.num)),
+    (passed[0] || []).filter((entry) => entry.decision.mode === 'extracted').flatMap((entry) => entry.decision.value.matches.map((m) => m.num)),
     [27000000, 4080, 312]);
   eq('extractPreviewSamples (table step max magnitude): maxMag is the table step\'s', result.maxMag, 3);
   eq('extractPreviewSamples (table step max magnitude): top band', result.samples.top.map((row) => row.num),
