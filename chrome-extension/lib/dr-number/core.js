@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 /**
  * DynamicRounding domain core (coercion + magnitude helpers).
  *

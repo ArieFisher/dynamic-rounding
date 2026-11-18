@@ -1,9 +1,4 @@
-/**
- * DynamicRounding Chrome Extension - Sidebar
- * https://github.com/ArieFisher/dynamic-rounding
- * MIT License
- * Copyright (c) 2026 Arie Fisher
- */
+// Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
 const enabledEl = document.getElementById('enabled');
 const optionsSection = document.getElementById('optionsSection');
