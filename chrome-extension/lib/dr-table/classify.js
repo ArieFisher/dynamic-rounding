@@ -11,12 +11,9 @@
  * The {start, end} half-open ranges of the classified text that sit inside a
  * <sup> element or an element whose computed vertical-align is 'super'. Spans
  * come from the layout's original piece texts, so the ranges hold on a
- * simplified cell, whose live pieces hold the written text. With no layout,
+ * simplified cell, whose live pieces hold the written text. The layout's text
+ * pieces match the cell's current text pieces one for one. With no layout,
  * the live pieces stand for the original.
- * @param {Element} cell
- * @param {{styleProbe?: object, layout?: PieceLayout}} [opts] - layout: the
- *   cell's piece layout (see PieceLayout); its pieces match the live pieces
- *   one for one
  * @returns {{start: number, end: number}[]}
  */
 function getSuperscriptRanges(cell, opts = {}) {
@@ -58,12 +55,10 @@ function isCellWholeLink(cell) {
 }
 
 /**
- * Drops the matches that sit inside an <a> descendant of the cell. A piece
- * keeps its identity through every write, so the test holds on a simplified
- * cell. A match that no single piece holds stays: the patch writer skips it.
- * @param {Element} cell
- * @param {{index: number, numStr: string}[]} matches - positions in the classified text
- * @param {PieceLayout} layout - the cell's piece layout
+ * Drops the matches that sit inside an <a> descendant of the cell. A match's
+ * index is a position in the classified text. A piece keeps its identity
+ * through every write, so the test holds on a simplified cell. A match that no
+ * single piece holds stays: the patch writer skips it.
  */
 function filterLinkMatches(cell, matches, layout) {
   if (!matches || matches.length === 0) return matches;
@@ -85,7 +80,6 @@ function filterLinkMatches(cell, matches, layout) {
 // of the three keeps or drops a match on that match alone, so their order does
 // not change which matches remain. placeDecision returns a skip for a cell
 // with no layout, so an extracted decision always arrives with one.
-/** @param {PieceLayout} layout - the cell's piece layout (cellObj.getPieceLayout()) */
 function finalizeExtractedDecision(decision, cell, layout) {
   if (decision.mode !== 'extracted') return decision;
   const filtered = filterLinkMatches(cell, decision.value.matches, layout);

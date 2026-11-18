@@ -16,13 +16,8 @@ function parentOf(node) {
 
 /**
  * The ancestor walk: the first node from `start` upward that `found` reports,
- * or null. The walk ends before a node `stopAt` reports, after `cap` nodes,
- * and at the tree's top.
- * @param {Node|null} start
- * @param {number} cap - most nodes visited (the walk then returns null):
- *   gridWalkDepthCap, or Infinity for the tree's top alone
- * @param {((node: Node) => boolean)|null} stopAt - null stops nowhere
- * @param {(node: Node) => boolean} found
+ * or null. The walk ends before a node `stopAt` reports (a null `stopAt` stops
+ * nowhere), at the tree's top, and after `cap` nodes, where it returns null.
  * @returns {Node|null}
  */
 function walkUp(start, cap, stopAt, found) {
