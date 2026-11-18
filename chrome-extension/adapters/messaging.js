@@ -108,9 +108,9 @@ const DR_BUS = (function () {
   }
 
   // Chrome attaches a sender record to every arriving message. The bus passes
-  // on one fact from it, the number of the tab a content script sent from,
+  // on one fact from it, the tab ID of the tab a content script sent from,
   // and keeps the rest of Chrome's record out of its own contract.
-  // The sidebar compares that number against its bound tab. A message from
+  // The sidebar compares it with its bound tab's tab ID. A message from
   // an extension page has no tab, so this function returns null, and
   // publish() passes null for a same-context publish.
   function senderTabId(sender) {
@@ -183,7 +183,7 @@ const DR_BUS = (function () {
     }
   }
 
-  // A tab-routed send needs a tab number. A caller holding one passes it as
+  // A tab-routed send needs a tab ID. A caller holding one passes it as
   // opts.tabId: the service worker does, for the right-clicked tab, and the
   // sidebar does, for its bound tab. Otherwise the bus
   // queries the tab in front of the current window.

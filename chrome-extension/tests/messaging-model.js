@@ -4256,7 +4256,7 @@ function issue328SettingsOf(table) {
   // The carrier never follows from which Chrome interface the publishing
   // context holds.
 
-  // A tab-routed topic with no explicit tab number: the bus runs the active-tab
+  // A tab-routed topic with no explicit tab ID: the bus runs the active-tab
   // lookup. The payload
   // here is the bus's contract under test, not the topic's production payload —
   // the menu click carries none.
@@ -4272,11 +4272,11 @@ function issue328SettingsOf(table) {
     b.sent.tabs.length === 1 ? Object.keys(b.sent.tabs[0].msg).sort().join(',') : null,
     'probe,topic');
 
-  // An explicit tab number skips the lookup. The service worker passes the
+  // An explicit tab ID skips the lookup. The service worker passes the
   // tab the user clicked in, which may not be the active one.
   const c = makeBusSandbox();
   c.bus.publish('intent:menuClicked', {}, { tabId: 42 });
-  eq('bus route: an explicit tab number skips the active-tab lookup', c.sent.queries, 0);
+  eq('bus route: an explicit tab ID skips the active-tab lookup', c.sent.queries, 0);
   eq('bus route: and addresses the tab the caller named',
     c.sent.tabs.length === 1 ? c.sent.tabs[0].tabId : null, 42);
 
@@ -4290,7 +4290,7 @@ function issue328SettingsOf(table) {
 
   // The extension-pages route takes the other carrier: the broadcast that
   // reaches the service worker and the open sidebar, and never a content
-  // script. It needs no tab number, so it runs no active-tab lookup.
+  // script. It needs no tab ID, so it runs no active-tab lookup.
   const f = makeBusSandbox();
   f.bus.publish('state:rangeOk', {});
   eq('bus route: an extension-pages topic broadcasts once', f.sent.pages.length, 1);
@@ -4346,7 +4346,7 @@ function issue328SettingsOf(table) {
 
 // --- A subscriber learns the sending tab ---
 //
-// The sidebar reads the sending tab's number off Chrome's sender record and
+// The sidebar reads the tab ID of the sending tab off Chrome's sender record and
 // acts only on a message from the tab it was opened for. A payload cannot
 // carry the number — a content script does not hold its own.
 (function busSubscriberReceivesSenderTab() {
@@ -4361,24 +4361,24 @@ function issue328SettingsOf(table) {
   const fromTab = [];
   b.bus.subscribe('state:settingsChanged', (payload, meta) => { fromTab.push(meta); });
   b.fire({ topic: 'state:settingsChanged', settings: {} }, { tab: { id: 77 } });
-  eq('bus meta: a wire message from a content script reports its tab number',
+  eq('bus meta: a wire message from a content script reports its tab ID',
     fromTab.length === 1 && fromTab[0].tabId === 77, true);
 
   const c = makeBusSandbox();
   const fromPage = [];
   c.bus.subscribe('state:settingsChanged', (payload, meta) => { fromPage.push(meta); });
   c.fire({ topic: 'state:settingsChanged', settings: {} }, {});
-  eq('bus meta: a wire message from an extension page reports no tab number',
+  eq('bus meta: a wire message from an extension page reports no tab ID',
     fromPage.length === 1 && fromPage[0].tabId === null, true);
 
-  // The payload stays exactly what the publisher sent. The tab number rides
+  // The payload stays exactly what the publisher sent. The tab ID rides
   // beside it, never inside it, so no handler can mistake it for data the
   // publisher chose.
   const d = makeBusSandbox();
   let seenPayload = null;
   d.bus.subscribe('state:settingsChanged', (payload) => { seenPayload = payload; });
   d.fire({ topic: 'state:settingsChanged', settings: { k: 1 } }, { tab: { id: 5 } });
-  eq('bus meta: the tab number stays out of the payload',
+  eq('bus meta: the tab ID stays out of the payload',
     seenPayload === null ? null : Object.keys(seenPayload).sort().join(','), 'settings');
 })();
 
@@ -4464,22 +4464,22 @@ function issue328SettingsOf(table) {
 })();
 
 (function busRequestExplicitTab() {
-  // The sidebar passes its bound tab's number, so the bus sends its request
+  // The sidebar passes the tab ID of its bound tab, so the bus sends its request
   // to that tab and runs no query for the tab in front.
   const s = makeBusSandbox({ reply: { ok: true } });
   let answer = null;
   s.bus.request('request:activeTable', {}, (x) => { answer = x; }, { tabId: 42 });
-  eq('bus request: an explicit tab number skips the active-tab lookup', s.sent.queries, 0);
+  eq('bus request: an explicit tab ID skips the active-tab lookup', s.sent.queries, 0);
   eq('bus request: and addresses the tab the caller named',
     s.sent.tabs.length === 1 ? s.sent.tabs[0].tabId : null, 42);
   eq('bus request: and hands the callback that tab\'s answer',
     answer ? answer.ok : null, true);
 
-  // A null tab number, as the sidebar holds before its tab lookup answers,
+  // A null tab ID, as the sidebar holds before its tab lookup answers,
   // falls back to the lookup.
   const t = makeBusSandbox();
   t.bus.request('request:activeTable', {}, () => {}, { tabId: null });
-  eq('bus request: a null tab number falls back to the active-tab lookup',
+  eq('bus request: a null tab ID falls back to the active-tab lookup',
     [t.sent.queries, t.sent.tabs.length === 1 ? t.sent.tabs[0].tabId : null], [1, 7]);
 })();
 

@@ -1371,7 +1371,7 @@ const SINGLE_READ_SAMPLES = {
       noWindow.windowId(), null);
   })();
 
-  // --- The tab number the sidebar's requests address ---
+  // --- The tab ID the sidebar's requests address ---
   (function tabIdAccessor() {
     const boundTab = createBoundTab(makeTabs([{ id: OWN_TAB, windowId: OWN_WINDOW }]), makeBus());
     const before = boundTab.tabId();

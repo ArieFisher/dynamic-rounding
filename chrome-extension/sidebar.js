@@ -40,7 +40,7 @@ function createBoundTab(tabsApi, bus) {
   return {
     // Record the tab the sidebar was opened for, and the window holding it,
     // then run onReady. The order is load-bearing: the read reaches the page,
-    // the page publishes back, and a message arriving before the tab number
+    // the page publishes back, and a message arriving before the tab ID
     // exists has nothing to be compared against. No tab to bind to leaves the
     // number unset and still runs the read, which falls to the unbound state
     // on its own when nothing answers it.

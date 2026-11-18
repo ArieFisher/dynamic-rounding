@@ -845,7 +845,7 @@
 })();
 
 // the worker relays no activation topic into a tab, whether or
-// not it holds a sidebar tab number. The worker holds no message listener of
+// not it holds a sidebar tab ID. The worker holds no message listener of
 // its own, so the listener under test is the bus's, and the worker's own
 // subscriptions are the only thing that could act on an arriving topic. It
 // subscribes to no activation topic, so nothing does.
@@ -2336,7 +2336,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
     /console\.(warn|error|log|debug|info)\(/.test(bgSrc), false);
   eq('worker on bus: no raw chrome.tabs.sendMessage call',
     bgSrc.includes('chrome.tabs.sendMessage'), false);
-  eq('worker on bus: the menu click publishes with an explicit tab number',
+  eq('worker on bus: the menu click publishes with an explicit tab ID',
     /DR_BUS\.publish\(\s*'intent:menuClicked',\s*\{\},\s*\{\s*tabId:/.test(bgSrc), true);
   eq('worker on bus: no re-send of the settings notice',
     bgSrc.includes('settingsChanged'), false);
