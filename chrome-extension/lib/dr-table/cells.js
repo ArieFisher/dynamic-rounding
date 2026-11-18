@@ -93,9 +93,10 @@ function makeCellObj(cellEl, port) {
     // Returns how many patches landed. applyPatches stores no record when no
     // patch lands: the cell's text stays as it was, and storing the hover text
     // would record a simplification that never happened.
-    // The caller passes the text it classified as value, because a
-    // rendered-text read after another cell's write lays out the whole table
-    // again: once per cell, a 10,000-cell table takes most of a minute.
+    // The caller passes the text it classified as value, because the browser
+    // lays out the whole table again when a cell's rendered text is read after
+    // another cell's write: once per cell, a 10,000-cell table takes most of a
+    // minute.
     applyPatches(patches, { value }) {
       const record = recordOf();
       const original = record
