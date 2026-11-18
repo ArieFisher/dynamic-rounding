@@ -277,8 +277,9 @@ function sortCellByRecord(cell, record) {
 /**
  * Put a cell's original text back into every text piece that still shows the
  * extension's written text. A piece the page rewrote keeps the page's text.
- * With the piece count changed, live pieces pair with stored pieces by text,
- * in page order and at most once per stored piece.
+ * With the piece count changed, restoreTextPieces pairs each live piece with a
+ * stored piece whose written text differs from its original and equals the
+ * live piece's text, in page order and at most once per stored piece.
  */
 function restoreTextPieces(cell, storedPieces) {
   const pieces = collectTextPieces(cell);
