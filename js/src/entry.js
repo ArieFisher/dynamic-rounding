@@ -142,17 +142,6 @@ function textResult(entry, patches, roundNumber) {
 }
 
 /**
- * Apply a cell's patches to its text, last patch first, so each earlier
- * patch's position still counts into the text as the ladder read it.
- */
-function applyPatches(text, patches) {
-  return patches
-    .slice()
-    .sort((a, b) => b.index - a.index)
-    .reduce((out, p) => out.slice(0, p.index) + p.newNum + out.slice(p.index + p.numStr.length), text);
-}
-
-/**
  * Validates that offset is within acceptable range.
  * Throws an error if offset is outside -20 to 20.
  */

@@ -266,7 +266,7 @@ function applyTableStepPatches(text, patches) {
   const contentSrc = sourceByName('content.js');
   const DECL = (name) => new RegExp(`^\\s*function\\s+${name}\\s*\\(`, 'm');
   const MOVED = ['isAmbiguousDateDecision', 'resolveAmbiguousDates', 'datasetMaxMagnitude',
-    'classifiedCellPatches', 'tablePatches'];
+    'classifiedCellPatches', 'tablePatches', 'applyPatches'];
   // Every hand-written JavaScript file the extension and the Sheets library
   // ship, outside the tests. The Sheets library itself is skipped: the Sheets
   // build writes it from these files, so it holds a copy of table.js by

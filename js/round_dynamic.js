@@ -1688,6 +1688,16 @@ function tablePatches(entries, settings, passedMaxMag) {
   return { maxMag, cells };
 }
 
+// Apply patches to a text, last patch first, so each earlier patch's position
+// still counts into the text as passed in. For a caller with no page: the
+// extension writes through the patch writer, one text piece at a time.
+function applyPatches(text, patches) {
+  return patches
+    .slice()
+    .sort((a, b) => b.index - a.index)
+    .reduce((out, p) => out.slice(0, p.index) + p.newNum + out.slice(p.index + p.numStr.length), text);
+}
+
 // ---- js/src/entry.js ----
 
 // The Sheets entry source: the code only the Google Sheets library holds.
@@ -1831,17 +1841,6 @@ function textResult(entry, patches, roundNumber) {
     if (num !== null) return roundNumber(num);
   }
   return applyPatches(entry.text, patches);
-}
-
-/**
- * Apply a cell's patches to its text, last patch first, so each earlier
- * patch's position still counts into the text as the ladder read it.
- */
-function applyPatches(text, patches) {
-  return patches
-    .slice()
-    .sort((a, b) => b.index - a.index)
-    .reduce((out, p) => out.slice(0, p.index) + p.newNum + out.slice(p.index + p.numStr.length), text);
 }
 
 /**
