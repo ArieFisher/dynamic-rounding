@@ -8,52 +8,46 @@
 /**
  * DynamicRounding lib/dr-log package: the log buffer.
  *
- * DR_LOG holds the last 50 rows the extension records in this context. Each
- * context evaluates this file separately — the content script loads it from
- * the manifest (directly after constants.js, so every later file can log),
- * the sidebar loads it from a script tag, the service worker imports it
+ * DR_LOG holds the most recent rows the extension records in this context.
+ * Each context evaluates this file separately — the content script loads it
+ * from the manifest (directly after constants.js, so every later file can
+ * log), the sidebar loads it from a script tag, the service worker imports it
  * — so each holds its own buffer, and a capture carries the content script's
  * and the sidebar's snapshots, each labeled by its context.
  *
- * Every row also forwards to the real console, so devtools output is
- * unchanged. The buffer exists because a capture cannot read the console:
- * the rows it carries are exactly the ones recorded here.
+ * record() also writes each row's full text to the console, so devtools
+ * output is unchanged. The buffer exists because a capture cannot read the
+ * console: the rows it carries are exactly the ones recorded here.
  *
- * Rows past the cap drop off the front and are counted, so a snapshot shows
- * both what remains and how much is gone. Row text is cut at 2000 characters
- * to bound the capture's size.
+ * A snapshot shows both the rows that remain and how many are gone. Row text
+ * is cut to bound the capture's size.
  *
  * A warn or error row also carries the stack trace at the moment it was
- * recorded, starting at the caller of the level method — the same trace the
- * extension error page shows. Debug and info rows carry null: they are
- * frequent, and a trace costs a stack walk per row. The trace is cut at the
- * same bound as row text.
+ * recorded. Debug and info rows carry null: they are frequent, and a trace
+ * costs a stack walk per row.
  *
- * A row listener receives a copy of each row after it lands. This is how the
- * controller learns of a row without this module reaching up to the
- * application model or the bus, both of which load after it. A listener that
- * throws is reported on the console and stops nothing: the row is already in
- * the buffer, and the other listeners still run.
+ * A row listener receives a copy of each row after it lands.
  */
 
 const DR_LOG = (function () {
   const ROW_LIMIT = 50;
   const TEXT_LIMIT = 2000;
   // The levels whose rows are extension errors. A row at one of these levels
-  // carries a stack trace here and enters the model's error state in the
-  // controller, which reads this list rather than holding its own.
+  // carries a stack trace here and enters the application model's error state
+  // in the controller, which reads this list rather than holding its own.
   const ERROR_LEVELS = ['warn', 'error'];
-  const entries = [];
+  const rows = [];
   const listeners = new Set();
   let dropped = 0;
 
   // V8's captureStackTrace leaves out every frame above the function it is
-  // handed, so a trace taken against the level method starts at that
-  // method's caller. Its header line ("Error") goes too; only frames stay.
-  function stackTraceFrom(levelMethod) {
+  // handed, so a trace taken against the log call starts at that call's
+  // caller. The slice below drops the trace's header line ("Error") on both
+  // branches, so only frames stay.
+  function stackTraceFrom(logCall) {
     const holder = {};
     if (typeof Error.captureStackTrace === 'function') {
-      Error.captureStackTrace(holder, levelMethod);
+      Error.captureStackTrace(holder, logCall);
     } else {
       holder.stack = new Error().stack;
     }
@@ -65,21 +59,21 @@ const DR_LOG = (function () {
     return { at: row.at, level: row.level, text: row.text, stack: row.stack };
   }
 
-  function record(level, text, levelMethod) {
+  function record(level, text, logCall) {
     const asString = typeof text === 'string' ? text : String(text);
     const row = {
       at: new Date().toISOString(),
       level,
       text: asString.length > TEXT_LIMIT ? asString.slice(0, TEXT_LIMIT) : asString,
-      stack: ERROR_LEVELS.includes(level) ? stackTraceFrom(levelMethod) : null,
+      stack: ERROR_LEVELS.includes(level) ? stackTraceFrom(logCall) : null,
     };
-    entries.push(row);
-    if (entries.length > ROW_LIMIT) {
-      entries.shift();
+    rows.push(row);
+    if (rows.length > ROW_LIMIT) {
+      rows.shift();
       dropped++;
     }
     // Dynamic lookup, not a captured reference, so a console replaced later
-    // (the test suite installs spies) still receives the row.
+    // (the test suite installs spies) still receives the full text.
     (console[level] || console.log).call(console, asString);
     for (const listener of Array.from(listeners)) {
       try {
@@ -93,17 +87,16 @@ const DR_LOG = (function () {
     }
   }
 
-  // snapshot() returns fresh copies: the capture serializes what it gets,
-  // and no caller can reach the buffer's own rows through the result.
+  // snapshot() returns fresh copies, so no caller can reach the buffer's own
+  // rows through the result.
   function snapshot() {
     return {
-      entries: entries.map(copyRow),
+      entries: rows.map(copyRow),
       dropped,
       limit: ROW_LIMIT,
     };
   }
 
-  // Registers a listener and returns the function that removes it.
   function onRow(listener) {
     listeners.add(listener);
     return function offRow() {
@@ -118,16 +111,7 @@ const DR_LOG = (function () {
   function warn(text) { record('warn', text, warn); }
   function error(text) { record('error', text, error); }
 
-  /**
-   * Joins an event and its labeled values into one row's text:
-   * "Dynamic Rounding: <event> · <label>: <value> · …".
-   * @param {string} event The event name, lower case, in the vocabulary's terms.
-   * @param {Object<string, (string|number|null|undefined)>} [fields] Each label
-   *   mapped to its value, in the order the row shows them. A number renders
-   *   with thousands separators; a null, undefined, or empty value leaves its
-   *   label out.
-   * @returns {string} The row text.
-   */
+  // A caller passes the event name in lower case, in the vocabulary's terms.
   function formatRow(event, fields) {
     const parts = ['Dynamic Rounding: ' + event];
     for (const [label, value] of Object.entries(fields || {})) {
@@ -137,12 +121,7 @@ const DR_LOG = (function () {
     return parts.join(' · ');
   }
 
-  /**
-   * The type name of a thrown value, for a row's error label. A row never
-   * holds the browser's message, which can carry page text.
-   * @param {*} thrown The value a catch block received.
-   * @returns {(string|null)} The type name when the value is an Error, otherwise null.
-   */
+  // A row never holds the browser's message, which can carry page text.
   function errorType(thrown) {
     return thrown instanceof Error ? thrown.name : null;
   }
