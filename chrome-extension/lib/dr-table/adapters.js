@@ -4,9 +4,6 @@
  * The adapter layer of the lib/dr-table package: NativeTableAdapter and
  * GridAdapter (chosen by makeAdapter) present a table's rows and cells through
  * one interface.
- *
- * GRID_VENDOR_PROFILES reads DR_DETECTION_SETTINGS at the top level, so a
- * missing object fails at load, before any function here runs.
  */
 
 // All four roles count as cells, so a header cell at the start of a grid row is
@@ -15,6 +12,21 @@ const GRID_CELL_SELECTOR = '[role="cell"], [role="gridcell"], [role="rowheader"]
 
 function parentOf(node) {
   return node.parentElement || node.parentNode || null;
+}
+
+/**
+ * The ancestor walk: the first node from `start` upward that `found` reports,
+ * or null. The walk ends before a node `stopAt` reports (a null `stopAt` stops
+ * nowhere), at the tree's top, and after `cap` nodes, where it returns null.
+ * @returns {Node|null}
+ */
+function walkUp(start, cap, stopAt, found) {
+  let node = start;
+  for (let depth = 0; node && depth < cap && !(stopAt && stopAt(node)); depth++) {
+    if (found(node)) return node;
+    node = parentOf(node);
+  }
+  return null;
 }
 
 /**
@@ -61,13 +73,13 @@ const DEFAULT_ORIGINALS_PORT = new WeakMap();
 function childCountCandidates(children) {
   const childCountFreq = new Map();
   for (const child of children) {
-    const cc = child.children ? child.children.length : 0;
-    childCountFreq.set(cc, (childCountFreq.get(cc) || 0) + 1);
+    const childCount = child.children ? child.children.length : 0;
+    childCountFreq.set(childCount, (childCountFreq.get(childCount) || 0) + 1);
   }
   let modalChildCount = 0;
   let modalFreq = 0;
-  for (const [cc, freq] of childCountFreq) {
-    if (freq > modalFreq && cc > 0) { modalFreq = freq; modalChildCount = cc; }
+  for (const [childCount, freq] of childCountFreq) {
+    if (freq > modalFreq && childCount > 0) { modalFreq = freq; modalChildCount = childCount; }
   }
   const candidates = modalFreq > 0
     ? children.filter((c) => c.children && c.children.length === modalChildCount)
@@ -77,10 +89,8 @@ function childCountCandidates(children) {
 
 /**
  * The direction reader: true for a column-first grid, false for a row-first
- * grid. The grid is column-first when the first two children that draw a box
- * share a top, with a larger left on the second. The geometry probe and the
- * grid adapter both call it, so the two read one direction for one grid. A
- * style probe without getBox reads every grid as row-first.
+ * grid. The geometry probe and the grid adapter both call it, so the two get
+ * one direction for one grid.
  *
  * @returns {boolean}
  */
@@ -97,7 +107,8 @@ function isColumnFirst(children, styleProbe) {
   return boxes[1].top === boxes[0].top && boxes[1].left > boxes[0].left;
 }
 
-// A caller may pass another list as opts.vendorProfiles.
+// This statement reads DR_DETECTION_SETTINGS at load, so it throws when the
+// object is missing, before any function in this file runs.
 const GRID_VENDOR_PROFILES = DR_DETECTION_SETTINGS.vendorProfiles;
 
 /**
@@ -117,7 +128,8 @@ function normalizeSpan(raw, whenZero) {
   return Math.min(value, 1000);
 }
 
-// A td's span property reads 1 with no colspan attribute, so the attribute decides.
+// A td's span property returns 1 with no colspan attribute, so the code checks
+// the attribute.
 function cellSpans(cellEl) {
   const read = (property, htmlAttribute, ariaAttribute) => {
     const declares = typeof cellEl.hasAttribute === 'function'
@@ -135,7 +147,9 @@ function cellSpans(cellEl) {
  * Number every cell by the column the browser lays it out in (issue #330).
  * Both table kinds reach it through buildRows, so one rule numbers the
  * columns. Without it, a merge in the data area shifts every later cell
- * off its column, and the table rounds at the wrong step.
+ * off its column, and the code for every rule that gates a cell by grid
+ * column (the exclusions, the range expression, the dataset, the column
+ * post-pass, the capture state) gets the wrong column.
  *
  * @returns {{columnIndex: number, columnSpan: number}[][]}
  */
@@ -166,7 +180,7 @@ function assignGridColumns(rowSpans) {
  * The rows of one table, built from each row's cell elements. The caller
  * reads each row's cell elements once, so the column plan and the cell
  * objects count the same row shape.
- * @returns {{getCells(): object[]}[]}
+ * @returns {{isOutside?: boolean, isGrouped?: boolean, getCells(): object[]}[]}
  */
 function buildRows(rowCellEls, originalsPort, rowProps) {
   const plan = assignGridColumns(rowCellEls.map((cellEls) => cellEls.map(cellSpans)));
@@ -235,6 +249,20 @@ function _ownDescendants(root, selector) {
     .filter((match) => !isInsideCell(parentOf(match)));
 }
 
+/**
+ * The first of `root`'s own descendants to match a selector, trying the
+ * selectors in order and passing over `skip`.
+ *
+ * @returns {Element|null}
+ */
+function _firstOwnDescendant(root, selectors, skip) {
+  for (const sel of selectors) {
+    const found = _ownDescendants(root, sel)[0];
+    if (found && found !== skip) return found;
+  }
+  return null;
+}
+
 class GridAdapter {
   constructor(el, opts = {}) {
     this.el = el;
@@ -246,28 +274,18 @@ class GridAdapter {
   isGrid() { return true; }
 
   _getScrollContainer() {
-    const el = this.el;
-    const knownSelectors = [
+    const selectors = [
       ...this.vendorProfiles.flatMap((p) => p.scrollContainerSelectors || []),
       '[role="grid"]',
     ];
-    for (const sel of knownSelectors) {
-      const found = _ownDescendants(el, sel)[0];
-      if (found) return found;
-    }
-    return el;
+    return _firstOwnDescendant(this.el, selectors) || this.el;
   }
 
   _getPinnedPane(scrollContainer) {
-    const pinnedSelectors = this.vendorProfiles.flatMap((p) => p.pinnedPaneSelectors || []);
-    const el = this.el;
-    for (const sel of pinnedSelectors) {
-      const found = _ownDescendants(el, sel)[0];
-      // A pinned pane that is the scroll container would join each row's
-      // cells to themselves.
-      if (found && found !== scrollContainer) return found;
-    }
-    return null;
+    const selectors = this.vendorProfiles.flatMap((p) => p.pinnedPaneSelectors || []);
+    // A pinned pane that is the scroll container would join each row's
+    // cells to themselves.
+    return _firstOwnDescendant(this.el, selectors, scrollContainer);
   }
 
   /**
@@ -279,8 +297,8 @@ class GridAdapter {
    * cannot change the choice. The result is the container-wide match list in
    * document order, so a row's position is its literal row number.
    *
-   * isOutside marks a row in no row group. Only the shape fingerprint reads it
-   * (_hasHeaderRow).
+   * isOutside marks a row in no row group. Its only reader is _hasHeaderRow,
+   * in the shape fingerprint code.
    *
    * A row from the children fallback on a column-first grid has no row
    * element: its entry holds el: null and cellEls.
@@ -288,7 +306,6 @@ class GridAdapter {
    * @returns {{el: Element|null, isOutside: boolean, isGrouped: boolean, cellEls?: Element[]}[]}
    */
   _getRowEntries(container) {
-    if (!container) return [];
     if (!container.querySelectorAll) {
       return this._childRowEntries(container);
     }
@@ -297,10 +314,7 @@ class GridAdapter {
     const scopes = isGrouped ? rowgroups : [container];
 
     for (const sel of ['[role="row"]', '.dg--virtual-row', 'tr']) {
-      let rows = [];
-      for (const scope of scopes) {
-        rows = rows.concat(_ownDescendants(scope, sel));
-      }
+      const rows = scopes.flatMap((scope) => _ownDescendants(scope, sel));
       if (rows.length === 0) continue;
       const inGroup = new Set(rows);
       const matches = isGrouped ? _ownDescendants(container, sel) : rows;
@@ -365,7 +379,7 @@ class GridAdapter {
     const rowCellEls = scrollEntries.map(({ el: rowEl, cellEls }, idx) => {
       if (cellEls) return cellEls;
       const scrollKey = this._getRowKey(rowEl, idx);
-      const pinnedRowEl = pinnedByKey.get(scrollKey) || (pinnedRows[idx] || null);
+      const pinnedRowEl = pinnedByKey.get(scrollKey) || pinnedRows[idx];
       const pinned = pinnedRowEl ? this._getCellEls(pinnedRowEl) : [];
       return pinned.concat(this._getCellEls(rowEl));
     });

@@ -8,42 +8,19 @@
  */
 
 /**
- * The ancestor walk: the first node from `start` upward that `found` reports,
- * or null. The walk ends before a node `stopAt` reports, after `cap` nodes,
- * and at the tree's top.
- * @param {Node|null} start
- * @param {number} cap - most nodes visited (the walk then returns null):
- *   gridWalkDepthCap, or Infinity for the tree's top alone
- * @param {((node: Node) => boolean)|null} stopAt - null stops nowhere
- * @param {(node: Node) => boolean} found
- * @returns {Node|null}
- */
-function walkUp(start, cap, stopAt, found) {
-  let node = start;
-  for (let depth = 0; node && depth < cap && !(stopAt && stopAt(node)); depth++) {
-    if (found(node)) return node;
-    node = parentOf(node);
-  }
-  return null;
-}
-
-/**
  * The {start, end} half-open ranges of the classified text that sit inside a
  * <sup> element or an element whose computed vertical-align is 'super'. Spans
- * come from the layout's original piece texts, so the ranges hold on a
- * simplified cell, whose live pieces hold the written text. With no layout,
- * the live pieces stand for the original.
- * @param {Element} cell
- * @param {{styleProbe?: object, layout?: PieceLayout}} [opts] - layout: the
- *   cell's piece layout (see PieceLayout); its pieces match the live pieces
- *   one for one
+ * come from the layout's original text pieces, so the ranges hold on a
+ * simplified cell, whose current text pieces hold the written text. The
+ * layout's text pieces match the cell's current text pieces one for one. With
+ * no layout, the cell's current text pieces stand for the original.
  * @returns {{start: number, end: number}[]}
  */
 function getSuperscriptRanges(cell, opts = {}) {
   const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
   if (!cell) return [];
   const live = collectTextPieces(cell);
-  const spans = pieceSpans(opts.layout ? opts.layout.original : live.map((node) => node.nodeValue || ''));
+  const spans = pieceSpans(opts.layout ? opts.layout.original : pieceTexts(live));
   const ranges = [];
   for (const span of spans) {
     if (span.text.length === 0) continue;
@@ -58,38 +35,39 @@ function getSuperscriptRanges(cell, opts = {}) {
   if (!toFlat) return ranges;
   const classified = [];
   for (const { start, end } of ranges) {
-    const inside = [];
-    toFlat.forEach((at, i) => { if (at >= start && at < end) inside.push(i); });
-    if (inside.length > 0) classified.push({ start: inside[0], end: inside[inside.length - 1] + 1 });
+    const isInside = (at) => at >= start && at < end;
+    const first = toFlat.findIndex(isInside);
+    if (first !== -1) classified.push({ start: first, end: toFlat.findLastIndex(isInside) + 1 });
   }
   return classified;
 }
 
-// Whether the cell's visible text lies entirely inside <a> elements (e.g. a
+function cellAnchors(cell) {
+  if (typeof cell.querySelectorAll !== 'function') return [];
+  return [...(cell.querySelectorAll('a') || [])];
+}
+
+// Whether the cell's rendered text lies entirely inside <a> elements (e.g. a
 // linked page number).
 function isCellWholeLink(cell) {
-  if (typeof cell.querySelectorAll !== 'function') return false;
-  const anchors = cell.querySelectorAll('a');
-  if (!anchors || anchors.length === 0) return false;
+  const anchors = cellAnchors(cell);
+  if (anchors.length === 0) return false;
   const cellText = (cell.innerText || '').trim();
   if (!cellText) return false;
-  const anchorText = [...anchors].map(a => (a.innerText || '').trim()).join('').trim();
+  const anchorText = anchors.map(a => (a.innerText || '').trim()).join('').trim();
   return anchorText === cellText;
 }
 
 /**
- * Drops the matches that sit inside an <a> descendant of the cell. A piece
- * keeps its identity through every write, so the test holds on a simplified
- * cell. A match that no single piece holds stays: the patch writer skips it.
- * @param {Element} cell
- * @param {{index: number, numStr: string}[]} matches - positions in the classified text
- * @param {PieceLayout} layout - the cell's piece layout
+ * Drops the matches that sit inside an <a> descendant of the cell. A match's
+ * index is a position in the classified text. A text piece keeps its identity
+ * through every write, so the test holds on a simplified cell. A match that no
+ * single text piece holds stays here; the placement step drops such a match
+ * before this filter runs.
  */
 function filterLinkMatches(cell, matches, layout) {
   if (!matches || matches.length === 0) return matches;
-  if (typeof cell.querySelectorAll !== 'function') return matches;
-  const anchors = cell.querySelectorAll('a');
-  if (!anchors || anchors.length === 0) return matches;
+  if (cellAnchors(cell).length === 0) return matches;
 
   const pieces = collectTextPieces(cell);
   return matches.filter((match) => {
@@ -105,7 +83,6 @@ function filterLinkMatches(cell, matches, layout) {
 // of the three keeps or drops a match on that match alone, so their order does
 // not change which matches remain. placeDecision returns a skip for a cell
 // with no layout, so an extracted decision always arrives with one.
-/** @param {PieceLayout} layout - the cell's piece layout (cellObj.getPieceLayout()) */
 function finalizeExtractedDecision(decision, cell, layout) {
   if (decision.mode !== 'extracted') return decision;
   const filtered = filterLinkMatches(cell, decision.value.matches, layout);
@@ -113,16 +90,15 @@ function finalizeExtractedDecision(decision, cell, layout) {
   return { mode: 'extracted', reason: decision.reason, value: { matches: filtered } };
 }
 
-// The page reads the ladder cannot make pass in as plain data (see the
-// lib/dr-simplify/ladder.js header). This writes nothing: the pass counts a
-// split number (entry.split) afterward.
+// classifyTableCell writes nothing: the pass counts a split number
+// (entry.split) afterward.
 //
-// A simplified cell classifies its stored original rather than the rounded
-// text now showing; the superscript ranges and the link filter locate each
-// number's piece through the layout, so both read the live pieces too.
+// For a simplified cell, the function classifies the stored original
+// rather than the written text; getSuperscriptRanges and filterLinkMatches
+// locate each number's text piece through the layout, so both work on the
+// cell's current text pieces too.
 // isWholeLink stays a live read: rounding never adds or removes an <a>, so the
 // anchor text and the cell text move together.
-// A cell with no layout is a rewritten cell; placeDecision skips it.
 function classifyTableCell(cellObj, rowIndex, opts, ranges) {
   const cell = cellObj.el;
   const text = cellObj.getText();
@@ -146,7 +122,6 @@ function classifyTableCell(cellObj, rowIndex, opts, ranges) {
   return {
     cellObj,
     text,
-    trimmed: text.trim(),
     info: decisionToLegacyInfo(finalizeExtractedDecision(placed, cell, layout)),
     split: !!placed.split,
     layout,

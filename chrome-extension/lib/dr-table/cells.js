@@ -11,18 +11,16 @@
 const SIMPLIFIED_CLASS = 'dr-ext-rounded';
 
 /**
- * A simplified cell's record, stored through the originals port. A landed
- * write replaces it, so the written text never goes stale; a write that lands
- * nothing stores nothing.
+ * A simplified cell's record, stored through the originals port. applyPatches
+ * replaces it after each write that lands a patch, so the written text never
+ * goes stale.
  *
  * @typedef {object} CellRecord
  * @property {string} value - the text the pass classified (see applyPatches)
  * @property {{text: string, written: string}[]} pieces - one entry per text
  *   piece, in page order: text, its original; written, its text after this write
  * @property {string} pageTitle - the cell's hover text as the page set it; ''
- *   when the page set none. A live hover text other than the extension's is
- *   the page's: each write stores it here, and the restore leaves it in place.
- *   A write over the extension's hover text keeps the stored value.
+ *   when the page set none
  */
 
 /**
@@ -37,10 +35,6 @@ const SIMPLIFIED_CLASS = 'dr-ext-rounded';
  *   pieces in more than whitespace and no single piece holds the value.
  */
 
-/**
- * The hover text the extension gives a simplified cell.
- * @returns {string}
- */
 function originalHoverText(value) {
   return `Original: ${value}`;
 }
@@ -79,6 +73,9 @@ function makeCellObj(cellEl, port) {
     const record = recordOf();
     return record ? record.value : shownText();
   };
+  const originalTexts = (record) => (record
+    ? record.pieces.map((piece) => piece.text)
+    : pieceTexts(collectTextPieces(cellEl)));
   return {
     el: cellEl,
     isHeaderCell: isHeaderCellEl(cellEl),
@@ -88,25 +85,23 @@ function makeCellObj(cellEl, port) {
     // caller that runs no sort first, such as the lens preview, can get null;
     // the pass releases such a cell before it reads a layout.
     getPieceLayout() {
-      const live = collectTextPieces(cellEl).map((piece) => piece.nodeValue);
       const record = recordOf();
-      if (record && record.pieces.length !== live.length) return null;
-      const original = record ? record.pieces.map((piece) => piece.text) : live;
+      if (record && record.pieces.length !== collectTextPieces(cellEl).length) return null;
+      const original = originalTexts(record);
       const text = getText();
       const toFlat = mapRenderedToFlat(text, original.join('')) || mapValueToPiece(text, original);
       return { original, toFlat };
     },
-    // Returns how many patches landed. A write that lands nothing changes
-    // nothing: with every patch skipped the screen keeps its text, and storing
-    // the hover text would record a simplification that never happened.
-    // The caller passes the text it classified as value, because a
-    // rendered-text read after another cell's write lays out the whole table
-    // again: once per cell, a 10,000-cell table takes most of a minute.
+    // Returns how many patches landed. applyPatches stores no record when no
+    // patch lands: the cell's text stays as it was, and storing the hover text
+    // would record a simplification that never happened.
+    // The caller passes the text it classified as value, because the browser
+    // lays out the whole table again when a cell's rendered text is read after
+    // another cell's write: once per cell, a 10,000-cell table takes most of a
+    // minute.
     applyPatches(patches, { value }) {
       const record = recordOf();
-      const original = record
-        ? record.pieces.map((piece) => piece.text)
-        : collectTextPieces(cellEl).map((piece) => piece.nodeValue);
+      const original = originalTexts(record);
       const { landed, texts } = writePatches(cellEl, patches, original);
       if (landed === 0) return 0;
       port.set(cellEl, {
@@ -135,8 +130,8 @@ function makeCellObj(cellEl, port) {
 
 /**
  * The cell's text pieces in page order: every Text node under the cell,
- * whitespace-only and empty ones included. The walk falls back to child nodes
- * where no tree walker exists (a plain Node context).
+ * whitespace-only and empty ones included. collectTextPieces walks the child
+ * nodes where no tree walker exists (a plain Node context).
  * @returns {Text[]}
  */
 function collectTextPieces(cell) {
@@ -156,6 +151,10 @@ function collectTextPieces(cell) {
     }
   })(cell);
   return pieces;
+}
+
+function pieceTexts(pieces) {
+  return pieces.map((piece) => piece.nodeValue);
 }
 
 /**
@@ -207,8 +206,7 @@ function mapValueToPiece(rendered, pieces) {
   }
   if (candidates.length !== 1) return null;
   const i = candidates[0];
-  let flatStart = pieces[i].indexOf(value);
-  for (let k = 0; k < i; k++) flatStart += pieces[k].length;
+  const flatStart = pieceSpans(pieces)[i].start + pieces[i].indexOf(value);
   const lead = rendered.length - rendered.trimStart().length;
   const toFlat = [];
   for (let k = 0; k < value.length; k++) toFlat[lead + k] = flatStart + k;
@@ -226,7 +224,7 @@ function mapValueToPiece(rendered, pieces) {
  */
 function writePatches(cell, patches, original) {
   const pieces = collectTextPieces(cell);
-  const live = pieces.map((piece) => piece.nodeValue);
+  const live = pieceTexts(pieces);
   if (original.length !== live.length) return { landed: 0, texts: live };
   const { texts, landed } = patchPieceTexts(original, patches);
   if (landed === 0) return { landed: 0, texts: live };
@@ -269,7 +267,7 @@ function patchPieceTexts(texts, patches) {
  */
 function sortCellByRecord(cell, record) {
   if (!record) return 'fresh';
-  const live = collectTextPieces(cell).map((piece) => piece.nodeValue);
+  const live = pieceTexts(collectTextPieces(cell));
   if (live.length !== record.pieces.length) return 'rewritten';
   return record.pieces.every((piece, i) => live[i] === piece.text || live[i] === piece.written)
     ? 'held'
@@ -279,8 +277,9 @@ function sortCellByRecord(cell, record) {
 /**
  * Put a cell's original text back into every text piece that still shows the
  * extension's written text. A piece the page rewrote keeps the page's text.
- * With the piece count changed, live pieces pair with stored pieces by text,
- * in page order and at most once per stored piece.
+ * With the piece count changed, restoreTextPieces pairs each live piece with a
+ * stored piece whose written text differs from its original and equals the
+ * live piece's text, in page order and at most once per stored piece.
  */
 function restoreTextPieces(cell, storedPieces) {
   const pieces = collectTextPieces(cell);

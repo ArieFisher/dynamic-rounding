@@ -615,14 +615,10 @@ function fingerprintReadOpts(table) {
 // extension's written text. A patch changes only text, never tags, so the
 // cell's markup comes back as it stood before simplification.
 //
-// A restore can arrive before a pass has processed a page edit — within the
-// wait for a pass, or on a table above the cell cap — so it sorts each cell
-// the way a pass does. A held cell gets its original text back in every
-// piece the extension wrote. A rewritten cell gets it back only in the
-// pieces that still show written text, and the pieces the page rewrote keep
-// the page's text. In a cell whose piece count changed, a piece matches its
-// stored piece by written text, not by position (see restoreTextPieces). A
-// restore never writes a number the page no longer shows.
+// The content script can run a restore before a pass has processed a page
+// edit — within the wait for a pass, or on a table above the cell cap — so a
+// marked cell can be a rewritten cell. restoreTextPieces holds the rules that
+// keep the page's text in such a cell.
 //
 // KNOWN ACCEPTED COST: registry-held originals do not survive Chrome
 // re-injecting the content script. A re-injected content script starts a
@@ -694,16 +690,16 @@ function classifyPreviewCells(table, options) {
 
 // The lens preview's sample pool: each number the table rounds in its
 // dataset, with its cell's trimmed text, so a cell appears here only if the
-// table rounds it. Empty cells stay out. A zero never counts, because it has
-// no magnitude. Extracted results alone count: the lens preview is about numeric magnitude and offset, so dates and
-// times stay out even though the ladder classifies them.
+// table rounds it. A zero never counts, because it has no magnitude.
+// Extracted results alone count: the lens preview is about numeric magnitude
+// and offset, so dates and times stay out even though the ladder classifies
+// them.
 function numericPreviewCells(entries) {
   const out = [];
-  for (const { trimmed, info } of entries) {
-    if (!trimmed) continue;
+  for (const { text, info } of entries) {
     if (info.mode === 'extracted') {
       for (const { num } of info.matches) {
-        if (num !== 0 && isFinite(num)) out.push({ text: trimmed, num });
+        if (num !== 0 && isFinite(num)) out.push({ text: text.trim(), num });
       }
     }
   }
