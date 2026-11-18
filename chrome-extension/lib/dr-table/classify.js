@@ -43,7 +43,7 @@ function getSuperscriptRanges(cell, opts = {}) {
   const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
   if (!cell) return [];
   const live = collectTextPieces(cell);
-  const spans = pieceSpans(opts.layout ? opts.layout.original : live.map((node) => node.nodeValue || ''));
+  const spans = pieceSpans(opts.layout ? opts.layout.original : pieceTexts(live));
   const ranges = [];
   for (const span of spans) {
     if (span.text.length === 0) continue;

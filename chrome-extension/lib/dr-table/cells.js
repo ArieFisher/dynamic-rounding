@@ -82,7 +82,7 @@ function makeCellObj(cellEl, port) {
     // caller that runs no sort first, such as the lens preview, can get null;
     // the pass releases such a cell before it reads a layout.
     getPieceLayout() {
-      const live = collectTextPieces(cellEl).map((piece) => piece.nodeValue);
+      const live = pieceTexts(collectTextPieces(cellEl));
       const record = recordOf();
       if (record && record.pieces.length !== live.length) return null;
       const original = record ? record.pieces.map((piece) => piece.text) : live;
@@ -101,7 +101,7 @@ function makeCellObj(cellEl, port) {
       const record = recordOf();
       const original = record
         ? record.pieces.map((piece) => piece.text)
-        : collectTextPieces(cellEl).map((piece) => piece.nodeValue);
+        : pieceTexts(collectTextPieces(cellEl));
       const { landed, texts } = writePatches(cellEl, patches, original);
       if (landed === 0) return 0;
       port.set(cellEl, {
@@ -151,6 +151,10 @@ function collectTextPieces(cell) {
     }
   })(cell);
   return pieces;
+}
+
+function pieceTexts(pieces) {
+  return pieces.map((piece) => piece.nodeValue);
 }
 
 /**
@@ -221,7 +225,7 @@ function mapValueToPiece(rendered, pieces) {
  */
 function writePatches(cell, patches, original) {
   const pieces = collectTextPieces(cell);
-  const live = pieces.map((piece) => piece.nodeValue);
+  const live = pieceTexts(pieces);
   if (original.length !== live.length) return { landed: 0, texts: live };
   const { texts, landed } = patchPieceTexts(original, patches);
   if (landed === 0) return { landed: 0, texts: live };
@@ -264,7 +268,7 @@ function patchPieceTexts(texts, patches) {
  */
 function sortCellByRecord(cell, record) {
   if (!record) return 'fresh';
-  const live = collectTextPieces(cell).map((piece) => piece.nodeValue);
+  const live = pieceTexts(collectTextPieces(cell));
   if (live.length !== record.pieces.length) return 'rewritten';
   return record.pieces.every((piece, i) => live[i] === piece.text || live[i] === piece.written)
     ? 'held'
