@@ -35,9 +35,9 @@ function getSuperscriptRanges(cell, opts = {}) {
   if (!toFlat) return ranges;
   const classified = [];
   for (const { start, end } of ranges) {
-    const inside = [];
-    toFlat.forEach((at, i) => { if (at >= start && at < end) inside.push(i); });
-    if (inside.length > 0) classified.push({ start: inside[0], end: inside[inside.length - 1] + 1 });
+    const isInside = (at) => at >= start && at < end;
+    const first = toFlat.findIndex(isInside);
+    if (first !== -1) classified.push({ start: first, end: toFlat.findLastIndex(isInside) + 1 });
   }
   return classified;
 }
