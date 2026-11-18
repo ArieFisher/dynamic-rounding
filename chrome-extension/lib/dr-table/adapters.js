@@ -4,9 +4,6 @@
  * The adapter layer of the lib/dr-table package: NativeTableAdapter and
  * GridAdapter (chosen by makeAdapter) present a table's rows and cells through
  * one interface.
- *
- * GRID_VENDOR_PROFILES reads DR_DETECTION_SETTINGS at the top level, so a
- * missing object fails at load, before any function here runs.
  */
 
 // All four roles count as cells, so a header cell at the start of a grid row is
@@ -97,7 +94,8 @@ function isColumnFirst(children, styleProbe) {
   return boxes[1].top === boxes[0].top && boxes[1].left > boxes[0].left;
 }
 
-// A caller may pass another list as opts.vendorProfiles.
+// This statement reads DR_DETECTION_SETTINGS at load, so it throws when the
+// object is missing, before any function in this file runs.
 const GRID_VENDOR_PROFILES = DR_DETECTION_SETTINGS.vendorProfiles;
 
 /**
