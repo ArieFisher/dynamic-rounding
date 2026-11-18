@@ -18,7 +18,7 @@
         mark: 'looks-right', remarks: '', detectionSettings: null,
         activeTableIndex: 0, tables: [tableRec], lensPreview: null, fixtureSeed: null,
         sidebarSnapshot: null, errorState: { hasError: false, count: 0, rows: [] },
-        log: { content: { entries: [], dropped: 0, limit: 50 }, sidebar: { entries: [], dropped: 0, limit: 50 } },
+        log: { content: { rows: [], dropped: 0, limit: 50 }, sidebar: { rows: [], dropped: 0, limit: 50 } },
       },
     });
     const originalsTable = (html.split('with the originals')[1] || '').split('</table>')[0];
@@ -325,10 +325,10 @@
     },
     log: {
       content: {
-        entries: [{ at: '2026-09-09T18:00:00.000Z', level: 'debug', text: 'apply ran' }],
+        rows: [{ at: '2026-09-09T18:00:00.000Z', level: 'debug', text: 'apply ran' }],
         dropped: 0, limit: 50,
       },
-      sidebar: { entries: [], dropped: 0, limit: 50 },
+      sidebar: { rows: [], dropped: 0, limit: 50 },
     },
     page: { url: 'https://www.example.com/prices', title: 'Prices' },
     fixtureSeed: '<table><tr><td>98,765</td></tr></table>',
@@ -579,8 +579,8 @@
       lensPreview: { top: ['98,765'], bottom: [] },
     },
     log: {
-      content: { entries: [], dropped: 0, limit: 50 },
-      sidebar: { entries: [], dropped: 0, limit: 50 },
+      content: { rows: [], dropped: 0, limit: 50 },
+      sidebar: { rows: [], dropped: 0, limit: 50 },
     },
     page: { url: 'https://www.example.com/prices', title: 'Prices' },
     fixtureSeed: '<table><tr><td>98,765</td></tr></table>',
@@ -640,7 +640,7 @@
     mark: 'looks-wrong', remarks: '', detectionSettings: null,
     activeTableIndex: null, tables: [], lensPreview: null, fixtureSeed: null,
     sidebarSnapshot: null, errorState: null,
-    log: { content: null, sidebar: { entries: [], dropped: 0, limit: 50 } },
+    log: { content: null, sidebar: { rows: [], dropped: 0, limit: 50 } },
     page: { url: 'https://www.example.com/prices', title: 'Prices' },
   }, over || {});
   const islandOf = (docHtml) => {
@@ -705,7 +705,7 @@
 // The state records three kinds of absence honestly; the page a human reads
 // must present each as an absence, never as something it is not: a lost
 // original never becomes a substituted value, an error record never becomes
-// an empty table, a missing log snapshot never becomes an empty buffer. The
+// an empty table, a missing log buffer copy never becomes an empty buffer. The
 // glyph lookup resolves only the three mark words, so a hostile mark cannot
 // pull a prototype property into the document.
 (function captureRendererAbsenceHonesty() {
@@ -723,8 +723,8 @@
     lensPreview: null,
     sidebarSnapshot: null,
     log: {
-      content: { entries: [], dropped: 0, limit: 50 },
-      sidebar: { entries: [], dropped: 0, limit: 50 },
+      content: { rows: [], dropped: 0, limit: 50 },
+      sidebar: { rows: [], dropped: 0, limit: 50 },
     },
     page: { url: 'https://www.example.com/prices', title: 'Prices' },
     fixtureSeed: null,
@@ -771,14 +771,14 @@
   eq('capture-render: an error record on the bound table renders no table and no null counts',
     failed.includes('<table class="cap-table">') || failed.includes('null row(s)'), false);
 
-  // A missing log snapshot (the state pull failed) is distinct from an empty
+  // A missing log buffer copy (the state pull failed) is distinct from an empty
   // buffer: the sidebar half here IS an empty buffer and keeps its sentence.
   const pullFailed = buildCaptureDocument({
     state: makeState({
-      log: { content: null, sidebar: { entries: [], dropped: 0, limit: 50 } },
+      log: { content: null, sidebar: { rows: [], dropped: 0, limit: 50 } },
     }),
   });
-  eq('capture-render: a missing log snapshot renders as a failed state pull',
+  eq('capture-render: a missing log buffer copy renders as a failed state pull',
     pullFailed.includes('state pull failed'), true);
   eq('capture-render: an empty buffer keeps its own sentence beside a failed pull',
     pullFailed.includes('Nothing was logged.'), true);
@@ -1051,7 +1051,7 @@
     errorState: errorState,
     log: {
       content: {
-        entries: [
+        rows: [
           { at: '2026-09-17T16:00:00.000Z', level: 'warn', text: 'traced row',
             stack: '    at roundTable (chrome-extension://' + 'a'.repeat(32) +
               '/content.js:1523:18)\n    at <script>alert(1)</script>' },
@@ -1059,7 +1059,7 @@
         ],
         dropped: 0, limit: 50,
       },
-      sidebar: { entries: [], dropped: 0, limit: 50 },
+      sidebar: { rows: [], dropped: 0, limit: 50 },
     },
   };
   const html = DR_CAPTURE.buildCaptureDocument({ state: renderState });
@@ -1079,8 +1079,8 @@
     .replace(/&quot;/g, '"').replace(/&#39;/g, '\'')
     .replace(/&amp;/g, '&')) : null;
   eq('capture-render: the island carries the stack trace byte-exact',
-    islandState && islandState.log.content.entries[0].stack,
-    renderState.log.content.entries[0].stack);
+    islandState && islandState.log.content.rows[0].stack,
+    renderState.log.content.rows[0].stack);
   eq('capture-render: the island carries the error state',
     islandState && islandState.errorState, errorState);
 

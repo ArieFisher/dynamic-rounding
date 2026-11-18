@@ -4,7 +4,7 @@
  *
  * Stubs out browser globals so the content scripts run in Node and exercise
  * the pure functions (extractNumbersInText, formatNumber, toNumber,
- * roundCellSetAware, findMaxMagnitude, pureNumberSpan).
+ * roundValueSetAware, findMaxMagnitude, pureNumberSpan).
  */
 
 const fs = require('fs');

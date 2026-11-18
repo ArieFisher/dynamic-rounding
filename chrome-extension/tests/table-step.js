@@ -296,7 +296,7 @@ function applyTableStepPatches(text, patches) {
   // none of the rounding or formatting calls the table step makes.
   const body = sourceBodyOf(contentSrc, 'function cellPatches(');
   eq('table step source: content.js declares cellPatches', body !== '', true);
-  const ROUNDING_CALLS = /\b(roundCellSetAware|formatNumber|roundDateText|roundTimeText|pureNumberSpan|findMaxMagnitude|pickDateFormatHint|resolveAmbiguousDateDecision)\s*\(/g;
+  const ROUNDING_CALLS = /\b(roundValueSetAware|formatNumber|roundDateText|roundTimeText|pureNumberSpan|findMaxMagnitude|pickDateFormatHint|resolveAmbiguousDateDecision)\s*\(/g;
   eq('table step source: content.js\'s cellPatches makes no rounding or formatting call',
     (body || '').match(ROUNDING_CALLS) || [], []);
   eq('table step source: content.js calls no column post-pass or max magnitude rule outside the table step',

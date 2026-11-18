@@ -13,19 +13,25 @@
  * changes them only through the setters below. A publishing setter updates
  * its field, then publishes the whole new value through DR_BUS. The model
  * holds no DOM logic and calls no chrome API.
- *
- * Loaded after constants.js (DR_DEFAULTS) and adapters/messaging.js
- * (DR_BUS), and before ui-pillbox.js.
  */
 
 const DR_MODEL = (function () {
+  // --- Active table ---
   let activeTable = null;
+
+  function getActiveTable() {
+    return activeTable;
+  }
+
+  function setActiveTable(table) {
+    activeTable = table;
+  }
 
   // --- Table registry ---
   //
   // The Map holds a strong reference to each table, so an entry stays until
   // unregisterTable runs, even after the page removes the table. The content
-  // script calls unregisterTable from its removal observer.
+  // script calls unregisterTable when the page removes or reshapes the table.
   const tableRegistry = new Map();
 
   function _ensureEntry(table) {
@@ -33,22 +39,15 @@ const DR_MODEL = (function () {
     if (!entry) {
       entry = {
         // Each cell's originals, keyed by cell element, one record shape for
-        // both kinds (CellRecord in lib/dr-table/cells.js). A WeakMap, because
-        // nothing enumerates a table's originals, and a cell the host recycles
-        // out of the page (grid virtualization, a framework re-render) lets
-        // its entry go instead of accumulating for the life of the table's
-        // registration.
+        // both kinds (CellRecord in lib/dr-table/cells.js). A WeakMap: nothing
+        // enumerates it, and the record of a cell the page removes (a
+        // virtualized grid, a re-render) is freed with the cell.
         originals: new WeakMap(),
-        // The table's settings: its on/off value and every simplification
-        // option, with the shipped defaults filled in. null until the first
-        // write, and getTableSettings answers the shipped defaults for null.
-        // setTableSettings is the one writer. The sidebar's controls, the
-        // apply, the re-apply pass, and the capture read it; a reset of the
-        // cells leaves it in place.
+        // The table settings. null until the first write; getTableSettings
+        // reads null as the shipped defaults.
         settings: null,
-        // The max magnitude stored at the first simplification, so a re-apply
-        // pass (a grid's scroll, a value the page writes) cannot shift it.
-        // resetTable clears it back to null.
+        // The max magnitude the magnitude freeze holds. resetTable
+        // (content.js) clears it to null.
         maxMagnitude: null,
         // The shape fingerprint: { columnCount, headerTexts }, from
         // lib/dr-table's readTableFingerprint. The controller writes it once,
@@ -62,20 +61,12 @@ const DR_MODEL = (function () {
     return entry;
   }
 
-  function getActiveTable() {
-    return activeTable;
-  }
-
-  function setActiveTable(table) {
-    activeTable = table;
-  }
-
   // --- Error state ---
   //
-  // The rows are bounded so a page that logs on every scroll cannot grow the
-  // model for the life of the tab; the count keeps counting past the cap so
-  // the total stays readable. Rows are plain values (time, level, text,
-  // stack trace) copied on the way in and on the way out.
+  // The rows are bounded so a warning logged on every scroll cannot grow the
+  // model for the life of the page; errorCount still increments past the cap
+  // so the total stays readable. Rows are plain values, copied on the way in
+  // and on the way out.
   const ERROR_ROW_LIMIT = 50;
   const errorRows = [];
   let errorCount = 0;
@@ -101,13 +92,10 @@ const DR_MODEL = (function () {
 
   // --- Table registry API ---
   //
-  // Only setTableSettings publishes. The rest of the registry is per-table
-  // storage that the controller reads synchronously.
+  // Only setTableSettings publishes.
 
-  // The controller calls this once per table it registers, and a
-  // rediscovery calls it again with no effect. Every setter below also calls
-  // _ensureEntry, so a table can have an entry without registerTable ever
-  // running for it.
+  // Every setter below also calls _ensureEntry, so a table can have an entry
+  // without registerTable ever running for it.
   function registerTable(table) {
     _ensureEntry(table);
   }
@@ -138,12 +126,7 @@ const DR_MODEL = (function () {
     return !!entry && entry.originals.has(cellEl);
   }
 
-  // The registry stores a cell's original as the record documented in
-  // _ensureEntry, which carries the original text as value. This read
-  // returns that text, or undefined when no original is stored. The
-  // capture's state serializer and the shape fingerprint's read are the
-  // callers; the cell objects and the controller (content.js) read the record
-  // whole.
+  // Reads CellRecord.value, the text the pass classified.
   function getTableOriginalText(table, cellEl) {
     const original = getTableOriginal(table, cellEl);
     return original === undefined ? undefined : original.value;
@@ -154,11 +137,10 @@ const DR_MODEL = (function () {
     if (entry) entry.originals.delete(cellEl);
   }
 
-  // Every writer writes the active table: the sidebar's apply, and a table
-  // pillbox press, which makes its table active first. The settings notice
-  // crosses to the sidebar, so it carries plain values alone: the source
-  // ('sidebar' for the sidebar's apply, 'page' for every other writer) and a
-  // copy of the stored settings.
+  // Every write targets the active table. The settings notice crosses to the
+  // sidebar, so it carries plain values alone: the source ('sidebar' for the
+  // sidebar's apply, 'page' for every other writer) and a copy of the stored
+  // settings.
   //
   // The one place the shipped defaults fill in on a write. settings is a
   // patch: a key it leaves out keeps its stored value.
@@ -176,8 +158,8 @@ const DR_MODEL = (function () {
   }
 
   // The on/off value the table pillbox and the sidebar pillbox both show, so
-  // the two always agree. A table that is on with no cell to simplify is on.
-  /** @param {Element} table The table whose on/off value this reads. */
+  // the two always agree. The value comes from the table settings alone, not
+  // from whether any cell changed.
   function isTableOn(table) {
     return getTableSettings(table).enabled === true;
   }
@@ -191,8 +173,6 @@ const DR_MODEL = (function () {
     return entry ? entry.maxMagnitude : null;
   }
 
-  // The shape fingerprint a table carried when it registered. Plain values
-  // only, so the fingerprint stays serializable.
   function setTableFingerprint(table, fingerprint) {
     _ensureEntry(table).fingerprint = fingerprint;
   }

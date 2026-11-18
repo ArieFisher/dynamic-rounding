@@ -1,17 +1,16 @@
 /**
  * DynamicRounding domain core (coercion + magnitude helpers).
  *
- * Read by three scripts, each AFTER rounding.js: the content script (page
- * context, via manifest content_scripts), the sidebar (extension side-panel
- * context, via <script> tag), and the Google Sheets library, which
- * scripts/build-sheets.js writes by joining this file with the rest of the
- * shared library and the Sheets entry source. Must remain framework-free and
- * side-effect-free: no chrome.*, no DOM access, no Node module code. All
- * symbols land on the global scope of whichever script holds this file, so
- * the extension and the Sheets library share one currency list, one
- * findMaxMagnitude, and one toNumber.
+ * Read by three scripts, each AFTER rounding.js: the content script (via
+ * manifest content_scripts), the sidebar (via a script tag), and the Google
+ * Sheets library, which scripts/build-sheets.js writes by joining this file
+ * with the rest of the shared library and the Sheets entry source. Must
+ * remain framework-free and side-effect-free: no chrome.*, no DOM access, no
+ * Node module code. All symbols land on the global scope of whichever script
+ * holds this file, so the extension and the Sheets library share one
+ * currency list, one findMaxMagnitude, and one toNumber.
  *
- * The arithmetic primitives (roundWithOffset, roundCellSetAware) live in
+ * The arithmetic primitives (roundWithOffset, roundValueSetAware) live in
  * rounding.js, which must load before this file.
  */
 
@@ -118,7 +117,7 @@ function findMaxMagnitude(numericRange) {
   return max_mag;
 }
 
-// roundCellSetAware and roundWithOffset live in rounding.js.
+// roundValueSetAware and roundWithOffset live in rounding.js.
 
 // The marks a number uses: US style, a comma between groups of three digits
 // and a dot before the fraction. Frozen, so no caller can change the marks

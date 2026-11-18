@@ -97,7 +97,7 @@ function classifiedCellPatches(entry, maxMag, settings) {
   if (info.mode === 'extracted') {
     const patches = [];
     for (const m of info.matches) {
-      const rounded = roundCellSetAware(m.num, maxMag, offsetTop, offsetOther, numTop);
+      const rounded = roundValueSetAware(m.num, maxMag, offsetTop, offsetOther, numTop);
       const newNum = formatNumber(rounded, m.numStr);
       if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
     }
