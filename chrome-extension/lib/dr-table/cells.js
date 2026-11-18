@@ -130,8 +130,8 @@ function makeCellObj(cellEl, port) {
 
 /**
  * The cell's text pieces in page order: every Text node under the cell,
- * whitespace-only and empty ones included. The walk falls back to child nodes
- * where no tree walker exists (a plain Node context).
+ * whitespace-only and empty ones included. collectTextPieces walks the child
+ * nodes where no tree walker exists (a plain Node context).
  * @returns {Text[]}
  */
 function collectTextPieces(cell) {
