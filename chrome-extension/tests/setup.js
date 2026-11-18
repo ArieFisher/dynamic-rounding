@@ -220,7 +220,6 @@ globalThis.DR_TABLE = DR_TABLE;
 globalThis.classifyCell = classifyCell;
 globalThis.pickDateFormatHint = pickDateFormatHint;
 globalThis.resolveAmbiguousDateDecision = resolveAmbiguousDateDecision;
-globalThis.decisionToLegacyInfo = decisionToLegacyInfo;
 // Expose grid-virtualization internals for the grid-virtualization test suite.
 globalThis.reapplyRounding = reapplyRounding;
 globalThis.simplifyTableCells = simplifyTableCells;

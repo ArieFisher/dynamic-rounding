@@ -696,9 +696,9 @@ function classifyPreviewCells(table, options) {
 // them.
 function numericPreviewCells(entries) {
   const out = [];
-  for (const { text, info } of entries) {
-    if (info.mode === 'extracted') {
-      for (const { num } of info.matches) {
+  for (const { text, decision } of entries) {
+    if (decision.mode === 'extracted') {
+      for (const { num } of decision.value.matches) {
         if (num !== 0 && isFinite(num)) out.push({ text: text.trim(), num });
       }
     }
@@ -943,7 +943,7 @@ function cellPatches(stepCell) {
 
 // A changed date or time whose one patch no single text piece holds.
 function isSplitDateOrTime({ entry, patches }) {
-  const isDateOrTime = entry.info.mode === 'date' || entry.info.mode === 'time';
+  const isDateOrTime = entry.decision.mode === 'date' || entry.decision.mode === 'time';
   return isDateOrTime && patches.length > 0 &&
     !layoutPieceHolding(entry.layout, patches[0].index, patches[0].numStr.length);
 }

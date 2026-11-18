@@ -122,7 +122,7 @@ function classifyTableCell(cellObj, rowIndex, opts, ranges) {
   return {
     cellObj,
     text,
-    info: decisionToLegacyInfo(finalizeExtractedDecision(placed, cell, layout)),
+    decision: finalizeExtractedDecision(placed, cell, layout),
     split: !!placed.split,
     layout,
     columnIndex: cellObj.columnIndex,

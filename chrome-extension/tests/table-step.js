@@ -52,7 +52,7 @@ function loadTableStepAlone(extraSource) {
   const context = vm.createContext({});
   const source = files.map((file) => sourceByName(file)).join('\n') + '\n' + (extraSource || '') + `
 ;({
-  tablePatches, classifyCell, decisionToLegacyInfo,
+  tablePatches, classifyCell,
   globals: {
     document: typeof document, window: typeof window, chrome: typeof chrome,
     DR_MODEL: typeof DR_MODEL, DR_LOG: typeof DR_LOG,
@@ -62,12 +62,12 @@ function loadTableStepAlone(extraSource) {
 }
 
 // Classify each cell of a table through the ladder alone, as plain
-// classified cells: text, info, and grid column.
+// classified cells: text, decision, and grid column.
 function tableStepCells(api, rows) {
   const cells = [];
   rows.forEach((row, rowIndex) => row.forEach((text, columnIndex) => {
     const decision = api.classifyCell({ text, rowIndex, columnIndex, ranges: null }, TABLE_STEP_LADDER_OPTS);
-    cells.push({ text, info: api.decisionToLegacyInfo(decision), columnIndex });
+    cells.push({ text, decision, columnIndex });
   }));
   return cells;
 }
@@ -115,9 +115,9 @@ function applyTableStepPatches(text, patches) {
     [at(0, 3).patches, at(2, 3).patches],
     [[{ index: 0, numStr: '3/4/2024', newNum: '3/2024' }], [{ index: 0, numStr: '3/4/2024', newNum: '3/2024' }]]);
   eq('table step alone: the column post-pass settles the ambiguous dates in the cell entry',
-    [at(0, 2).entry.info.ambiguous, at(0, 3).entry.info.ambiguous], [false, false]);
+    [at(0, 2).entry.decision.pending, at(0, 3).entry.decision.pending].map((p) => p === 'ambiguous-date'), [false, false]);
   eq('table step alone: a skip cell takes no patch',
-    { mode: at(1, 0).entry.info.mode, patches: at(1, 0).patches },
+    { mode: at(1, 0).entry.decision.mode, patches: at(1, 0).patches },
     { mode: 'skip', patches: [] });
   eq('table step alone: a time cell takes one patch over its trimmed text',
     at(2, 0).patches, [{ index: 0, numStr: '10:47', newNum: '11:00' }]);
@@ -265,7 +265,7 @@ function applyTableStepPatches(text, patches) {
 (function tableStep_oneDefinitionOfEachRule() {
   const contentSrc = sourceByName('content.js');
   const DECL = (name) => new RegExp(`^\\s*function\\s+${name}\\s*\\(`, 'm');
-  const MOVED = ['decisionToLegacyInfo', 'resolveAmbiguousDates', 'datasetMaxMagnitude',
+  const MOVED = ['isAmbiguousDateDecision', 'resolveAmbiguousDates', 'datasetMaxMagnitude',
     'classifiedCellPatches', 'tablePatches'];
   // Every hand-written JavaScript file the extension and the Sheets library
   // ship, outside the tests. The Sheets library itself is skipped: the Sheets
