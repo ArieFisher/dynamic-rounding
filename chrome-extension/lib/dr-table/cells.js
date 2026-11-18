@@ -35,10 +35,6 @@ const SIMPLIFIED_CLASS = 'dr-ext-rounded';
  *   pieces in more than whitespace and no single piece holds the value.
  */
 
-/**
- * The hover text the extension gives a simplified cell.
- * @returns {string}
- */
 function originalHoverText(value) {
   return `Original: ${value}`;
 }
