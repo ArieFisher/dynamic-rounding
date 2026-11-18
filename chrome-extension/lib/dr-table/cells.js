@@ -20,9 +20,7 @@ const SIMPLIFIED_CLASS = 'dr-ext-rounded';
  * @property {{text: string, written: string}[]} pieces - one entry per text
  *   piece, in page order: text, its original; written, its text after this write
  * @property {string} pageTitle - the cell's hover text as the page set it; ''
- *   when the page set none. A live hover text other than the extension's is
- *   the page's: each write stores it here, and the restore leaves it in place.
- *   A write over the extension's hover text keeps the stored value.
+ *   when the page set none (see pageHoverText)
  */
 
 /**
