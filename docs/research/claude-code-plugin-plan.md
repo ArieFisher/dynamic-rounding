@@ -1,6 +1,6 @@
 # Plan: the rounding plugin for Claude Code
 
-Status: draft, not approved. Assessed 2026-11-18 against `main` at `d97adb7` and Claude Code 2.1.311.
+Status: approved by Arie, 2026-11-18. Assessed that day against `main` at `d97adb7` and Claude Code 2.1.311.
 
 ## Context
 
@@ -18,7 +18,7 @@ Decided by Arie, 2026-11-16, and the command name on 2026-11-18:
 4. **Status entry.** Kept.
 5. **Command name: `/simplify-data`.** Claude Code ships a `/simplify` of its own, so a plugin command of that name does not register.
 
-Decided in this assessment, 2026-11-18. Arie may reverse it:
+Decided in the assessment and approved with the plan, 2026-11-18:
 
 6. **Settings: the extension's shipped defaults.** The header row and the first column stay as written, dates simplify to the year, and both offsets are -0.5. The earlier draft held the Sheets options. Under those, a header "Revenue 2024" becomes "Revenue 2,000" and a row label "Item 12" becomes "Item 10" (run in Node).
 
