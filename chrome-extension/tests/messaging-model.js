@@ -1094,8 +1094,8 @@ const PENDING_FILL_ROWS = [
   // the front, so the two together give a running total this case can subtract
   // to find the rows it recorded itself.
   const recordedRows = () => {
-    const snapshot = DR_LOG.snapshot();
-    return snapshot.dropped + snapshot.entries.length;
+    const buffer = DR_LOG.copyBuffer();
+    return buffer.dropped + buffer.rows.length;
   };
   const logRowsBefore = recordedRows();
 
@@ -1140,8 +1140,8 @@ const PENDING_FILL_ROWS = [
       DR_MODEL.hasTable(neverEl), false);
 
     const added = recordedRows() - logRowsBefore;
-    const entries = DR_LOG.snapshot().entries;
-    const newRows = entries.slice(Math.max(0, entries.length - added));
+    const rows = DR_LOG.copyBuffer().rows;
+    const newRows = rows.slice(Math.max(0, rows.length - added));
     eq('pending: the cap cycle records at least one log row', added >= 1, true);
     eq('pending: reaching the cap records one debug row for the drop',
       newRows.filter((row) => row.level === 'debug' && /pending table/.test(row.text)).map((row) => row.text),
@@ -1339,13 +1339,13 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
 (function pendingTableCap_aTablePastTheCapIsNotWatchedUntilAPlaceFrees() {
   const savedCap = DR_DETECTION_SETTINGS.pendingTableCap;
   const recordedRows = () => {
-    const snapshot = DR_LOG.snapshot();
-    return snapshot.dropped + snapshot.entries.length;
+    const buffer = DR_LOG.copyBuffer();
+    return buffer.dropped + buffer.rows.length;
   };
   const capRowsSince = (before) => {
     const added = recordedRows() - before;
-    const entries = DR_LOG.snapshot().entries;
-    return entries.slice(Math.max(0, entries.length - added))
+    const rows = DR_LOG.copyBuffer().rows;
+    return rows.slice(Math.max(0, rows.length - added))
       .filter((row) => /pending table cap/.test(row.text)).map((row) => row.text);
   };
   const built = [];
@@ -4031,7 +4031,7 @@ function issue328SettingsOf(table) {
   const prevActive = DR_MODEL.getActiveTable();
 
   // With no table bound: no lens preview, no seed, no focus — and the page
-  // field and log snapshot still present.
+  // field and log buffer copy still present.
   DR_MODEL.setActiveTable(null);
   let unboundResponse = null;
   const collectRows = logRowsDuring(() => { unboundResponse = buildCaptureStateResponse(); });
@@ -4044,8 +4044,8 @@ function issue328SettingsOf(table) {
       tablesIsArray: Array.isArray(unboundResponse.tables),
     },
     { captureFormat: 11, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
-  eq('capture-wire: the response carries this context\'s log snapshot',
-    Array.isArray(unboundResponse.log.entries) && unboundResponse.log.limit, 50);
+  eq('capture-wire: the response carries this context\'s log buffer copy',
+    Array.isArray(unboundResponse.log.rows) && unboundResponse.log.limit, 50);
   eq('capture-wire: collecting the capture state writes no row', collectRows, []);
   eq('capture-wire: the page field exists even where location does not',
     'url' in unboundResponse.page && 'title' in unboundResponse.page, true);
@@ -4114,7 +4114,7 @@ function issue328SettingsOf(table) {
   eq('capture-wire: the discarded lens preview writes one row naming the step and the error type',
     rows, [lensRow]);
   eq('capture-wire: the lens preview row is a warn row, the error state\'s newest, which the toast shows',
-    [DR_LOG.snapshot().entries.slice(-1)[0].level, DR_MODEL.getErrorState().rows.slice(-1)[0].text],
+    [DR_LOG.copyBuffer().rows.slice(-1)[0].level, DR_MODEL.getErrorState().rows.slice(-1)[0].text],
     ['warn', lensRow]);
 })();
 

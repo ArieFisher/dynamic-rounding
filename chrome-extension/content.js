@@ -804,7 +804,7 @@ function buildCaptureStateResponse() {
   // The serializer guards per table; this walk of the bound table is the one
   // step after it that can throw, and an unguarded throw here would discard
   // the whole page-side half — the serialized registry, the fixture seed,
-  // and the log rows. On a throw: null, a warn row (taken into the snapshot
+  // and the log rows. On a throw: null, a warn row (taken into the buffer copy
   // below), and the rest of the response stands.
   let lensPreview = null;
   if (selected) {
@@ -821,7 +821,7 @@ function buildCaptureStateResponse() {
         ? document.title : null,
     },
     lensPreview: lensPreview,
-    log: DR_LOG.snapshot(),
+    log: DR_LOG.copyBuffer(),
   }, state);
 }
 

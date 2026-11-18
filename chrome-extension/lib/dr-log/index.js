@@ -13,13 +13,13 @@
  * from the manifest (directly after constants.js, so every later file can
  * log), the sidebar loads it from a script tag, the service worker imports it
  * — so each holds its own buffer, and a capture carries the content script's
- * and the sidebar's snapshots, each labeled by its context.
+ * and the sidebar's buffer copies, each labeled by its context.
  *
  * record() also writes each row's full text to the console, so devtools
  * output is unchanged. The buffer exists because a capture cannot read the
  * console: the rows it carries are exactly the ones recorded here.
  *
- * A snapshot shows both the rows that remain and how many are gone. Row text
+ * A buffer copy shows both the rows that remain and how many are gone. Row text
  * is cut to bound the capture's size.
  *
  * A warn or error row also carries the stack trace at the moment it was
@@ -87,11 +87,11 @@ const DR_LOG = (function () {
     }
   }
 
-  // snapshot() returns fresh copies, so no caller can reach the buffer's own
+  // copyBuffer() returns fresh copies, so no caller can reach the buffer's own
   // rows through the result.
-  function snapshot() {
+  function copyBuffer() {
     return {
-      entries: rows.map(copyRow),
+      rows: rows.map(copyRow),
       dropped,
       limit: ROW_LIMIT,
     };
@@ -133,7 +133,7 @@ const DR_LOG = (function () {
   }
 
   return {
-    debug, info, warn, error, snapshot, onRow, formatRow, errorType, warnError,
+    debug, info, warn, error, copyBuffer, onRow, formatRow, errorType, warnError,
     ERROR_LEVELS: ERROR_LEVELS.slice(),
   };
 })();

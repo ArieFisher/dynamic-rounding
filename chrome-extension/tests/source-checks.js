@@ -2048,9 +2048,9 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 //
 // DR_LOG holds the last 50 rows the extension records, one instance per
 // context (content script and sidebar each evaluate the file separately).
-// Every capture carries a snapshot of this buffer, so these tests pin the
-// row shape, the cap, the drop counter, the console forwarding, and the
-// snapshot's copy semantics. The buffer is a singleton shared with every
+// Every capture carries a copy of this buffer, so these tests pin the
+// row shape, the limit, the drop counter, the console forwarding, and the
+// copy semantics. The buffer is a singleton shared with every
 // other test in this file, so all assertions here are relative (last row,
 // before/after counts) — and the cap test runs last because it fills it.
 
@@ -2066,14 +2066,14 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
   const LOG = globalThis.DR_LOG;
 
   LOG.debug('row shape probe');
-  let snap = LOG.snapshot();
-  const last = snap.entries[snap.entries.length - 1];
+  let buffer = LOG.copyBuffer();
+  const last = buffer.rows[buffer.rows.length - 1];
   eq('dr-log: a row holds its level and text',
     { level: last.level, text: last.text },
     { level: 'debug', text: 'row shape probe' });
   eq('dr-log: a row\'s timestamp parses as a date',
     isNaN(Date.parse(last.at)), false);
-  eq('dr-log: the snapshot reports the row cap', snap.limit, 50);
+  eq('dr-log: the buffer copy reports the row limit', buffer.limit, 50);
 
   // console.info and console.error are not muted by the harness (only debug
   // and warn are); spy them for the duration of these three calls so the
@@ -2088,12 +2088,12 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
   console.info = origInfo;
   console.error = origError;
   eq('dr-log: info, warn, and error rows carry their level',
-    LOG.snapshot().entries.slice(-3).map((e) => e.level),
+    LOG.copyBuffer().rows.slice(-3).map((e) => e.level),
     ['info', 'warn', 'error']);
 
   LOG.debug(42);
   eq('dr-log: non-string text is stored as a string',
-    LOG.snapshot().entries.slice(-1)[0].text, '42');
+    LOG.copyBuffer().rows.slice(-1)[0].text, '42');
 
   // Forwarding: a row still reaches the console (devtools behavior is
   // unchanged). The harness mutes console.debug/console.warn globally; this
@@ -2105,25 +2105,25 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
   console.debug = origDebug;
   eq('dr-log: a row forwards to the console', forwarded, 'forwarding probe');
 
-  const snapA = LOG.snapshot();
-  snapA.entries[snapA.entries.length - 1].text = 'mutated';
-  eq('dr-log: snapshot rows are copies, so mutating one never reaches the buffer',
-    LOG.snapshot().entries.slice(-1)[0].text, 'forwarding probe');
+  const bufferA = LOG.copyBuffer();
+  bufferA.rows[bufferA.rows.length - 1].text = 'mutated';
+  eq('dr-log: rows in a buffer copy are copies, so mutating one never reaches the buffer',
+    LOG.copyBuffer().rows.slice(-1)[0].text, 'forwarding probe');
 
   LOG.debug('x'.repeat(3000));
   eq('dr-log: a long row is cut at 2000 characters',
-    LOG.snapshot().entries.slice(-1)[0].text.length, 2000);
+    LOG.copyBuffer().rows.slice(-1)[0].text.length, 2000);
 
-  // The 50-row cap and the drop counter — last in this section because it
+  // The 50-row limit and the drop counter — last in this section because it
   // fills the shared buffer.
-  const droppedBefore = LOG.snapshot().dropped;
+  const droppedBefore = LOG.copyBuffer().dropped;
   for (let i = 0; i < 55; i++) LOG.debug('cap probe ' + i);
-  snap = LOG.snapshot();
-  eq('dr-log: the buffer holds at most 50 rows', snap.entries.length, 50);
-  eq('dr-log: rows dropped past the cap are counted',
-    snap.dropped >= droppedBefore + 5, true);
+  buffer = LOG.copyBuffer();
+  eq('dr-log: the buffer holds at most 50 rows', buffer.rows.length, 50);
+  eq('dr-log: rows dropped past the limit are counted',
+    buffer.dropped >= droppedBefore + 5, true);
   eq('dr-log: the newest row survives the cap',
-    snap.entries[snap.entries.length - 1].text, 'cap probe 54');
+    buffer.rows[buffer.rows.length - 1].text, 'cap probe 54');
 })();
 
 // --- lib/dr-log: the stack trace and the row listener ---
@@ -2143,7 +2143,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
   try {
     function stackProbeCaller() { LOG.warn('stack probe'); }
     stackProbeCaller();
-    const warnRow = LOG.snapshot().entries.slice(-1)[0];
+    const warnRow = LOG.copyBuffer().rows.slice(-1)[0];
     eq('dr-log: a warn row carries the stack trace that recorded it',
       typeof warnRow.stack === 'string' && /stackProbeCaller/.test(warnRow.stack), true);
     eq('dr-log: the stack trace starts at the caller, with the log module\'s own frames left out',
@@ -2152,11 +2152,11 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
     function errorStackProbeCaller() { LOG.error('error stack probe'); }
     errorStackProbeCaller();
     eq('dr-log: an error row carries the stack trace',
-      /errorStackProbeCaller/.test(LOG.snapshot().entries.slice(-1)[0].stack || ''), true);
+      /errorStackProbeCaller/.test(LOG.copyBuffer().rows.slice(-1)[0].stack || ''), true);
 
     function failedStepProbeCaller() { LOG.warnError('probe step', new TypeError('x')); }
     failedStepProbeCaller();
-    const failedStepRow = LOG.snapshot().entries.slice(-1)[0];
+    const failedStepRow = LOG.copyBuffer().rows.slice(-1)[0];
     eq('dr-log: warnError writes a warn row naming the step and the error type',
       [failedStepRow.level, failedStepRow.text],
       ['warn', 'Dynamic Rounding: error · step: probe step · error: TypeError']);
@@ -2164,14 +2164,14 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
       /failedStepProbeCaller/.test(String(failedStepRow.stack).split('\n')[0]), true);
     LOG.warnError('probe step');
     eq('dr-log: warnError with no thrown value leaves the error label out',
-      LOG.snapshot().entries.slice(-1)[0].text, 'Dynamic Rounding: error · step: probe step');
+      LOG.copyBuffer().rows.slice(-1)[0].text, 'Dynamic Rounding: error · step: probe step');
 
     LOG.debug('no stack probe');
     eq('dr-log: a debug row carries no stack trace',
-      LOG.snapshot().entries.slice(-1)[0].stack, null);
+      LOG.copyBuffer().rows.slice(-1)[0].stack, null);
     LOG.info('no stack probe');
     eq('dr-log: an info row carries no stack trace',
-      LOG.snapshot().entries.slice(-1)[0].stack, null);
+      LOG.copyBuffer().rows.slice(-1)[0].stack, null);
 
     // One list: the levels that carry a trace are the levels the controller
     // records as extension errors, read from here and held nowhere else.
@@ -2187,12 +2187,12 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
     deepWarn(150);
     Error.stackTraceLimit = savedLimit;
     eq('dr-log: a long stack trace is cut at 2000 characters',
-      String(LOG.snapshot().entries.slice(-1)[0].stack).length, 2000);
+      String(LOG.copyBuffer().rows.slice(-1)[0].stack).length, 2000);
 
-    const snapCopy = LOG.snapshot();
-    snapCopy.entries[snapCopy.entries.length - 1].stack = 'mutated';
-    eq('dr-log: a snapshot row\'s stack trace is a copy',
-      LOG.snapshot().entries.slice(-1)[0].stack === 'mutated', false);
+    const bufferCopy = LOG.copyBuffer();
+    bufferCopy.rows[bufferCopy.rows.length - 1].stack = 'mutated';
+    eq('dr-log: a copied row\'s stack trace is a copy',
+      LOG.copyBuffer().rows.slice(-1)[0].stack === 'mutated', false);
 
     const seen = [];
     const off = LOG.onRow((row) => { seen.push(row); });
@@ -2201,7 +2201,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
       seen.length === 1 && seen[0].text === 'listener probe' && seen[0].level === 'debug', true);
     seen[0].text = 'mutated';
     eq('dr-log: the listener receives a copy, so mutating it never reaches the buffer',
-      LOG.snapshot().entries.slice(-1)[0].text, 'listener probe');
+      LOG.copyBuffer().rows.slice(-1)[0].text, 'listener probe');
     off();
     LOG.debug('after removal probe');
     eq('dr-log: a removed row listener receives nothing more', seen.length, 1);
@@ -2212,7 +2212,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
     LOG.debug('throwing listener probe');
     offThrowing();
     eq('dr-log: a listener that throws does not stop the row from recording',
-      LOG.snapshot().entries.slice(-1)[0].text, 'throwing listener probe');
+      LOG.copyBuffer().rows.slice(-1)[0].text, 'throwing listener probe');
     eq('dr-log: a listener\'s failure is reported on the console',
       typeof reported === 'string' && /listener failure/.test(reported), true);
   } finally {

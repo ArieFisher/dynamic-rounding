@@ -536,7 +536,7 @@ function formatStackFrame(line) {
 
 // Both contexts' log rows, labeled by provenance. An empty buffer is a
 // finding, so it renders as a sentence, never as a missing section — and a
-// missing snapshot is a different finding: the state pull for that context
+// missing buffer copy is a different finding: the state pull for that context
 // failed, so no buffer arrived at all. A row's stack trace (warn and error
 // rows carry one) sits under the row in a details element, folded, so a
 // reader opens the trace for the row in question, each frame in the short
@@ -550,14 +550,14 @@ function renderCaptureLogs(state) {
     return '<details><summary>Stack trace</summary><pre class="cap-trace">' +
       escapeHtml(frames) + '</pre></details>';
   };
-  const section = function (label, snap) {
-    if (!snap) {
+  const section = function (label, buffer) {
+    if (!buffer) {
       return '<h3>' + escapeHtml(label) + '</h3>' +
-        '<p class="cap-empty">The page state pull failed; no log snapshot arrived.</p>';
+        '<p class="cap-empty">The page state pull failed; no log buffer copy arrived.</p>';
     }
-    const rows = snap && Array.isArray(snap.entries) ? snap.entries : [];
-    const dropped = snap && snap.dropped ? '<li>(' + escapeHtml(String(snap.dropped)) +
-      ' earlier row(s) dropped past the cap)</li>' : '';
+    const rows = buffer && Array.isArray(buffer.rows) ? buffer.rows : [];
+    const dropped = buffer && buffer.dropped ? '<li>(' + escapeHtml(String(buffer.dropped)) +
+      ' earlier row(s) dropped past the limit)</li>' : '';
     const items = rows.map(function (row) {
       return '<li class="' + escapeHtml(row.level) + '">' + escapeHtml(row.at) + ' [' +
         escapeHtml(row.level) + '] ' + escapeHtml(row.text) + trace(row) + '</li>';

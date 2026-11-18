@@ -836,7 +836,7 @@ function assembleAndSaveCapture(mark, remarks, pageState, shot) {
   // Provenance is evidence: the two contexts' rows stay in separate lists.
   state.log = {
     content: pageState ? pageState.log || null : null,
-    sidebar: DR_LOG.snapshot(),
+    sidebar: DR_LOG.copyBuffer(),
   };
   // A failure while building or saving the file shows on the status line
   // and is logged; the form stays open with the typed remarks, so a retry

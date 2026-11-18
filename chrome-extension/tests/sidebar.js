@@ -1118,7 +1118,7 @@ const SINGLE_READ_SAMPLES = {
     eq('capture rows: source files present in manifest', false, true);
     return;
   }
-  const lastLevel = () => DR_LOG.snapshot().entries.slice(-1)[0].level;
+  const lastLevel = () => DR_LOG.copyBuffer().rows.slice(-1)[0].level;
   try {
     eq('capture rows: sidebar.js loaded with no stub gaps', h.evalError, null);
     if (h.evalError !== null) return;
@@ -1222,8 +1222,8 @@ const SINGLE_READ_SAMPLES = {
     true);
   eq('capture-ui: the filename comes from the package helper and carries the mark',
     /DR_CAPTURE\.filenameFor\(\{[^}]*mark: mark/.test(sidebarJsSrc), true);
-  eq('capture-ui: the sidebar\'s own log snapshot travels beside the content script\'s',
-    /sidebar: DR_LOG\.snapshot\(\)/.test(sidebarJsSrc), true);
+  eq('capture-ui: the sidebar\'s own log buffer copy travels beside the content script\'s',
+    /sidebar: DR_LOG\.copyBuffer\(\)/.test(sidebarJsSrc), true);
   const saveBody = (sidebarJsSrc.match(/function saveCapture\(\)[\s\S]*?\n\}/) || [''])[0];
   eq('capture-ui: finish takes the screenshot beside the state pull and the save waits for both',
     saveBody.includes("DR_BUS.request('request:captureState'") &&
