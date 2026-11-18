@@ -234,6 +234,20 @@ function _ownDescendants(root, selector) {
     .filter((match) => !isInsideCell(parentOf(match)));
 }
 
+/**
+ * The first of `root`'s own descendants to match a selector, trying the
+ * selectors in order and passing over `skip`.
+ *
+ * @returns {Element|null}
+ */
+function _firstOwnDescendant(root, selectors, skip) {
+  for (const sel of selectors) {
+    const found = _ownDescendants(root, sel)[0];
+    if (found && found !== skip) return found;
+  }
+  return null;
+}
+
 class GridAdapter {
   constructor(el, opts = {}) {
     this.el = el;
@@ -245,28 +259,18 @@ class GridAdapter {
   isGrid() { return true; }
 
   _getScrollContainer() {
-    const el = this.el;
-    const knownSelectors = [
+    const selectors = [
       ...this.vendorProfiles.flatMap((p) => p.scrollContainerSelectors || []),
       '[role="grid"]',
     ];
-    for (const sel of knownSelectors) {
-      const found = _ownDescendants(el, sel)[0];
-      if (found) return found;
-    }
-    return el;
+    return _firstOwnDescendant(this.el, selectors) || this.el;
   }
 
   _getPinnedPane(scrollContainer) {
-    const pinnedSelectors = this.vendorProfiles.flatMap((p) => p.pinnedPaneSelectors || []);
-    const el = this.el;
-    for (const sel of pinnedSelectors) {
-      const found = _ownDescendants(el, sel)[0];
-      // A pinned pane that is the scroll container would join each row's
-      // cells to themselves.
-      if (found && found !== scrollContainer) return found;
-    }
-    return null;
+    const selectors = this.vendorProfiles.flatMap((p) => p.pinnedPaneSelectors || []);
+    // A pinned pane that is the scroll container would join each row's
+    // cells to themselves.
+    return _firstOwnDescendant(this.el, selectors, scrollContainer);
   }
 
   /**
