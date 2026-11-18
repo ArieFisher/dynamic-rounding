@@ -42,15 +42,19 @@ function getSuperscriptRanges(cell, opts = {}) {
   return classified;
 }
 
+function cellAnchors(cell) {
+  if (typeof cell.querySelectorAll !== 'function') return [];
+  return [...(cell.querySelectorAll('a') || [])];
+}
+
 // Whether the cell's rendered text lies entirely inside <a> elements (e.g. a
 // linked page number).
 function isCellWholeLink(cell) {
-  if (typeof cell.querySelectorAll !== 'function') return false;
-  const anchors = cell.querySelectorAll('a');
-  if (!anchors || anchors.length === 0) return false;
+  const anchors = cellAnchors(cell);
+  if (anchors.length === 0) return false;
   const cellText = (cell.innerText || '').trim();
   if (!cellText) return false;
-  const anchorText = [...anchors].map(a => (a.innerText || '').trim()).join('').trim();
+  const anchorText = anchors.map(a => (a.innerText || '').trim()).join('').trim();
   return anchorText === cellText;
 }
 
@@ -63,9 +67,7 @@ function isCellWholeLink(cell) {
  */
 function filterLinkMatches(cell, matches, layout) {
   if (!matches || matches.length === 0) return matches;
-  if (typeof cell.querySelectorAll !== 'function') return matches;
-  const anchors = cell.querySelectorAll('a');
-  if (!anchors || anchors.length === 0) return matches;
+  if (cellAnchors(cell).length === 0) return matches;
 
   const pieces = collectTextPieces(cell);
   return matches.filter((match) => {
