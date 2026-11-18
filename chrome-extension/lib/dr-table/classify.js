@@ -10,10 +10,10 @@
 /**
  * The {start, end} half-open ranges of the classified text that sit inside a
  * <sup> element or an element whose computed vertical-align is 'super'. Spans
- * come from the layout's original piece texts, so the ranges hold on a
- * simplified cell, whose live pieces hold the written text. The layout's text
- * pieces match the cell's current text pieces one for one. With no layout,
- * the live pieces stand for the original.
+ * come from the layout's original text pieces, so the ranges hold on a
+ * simplified cell, whose current text pieces hold the written text. The
+ * layout's text pieces match the cell's current text pieces one for one. With
+ * no layout, the cell's current text pieces stand for the original.
  * @returns {{start: number, end: number}[]}
  */
 function getSuperscriptRanges(cell, opts = {}) {
@@ -42,7 +42,7 @@ function getSuperscriptRanges(cell, opts = {}) {
   return classified;
 }
 
-// Whether the cell's visible text lies entirely inside <a> elements (e.g. a
+// Whether the cell's rendered text lies entirely inside <a> elements (e.g. a
 // linked page number).
 function isCellWholeLink(cell) {
   if (typeof cell.querySelectorAll !== 'function') return false;
@@ -56,9 +56,10 @@ function isCellWholeLink(cell) {
 
 /**
  * Drops the matches that sit inside an <a> descendant of the cell. A match's
- * index is a position in the classified text. A piece keeps its identity
+ * index is a position in the classified text. A text piece keeps its identity
  * through every write, so the test holds on a simplified cell. A match that no
- * single piece holds stays: the patch writer skips it.
+ * single text piece holds stays here; the placement step drops such a match
+ * before this filter runs.
  */
 function filterLinkMatches(cell, matches, layout) {
   if (!matches || matches.length === 0) return matches;
@@ -87,16 +88,15 @@ function finalizeExtractedDecision(decision, cell, layout) {
   return { mode: 'extracted', reason: decision.reason, value: { matches: filtered } };
 }
 
-// The page reads the ladder cannot make pass in as plain data (see the
-// lib/dr-simplify/ladder.js header). This writes nothing: the pass counts a
-// split number (entry.split) afterward.
+// classifyTableCell writes nothing: the pass counts a split number
+// (entry.split) afterward.
 //
-// A simplified cell classifies its stored original rather than the rounded
-// text now showing; the superscript ranges and the link filter locate each
-// number's piece through the layout, so both read the live pieces too.
+// For a simplified cell, the function classifies the stored original
+// rather than the written text; getSuperscriptRanges and filterLinkMatches
+// locate each number's text piece through the layout, so both work on the
+// cell's current text pieces too.
 // isWholeLink stays a live read: rounding never adds or removes an <a>, so the
 // anchor text and the cell text move together.
-// A cell with no layout is a rewritten cell; placeDecision skips it.
 function classifyTableCell(cellObj, rowIndex, opts, ranges) {
   const cell = cellObj.el;
   const text = cellObj.getText();
