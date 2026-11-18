@@ -1,9 +1,4 @@
-/**
- * DynamicRounding Chrome Extension
- * https://github.com/ArieFisher/dynamic-rounding
- * MIT License
- * Copyright (c) 2026 Arie Fisher
- */
+// Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
 // roundWithOffset and roundValueSetAware live in rounding.js, loaded by
 // manifest content_scripts ahead of this file. The sidebar loads rounding.js

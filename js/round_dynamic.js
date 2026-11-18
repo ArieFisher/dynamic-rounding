@@ -10,6 +10,7 @@
 
 // ---- chrome-extension/lib/dr-number/rounding.js ----
 
+// Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 /**
  * DynamicRounding shared rounding helpers
  *
@@ -96,6 +97,7 @@ function trimNum(n) {
 
 // ---- chrome-extension/lib/dr-number/core.js ----
 
+// Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 /**
  * DynamicRounding domain core (coercion + magnitude helpers).
  *
@@ -312,12 +314,7 @@ function toNumber(value) {
 
 // ---- chrome-extension/lib/dr-number/parsing.js ----
 
-/**
- * DynamicRounding Chrome Extension
- * https://github.com/ArieFisher/dynamic-rounding
- * MIT License
- * Copyright (c) 2026 Arie Fisher
- */
+// Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
 /**
  * Parsing and formatting helpers. Core layer: reads no page and calls no
@@ -1097,12 +1094,7 @@ function pureNumberSpan(text) {
 
 // ---- chrome-extension/lib/dr-number/identifiers.js ----
 
-/**
- * DynamicRounding Chrome Extension
- * https://github.com/ArieFisher/dynamic-rounding
- * MIT License
- * Copyright (c) 2026 Arie Fisher
- */
+// Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
 /**
  * Identifier shapes: text shapes that read as a code rather than a quantity —
@@ -1374,12 +1366,7 @@ function getIdentifierMaskedRanges(text) {
 
 // ---- chrome-extension/lib/dr-simplify/ladder.js ----
 
-/**
- * DynamicRounding Chrome Extension
- * https://github.com/ArieFisher/dynamic-rounding
- * MIT License
- * Copyright (c) 2026 Arie Fisher
- */
+// Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
 /**
  * The classification ladder: the ordered per-cell rules that determine
@@ -1582,12 +1569,7 @@ function resolveAmbiguousDateDecision(decision, hint) {
 
 // ---- chrome-extension/lib/dr-simplify/table.js ----
 
-/**
- * DynamicRounding Chrome Extension
- * https://github.com/ArieFisher/dynamic-rounding
- * MIT License
- * Copyright (c) 2026 Arie Fisher
- */
+// Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
 /**
  * The table step: the three steps that run over a whole table after the
