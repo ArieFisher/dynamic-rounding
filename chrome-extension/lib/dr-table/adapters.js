@@ -58,13 +58,13 @@ const DEFAULT_ORIGINALS_PORT = new WeakMap();
 function childCountCandidates(children) {
   const childCountFreq = new Map();
   for (const child of children) {
-    const cc = child.children ? child.children.length : 0;
-    childCountFreq.set(cc, (childCountFreq.get(cc) || 0) + 1);
+    const childCount = child.children ? child.children.length : 0;
+    childCountFreq.set(childCount, (childCountFreq.get(childCount) || 0) + 1);
   }
   let modalChildCount = 0;
   let modalFreq = 0;
-  for (const [cc, freq] of childCountFreq) {
-    if (freq > modalFreq && cc > 0) { modalFreq = freq; modalChildCount = cc; }
+  for (const [childCount, freq] of childCountFreq) {
+    if (freq > modalFreq && childCount > 0) { modalFreq = freq; modalChildCount = childCount; }
   }
   const candidates = modalFreq > 0
     ? children.filter((c) => c.children && c.children.length === modalChildCount)
@@ -291,7 +291,6 @@ class GridAdapter {
    * @returns {{el: Element|null, isOutside: boolean, isGrouped: boolean, cellEls?: Element[]}[]}
    */
   _getRowEntries(container) {
-    if (!container) return [];
     if (!container.querySelectorAll) {
       return this._childRowEntries(container);
     }
@@ -300,10 +299,7 @@ class GridAdapter {
     const scopes = isGrouped ? rowgroups : [container];
 
     for (const sel of ['[role="row"]', '.dg--virtual-row', 'tr']) {
-      let rows = [];
-      for (const scope of scopes) {
-        rows = rows.concat(_ownDescendants(scope, sel));
-      }
+      const rows = scopes.flatMap((scope) => _ownDescendants(scope, sel));
       if (rows.length === 0) continue;
       const inGroup = new Set(rows);
       const matches = isGrouped ? _ownDescendants(container, sel) : rows;
@@ -368,7 +364,7 @@ class GridAdapter {
     const rowCellEls = scrollEntries.map(({ el: rowEl, cellEls }, idx) => {
       if (cellEls) return cellEls;
       const scrollKey = this._getRowKey(rowEl, idx);
-      const pinnedRowEl = pinnedByKey.get(scrollKey) || (pinnedRows[idx] || null);
+      const pinnedRowEl = pinnedByKey.get(scrollKey) || pinnedRows[idx];
       const pinned = pinnedRowEl ? this._getCellEls(pinnedRowEl) : [];
       return pinned.concat(this._getCellEls(rowEl));
     });
