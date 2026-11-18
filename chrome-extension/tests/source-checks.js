@@ -1320,7 +1320,7 @@
 (function drNumberBundleIsPublished() {
   const EXPECTED_DR_NUMBER_NAMES = [
     // rounding.js
-    'roundWithOffset', 'roundCellSetAware', 'stepForOffset', 'formatStep', 'trimNum',
+    'roundWithOffset', 'roundValueSetAware', 'stepForOffset', 'formatStep', 'trimNum',
     // core.js
     'findMaxMagnitude', 'numberFormat', 'groupShapePattern', 'isNumberShape', 'toNumber',
     // parsing.js

@@ -153,7 +153,7 @@ eq('toNumber: pure text -> null', toNumber('N/A'), null);
 
   const out = infos.map(info => {
     if (info.mode === 'skip') return info.text;
-    const rounded = roundCellSetAware(info.num, maxMag, -0.5, -0.5, 1);
+    const rounded = roundValueSetAware(info.num, maxMag, -0.5, -0.5, 1);
     if (rounded === info.num) return info.text;
     if (info.mode === 'pure') return writePureCell(rounded, info.text);
     const num = formatNumber(rounded, info.numStr);
@@ -174,7 +174,7 @@ eq('toNumber: pure text -> null', toNumber('N/A'), null);
   let out = text;
   for (let i = matches.length - 1; i >= 0; i--) {
     const m = matches[i];
-    const rounded = roundCellSetAware(m.num, maxMag, -0.5, -0.5, 1);
+    const rounded = roundValueSetAware(m.num, maxMag, -0.5, -0.5, 1);
     if (rounded === m.num) continue;
     const newNum = formatNumber(rounded, m.numStr);
     out = out.substring(0, m.index) + newNum + out.substring(m.index + m.numStr.length);
@@ -198,7 +198,7 @@ eq('toNumber: pure text -> null', toNumber('N/A'), null);
 
   const out = infos.map(info => {
     if (info.mode === 'skip') return info.text;
-    const rounded = roundCellSetAware(info.num, maxMag, -0.5, -0.5, 1);
+    const rounded = roundValueSetAware(info.num, maxMag, -0.5, -0.5, 1);
     return info.mode === 'pure' ? writePureCell(rounded, info.text) : info.text;
   });
 
@@ -254,7 +254,7 @@ eq('extractAll: a list of grouped numbers keeps each number\'s own separators',
   let out = text;
   for (let i = matches.length - 1; i >= 0; i--) {
     const m = matches[i];
-    const rounded = roundCellSetAware(m.num, maxMag, -0.5, -0.5, 1);
+    const rounded = roundValueSetAware(m.num, maxMag, -0.5, -0.5, 1);
     if (rounded === m.num) continue;
     const newNum = formatNumber(rounded, m.numStr);
     out = out.substring(0, m.index) + newNum + out.substring(m.index + m.numStr.length);
@@ -279,7 +279,7 @@ eq('extractAll: a list of grouped numbers keeps each number\'s own separators',
   let out = text;
   for (let i = matches.length - 1; i >= 0; i--) {
     const m = matches[i];
-    const rounded = roundCellSetAware(m.num, maxMag, -0.5, -0.5, 1);
+    const rounded = roundValueSetAware(m.num, maxMag, -0.5, -0.5, 1);
     if (rounded === m.num) continue;
     const newNum = formatNumber(rounded, m.numStr);
     out = out.substring(0, m.index) + newNum + out.substring(m.index + m.numStr.length);
@@ -2132,7 +2132,7 @@ const LADDER_OPTS = {
         const nTop = params.num_top === undefined ? SHARED_DEFAULT_NUM_TOP : params.num_top;
         const nums = input.map((v) => toNumber(v));
         const maxMag = findMaxMagnitude([nums]);
-        const actual = input.map((v, i) => (nums[i] === null ? v : roundCellSetAware(nums[i], maxMag, oTop, oOther, nTop)));
+        const actual = input.map((v, i) => (nums[i] === null ? v : roundValueSetAware(nums[i], maxMag, oTop, oOther, nTop)));
         eq(name, actual, expected);
       } else {
         const offset = params.offset_top === undefined ? SHARED_DEFAULT_OFFSET : params.offset_top;

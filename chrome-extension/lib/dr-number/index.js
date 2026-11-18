@@ -13,7 +13,7 @@
 const DR_NUMBER = {
   // rounding.js
   roundWithOffset,
-  roundCellSetAware,
+  roundValueSetAware,
   stepForOffset,
   formatStep,
   trimNum,

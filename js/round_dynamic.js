@@ -55,7 +55,7 @@ function roundWithOffset(num, offset) {
   return sign * result;
 }
 
-function roundCellSetAware(num, max_mag, offset_top, offset_other, num_top) {
+function roundValueSetAware(num, max_mag, offset_top, offset_other, num_top) {
   if (num === 0) return 0;
 
   const current_mag = Math.floor(Math.log10(Math.abs(num)));
@@ -108,7 +108,7 @@ function trimNum(n) {
  * holds this file, so the extension and the Sheets library share one
  * currency list, one findMaxMagnitude, and one toNumber.
  *
- * The arithmetic primitives (roundWithOffset, roundCellSetAware) live in
+ * The arithmetic primitives (roundWithOffset, roundValueSetAware) live in
  * rounding.js, which must load before this file.
  */
 
@@ -215,7 +215,7 @@ function findMaxMagnitude(numericRange) {
   return max_mag;
 }
 
-// roundCellSetAware and roundWithOffset live in rounding.js.
+// roundValueSetAware and roundWithOffset live in rounding.js.
 
 // The marks a number uses: US style, a comma between groups of three digits
 // and a dot before the fraction. Frozen, so no caller can change the marks
@@ -1681,7 +1681,7 @@ function classifiedCellPatches(entry, maxMag, settings) {
   if (info.mode === 'extracted') {
     const patches = [];
     for (const m of info.matches) {
-      const rounded = roundCellSetAware(m.num, maxMag, offsetTop, offsetOther, numTop);
+      const rounded = roundValueSetAware(m.num, maxMag, offsetTop, offsetOther, numTop);
       const newNum = formatNumber(rounded, m.numStr);
       if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
     }
@@ -1829,7 +1829,7 @@ function roundValues(range, settings) {
     }
   }));
   const maxMag = datasetMaxMagnitude(numberEntries.concat(textEntries));
-  const roundNumber = (num) => roundCellSetAware(num, maxMag,
+  const roundNumber = (num) => roundValueSetAware(num, maxMag,
     settings.offsetTop, settings.offsetOther, settings.numTop);
 
   const results = new Map();

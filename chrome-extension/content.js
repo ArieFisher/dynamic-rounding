@@ -5,7 +5,7 @@
  * Copyright (c) 2026 Arie Fisher
  */
 
-// roundWithOffset and roundCellSetAware live in rounding.js, loaded by
+// roundWithOffset and roundValueSetAware live in rounding.js, loaded by
 // manifest content_scripts ahead of this file. The sidebar loads rounding.js
 // separately via a script tag in sidebar.html.
 
@@ -717,7 +717,7 @@ function numericPreviewCells(entries) {
 
 // Pick up to 2 top-band samples and one sample per other-band magnitude for
 // the lens preview. Bucketed by magnitude (floor(log10|num|)) so the lens
-// preview shows the offset_top and offset_other split that roundCellSetAware
+// preview shows the offset_top and offset_other split that roundValueSetAware
 // applies to the table.
 function extractPreviewSamples(table) {
   // The table's own settings, not shipped defaults — otherwise the lens
@@ -752,7 +752,7 @@ function extractPreviewSamples(table) {
   }
 
   // Top band: cells whose magnitude is within numTop of maxMag (i.e. cells
-  // that roundCellSetAware will route to offset_top). Pick up to 2; prefer
+  // that roundValueSetAware will route to offset_top). Pick up to 2; prefer
   // distinct magnitudes.
   const topMags = Array.from(byMag.keys())
     .filter(m => (maxMag - m) < numTop)

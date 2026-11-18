@@ -43,7 +43,7 @@ function roundWithOffset(num, offset) {
   return sign * result;
 }
 
-function roundCellSetAware(num, max_mag, offset_top, offset_other, num_top) {
+function roundValueSetAware(num, max_mag, offset_top, offset_other, num_top) {
   if (num === 0) return 0;
 
   const current_mag = Math.floor(Math.log10(Math.abs(num)));
