@@ -20,7 +20,7 @@ const SIMPLIFIED_CLASS = 'dr-ext-rounded';
  * @property {{text: string, written: string}[]} pieces - one entry per text
  *   piece, in page order: text, its original; written, its text after this write
  * @property {string} pageTitle - the cell's hover text as the page set it; ''
- *   when the page set none (see pageHoverText)
+ *   when the page set none
  */
 
 /**
