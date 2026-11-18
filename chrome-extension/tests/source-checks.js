@@ -2052,7 +2052,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 // row shape, the limit, the drop counter, the console forwarding, and the
 // copy semantics. The buffer is a singleton shared with every
 // other test in this file, so all assertions here are relative (last row,
-// before/after counts) — and the cap test runs last because it fills it.
+// before/after counts) — and the limit test runs last because it fills it.
 
 (function drLogBuffer() {
   eq('dr-log: DR_LOG loads in the content-script bundle',
@@ -2122,7 +2122,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
   eq('dr-log: the buffer holds at most 50 rows', buffer.rows.length, 50);
   eq('dr-log: rows dropped past the limit are counted',
     buffer.dropped >= droppedBefore + 5, true);
-  eq('dr-log: the newest row survives the cap',
+  eq('dr-log: the newest row survives the limit',
     buffer.rows[buffer.rows.length - 1].text, 'cap probe 54');
 })();
 

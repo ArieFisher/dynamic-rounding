@@ -29,7 +29,7 @@ function createBoundTab(tabsApi, bus) {
   let boundTabId = null;
   let boundWindowId = null;
 
-  // A message belongs to the bound tab only when the two numbers match. A
+  // A message belongs to the bound tab only when the two tab IDs match. A
   // message carrying no tab came from an extension page rather than a content
   // script, and belongs to no tab at all. A message arriving before resolve()
   // records the tab is dropped.
@@ -42,7 +42,7 @@ function createBoundTab(tabsApi, bus) {
     // then run onReady. The order is load-bearing: the read reaches the page,
     // the page publishes back, and a message arriving before the tab ID
     // exists has nothing to be compared against. No tab to bind to leaves the
-    // number unset and still runs the read, which falls to the unbound state
+    // tab ID unset and still runs the read, which falls to the unbound state
     // on its own when nothing answers it.
     resolve(onReady) {
       if (!tabsApi || typeof tabsApi.query !== 'function') {

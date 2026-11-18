@@ -200,7 +200,8 @@ const DR_BUS = (function () {
     const deliver = (tabId) => {
       try {
         chrome.tabs.sendMessage(tabId, message, (answer) => {
-          // Read lastError on one-way publishes too, not only on requests.
+          // Read lastError on one-way publishes too, not only on requests: an
+          // unread lastError logs Chrome's "Unchecked runtime.lastError" warning.
           void chrome.runtime.lastError;
           if (onAnswer) onAnswer(answer);
         });

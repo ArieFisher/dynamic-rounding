@@ -26,7 +26,10 @@
  * recorded. Debug and info rows carry null: they are frequent, and a trace
  * costs a stack walk per row.
  *
- * A row listener receives a copy of each row after it lands.
+ * A row listener receives a copy of each row after it is recorded. The
+ * application model and the event bus load after this module, so the
+ * controller reads each row through a listener rather than this module
+ * calling them.
  */
 
 const DR_LOG = (function () {
