@@ -74,10 +74,8 @@ function childCountCandidates(children) {
 
 /**
  * The direction reader: true for a column-first grid, false for a row-first
- * grid. The grid is column-first when the first two children that draw a box
- * share a top, with a larger left on the second. The geometry probe and the
- * grid adapter both call it, so the two read one direction for one grid. A
- * style probe without getBox reads every grid as row-first.
+ * grid. The geometry probe and the grid adapter both call it, so the two get
+ * one direction for one grid.
  *
  * @returns {boolean}
  */
@@ -115,7 +113,8 @@ function normalizeSpan(raw, whenZero) {
   return Math.min(value, 1000);
 }
 
-// A td's span property reads 1 with no colspan attribute, so the attribute decides.
+// A td's span property returns 1 with no colspan attribute, so the code checks
+// the attribute.
 function cellSpans(cellEl) {
   const read = (property, htmlAttribute, ariaAttribute) => {
     const declares = typeof cellEl.hasAttribute === 'function'
@@ -133,7 +132,9 @@ function cellSpans(cellEl) {
  * Number every cell by the column the browser lays it out in (issue #330).
  * Both table kinds reach it through buildRows, so one rule numbers the
  * columns. Without it, a merge in the data area shifts every later cell
- * off its column, and the table rounds at the wrong step.
+ * off its column, and the code for every rule that gates a cell by grid
+ * column (the exclusions, the range expression, the dataset, the column
+ * post-pass, the capture state) gets the wrong column.
  *
  * @returns {{columnIndex: number, columnSpan: number}[][]}
  */
@@ -164,7 +165,7 @@ function assignGridColumns(rowSpans) {
  * The rows of one table, built from each row's cell elements. The caller
  * reads each row's cell elements once, so the column plan and the cell
  * objects count the same row shape.
- * @returns {{getCells(): object[]}[]}
+ * @returns {{isOutside?: boolean, isGrouped?: boolean, getCells(): object[]}[]}
  */
 function buildRows(rowCellEls, originalsPort, rowProps) {
   const plan = assignGridColumns(rowCellEls.map((cellEls) => cellEls.map(cellSpans)));
@@ -277,8 +278,8 @@ class GridAdapter {
    * cannot change the choice. The result is the container-wide match list in
    * document order, so a row's position is its literal row number.
    *
-   * isOutside marks a row in no row group. Only the shape fingerprint reads it
-   * (_hasHeaderRow).
+   * isOutside marks a row in no row group. Its only reader is _hasHeaderRow,
+   * in the shape fingerprint code.
    *
    * A row from the children fallback on a column-first grid has no row
    * element: its entry holds el: null and cellEls.
