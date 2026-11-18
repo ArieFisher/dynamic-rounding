@@ -8,26 +8,6 @@
  */
 
 /**
- * The ancestor walk: the first node from `start` upward that `found` reports,
- * or null. The walk ends before a node `stopAt` reports, after `cap` nodes,
- * and at the tree's top.
- * @param {Node|null} start
- * @param {number} cap - most nodes visited (the walk then returns null):
- *   gridWalkDepthCap, or Infinity for the tree's top alone
- * @param {((node: Node) => boolean)|null} stopAt - null stops nowhere
- * @param {(node: Node) => boolean} found
- * @returns {Node|null}
- */
-function walkUp(start, cap, stopAt, found) {
-  let node = start;
-  for (let depth = 0; node && depth < cap && !(stopAt && stopAt(node)); depth++) {
-    if (found(node)) return node;
-    node = parentOf(node);
-  }
-  return null;
-}
-
-/**
  * The {start, end} half-open ranges of the classified text that sit inside a
  * <sup> element or an element whose computed vertical-align is 'super'. Spans
  * come from the layout's original piece texts, so the ranges hold on a
