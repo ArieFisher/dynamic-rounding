@@ -11,9 +11,9 @@
 const SIMPLIFIED_CLASS = 'dr-ext-rounded';
 
 /**
- * A simplified cell's record, stored through the originals port. A landed
- * write replaces it, so the written text never goes stale; a write that lands
- * nothing stores nothing.
+ * A simplified cell's record, stored through the originals port. applyPatches
+ * replaces it after each write that lands a patch, so the written text never
+ * goes stale.
  *
  * @typedef {object} CellRecord
  * @property {string} value - the text the pass classified (see applyPatches)
@@ -96,9 +96,9 @@ function makeCellObj(cellEl, port) {
       const toFlat = mapRenderedToFlat(text, original.join('')) || mapValueToPiece(text, original);
       return { original, toFlat };
     },
-    // Returns how many patches landed. A write that lands nothing changes
-    // nothing: with every patch skipped the screen keeps its text, and storing
-    // the hover text would record a simplification that never happened.
+    // Returns how many patches landed. applyPatches stores no record when no
+    // patch lands: the cell's text stays as it was, and storing the hover text
+    // would record a simplification that never happened.
     // The caller passes the text it classified as value, because a
     // rendered-text read after another cell's write lays out the whole table
     // again: once per cell, a 10,000-cell table takes most of a minute.
