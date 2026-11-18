@@ -615,14 +615,10 @@ function fingerprintReadOpts(table) {
 // extension's written text. A patch changes only text, never tags, so the
 // cell's markup comes back as it stood before simplification.
 //
-// A restore can arrive before a pass has processed a page edit — within the
-// wait for a pass, or on a table above the cell cap — so it sorts each cell
-// the way a pass does. A held cell gets its original text back in every
-// piece the extension wrote. A rewritten cell gets it back only in the
-// pieces that still show written text, and the pieces the page rewrote keep
-// the page's text. In a cell whose piece count changed, a piece matches its
-// stored piece by written text, not by position (see restoreTextPieces). A
-// restore never writes a number the page no longer shows.
+// The content script can run a restore before a pass has processed a page
+// edit — within the wait for a pass, or on a table above the cell cap — so a
+// marked cell can be a rewritten cell. restoreTextPieces holds the rules that
+// keep the page's text in such a cell.
 //
 // KNOWN ACCEPTED COST: registry-held originals do not survive Chrome
 // re-injecting the content script. A re-injected content script starts a
