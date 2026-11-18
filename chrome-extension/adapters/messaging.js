@@ -142,10 +142,6 @@ const DR_BUS = (function () {
   const MAX_PUBLISH_DEPTH = 20;
   let publishDepth = 0;
 
-  /**
-   * @param {string} action - The words the error text puts before the topic
-   *   name, e.g. 'publishing'.
-   */
   function withDepthGuard(action, topic, deliver) {
     publishDepth++;
     try {
@@ -179,7 +175,8 @@ const DR_BUS = (function () {
         void chrome.runtime.lastError;
       });
     } catch (e) {
-      // extension context may not be available; harmless.
+      // Chrome throws here when this context has lost its connection to the
+      // rest of the extension. Nothing can be sent, so the send ends quietly.
     }
   }
 
@@ -188,9 +185,9 @@ const DR_BUS = (function () {
   // sidebar does, for its bound tab. Otherwise the bus
   // queries the tab in front of the current window.
   //
-  // onReply, when given, receives the responder's answer, or undefined on
+  // onAnswer, when given, receives the responder's answer, or undefined on
   // every failure path after the chrome.tabs check.
-  function sendToTab(topic, payload, opts, onReply) {
+  function sendToTab(topic, payload, opts, onAnswer) {
     if (!chrome.tabs || typeof chrome.tabs.sendMessage !== 'function' ||
         typeof chrome.tabs.query !== 'function') {
       // A tab-routed topic published from a context with no chrome.tabs (a
@@ -202,16 +199,16 @@ const DR_BUS = (function () {
     const message = encodeMessage(topic, payload);
     const deliver = (tabId) => {
       try {
-        chrome.tabs.sendMessage(tabId, message, (response) => {
+        chrome.tabs.sendMessage(tabId, message, (answer) => {
           // Read lastError on one-way publishes too, not only on requests.
           void chrome.runtime.lastError;
-          if (onReply) onReply(response);
+          if (onAnswer) onAnswer(answer);
         });
       } catch (e) {
         // Chrome reports a failed connection to the tab through lastError in
         // the callback above. This catch covers a synchronous throw from the
         // call itself.
-        if (onReply) onReply(undefined);
+        if (onAnswer) onAnswer(undefined);
       }
     };
     const explicitTabId = opts && typeof opts.tabId === 'number' ? opts.tabId : null;
@@ -222,14 +219,15 @@ const DR_BUS = (function () {
     try {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         if (!tabs || !tabs[0]) {
-          if (onReply) onReply(undefined);
+          if (onAnswer) onAnswer(undefined);
           return;
         }
         deliver(tabs[0].id);
       });
     } catch (e) {
-      // extension context may not be available; harmless.
-      if (onReply) onReply(undefined);
+      // Chrome throws here when this context has lost its connection to the
+      // rest of the extension. Nothing can be sent, so the send ends quietly.
+      if (onAnswer) onAnswer(undefined);
     }
   }
 
