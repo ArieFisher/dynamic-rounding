@@ -73,6 +73,9 @@ function makeCellObj(cellEl, port) {
     const record = recordOf();
     return record ? record.value : shownText();
   };
+  const originalTexts = (record) => (record
+    ? record.pieces.map((piece) => piece.text)
+    : pieceTexts(collectTextPieces(cellEl)));
   return {
     el: cellEl,
     isHeaderCell: isHeaderCellEl(cellEl),
@@ -82,10 +85,9 @@ function makeCellObj(cellEl, port) {
     // caller that runs no sort first, such as the lens preview, can get null;
     // the pass releases such a cell before it reads a layout.
     getPieceLayout() {
-      const live = pieceTexts(collectTextPieces(cellEl));
       const record = recordOf();
-      if (record && record.pieces.length !== live.length) return null;
-      const original = record ? record.pieces.map((piece) => piece.text) : live;
+      if (record && record.pieces.length !== collectTextPieces(cellEl).length) return null;
+      const original = originalTexts(record);
       const text = getText();
       const toFlat = mapRenderedToFlat(text, original.join('')) || mapValueToPiece(text, original);
       return { original, toFlat };
@@ -99,9 +101,7 @@ function makeCellObj(cellEl, port) {
     // minute.
     applyPatches(patches, { value }) {
       const record = recordOf();
-      const original = record
-        ? record.pieces.map((piece) => piece.text)
-        : pieceTexts(collectTextPieces(cellEl));
+      const original = originalTexts(record);
       const { landed, texts } = writePatches(cellEl, patches, original);
       if (landed === 0) return 0;
       port.set(cellEl, {
