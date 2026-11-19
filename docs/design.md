@@ -192,7 +192,6 @@ The result is trimmed to 12 significant digits (ties round away from zero) — t
 |----------|---------------|--------|------------------|--------------------|
 | Non-numeric input | Pass through | Pass through (or error if `enforce_numeric=True`) | Cell left untouched | Same as the Chrome extension |
 | Null/empty input | Returns `""` | Returns `None` | Cell left untouched | Same as the Chrome extension |
-| String parsing | Built-in: the classification ladder, as in the extension | Pandas module only; a whole string as one number | Built-in: the classification ladder | Same as the Chrome extension |
 | Out-of-range offset | Throws | Raises `ValueError` | Falls back to the default | No offset to set: the extension's default offsets apply |
 | Dates | Date cells and date text pass through | Pass through | Simplified to the year by default; times opt-in | Simplified to the year; times stay as written |
 | Type preservation | A number returns a number; text returns text, trailing zeros trimmed | int → int when result is whole | Writes text; trailing zeros trimmed | Same as the Chrome extension |
