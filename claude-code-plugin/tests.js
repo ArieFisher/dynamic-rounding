@@ -115,6 +115,38 @@ const simplify = (text, settings = DR_DEFAULTS) =>
     markdownTables(lines(...table, '```', ...table, '```')).map((cells) => cells.length), [4]);
 })();
 
+(function adapter_closesAFencedCodeBlockOnlyAtItsOwnFence() {
+  const table = ['| Item | Revenue |', '| --- | --- |', '| Item 12 | 4,236,000 |'];
+  // Each text below ends with the table, so the one table to present is the
+  // last one. Its first cell starts one character into its header row, after
+  // the outer pipe.
+  const firstCellStarts = (text) => markdownTables(text).map((cells) => cells[0].start);
+  const lastHeaderCell = (text) => text.lastIndexOf(table[0]) + 1;
+  eq('adapter: a backtick fence line inside a tilde fence closes nothing',
+    markdownTables(lines('~~~', '```', ...table, '~~~')), []);
+  eq('adapter: a shorter fence inside a longer fence closes nothing',
+    markdownTables(lines('````', '```text', ...table, '```', '````')), []);
+  const afterBlock = lines('```text', 'Prose.', '```python', ...table, '```', '', ...table);
+  eq('adapter: a fence line with text after the fence closes nothing, and the table after the block is a markdown table',
+    firstCellStarts(afterBlock), [lastHeaderCell(afterBlock)]);
+  const longerClose = lines('```', ...table, '`````', '', ...table);
+  eq('adapter: a longer fence of the same character closes the block',
+    firstCellStarts(longerClose), [lastHeaderCell(longerClose)]);
+  const inlineCode = lines('```a``` is inline code.', '', ...table);
+  eq('adapter: a line of inline code that starts with three backticks opens nothing',
+    firstCellStarts(inlineCode), [lastHeaderCell(inlineCode)]);
+  const carriageReturns = lines('```', ...table, '```', '', ...table).replaceAll('\n', '\r\n');
+  eq('adapter: a fence line that ends in a carriage return closes the block',
+    firstCellStarts(carriageReturns), [lastHeaderCell(carriageReturns)]);
+})();
+
+(function adapter_readsAnIndentedTable() {
+  const text = lines('- Revenue:', '', '  | Item | Revenue |', '  | --- | --- |', '  | Item 12 | 4,236,000 |');
+  eq('adapter: a table indented under a list item is a markdown table',
+    markdownTables(text).map((cells) => cells.map((cell) => cell.text.trim())),
+    [['Item', 'Revenue', 'Item 12', '4,236,000']]);
+})();
+
 (function adapter_presentsEachTableOnItsOwn() {
   const table = ['| Item | Revenue |', '| --- | --- |', '| Item 12 | 4,236,000 |'];
   eq('adapter: two tables in one text are two lists of cells',
@@ -157,6 +189,8 @@ const simplify = (text, settings = DR_DEFAULTS) =>
   eq('text table step: a table in a fenced code block stays as written', simplify(fenced), fenced);
   const unclosed = lines('Before.', '~~~', ...table);
   eq('text table step: a table under an unclosed fence stays as written', simplify(unclosed), unclosed);
+  const nested = lines('````markdown', '```text', ...table, '```', '````');
+  eq('text table step: a table in a fenced code block inside a longer fence stays as written', simplify(nested), nested);
 })();
 
 (function step_escapedPipeKeepsTheFirstColumnWhole() {

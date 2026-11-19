@@ -6,8 +6,34 @@
 // cell's text in the whole text. A cell carries no kind flag, so the text
 // table step works the same on any adapter's cells.
 
-const FENCE = /^\s*(```|~~~)/;
-const SEPARATOR_ROW = /^(?=.*\|)\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+const FENCE = /^\s*(`{3,}|~{3,})/;
+// Matched against a trimmed line. With the outer whitespace in the pattern,
+// the match time grows with the square of a long run of spaces.
+const SEPARATOR_ROW = /^(?=.*\|)\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$/;
+
+const isSeparatorRow = (line) => SEPARATOR_ROW.test(line.trim());
+
+function fenceParts(line) {
+  const match = FENCE.exec(line);
+  return match === null ? null : { fence: match[1], rest: line.slice(match[0].length) };
+}
+
+// The opening fence on a line, or null. A line with a backtick after its
+// backtick fence is inline code, and holds no opening fence.
+function openingFence(line) {
+  const parts = fenceParts(line);
+  if (parts === null) return null;
+  return parts.fence[0] === '`' && parts.rest.includes('`') ? null : parts.fence;
+}
+
+// A fenced code block ends at a fence of its opening fence's character, at
+// least as long, with nothing after it. Any other fence line is a line of the
+// block, so a block can hold a shorter fence or one of the other character.
+function isClosingFence(line, fence) {
+  const parts = fenceParts(line);
+  return parts !== null && parts.fence[0] === fence[0]
+    && parts.fence.length >= fence.length && parts.rest.trim() === '';
+}
 
 function linesWithStart(text) {
   let start = 0;
@@ -39,18 +65,23 @@ function rowCells({ line, start }, rowIndex) {
     .map((piece, columnIndex) => ({ ...piece, rowIndex, columnIndex }));
 }
 
-// The header row is row 0 and the separator row presents no cells. A fence
-// line opens or closes a fenced code block, and an unclosed fence covers the
-// rest of the text. A table inside one is not a markdown table.
+// The header row is row 0 and the separator row presents no cells. A table
+// inside a fenced code block is not a markdown table, and an unclosed fence
+// covers the rest of the text.
 export function markdownTables(text) {
   const lines = linesWithStart(text);
-  const isRow = (entry) => entry !== undefined && entry.line.includes('|') && !FENCE.test(entry.line);
+  const isRow = (entry) => entry !== undefined && entry.line.includes('|') && openingFence(entry.line) === null;
   const tables = [];
-  let isInFence = false;
+  // The opening fence of the fenced code block the walk is inside, or null.
+  let fence = null;
   for (let i = 0; i < lines.length; i++) {
-    if (FENCE.test(lines[i].line)) isInFence = !isInFence;
-    const isHeaderRow = !isInFence && isRow(lines[i])
-      && lines[i + 1] !== undefined && SEPARATOR_ROW.test(lines[i + 1].line);
+    if (fence !== null) {
+      if (isClosingFence(lines[i].line, fence)) fence = null;
+      continue;
+    }
+    fence = openingFence(lines[i].line);
+    const isHeaderRow = isRow(lines[i])
+      && lines[i + 1] !== undefined && isSeparatorRow(lines[i + 1].line);
     if (!isHeaderRow) continue;
 
     const rows = [lines[i]];
