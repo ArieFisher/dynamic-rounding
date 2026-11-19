@@ -32,7 +32,7 @@ The table in the plugin test prompt below holds a currency amount, a bracketed n
 
 ## Known limits
 
-- A number that identifies a thing rounds when it has no identifier shape: a line number, an issue number, a port, the leading digits of a commit hash. The transcript shows "entry.js:148" as "entry.js:150", "#718" as "#700", and "8080" as "8,000".
+- A number that identifies a thing rounds when it has no identifier shape: a line number, an issue number, a port. The transcript shows "entry.js:148" as "entry.js:150", "#718" as "#700", and "8080" as "8,000".
 - A number inside inline code or inside a link rounds like any other number. A relative link's target counts: the transcript shows "docs/sprint-12/plan.md" as "docs/sprint-10/plan.md".
 
 Turn the plugin off to read such a table as written.
