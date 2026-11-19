@@ -4,10 +4,10 @@ The Claude Code plugin simplifies the numbers in the markdown tables of a sessio
 
 ## Install
 
-At the prompt of a terminal session:
+In a terminal:
 
 ```
-/plugin install dynamic-rounding --marketplace ArieFisher/dynamic-rounding
+claude plugin install dynamic-rounding --marketplace ArieFisher/dynamic-rounding
 ```
 
 ## Use

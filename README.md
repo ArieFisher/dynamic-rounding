@@ -12,7 +12,7 @@ This library makes data more readable, helping us see the patterns that allow us
 | Google Sheets | [js/](./js/) | [Copy template](https://docs.google.com/spreadsheets/d/1GdHvYk3dVzJErrGH7yDULW6srM0gaHeYMGMn3k0-GY4) |
 | Chrome Extension | [chrome-extension/](./chrome-extension/) | [Load unpacked](https://developer.chrome.com/docs/extensions/mv3/getstarted/development-basics/#load-unpacked) |
 | Python | [python/](./python/) | `pip install dynamic-rounding` |
-| Claude Code | [claude-code-plugin/](./claude-code-plugin/) | `/plugin install dynamic-rounding --marketplace ArieFisher/dynamic-rounding` |
+| Claude Code | [claude-code-plugin/](./claude-code-plugin/) | `claude plugin install dynamic-rounding --marketplace ArieFisher/dynamic-rounding` |
 
 ## Quick Examples
 
@@ -52,7 +52,7 @@ Data professionals may explore their data with python libraries.
 
 The plugin simplifies the numbers in the markdown tables of a Claude Code session, in place, in the transcript.
 
-- Install, at the prompt of a terminal session: `/plugin install dynamic-rounding --marketplace ArieFisher/dynamic-rounding`
+- Install, in a terminal: `claude plugin install dynamic-rounding --marketplace ArieFisher/dynamic-rounding`
 - Run `/simplify-data` to turn it on, and again to turn it off
 - The model's reply stays as written: the plugin changes only what the transcript shows
 
