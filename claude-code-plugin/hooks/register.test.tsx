@@ -53,12 +53,12 @@ test('the toggle command simplifies a reply block, then restores it, on every su
 
     expect(await drawnText()).toBe(ORIGINALS)
 
-    const on_ = await $.command.run({ command: 'simplify-data' })
-    expect(on_.text).toBe('simplify-data: on')
+    const onOutput = await $.command.run({ command: 'simplify-data' })
+    expect(onOutput.text).toBe('simplify-data: on')
     expect(await drawnText()).toBe(WRITTEN_TEXT)
 
-    const off = await $.command.run({ command: 'simplify-data' })
-    expect(off.text).toBe('simplify-data: off')
+    const offOutput = await $.command.run({ command: 'simplify-data' })
+    expect(offOutput.text).toBe('simplify-data: off')
     expect(await drawnText()).toBe(ORIGINALS)
 
     await ui.unmount()
