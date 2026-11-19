@@ -21,14 +21,14 @@ import subprocess
 import sys
 import tomllib
 
+JSON_VERSION = r'^\s*"version"\s*:\s*"(\d+(?:\.\d+)*)"'
+
 # One row per package: the directory a change must touch, the version file,
 # the pattern whose first group is the version, the parser the written file
 # must still pass (None for a file with no parser), the changelog whose
 # Unreleased heading becomes the new version's heading (None for no changelog),
 # and the build that copies the version file into a generated file (None for
 # no build). A build prints each file it wrote, one per line.
-JSON_VERSION = r'^\s*"version"\s*:\s*"(\d+(?:\.\d+)*)"'
-
 PACKAGES = (
     ("python/", "python/pyproject.toml",
      r'^version\s*=\s*"(\d+(?:\.\d+)*)"', tomllib.loads, None, None),

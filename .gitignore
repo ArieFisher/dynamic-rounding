@@ -44,6 +44,10 @@ docs/private/
 # Sprint-stack runtime worktrees
 .sprint-stack/
 
+# Claude Code writes this file into the plugin's folder when a session starts
+# with `--plugin-dir claude-code-plugin`. An editor's type check reads it.
+claude-code-plugin/tsconfig.json
+
 # Credentials
 .env
 .env.*
