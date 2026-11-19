@@ -21,6 +21,8 @@ import subprocess
 import sys
 import tomllib
 
+JSON_VERSION = r'^\s*"version"\s*:\s*"(\d+(?:\.\d+)*)"'
+
 # One row per package: the directory a change must touch, the version file,
 # the pattern whose first group is the version, the parser the written file
 # must still pass (None for a file with no parser), the changelog whose
@@ -31,7 +33,9 @@ PACKAGES = (
     ("python/", "python/pyproject.toml",
      r'^version\s*=\s*"(\d+(?:\.\d+)*)"', tomllib.loads, None, None),
     ("chrome-extension/", "chrome-extension/manifest.json",
-     r'^\s*"version"\s*:\s*"(\d+(?:\.\d+)*)"', json.loads, None, None),
+     JSON_VERSION, json.loads, None, None),
+    ("claude-code-plugin/", "claude-code-plugin/.claude-plugin/plugin.json",
+     JSON_VERSION, json.loads, None, None),
     ("js/", "js/src/entry.js",
      r'^ \* \[VERSION\] (\d+(?:\.\d+)*)$', None, "js/CHANGELOG.md",
      ("node", "scripts/build-sheets.js")),

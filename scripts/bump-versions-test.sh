@@ -28,17 +28,21 @@ cleanup() {
 trap cleanup EXIT
 
 # Creates a scratch tree with the real version files and the Sheets build's
-# script and sources, then sets the given versions on the python and chrome
-# files: scratch_tree PYTHON_VERSION CHROME_VERSION.
+# script, sources, and built files, then sets the given versions on the
+# python and chrome files: scratch_tree PYTHON_VERSION CHROME_VERSION.
 scratch_tree() {
   local dir
   dir=$(mktemp -d "${TMPDIR:-/tmp}/bump-versions-test.XXXXXX") || exit 2
   [ -n "$dir" ] || exit 2
   scratch_dirs+=("$dir")
-  mkdir -p "$dir/python" "$dir/chrome-extension" "$dir/js" "$dir/scripts"
+  mkdir -p "$dir/python" "$dir/chrome-extension" "$dir/js" "$dir/scripts" \
+    "$dir/claude-code-plugin/.claude-plugin" "$dir/claude-code-plugin/hooks"
   cp "$ROOT/js/round_dynamic.js" "$ROOT/js/CHANGELOG.md" "$dir/js/"
   cp -R "$ROOT/js/src" "$dir/js/"
   cp -R "$ROOT/chrome-extension/lib" "$dir/chrome-extension/"
+  cp "$ROOT/chrome-extension/constants.js" "$dir/chrome-extension/"
+  cp "$ROOT/claude-code-plugin/.claude-plugin/plugin.json" "$dir/claude-code-plugin/.claude-plugin/"
+  cp "$ROOT/claude-code-plugin/hooks/library.js" "$dir/claude-code-plugin/hooks/"
   cp "$ROOT/scripts/build-sheets.js" "$dir/scripts/"
   sed -E "s/^version = \"[0-9.]+\"/version = \"$1\"/" \
     "$ROOT/python/pyproject.toml" > "$dir/python/pyproject.toml"
@@ -60,6 +64,7 @@ record_fail() { failed=$((failed + 1)); printf '  FAIL  %s\n        %s\n' "$1" "
 
 python_version() { sed -nE 's/^version = "([0-9.]+)"/\1/p' "$1/python/pyproject.toml"; }
 chrome_version() { sed -nE 's/^  "version": "([0-9.]+)",?/\1/p' "$1/chrome-extension/manifest.json"; }
+plugin_version() { sed -nE 's/^  "version": "([0-9.]+)",?/\1/p' "$1/claude-code-plugin/.claude-plugin/plugin.json"; }
 
 # expect NAME DIR MINOR CHANGED WANT_OUTPUT WANT_PYTHON WANT_CHROME
 expect() {
@@ -126,9 +131,27 @@ else
   record_pass "a missing version file fails"
 fi
 
+# The plugin's version file is its manifest. No build follows the bump,
+# because the plugin library holds no version.
+dir=$(scratch_tree 0.2.5 2.2.13)
+edit_in_place "$dir/claude-code-plugin/.claude-plugin/plugin.json" \
+  -E 's/^  "version": "[0-9.]+"/  "version": "0.4.1"/'
+before=$(cat "$dir/claude-code-plugin/.claude-plugin/plugin.json")
+out=$(cd "$dir" && printf 'claude-code-plugin/hooks/register.js\n' | "$BUMP" false 2>/dev/null | tr '\n' ' ')
+name="a plugin change raises the plugin patch and nothing else"
+if [ "$out" != "claude-code-plugin/.claude-plugin/plugin.json " ]; then
+  record_fail "$name" "wrote [$out]"
+elif [ "$(cat "$dir/claude-code-plugin/.claude-plugin/plugin.json")" != "${before/\"0.4.1\"/\"0.4.2\"}" ]; then
+  record_fail "$name" "plugin version $(plugin_version "$dir"), want 0.4.2, or other bytes changed"
+elif [ "$(python_version "$dir")" != 0.2.5 ] || [ "$(chrome_version "$dir")" != 2.2.13 ]; then
+  record_fail "$name" "another package's version changed"
+else
+  record_pass "$name"
+fi
+
 # The JSDoc version line lives in the Sheets entry source; the bump rebuilds
 # the Sheets file from it, so the built file carries the new version and the
-# build's check passes.
+# build's check passes. The build writes the plugin library as well.
 dir=$(scratch_tree 0.2.5 2.2.13)
 edit_in_place "$dir/js/src/entry.js" -E 's/^ \* \[VERSION\] [0-9.]+$/ * [VERSION] 0.3.0/'
 (cd "$dir" && node scripts/build-sheets.js >/dev/null)
@@ -136,7 +159,7 @@ before=$(cat "$dir/js/CHANGELOG.md")
 out=$(cd "$dir" && printf 'js/README.md\n' | "$BUMP" true 2>/dev/null | tr '\n' ' ')
 today=$(date -u +%Y-%m-%d)
 name="a js change raises the JSDoc version, rebuilds the Sheets file, and releases the changelog"
-if [ "$out" != "js/src/entry.js js/round_dynamic.js js/CHANGELOG.md " ]; then
+if [ "$out" != "js/src/entry.js js/round_dynamic.js claude-code-plugin/hooks/library.js js/CHANGELOG.md " ]; then
   record_fail "$name" "wrote [$out]"
 elif ! grep -qx ' \* \[VERSION\] 0.4.0' "$dir/js/src/entry.js"; then
   record_fail "$name" "entry source JSDoc version not 0.4.0"
