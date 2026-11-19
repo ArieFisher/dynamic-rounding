@@ -3140,14 +3140,13 @@ function eachRewriteKind(kinds, run) {
   }
 }
 
-// Read the list of table kind pairs from the design document: each row's key,
-// state, and note. Every failure to find the list returns null, so a renamed
-// heading or a reshaped row fails the run rather than leaving nothing to
-// compare.
+// Read the list of table kind pairs: each row's key, state, and note. Every
+// failure to find the list returns null, so a renamed heading or a reshaped
+// row fails the run rather than leaving nothing to compare.
 function tkReadPairList() {
-  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
-  const lines = designMd.split('\n');
-  const start = lines.findIndex((line) => line.trim() === '### Table kind pairs');
+  const pairsMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'table-kind-pairs.md'), 'utf8');
+  const lines = pairsMd.split('\n');
+  const start = lines.findIndex((line) => line.trim() === '# Table kind pairs');
   if (start === -1) return null;
   const header = lines.findIndex((line, i) => i > start && line.startsWith('| Key |'));
   if (header === -1) return null;

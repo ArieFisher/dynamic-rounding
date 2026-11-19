@@ -1,348 +1,100 @@
-# DynamicRounding Design Doc
+# Design
 
-**Version:** 2.4
+This document holds the shape of DynamicRounding and the reasons behind it, for someone about to change the code: the parts, the decisions, and the rules that must stay true. Each rule comes with its reason, so an editor can tell when the reason no longer holds.
 
-**Platforms:**
-- Google Sheets (JavaScript) — see [js/CHANGELOG.md](../js/CHANGELOG.md)
-- Python — see [python/pyproject.toml](../python/pyproject.toml)
-- Chrome extension — see [chrome-extension/manifest.json](../chrome-extension/manifest.json)
-- Claude Code plugin — see [claude-code-plugin/.claude-plugin/plugin.json](../claude-code-plugin/.claude-plugin/plugin.json)
+The details sit elsewhere. The code holds how each part works. The [vocabulary](vocabulary.md) holds each term and its exact rule. The [capability map](capability-map.md) holds which platform runs which part. Each platform's README holds what a user sees.
 
-Sheets, the extension, and Python share one contract: `js/round-dynamic-cases.json`, a case table that runs in the Sheets suite, the extension suite, and the Python suite, so a rounding change in one platform fails tests in the others until all three agree. The Claude Code plugin runs the extension's library files unchanged, and the build check fails when the plugin library differs from them, so the extension suite's run of the case table covers the plugin. Each row's `expected` holds what the number reader alone returns, and the extension and Python suites read it. A row whose input holds text also holds `expected_text` and `expected_number`, the Sheets result under each value of the result kind; the Sheets suite reads the one that matches the constant.
+## The idea
 
-## Features
+A reader of a table needs the size of each number more than its last digits. DynamicRounding rounds each number against its own order of magnitude. The offset is how far from that order of magnitude to round, so one setting fits 87 and 87 million, and the user never counts decimal places.
 
-1. **Declarative Rounding:** Rounds based on an offset from each number's order of magnitude. No need to specify decimal places or rounding units — the function adapts to the input.
+In set-aware rounding, the max magnitude comes from the whole dataset, and the numbers in the top band, the largest orders of magnitude, can round at a different offset from the numbers in the other band.
 
-2. **Set-Aware Rounding:** When given a dataset, dynamically applies different precision to different orders of magnitude. Larger numbers can retain more detail while smaller numbers are simplified.
+## The parts
 
-3. **Sign-Aware:** Handles negative numbers natively without mathematical errors.
+Four platforms run the product: the Chrome extension, the Claude Code plugin, Google Sheets, and Python. Each platform's code falls into five groups, and each group name here has the capability map's meaning.
 
-4. **Robust:** Handles empty strings, zeros, nulls, and dates without crashing.
-   - *Google Sheets:* A number rounds and returns a number. Text goes through the Chrome extension's classification ladder and returns text: numbers inside text, unit numbers, and bracketed numbers round their digits in place, and identifier shapes, dates, and times stay as written. Text with no number passes through unchanged. Empty/null returns `""`. Date cells and booleans pass through.
-   - *Python:* Non-numeric values pass through unchanged by default. `None` returns `None`.
-   - *Chrome extension:* A cell the classification ladder refuses is left untouched. Date cells are actively simplified (to the year by default); time cells are opt-in. A unit number — one number with a magnitude suffix (k, m, b, t, bn, tn) or a listed currency code such as CAD — rounds its digits and keeps the rest. A bracketed number — the accounting negative, "(1,234)" — rounds its digits too, and the brackets stay where the page put them. A cell whose whole text is an identifier shape — a phone number, an IP address, a web or email address, an ISBN, a postal code, a digit run with a leading zero ("02134"), or digit groups split by spaces outside thousands grouping — stays as written. Inside a cell with words, the same shapes keep their digits and the other numbers round; spaced digit groups and an ISBN without the word "ISBN" count only as a whole cell. A clock time inside a cell with words or a second time ("9:45 - 11:45 AM") keeps its digits the same way, whatever the Times setting holds; a cell holding one clock time alone follows the Times setting. Google Sheets reads text cells the same way. Python does not read suffixes or codes.
-   - *Claude Code plugin:* A cell of a markdown table goes through the same classification ladder as a Chrome extension cell, under the extension's default settings, so the header row and the first column stay as written. Text outside a markdown table stays as written, and so does a table inside a fenced code block.
+| Group | What it holds |
+| --- | --- |
+| Core | The code that determines what each cell becomes: the settings contract, the classification ladder, the table step, and the rounding of numbers, dates, and times |
+| Output format | The write-back, which turns a rounded number back into text |
+| Adapters | The code between one source and the core: the input adapter, which finds a table and lists its cells, and the output writer, which applies each cell's patches |
+| Application | How the user starts, stops, and adjusts simplification, the state kept between actions, and how the parts exchange messages |
+| Support | Diagnostics and the build |
 
-5. **String Parsing:** Formatted strings are read automatically. The number reader takes these rules on every platform, apart from the currency signs:
-   - Currency signs: the Chrome extension, Google Sheets, and the Claude Code plugin read the full currency list, letter signs included ("R47"); Python reads `$`, `€`, `£`, `¥`
-   - Thousands separators: commas and spaces, each in the group shape. A group mark groups thousands only in the group shape — a first group of one to three digits, then groups of exactly three — and only before the decimal mark. The dot is the decimal mark. Any other arrangement is non-numeric and passes through: "13,63", "987,5", "1,234,56", "1.234,56" and "416 555 1234" are not numbers, so a European decimal comma is not read and spaced digit groups outside the shape stay as written. Every platform reads alike.
-   - Percent signs: `50%` reads as 50 (stripped, not scaled)
-   - Unicode dash and minus variants: read as a negative sign
-   - Accounting negatives: `(500)` reads as -500
-   - A string with no digits (`"$"`, `","`) is non-numeric and passes through
-   - *What returns:* Python returns the rounded number. Google Sheets and the Chrome extension write the rounded digits back into the text and keep every other character, so `"$1,234"` returns `"$1,000"` (in Sheets, the result kind governs this; see the [Sheets README](../js/README.md#input-handling))
-   - *Where:* Google Sheets (built in), Python (pandas module), Chrome extension (built in)
+The source is what a platform reads its tables from: a web page, a reply block's text, a cell range, or Python values. [How a cell moves through the core](capability-map.md#how-a-cell-moves-through-the-core) is in the capability map.
 
-6. **Type Preservation (Python):** Returns `int` when the input was `int` and the result is whole, and when the result is whole and under 10; otherwise returns `float`.
+- **The core and the write-back read no source.** They take plain values, the cell list, and return plain values: each cell's mode and patches. They hold no page code, no Chrome call, no markdown code, and no spreadsheet code. Why: one copy runs on three platforms, and the test suites run it in Node with no browser.
+- **The input adapter passes a fact only the source holds to the core as a plain value.** The extension's input adapter finds three such facts: whether the whole cell is a link, where each superscript sits, and whether a number's digits sit in more than one text piece. Why: the same as above.
+- **A patch changes only what simplifies.** For a number, the patch changes the digits; for a date or a time, the date or time text. Every other character stays where the source put it. Why: signs, units, words, and the page's markup carry meaning and layout that the code cannot rebuild.
+- **A platform changes what the core does through settings alone.** The extension and the plugin pass the settings contract, and Sheets passes fixed settings. The core holds no check for which platform runs it. Why: a branch per platform inside the core would be a second path, and the two would drift.
 
-7. **Strict Mode (Python):** Use `enforce_numeric=True` to raise `ValueError` for non-numeric input instead of passing through.
+No tool checks the first rule directly. The Sheets and plugin suites run the core in Node with no page, so a page call in the core fails them only where a test reaches it. The extension has no build step and no import statements: its content scripts share one scope, loaded in the order the manifest lists, so nothing stops one file from calling another. A reviewer checks the rest.
 
-8. **Multiple Modes:** Supports single and dataset usage patterns via auto-detection.
+The extension's folder names predate the groups. The event bus sits in a folder named adapters, though it belongs to Application, and the library folder holds core, adapter, and support code side by side.
 
-## Modes
+## How the code is shared
 
-The user invokes one of two modes by their choice of parameters:
+- **The core has one copy.** The extension loads the shared library files as they are. The Sheets build joins them with the Sheets entry source into the one file a user pastes into Apps Script. The same build writes the plugin library: the same files and the settings contract, with one export line. CI fails when a committed built file differs from the build. Why: a rule fixed once is fixed on three platforms.
+- **The plugin library is a built copy.** The engine loads ES modules only, and an installed plugin holds a copy of its own folder alone. The shared files are content scripts, which cannot hold an export line, so the build writes a module copy into the plugin's folder.
+- **Python runs its own copy, held to one case table.** Python is a different language, so it shares a specification, not code. The shared case table is that specification. The Sheets, extension, and Python suites each run it, so the suites fail on a rounding change made on one platform until all three give the same results. The plugin runs the extension's files unchanged, so the extension suite's run covers the plugin. Each row holds what the number reader returns, and a row with text input also holds what Sheets returns under each result kind. Python reads a string only as one whole number, and that gap is a refactor target in the capability map.
 
-### 1. Single
+## Rounding
 
-**`=ROUND_DYNAMIC(value, [offset])`** (Sheets)  
-**`round_dynamic(value, offset=...)`** (Python)
+- **The offset counts from the value's own order of magnitude.** Why: one offset fits every size of number in a column, and a count of decimal places cannot.
+- **The sign of a fractional offset stands for the direction of the half-step.** An offset of +0.5 rounds to half the step of the next larger order of magnitude, and -0.5 to half the step of the value's own. Why: before the 2026-05-28 release the function returned the same result for both, so the sign carried no meaning.
+- **A result never falls below the value's own order of magnitude.** Why: without this floor a value could round to 0, or a smaller value could show larger than a bigger one.
+- **At a fractional offset above 1 in size, the result is never smaller than the result at the integer offset nearer zero.** Why: at a coarse offset the step can grow past the value, and the value then drops to its own order of magnitude. Without this floor, 87,054,321 at +1.5 would return 10,000,000, below its +1 result of 100,000,000. The floor holds at fine offsets as well: at -2.5 the same value returns the -2 result, 87,100,000, not 87,050,000.
+- **Results hold at most 12 significant digits.** Why: floating-point arithmetic on a step below 1 is inexact, as 11 × 0.1 gives 1.1000000000000001. The cost is a real loss of precision at fine offsets on large inputs.
 
-Rounds one value based on its own magnitude.
+## Reading a cell
 
-| Parameter | Default |
-|-----------|---------|
-| offset | -0.5 |
+- **One classification ladder reads every text cell, on every platform that reads text.** The extension, the plugin, and Sheets run the same ladder. Why: two readers of one cell would drift apart.
+- **When a reading is in doubt, the text stays as written.** An identifier shape, a split number, an impossible date, an ambiguous date the column post-pass cannot settle, and a number the number shape test rejects, such as "13,63", all stay as written. Why: a reader loses a little time on an unrounded number, and a reader misreads a wrongly rounded one.
+- **One number format function holds the marks.** It returns a comma and a dot, US style, and both the number shape test and the write-back read it. Why: the code that reads a number and the code that writes it then use the same marks.
 
-### 2. Dataset
+## Tables in the extension
 
-**`=ROUND_DYNAMIC(range, [offset_top], [offset_other], [num_top])`** (Sheets)  
-**`round_dynamic([values], offset_top=..., offset_other=..., num_top=...)`** (Python)
+- **A native table and a grid give the same result.** [Table kinds behave alike](../AGENTS.md#table-kinds-behave-alike) holds the rule, and the [table kind pairs](table-kind-pairs.md) list holds each table feature in its two forms. The content script runs one pass, one cell read, one patch writer, and one restore for both kinds. The only setting that differs is which element the re-apply observer watches. Why: a rule added to the one pass holds on both kinds, and the first simplification and a re-apply pass cannot diverge.
+- **Every write is a patch inside one text piece.** The patch writer edits the text of a text node the page drew, and never adds, removes, or replaces a node. Why: page authors split one number across several elements for alignment and hide sort keys beside it, so the layout breaks when a whole cell is rewritten. A framework also holds references to the text nodes it drew, so the page breaks on the framework's next redraw when one is replaced; one page's results panel crashed this way on a column resize. A number split across text pieces stays as written.
+- **The content script never restores a number the page no longer shows.** It puts an original back only into a text piece that still shows the extension's written text. Why: the page may have changed the value since.
+- **Every column rule reads the grid column.** The table adapter counts each cell's grid column once per table, through the merged cells. The code for the exclusions, the range expression, the dataset, and the column post-pass reads it. Why: without it, every cell after a merged cell would land on the wrong column.
+- **Position counts, not markup.** The first-row and first-column exclusions apply by position, whatever tag the page gave a cell. Every row joins the dataset, whether it sits in a head, body, or footer section. Why: the two table kinds mark these sections differently, so each kind would get a different result under a rule read from the markup.
+- **The max magnitude freezes at the first simplification.** The content script does not compute it again when rows scroll into view or the page writes a larger value. A settings change, or a toggle off and on, computes it again. Why: a virtualized grid holds only its visible rows, so a fresh max magnitude would shift on every scroll. The extension cannot tell a virtualized grid from any other grid, so every grid freezes, and a native table freezes as well so the kinds behave alike.
+- **The re-apply observer follows page changes.** After a page change on a table that is on, it runs the pass again. A cell the page left alone takes no write, and a cell the page rewrote simplifies from its new text. Why: virtualized grids reuse rows as the user scrolls, and live pages rewrite values.
+- **A table whose shape changes is a new table.** Before every action, the controller compares the table's shape with the shape fingerprint it recorded. On a mismatch it restores the originals, and the table registers fresh with the shipped defaults. Why: the table settings hold a range expression by position, which fits only the shape it was written for.
 
-Rounds a whole dataset. Applies different offsets to top magnitude(s) vs others.
+## Detection in the extension
 
-| Parameter | Default |
-|-----------|---------|
-| offset_top | -0.5 |
-| offset_other | matches offset_top |
-| num_top | 1 |
+- **Only a data table gets a table pillbox.** The data test passes a table only when it holds a value the extension can round, and it reads each cell through the pass's own per-cell read. Why: a menu or a card layout must never show a table pillbox, and with one shared read, the test and the pass give the same answer for each cell.
+- **Detection stays narrow.** The load-time scan reads native tables and elements marked with a grid or table role. The content script adds an unmarked grid only on a right-click, through the geometry probe. Why: a menu or a gallery built on a layout grid looks like a grid to the code, so the content script reads one only after the user right-clicks it.
+- **The content script registers one table per nest.** It registers the element at the nesting depth the detection settings hold. A table inside a cell is a table of its own. Why: a vendor grid wraps its scrolling pane in several marked elements, and the user sees one table.
+- **A table that loads late still registers.** A table that fails the data test because its rows or numbers have not arrived becomes a pending table, and the content script tests it again after its content changes. Why: many pages draw a table before they fetch its data.
+- **Every walk, wait, and count has a cap.** The caps sit in the detection settings, one object: the data test's cell budget, the geometry probe's walk and sample, the longest wait for a burst of page edits, the cell cap, the re-test cap, and the pending table cap. At a cap the content script stops that walk, wait, or count, and shows no toast. Why: the content script runs on every page, including pages with thousands of tables or cells.
 
+## State and messages in the extension
 
-## Offsets
+- **The application model is the one holder of application state.** It sits in the content script and holds the registry, each table's table settings, the active table, and the error state. Every write goes through a setter, and the setter of each field a view draws publishes the change. Why: the content script lives as long as the page and runs where the tables are, and with one holder, no copy can drift.
+- **Each table holds its own settings, and nothing persists.** A table's settings start as the shipped defaults when it registers and end with the page. The extension holds no storage permission. Why: a range expression fits one table only. With no storage to wait on, the first simplification starts at once, and each tab stays independent.
+- **Every user action targets the active table.** The active table is the last one the user right-clicked, or the last one whose table pillbox the user pressed. Hover changes nothing. Tables carry no identifier across contexts, so a cross-context topic about a table stands for the active one. Why: a page element cannot cross contexts, and an identifier for one would be a second record to keep in step with the page.
+- **Every action takes one path.** A view, or the service worker for the right-click menu, publishes an intent topic or a request. The controller handles it and writes the application model. The model publishes a state-change topic, and each view redraws from it. Why: each field changes in one place, so every view shows the same value. The press handler reads the table's on/off value and writes the opposite value, so the table pillbox and the sidebar pillbox always show the same value. An earlier press handler read a page-held copy of whether the sidebar was open; that copy drifted, and only the service worker could correct it.
+- **Every message goes through the event bus.** Two calls carry every message: a publish, which returns nothing, and a request, which returns one answer from one responder. One list holds every topic with its family and its route, and a caller passes the topic name, never the Chrome call that carries it. A cross-context topic carries plain values only. Why: Chrome reaches the extension's pages and a tab's content script through different calls, and the route holds that choice in one place.
+- **The sidebar serves its bound tab alone.** It drops messages from other tabs, and it closes when its tab leaves the front of its window, reloads, navigates, or closes. Why: a content script publishes by broadcast, a broadcast holds no tab ID, and the sidebar's controls show one tab's table.
+- **The service worker holds no state.** Why: Chrome empties its variables after an idle spell.
 
-The "declarative" nature of this approach works based on offsets from each value's order of magnitude. This stands in contrast to traditional (imperative) rounding where the user must specify exactly what to round a specific input to.
+## Errors and the capture
 
-Offset is an order-of-magnitude adjustment. Negative = finer precision, positive = coarser.
+- **The user sees every extension error.** The log buffer passes each warn or error row to the controller's row listener, the model records it, and the toast view shows it. The row listener exists because the log buffer loads before the event bus and the model. An uncaught exception stays outside this path.
+- **A capture is one inert file.** The browser runs no script and fetches nothing remote in the file, under the file's own content policy, so the file is safe to attach anywhere. The file records an absence as an absence, never as a rebuilt value. Why: a capture is evidence, and a rebuilt value would hide the defect.
+- **The content script does nothing on a capture.** The capture carries the capture marker, and the content script does nothing on a page that carries it. Why: Chrome does not apply a page's own content policy to an extension's injected code, so without the marker the extension would round the capture's own table.
 
-| offset | meaning | 87,054,321 rounds to |
-|--------|---------|----------------------|
-| 1 | one magnitude coarser | 100,000,000 |
-| 0.5 | half-step toward the next-larger magnitude | 100,000,000 |
-| 0 | current magnitude | 90,000,000 |
-| -0.5 | half-step within the current magnitude | 85,000,000 |
-| -1 | one magnitude finer | 87,000,000 |
-| -1.5 | half-step within one magnitude finer | 87,000,000 |
+## The Claude Code plugin
 
-Notes:
-- The sign of a fractional offset chooses the direction of the half-step: `+0.5` rounds to half of the *next-larger* magnitude's step, `-0.5` to half of the *current* magnitude's step. They are different results by design (the 2026-05-28 release).
-- Offsets are limited to -20 to 20. Sheets and Python throw an error for values outside this range; the Chrome extension falls back to the default offset instead.
+- **The plugin adds no rounding code.** Its markdown adapter lists each markdown table's cells. Its text table step runs them through the classification ladder and the table step under the settings contract's defaults. Its hooks module holds the toggle command, the status entry, and the drawing hook.
+- **The plugin stores nothing.** The engine keeps each reply block's originals and the on/off value, and the drawing hook returns the simplified text while the value is on. Why: the engine already holds both, so a second copy could only drift.
 
-## Set-Aware Selection
+## Google Sheets
 
-In dataset mode, each value receives either `offset_top` or `offset_other` based on its magnitude relative to the dataset's maximum.
-
-**Step 1: Find maximum magnitude in dataset**
-```
-max_mag = max(floor(log10(abs(value)))) for all numeric values
-```
-
-**Step 2: For each value, select offset**
-```
-if (max_mag - current_mag) < num_top:
-    use offset_top
-else:
-    use offset_other
-```
-
-Example with `num_top = 1`:
-
-| Value | Magnitude | max_mag - current_mag | Offset used |
-|-------|-----------|----------------------|-------------|
-| 4,428,910 | 6 | 0 | offset_top |
-| 983,321 | 5 | 1 | offset_other |
-| 42,109 | 4 | 2 | offset_other |
-
-The selected offset is then passed to the rounding logic.
-
-**The extension's dataset:** in a table, the max magnitude comes only from cells that are inside the range expression, not excluded (first row, first column, currency, percent), classified as numbers the table rounds (each number of a pure cell, a unit number, a bracketed number, or an extracted cell). A header cell counts like any other cell: the exclusions govern it by position, whatever tag the page gave it. Every row joins the dataset, header, body, and total alike, on a native table and a grid: the markup around a row, a head section, a footer section, or a row group, never changes whether its values feed the max magnitude or the lens preview. On a native table and a grid alike, the max magnitude freezes when simplification is first applied, so neither scrolling new rows into view nor a larger value the page writes or adds shifts it. A settings change or a toggle off and on computes it again.
-
-**The Sheets dataset:** in a range, the max magnitude comes from every number: each number cell, and each number the classification ladder reads in a text cell, numbers inside text, unit numbers, and bracketed numbers included. Sheets excludes nothing: the first row and the first column round, and so do currency and percent text.
-
-**Where a cell sits:** every rule that gates a cell by column reads the cell's grid column, computed once for the whole table before any text is read. The adapter walks the rows in order with a column cursor: a cell merged across advances the cursor by its whole width, and a cell merged down holds its columns on the rows below it, so the cursor skips a held column. Both table kinds run that one walk, over one span read: the HTML span attribute when the element carries one, then the accessibility attribute. A grid of bare `<tr>` and `<td>` elements reads a `colspan` like a native table. A grid that declares no span numbers its columns by read position, which is the same answer. The geometry probe's numeric step builds its rows the same way, so it reads the same columns. Without this walk a merge inside the data area shifts every cell after it, and the shift moves the exclusions and the range expression onto the wrong cells and changes the step the whole table rounds at, including its unmerged rows.
-
-## Rounding Logic
-
-Given a `value` and an `offset`:
-
-**Variables:**
-- `current_mag`: magnitude of the input value
-- `target_mag`: the magnitude we're rounding to
-- `f`: fractional magnitude of the offset
-- `step`: the concrete rounding unit (e.g., 1,000,000 or 500,000)
-
-**Step 1: Find current magnitude**
-```
-current_mag = floor(log10(abs(value)))
-```
-Example: For 87,054,321 → `floor(7.94) = 7`
-
-**Step 2: Calculate the step**
-
-For an integer offset:
-```
-step = 10^(current_mag + offset)
-```
-
-For a fractional offset:
-```
-target_mag = current_mag + ceil(offset)
-f          = abs(offset - trunc(offset))
-step       = f × 10^target_mag
-```
-`ceil` makes the step sign-aware: for `offset = -1.5` → `target_mag = 7 + (-1) = 6`, `f = 0.5`, `step = 500,000`; for `offset = +0.5` → `target_mag = 7 + 1 = 8`, `step = 50,000,000`.
-
-**Step 3: Round**
-```
-raw = round(abs(value) / step + epsilon) × step
-```
-Example: `round(87054321 / 500000 + 1e-9) × 500000 = 174 × 500000 = 87,000,000`
-
-**Step 4: Apply the floors**
-```
-result = max(raw, 10^current_mag)
-```
-The value-OoM floor: a result never collapses below the value's own magnitude, so a tens-of-millions value can never round to 0.
-
-For a fractional offset whose integer part is at least `X_FLOOR_THRESHOLD` (1):
-```
-result = max(result, round_with_offset(abs(value), trunc(offset)))
-```
-The x-floor: a fractional offset never rounds finer than the corresponding integer offset. Example: `87054321` at `-2.5` returns `87,100,000` (the `-2` result), not `87,050,000`.
-
-**Step 5: Clean up and restore the sign**
-
-The result is trimmed to 12 significant digits (ties round away from zero) — this strips floating-point noise from sub-unit steps and is a real precision loss at fine offsets on large or highly precise inputs. Whole results, and any result of 10 or more, return as integers. The input's sign is then restored.
-
-## Implementation Details
-
-### Constants
-
-| Constant | Value | Purpose |
-|----------|-------|---------|
-| `EPSILON` | 1e-9 | Added to rounding to handle floating-point precision edge cases |
-| `VALIDATION_LIMIT` | 20 | Offset must be between -20 and 20 |
-| `DEFAULT_OFFSET_TOP` | -0.5 | Default offset for both modes (`offset_other` defaults to matching it) |
-| `DEFAULT_NUM_TOP` | 1 | Default width of the top band |
-| `X_FLOOR_THRESHOLD` | 1 | Minimum `abs(trunc(offset))` at which the x-floor applies |
-
-### Platform Differences
-
-| Behavior | Google Sheets | Python | Chrome extension | Claude Code plugin |
-|----------|---------------|--------|------------------|--------------------|
-| Non-numeric input | Pass through | Pass through (or error if `enforce_numeric=True`) | Cell left untouched | Same as the Chrome extension |
-| Null/empty input | Returns `""` | Returns `None` | Cell left untouched | Same as the Chrome extension |
-| Out-of-range offset | Throws | Raises `ValueError` | Falls back to the default | No offset to set: the extension's default offsets apply |
-| Dates | Date cells and date text pass through | Pass through | Simplified to the year by default; times opt-in | Simplified to the year; times stay as written |
-| Type preservation | A number returns a number; text returns text, trailing zeros trimmed | int → int when result is whole | Writes text; trailing zeros trimmed | Same as the Chrome extension |
-
-### Performance Optimization
-
-For dataset operations, the code pre-parses the entire dataset into a numeric array (or `null`) *before* calculating magnitude or rounding. This avoids running the expensive parsing/regex logic twice for every cell.
-
-## Chrome Extension Architecture
-
-The extension is the largest consumer of the algorithm and carries its own component architecture (the 2026-08 decoupling migration). The manifest loads the content-script packages in dependency order:
-
-| Package | Job |
-|---------|-----|
-| `constants.js` | The settings contract and the detection settings, loaded by the content script and the sidebar: each option's name and its default, and every detection setting with its two lookup lists |
-| `lib/dr-log/` | The log buffer: the last 50 log rows per context, each warn or error row with its stack trace, copied into every capture; a row listener receives each row as it lands |
-| `lib/dr-number/` | Rounding, parsing, and formatting — the algorithm itself, plus dates and times |
-| `lib/dr-table/` | The cell object and its reads and writes (`cells.js`), the table adapters (`adapters.js`: `NativeTableAdapter`, `GridAdapter`), the cell classification with the link filter (`classify.js`), and detection (`detect.js`) |
-| `lib/dr-simplify/` | The placement step, which checks a cell's classified result against its text pieces; the classification ladder: the per-cell verdict (`skip`, `date`, `time`, `extracted`); and the table step: the column post-pass, the max magnitude, and each cell's patches |
-| `lib/dr-capture/` | The capture: the state serializer and the capture file renderer |
-| `adapters/messaging.js` | The event bus (`DR_BUS`) |
-| `app/model.js` | The application model (`DR_MODEL`) |
-| `ui-pillbox.js` | The table pillbox view |
-| `ui-toast.js` | The toast view |
-| `content.js` | The controller |
-
-Outside the content script: `sidebar.html`/`sidebar.js` (the sidebar, a separate extension page) and `background.js` (the service worker that registers the context menu and opens the side panel).
-
-### Layers
-
-Four layers. The dependency direction is the design intent, and two places break it today.
-
-| Layer | Contents |
-|-------|----------|
-| Core | Parsing, the offsets, the formatting, the classification ladder, the table step, the capture renderer, and the log buffer. No Chrome interfaces and no page access. |
-| Adapters | The table adapters, the detection ladder, and the event bus. |
-| Application model | The page's application state and the table registry. |
-| Shell | Three entry points: the content script, the sidebar, and the service worker. |
-
-The number package, the classification ladder, and the table step stay inside the core. The ladder takes plain cell values and returns its decision as data, and the three checks that need the page — a whole-cell link, the superscript spans, and whether the cell's digits sit in more than one text piece — arrive as plain values the caller computed. The table step takes the classified cells and the rounding settings and returns the max magnitude and each cell's patches as data; the controller keeps the magnitude freeze, the check that a changed date or time sits in one text piece, the link filter, and the write through the patch writer. The capture's renderer takes the capture state and returns the file as a string.
-
-Two breaks, both worth stating plainly. The capture's state serializer sits beside the pure packages while reading the page and calling both the application model and the adapter factory, so the innermost layer reaches up two layers. And the service worker holds the Chrome calls for its right-click menu items and for opening the side panel, while the controller and both views write the page directly, so the adapters layer concentrates page access without holding all of it. Messaging is no longer one of the breaks: every context reaches Chrome's messaging through the event bus alone.
-
-No tool enforces the direction. The extension has no build step and no import statements: every content script declares globals into one shared scope, loaded in the order the manifest lists. The suite exercises the core by evaluating every content script in Node behind stubbed page and Chrome interfaces.
-
-### Patterns
-
-| Pattern | Where | Job |
-|---------|-------|-----|
-| Ports and adapters | Whole extension | Keeps the algorithm free of Chrome and the page |
-| Application model with publishing setters | Content script | One place each field changes |
-| Intent and state-change topics | Views to the controller, the model to the controller, and the content script to the sidebar | Decoupling without an open event graph |
-| Table adapter | Native tables and grids | One row-and-cell interface over two markups |
-| Predicate | The classification ladder | A new exclusion without touching the formatting |
-| Registry | The table registry | Per-table storage keyed by the live element |
-| Request and reply | The sidebar's three requests | One caller, one answer, on demand, on the event bus |
-
-### State ownership
-
-**The content script holds the model.** Its lifetime matches the page, and it is where the tables are. The application model holds the active table, the registry with each table's settings, and the tab's error state. Every read goes through a getter. Every write goes through a setter. Outside the registry, only the error state's setter publishes: its notice carries the whole new error state. Inside the registry, only the setter for a table's settings publishes: its notice carries the table's whole new settings and which side wrote them. Every write targets the active table. The controller registers each table: it runs the data test, writes the registry entry and the shape fingerprint, and then calls the table pillbox view to build the table pillbox. The view writes nothing to the model.
-
-**Two shapes, kept apart.** The registry keys per-table storage on the live element: each cell's pre-simplification original, its table settings, the table's frozen magnitude, and the shape fingerprint the table carried when it registered — its column count, plus its header row's cell texts where it has a header row: an outside row (a row outside every row group on a grid, a row in the head section on a native table) or a leading row of header cells on a table that groups its rows, on either kind. A grid with no row group keeps the column count alone, because a virtualized grid can scroll its first row away. The elements themselves cross no context. Two pulls carry plain-value copies of the rest to the sidebar: the capture's state pull carries all of it — each cell's original text and whether it carries the marker class, the table settings, and the frozen magnitude — and the redraw read carries the active table's settings beside a sample of the originals.
-
-**The cell values yield the derived data**, with one deliberate exception. The date format hint, the magnitudes, and the dataset's maximum all come from the values. The maximum magnitude freezes at the first simplification on both table kinds, and the registry holds it; recomputing would shift a virtualized grid's basis on every scroll. The extension cannot tell a virtualized grid from a grid that holds all its rows, so every grid freezes, and a native table freezes the same way, so the two table kinds behave alike. A larger value takes the top band's rounding under the frozen basis on both kinds.
-
-**The extension reads a cell's original as it simplifies that cell.** Reading every cell of every table on a page at load would cost more than it saves, and a re-injected content script starts with an empty registry in either case.
-
-**Five places hold state outside the model.** The service worker holds none: Chrome empties its variables after an idle spell. The sidebar keeps its own control values, its cached lens samples, its capture mark, and the bound tab, with the window holding it, and it builds a settings apply from its own controls on each change. The sidebar uses the tab ID of the bound tab for the tab its requests go to, the messages it acts on, and the tab events it closes on. The controller reads the marker class off the page to find the cells a table shows simplified; the model holds no copy of that fact. The controller also keeps the last right-clicked element, which the menu item acts on, each simplified table's re-apply observer, its timer, and the time its current burst of page edits began, each pending table's subtree observer, its re-test timer, and its count of failed re-tests, and whether the page has written the pending table cap row. The table pillbox view keeps one record per table pillbox: the button and the resize observer that keeps it positioned. It repositions from the registry's list of tables, and holds no list of its own. The toast view keeps its one element and its hide timer.
-
-**Nothing persists.** There is no storage permission. A table's settings start as the shipped defaults when the table registers and die with the page, so the model initializes synchronously and the first simplification needs no waiting step. Each tab is independent, and no change crosses tabs.
-
-**Each table holds its own settings.** The registry entry for a table holds the table settings, and they are the only settings the model holds. A sidebar change writes the active table's settings, and the sidebar's redraw read answers with them, so going back to a table brings back its settings. A table whose data the page replaces keeps its registration and its settings. A table the page gives new headers or columns is a new table: it registers fresh, reads the shipped defaults, and shows the original until the user turns it on.
-
-### Flow
-
-Three producers reach one controller, and all three publish on the event bus. A table pillbox press publishes an intent topic. The right-click menu item publishes an intent topic from the service worker, which the controller subscribes to in the tab the click happened in. The sidebar's controls publish a request, which the controller answers. The controller writes the application model, and the model publishes the change.
-
-The table pillbox view and the sidebar redraw from state-change topics. The table pillbox view redraws the table pillbox from the settings notice. The sidebar records the tab it was opened for, pulls current values from that tab, and after that redraws on the state-change topics it subscribes to. Every redraw sends one redraw read and draws the controls, the bound state, and the lens preview from its one answer; on a settings notice the sidebar itself wrote, it leaves the controls as they stand and draws the rest. It serves that one tab: a message reaching it from any other tab is dropped, because a content script publishes by broadcast and a broadcast names no tab. It also closes itself when that tab stops being the tab in front of its own window, when that tab reloads or navigates, and when that tab closes. A tab switch in another window, and a reload or close of any other tab, leave it open, so the sidebar in one window stays open when the user reloads a tab in another. These are the only closes: the service worker holds no tab listener, because an idle restart empties its variables and a sidebar opened from Chrome's own side-panel control never reaches it.
-
-There is no single reduce step and no enumerated action list. The model has one setter per field, and each publishes its own state change.
-
-Tables carry no identifier. A topic inside the content script carries the live element, and a cross-context topic carries plain values only, so no message outside the tab addresses a particular table: a cross-context topic concerning a table means the active one.
-
-**Messages.** The event bus carries three topic families, and its own topic table is the one place a topic name is written. Intent topics carry what the user did (`intent:toggleTable`, `intent:menuClicked`) — requests with no authority, for the controller to act on. State-change topics carry what changed (`state:settingsChanged`, `state:rangeError`); the toast view subscribes to one, the table pillbox view to one, and the sidebar to six. Request topics carry a question whose one responder returns an answer. The sidebar publishes all three and the content script answers all three: the sidebar's settings apply (`request:applySettings`), its redraw read (`request:activeTable`), which answers the active table's settings and lens samples together, and its read of the capture state. Each topic also carries a route stating which carrier reaches its audience: the extension's pages, one tab's content script, or neither, meaning the publishing context alone. The publish call is the same whichever route a topic carries, which is the point of the route: a caller states the topic, never the carrier.
-
-**Detection.** The load-time scan runs the nomination step over native `<table>` elements first, each a nest of one, then over the elements marked `role="grid"` or `role="table"`, and the step skips accessibility artifacts on both kinds. One filter, in the detection layer, determines what an accessibility artifact is on both kinds. The pass that watches for nodes added later runs the same step, so a page and a subtree added to it register the same element. The step registers one table per nest of role-bearing elements: it builds a containment chain from the nested elements that pass the data test and takes the element at the configured nesting depth, 1 today. A depth holding more than one element falls back outward to the nearest shallower depth holding exactly one. A chain shorter than the configured depth clamps to its innermost element. A nest ends at a cell: a role-bearing element inside an element carrying a cell role heads a nest of its own, so a grid inside a cell of another grid registers beside the grid around it, the way a native table inside a cell does. Each of the two grids reads its own rows and cells and leaves out the other's. A vendor grid's panes sit outside any cell, so the nesting depth still selects among them. A nest whose chain is empty — no element of it passes the data test — leaves a pending table: one subtree observer on the chain root runs the step again after each change to the subtree, one run per burst of changes inside the settle delay, until the nest registers, a re-test finds the nest registered or its depth crowded, or the count of failed re-tests reaches the cap in the detection settings. That is what registers a table of either kind arriving before its rows or the numbers in its cells. A page holds at most 50 pending tables of both kinds together (the pending table cap in the detection settings); past the cap, a table that fails the data test is not watched, and the first such table on the page writes one debug row. A right-click resolves in four steps: the nomination step over each native `<table>` around the click, nearest first, passing over one that is an accessibility artifact or fails the data test, then the nearest already-registered ancestor, then the nomination step run from the chain root of the nest the clicked element sits in, and last the geometry probe — a cheap-first ladder ending in an alignment sample, short-circuited by an ARIA role or a known vendor class (`dg--`, `ag-`). The alignment sample starts with the direction reader, one function on the style probe port that both the probe and the grid adapter call: the boxes of the first two children that draw a box, within the same sample cap, determine whether the grid is row-first or column-first. The same top with a larger left reads column-first; anything else, including too few boxes or a probe without the box read, reads row-first. A row-first grid passes when the first cells of its rows share a width, and a column-first grid passes when the first cells of its columns share a height. When the grid adapter takes rows from a grid's children, it turns a column-first grid so row r holds the r-th item of every column, in column order, taking the columns that hold the most common item count, the probe's own candidate rule. The third step registers a marked grid the scan missed, and it returns the element at the configured nesting depth, so a click in a vendor grid's row-number gutter resolves the scrolling pane beside it; a nest that resolves nothing falls through to the probe. Unmarked grids enter at the fourth step alone. Whatever passes then faces the data test (at least two rows, a row with two or more cells, and one cell holding a value the extension can round, within one budget of 1000 cell reads; the test spends the budget in document order, on native tables and grids alike, and stops at the first cell that counts). Each cell goes through the function that classifies a cell for the rounding pass — the classification ladder, the placement step, and the link filter — with every switch on and no range expression, so the test reads no table settings, and a cell counts when its mode is anything but skip. An ambiguous date counts only when the column post-pass settles its column's format hint as month-first or day-first; the post-pass reads only the dates within the budget. The geometry probe's numeric step runs the same read under the same budget. Only a data table enters the registry and gets a table pillbox. A table the nomination step selected has passed the data test inside the step, so the load-time scan and the pending table's re-test register it without a second test. The shape check is one more caller of the same step: every action on a registered table, and every redraw read of the active table, compares the table's shape against the fingerprint the registry recorded, and a mismatch restores the originals, discards the entry, and re-runs the step from the nest's chain root, because a new result set can change which element of the nest passes the data test. On a native table and a grid alike, the data test and rounding share one cell read: the cell's rendered text, falling back to its raw text when the rendered text is empty. A hidden cell's raw text counts toward the test and toward the lens preview, and the cell rounds like any other cell. A hidden fragment inside a visible cell stays out: that cell's rendered text is not empty, so the fallback never runs.
-
-**Rounding a table.** The controller walks the adapter's rows, runs the classification ladder per cell, places each result in the cell's text pieces, and writes through the patch writer on both table kinds: each change edits the one text piece that holds it, through `nodeValue`, so every node the page drew keeps its identity. The placement step lives in `lib/dr-simplify/`, and the patch writer in the table library. One function in the table library classifies each cell through the classification ladder, the placement step, and the link filter, and the pass, the lens preview, and the data test call it. The placement step keeps each number whose digits sit in one text piece and drops a number that crosses a piece boundary (a split number), which stays unchanged while the cell's other numbers round. A digit beside a digit across two pieces reads as two numbers when the cell's rendered text holds a line break between the pieces, and as one split number when it holds nothing between, as inline styling leaves it. Both table kinds classify the rendered text. An extracted cell — a pure cell, a unit number, a bracketed number, a number inside surrounding words, or a cell with a superscript, written as a `<sup>` or styled `vertical-align: super`, whose base rounds while the mask keeps the exponent unchanged — rounds the same way on both table kinds: each number's digits change through a patch over its own match, which is what lets a cell round when the page gives a sign, a bracket, or a currency sign its own text piece. Originals are stored per text piece, beside each piece's written text, so the table can be restored. On every simplified table, native or grid, the re-apply observer — a debounced mutation observer — runs the pass again after a page change: rows that scroll into view, cells a sort redraws, a value the page rewrites, a row the page adds. The pass sorts each cell by its record. A cell with no originals is fresh and simplifies as at the first simplification. A cell whose text pieces each show their original or their written text is held: its target text comes from its originals under the current max magnitude, and only a piece whose text differs from its target takes a write, so an unchanged cell takes none. Any other cell is a rewritten cell: its originals go back into the pieces that still show written text, its record goes, and it simplifies again from the page's text, which releases a cell whose new text is round or not a number. The observer is off during the extension's own writes, the restore included, and a burst of page edits runs one pass once the edits stop for the settle delay or the burst reaches the longest wait, one second. A pass reads at most the cell cap, 10,000 cells: above it the pass writes nothing, the observer stops for that table, and a debug row records the stop, with no toast. A pass that runs longer than the pass target, 200 milliseconds, writes a debug row with its duration; a faster pass writes none. Each pass first runs the shape check; on a mismatch the table is detected again as a new table, showing the original and under the shipped defaults, and the active table moves only when the changed table was the active one.
-
-**Extension errors.** Every warn or error row the content script records is an extension error. The log buffer hands the row to the controller's row listener, the controller writes it into the model's error state, and the model publishes the change. The toast view draws the newest row's text on the page for five seconds, and the capture carries the error state and each row's stack trace. The listener sits in the controller because the log buffer loads before the model and the bus and reaches neither. An uncaught exception never reaches the log buffer, so it stays outside this path.
-
-**Capture.** The sidebar's capture section writes a bug report as one inert, self-contained HTML file, in reading order: the mark and remarks, a likeness of the sidebar, a screenshot of the bound tab (the sidebar page takes it through chrome.tabs.captureVisibleTab under the activeTab grant; the image passes to the renderer beside the state, and the state holds the take's record alone), the bound table as displayed and again with the originals, a registry list of every table found, the detection settings in force at capture time, both contexts' log rows (a per-context log buffer holds the last 50, each warn or error row with its stack trace folded under it, each frame in the short form: path, line, column, function), the tab's error state, the fixture seed, and the whole capture state as JSON under a one-integer format version. The content script serializes the registry through the adapters' displayed-text read and the model's plain-original-text read; the sidebar pulls that over one cross-context topic, adds its own sidebar snapshot at finish time, renders the file through the capture package, and saves it with a plain link download — no extra permission. The file forbids scripts and remote fetches through its own Content-Security-Policy, and it records absence honestly: an unbound state, a cell's lost original, and a serialization failure all appear as what they are, never as reconstructed values. The file also carries a capture marker on its document element, and the controller stands down on any page carrying it — a page's own policy cannot block an extension's injected code, so without the marker the extension would round the capture's own table when the saved file is opened.
-
-### Reuse across platforms
-
-The [capability map](capability-map.md) lists which platform runs the shared library and which runs its own copy. Sheets runs one pasted file, so the Sheets build writes that file by joining the license header, the shared library files it lists, and the Sheets entry source, which holds `ROUND_DYNAMIC`, the fixed settings, the result kind, and the Sheets input step. The page-free table step is what lets Sheets read a range the way the extension reads a table; the extension keeps the four parts that read the page. CI fails when the committed Sheets file differs from the build, so a pull request that changes a shared file also holds the rebuilt Sheets file. One shared case table runs in the Sheets, extension, and Python suites, so a change in one platform fails the others until all agree; for Python that case table is the whole of the contract. The extension has no build step and no package file, so no tool guards its internal boundaries.
-
-The Sheets build writes a second file, the plugin library: the shared library files and the extension's settings contract, joined, with one export line. The build is needed because Claude Code's engine loads ES modules only, an installed plugin is a copy of its own folder, and the shared files are scripts the extension loads as content scripts, which cannot hold an export line. The same CI check covers the plugin library. The plugin adds three parts of its own and no rounding code. The markdown adapter presents each markdown table in a reply block's text as cells, each with its row, its column, and its position in the text. The text table step runs each table's cells through the classification ladder and the table step under the settings contract's defaults, and applies every patch to the text in one call. The hooks module holds the toggle command, the status entry, and the drawing hook, which returns the simplified text for the engine to draw while the on/off value is on. The engine keeps each reply block's originals and the on/off value, so the plugin stores nothing and restores nothing. The plugin installs from the marketplace file at this repository's root.
-
-### Table kind pairs
-
-A native table and a grid are one product: a reader sees a table and never learns which markup drew it, so every table feature must give the same result in both kinds. Each table feature a page can use comes in a native form and a grid form, and the two forms of one feature make a pair. A comparison test draws the same values once in each form, runs detection and the simplification on both, and checks three things: both tables are found or both are missed, the same cells change, and each changed cell reads the same text. Cells line up by row and grid column. Each comparison runs under the shipped defaults, and again with the first-row and first-column switches on and the top band rounding finer than the other band. The shipped defaults round both bands at the same offset, so only the second run shows a difference in which values feed the max magnitude.
-
-This table is the one list of pairs. The extension's test suite reads it: the Key column names a pair's comparison test, and the State column holds the result the test expects.
-
-- **same**: the comparison test finds no difference.
-- **different**: the comparison test finds a difference. The note links the issue that holds it, or states after "Forced:" what in the markup forces it.
-- **not yet tested**: no comparison test exists yet. The note states what the test needs.
-- **no pair**: the feature has one form only, so nothing compares. The note states why.
-
-A capture that shows a table feature this list lacks adds a row.
-
-| Key | Feature | Native form | Grid form | State | Note |
-| --- | --- | --- | --- | --- | --- |
-| `data-cell` | Data cell | `<td>` in a `<tbody>` | `cell` role in a `rowgroup`, inside the `table` role | same | |
-| `grid-cell` | Data cell of an interactive grid | `<td>` in a `<tbody>` | `gridcell` role in a `rowgroup`, inside the `grid` role | same | |
-| `ungrouped-rows` | Rows with no body section | `<tr>` directly in the `<table>` | `row` role directly in the grid | same | |
-| `column-header` | Header row in a head section | `<th>` cells in a `<thead>` | `columnheader` cells in a row outside every `rowgroup` | same | |
-| `head-group` | Header row in a row group | `<th>` cells in a `<thead>` | `columnheader` cells in a row inside its own `rowgroup` | same | |
-| `header-row-in-body` | Header row with no head section | a leading row of `<th>` cells, with no `<thead>` | a leading row of `columnheader` cells, with no `rowgroup` | same | |
-| `row-header` | Row label | `<th scope="row">` | `rowheader` role | same | |
-| `corner-cell` | Empty corner above the row labels | an empty `<td>` in the header row | an empty `cell` in the header row | same | |
-| `body-groups` | Several body sections | several `<tbody>` | several `rowgroup` | same | |
-| `footer-row` | Total row in a footer | `<tr>` in a `<tfoot>` | a row after the `rowgroup`, outside it | same | |
-| `footer-group` | Total row in a footer group | `<tr>` in a `<tfoot>` | a row in its own `rowgroup`, after the body's | same | |
-| `merged-across` | Cell merged across columns | `colspan` | `aria-colspan` | same | |
-| `merged-down` | Cell merged down rows | `rowspan` | `aria-rowspan` | same | |
-| `caption` | Caption | `<caption>` | `caption` role inside the grid | same | |
-| `nested-table` | Table inside a cell | a `<table>` in a `<td>` | a grid in a `cell` | same | |
-| `hidden-row` | Hidden row | `<tr hidden>` | `row` with `hidden` | same | |
-| `hidden-cell` | Hidden cell | `<td hidden>` | `cell` with `hidden` | same | |
-| `hidden-fragment` | Hidden text inside a visible cell, such as a sort key | a hidden `<span>` in a `<td>` | a hidden `<span>` in a `cell` | same | |
-| `accessibility-artifact` | Table hidden from screen readers or drawn off-screen | `aria-hidden="true"` on the `<table>` or an ancestor, or an off-screen left offset | the same marks on the grid or an ancestor | same | |
-| `column-group` | Column group | `<colgroup>` and `<col>` | none | no pair | The accessibility roles define no column element. |
-| `header-reference` | Cell that names its header cells | `headers` on a `<td>` | none | no pair | The accessibility roles define no cell-to-header reference. |
-| `column-index` | Column position on a grid that draws some of its columns | none | `aria-colindex` | no pair | A native table draws every column. |
-| `row-index` | Row position on a grid that draws some of its rows | none | `aria-rowindex` and `aria-rowcount` | no pair | A native table holds every row. |
-| `tree-rows` | Rows that expand and collapse | none | `treegrid` role with `aria-level` | no pair | HTML defines no tree table. |
-| `column-first` | Cells listed column by column | none | generic children drawn side by side as columns, each holding one item per row | no pair | A native table lists its cells row by row. |
-
-### Decisions
-
-- **The active table is the last one the user right-clicked, or the last one whose table pillbox the user pressed.** Hovering changes nothing.
-- **A table pillbox press has one meaning and one settings write.** The press handler makes the pressed table active, reads that table's on/off value, and writes the opposite value. The table pillbox and the sidebar pillbox both show that value, so they always agree, even on a table that is on with no cell to simplify. The table pillbox view redraws the table pillbox from the model's settings notice, as the sidebar redraws the sidebar pillbox. The write changes the on/off value alone, so each table keeps its own range expression when the active table moves. The extension applies the table's settings on that write, so the table pillbox, the sidebar pillbox, and the right-click menu item all reach the table by one path. The press handler read a page-held copy of whether the sidebar stood open until the 2026-09-14 spec retired that copy. Only the service worker could correct it, and the correction needed a tab ID that an idle restart and an ordinary sidebar close both cleared.
-- **An apply restores the table before simplifying it again**, so a settings change produces a fresh pass. The re-apply observer takes a different route: it sorts each cell by its record and writes each text piece whose text differs from its target, reading the originals through the adapter's port.
-- **One restore serves both table kinds.** It puts each original back into the text piece that still shows its written text. A patch changes only text, never tags, so the cell's markup comes back as it stood; no copy of the markup is stored. A piece the page rewrote keeps the page's text, so a restore that arrives before a pass never writes a number the page no longer shows. The same holds for hover text: the restore puts the page's hover text back only while the cell shows the extension's own, so hover text the page changed stays. When the page redrew a cell with a different count of text pieces, the pieces no longer line up by position, so each piece that shows a stored piece's written text takes that piece's original, matched in page order, one stored piece to one live piece. A redraw that adds a tag around a rounded number therefore still restores the number.
-- **One pass simplifies every table.** The first simplification and every re-apply pass, on either table kind, run the same pass inside the controller, in phases: release rewritten cells, classify every cell, run the table step (resolve ambiguous dates per column, find the max magnitude, build each cell's patches), then check and write each cell's patches in one loop. The one difference between the table kinds is a setting of that pass: which element the re-apply observer watches (a native table itself, a grid's scroll container). Both kinds store the same record per cell: the text it classified, each text piece's original and written text, and the hover text the page set. The superscript check and the link filter store nothing: both find text pieces through the piece layout, which maps a position in the classified text to its piece, so both run on a simplified cell. The max magnitude comes from the cells on the first simplification and from the table's magnitude freeze on every re-apply pass, on both kinds. A rule added to the pass therefore reaches both kinds at once, and the first simplification and the re-apply cannot diverge.
-- **The extension patches a grid cell's text node in place.** A framework holds a reference to that node, so replacing it tears down the host application on its next redraw.
-- **Two messaging primitives carry every message.** A publish that returns nothing, and a request that returns one answer. Both run on the event bus, and so does every topic. A topic's route determines which contexts a publish reaches: the extension's pages, one tab's content script, or neither, meaning the publishing context alone.
-- **The service worker is a router and two entry points.** It holds no state. Each sidebar listens for the events of its own bound tab, so two sidebars in two windows never share one stored tab ID.
-
-## Vocabulary
-
-The project vocabulary — core terms, parameters, and the terms for tables, cells, and the extension — lives in [vocabulary.md](./vocabulary.md).
+- **The Sheets input step sorts each value by type.** The function returns a number for a number cell and text for a text cell, and text goes through the classification ladder. Why: a custom function receives a cell's value and nothing about its format, so a currency-formatted 1,234 arrives as the number 1234. Other formulas can read a number result.
+- **For a text cell that holds one number, the function returns text.** The result kind holds this choice. Why: the sign the user typed stays, as it does in the extension. The cost: Sheets skips a text result in a formula that sums a range.
+- **Sheets rounds the whole dataset.** Under its fixed settings, the first row, the first column, currency, and percent round, and dates and times stay as written. Why: the Sheets function takes no switches, and the user chooses the cell range it reads.

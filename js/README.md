@@ -73,7 +73,7 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 
 **Floor at the value's OoM:** After rounding, the magnitude of the result is at least `10^floor(log10(|value|))`. A tens-of-millions value can never collapse to `0`, regardless of the requested offset.
 
-**Floor at the integer offset:** A fractional offset whose integer part is 1 or more never rounds finer than the corresponding integer offset. `ROUND_DYNAMIC(87054321, -2.5)` returns 87,100,000 — the `-2` result floors the raw `-2.5` result.
+**Floor at the integer offset:** At a fractional offset whose integer part is 1 or more in size, the result is never smaller than the integer offset's result. At a coarse offset, this keeps a large step from dropping the value to its own OoM: `ROUND_DYNAMIC(87054321, 1.5)` returns 100,000,000, the `1` result, not 10,000,000. At a fine offset, it lifts the result: `ROUND_DYNAMIC(87054321, -2.5)` returns 87,100,000, the `-2` result, not 87,050,000.
 
 **12 significant digits:** Results are trimmed to 12 significant digits, with ties rounding away from zero. This strips floating-point noise from sub-unit steps and is a real precision loss at fine offsets on large or highly precise inputs.
 
@@ -196,7 +196,7 @@ The Chrome extension has no such constraint: it writes plain numbers with traili
 
 ## See Also
 
-- [Design Doc](../docs/design.md) — Algorithm and concepts
+- [Design document](../docs/design.md) — How the system is built, and why
 - [Python version](../python/) — `pip install dynamic-rounding`
 - [Changelog](./CHANGELOG.md)
 

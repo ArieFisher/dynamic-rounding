@@ -195,7 +195,7 @@ def _round_with_offset(value: float, offset: float) -> float:
     current order of magnitude, so a positive input never rounds toward zero
     past its own OoM. For fractional offsets with a large integer component
     (``|trunc(offset)| >= X_FLOOR_THRESHOLD``), an additional x-floor is
-    applied so that a fractional offset never rounds finer than the
+    applied so that a fractional offset never returns less than the
     corresponding integer offset would.
     """
     if value == 0:
