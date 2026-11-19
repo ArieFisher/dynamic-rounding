@@ -6,8 +6,9 @@
 - Google Sheets (JavaScript) — see [js/CHANGELOG.md](../js/CHANGELOG.md)
 - Python — see [python/pyproject.toml](../python/pyproject.toml)
 - Chrome extension — see [chrome-extension/manifest.json](../chrome-extension/manifest.json)
+- Claude Code plugin — see [claude-code-plugin/.claude-plugin/plugin.json](../claude-code-plugin/.claude-plugin/plugin.json)
 
-The three platforms share one contract: `js/round-dynamic-cases.json`, a case table that runs in the Sheets suite, the extension suite, and the Python suite, so a rounding change in one platform fails tests in the others until all three agree. Each row's `expected` holds what the number reader alone returns, and the extension and Python suites read it. A row whose input holds text also holds `expected_text` and `expected_number`, the Sheets result under each value of the result kind; the Sheets suite reads the one that matches the constant.
+Sheets, the extension, and Python share one contract: `js/round-dynamic-cases.json`, a case table that runs in the Sheets suite, the extension suite, and the Python suite, so a rounding change in one platform fails tests in the others until all three agree. The Claude Code plugin runs the extension's library files unchanged, and the build check fails when the plugin library differs from them, so the extension suite's run of the case table covers the plugin. Each row's `expected` holds what the number reader alone returns, and the extension and Python suites read it. A row whose input holds text also holds `expected_text` and `expected_number`, the Sheets result under each value of the result kind; the Sheets suite reads the one that matches the constant.
 
 ## Features
 
@@ -21,10 +22,11 @@ The three platforms share one contract: `js/round-dynamic-cases.json`, a case ta
    - *Google Sheets:* A number rounds and returns a number. Text goes through the Chrome extension's classification ladder and returns text: numbers inside text, unit numbers, and bracketed numbers round their digits in place, and identifier shapes, dates, and times stay as written. Text with no number passes through unchanged. Empty/null returns `""`. Date cells and booleans pass through.
    - *Python:* Non-numeric values pass through unchanged by default. `None` returns `None`.
    - *Chrome extension:* A cell the classification ladder refuses is left untouched. Date cells are actively simplified (to the year by default); time cells are opt-in. A unit number — one number with a magnitude suffix (k, m, b, t, bn, tn) or a listed currency code such as CAD — rounds its digits and keeps the rest. A bracketed number — the accounting negative, "(1,234)" — rounds its digits too, and the brackets stay where the page put them. A cell whose whole text is an identifier shape — a phone number, an IP address, a web or email address, an ISBN, a postal code, a digit run with a leading zero ("02134"), or digit groups split by spaces outside thousands grouping — stays as written. Inside a cell with words, the same shapes keep their digits and the other numbers round; spaced digit groups and an ISBN without the word "ISBN" count only as a whole cell. A clock time inside a cell with words or a second time ("9:45 - 11:45 AM") keeps its digits the same way, whatever the Times setting holds; a cell holding one clock time alone follows the Times setting. Google Sheets reads text cells the same way. Python does not read suffixes or codes.
+   - *Claude Code plugin:* A cell of a markdown table goes through the same classification ladder as a Chrome extension cell, under the extension's default settings, so the header row and the first column stay as written. Text outside a markdown table stays as written, and so does a table inside a fenced code block.
 
-5. **String Parsing:** Formatted strings are read automatically. The number reader takes these rules on all three platforms, apart from the currency signs:
-   - Currency signs: the Chrome extension and Google Sheets read the full currency list, letter signs included ("R47"); Python reads `$`, `€`, `£`, `¥`
-   - Thousands separators: commas and spaces, each in the group shape. A group mark groups thousands only in the group shape — a first group of one to three digits, then groups of exactly three — and only before the decimal mark. The dot is the decimal mark. Any other arrangement is non-numeric and passes through: "13,63", "987,5", "1,234,56", "1.234,56" and "416 555 1234" are not numbers, so a European decimal comma is not read and spaced digit groups outside the shape stay as written. The three platforms read alike.
+5. **String Parsing:** Formatted strings are read automatically. The number reader takes these rules on every platform, apart from the currency signs:
+   - Currency signs: the Chrome extension, Google Sheets, and the Claude Code plugin read the full currency list, letter signs included ("R47"); Python reads `$`, `€`, `£`, `¥`
+   - Thousands separators: commas and spaces, each in the group shape. A group mark groups thousands only in the group shape — a first group of one to three digits, then groups of exactly three — and only before the decimal mark. The dot is the decimal mark. Any other arrangement is non-numeric and passes through: "13,63", "987,5", "1,234,56", "1.234,56" and "416 555 1234" are not numbers, so a European decimal comma is not read and spaced digit groups outside the shape stay as written. Every platform reads alike.
    - Percent signs: `50%` reads as 50 (stripped, not scaled)
    - Unicode dash and minus variants: read as a negative sign
    - Accounting negatives: `(500)` reads as -500
@@ -186,14 +188,14 @@ The result is trimmed to 12 significant digits (ties round away from zero) — t
 
 ### Platform Differences
 
-| Behavior | Google Sheets | Python | Chrome extension |
-|----------|---------------|--------|------------------|
-| Non-numeric input | Pass through | Pass through (or error if `enforce_numeric=True`) | Cell left untouched |
-| Null/empty input | Returns `""` | Returns `None` | Cell left untouched |
-| String parsing | Built-in: the classification ladder, as in the extension | Pandas module only; a whole string as one number | Built-in: the classification ladder |
-| Out-of-range offset | Throws | Raises `ValueError` | Falls back to the default |
-| Dates | Date cells and date text pass through | Pass through | Simplified to the year by default; times opt-in |
-| Type preservation | A number returns a number; text returns text, trailing zeros trimmed | int → int when result is whole | Writes text; trailing zeros trimmed |
+| Behavior | Google Sheets | Python | Chrome extension | Claude Code plugin |
+|----------|---------------|--------|------------------|--------------------|
+| Non-numeric input | Pass through | Pass through (or error if `enforce_numeric=True`) | Cell left untouched | Same as the Chrome extension |
+| Null/empty input | Returns `""` | Returns `None` | Cell left untouched | Same as the Chrome extension |
+| String parsing | Built-in: the classification ladder, as in the extension | Pandas module only; a whole string as one number | Built-in: the classification ladder | Same as the Chrome extension |
+| Out-of-range offset | Throws | Raises `ValueError` | Falls back to the default | No offset to set: the extension's default offsets apply |
+| Dates | Date cells and date text pass through | Pass through | Simplified to the year by default; times opt-in | Simplified to the year; times stay as written |
+| Type preservation | A number returns a number; text returns text, trailing zeros trimmed | int → int when result is whole | Writes text; trailing zeros trimmed | Same as the Chrome extension |
 
 ### Performance Optimization
 
@@ -287,6 +289,8 @@ Tables carry no identifier. A topic inside the content script carries the live e
 ### Reuse across platforms
 
 The rounding arithmetic exists twice — the Python package and the extension's number package — and the Sheets library takes the extension's copy, with its number reader, classification ladder, and table step. Sheets runs one pasted file, so the Sheets build writes that file by joining the license header, the shared library files it lists, and the Sheets entry source, which holds `ROUND_DYNAMIC`, the fixed settings, the result kind, and the Sheets input step. The page-free table step is what lets Sheets read a range the way the extension reads a table; the extension keeps the four parts that read the page. CI fails when the committed Sheets file differs from the build, so a pull request that changes a shared file also holds the rebuilt Sheets file. One shared case table runs in the Sheets, extension, and Python suites, so a change in one platform fails the others until all agree; for Python that case table is the whole of the contract. The Python library ships as a package; the Sheets library is pasted into a spreadsheet; the extension has no build step and no package file, so no tool guards its internal boundaries.
+
+The Claude Code plugin takes the same copy. The Sheets build writes a second file, the plugin library: the shared library files and the extension's settings contract, joined, with one export line. The build is needed because Claude Code's engine loads ES modules only, an installed plugin is a copy of its own folder, and the shared files are scripts the extension loads as content scripts, which cannot hold an export line. The same CI check covers the plugin library. The plugin adds three parts of its own and no rounding code. The markdown adapter presents each markdown table in a reply block's text as cells, each with its row, its column, and its position in the text. The text table step runs each table's cells through the classification ladder and the table step under the settings contract's defaults, and applies every patch to the text in one call. The hooks module holds the toggle command, the status entry, and the drawing hook, which returns the simplified text for the engine to draw while the on/off value is on. The engine keeps each reply block's originals and the on/off value, so the plugin stores nothing and restores nothing. The plugin installs from the marketplace file at this repository's root.
 
 ### Table kind pairs
 

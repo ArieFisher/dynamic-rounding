@@ -2,15 +2,16 @@
 /**
  * Self-test for scripts/build-sheets.js, the Sheets build.
  *
- * The committed Sheets library is the build's output, so these cases check
- * the build and its check from outside: the committed file matches a build of
- * the committed sources, the check fails on every kind of stale file and
- * prints the build command, and the built file runs as one Apps Script file.
+ * The committed Sheets library and plugin library are the build's outputs, so
+ * these cases check the build and its check from outside: each committed file
+ * matches a build of the committed sources, the check fails on every kind of
+ * stale file and prints the build command, the Sheets file runs as one Apps
+ * Script file, and the plugin library loads as one ES module.
  *
  * Cases that edit a source run in a scratch copy of the build script and its
- * sources, so the real tree never changes. The list of shared library files
- * comes from the section markers in the built file, which the build writes
- * from its own list; a built file with no marker fails the run.
+ * sources, so the real tree never changes. The list of source files comes
+ * from the section markers in the built files, which the build writes from
+ * its own lists; a built file with no marker fails the run.
  *
  * Run with no arguments; exits 0 when the build behaves and 1 when any case
  * fails. Node standard library only.
@@ -28,6 +29,8 @@ const ROOT = path.join(__dirname, '..');
 const BUILD = 'scripts/build-sheets.js';
 const BUILD_COMMAND = 'node ' + BUILD;
 const OUTPUT = 'js/round_dynamic.js';
+const PLUGIN_OUTPUT = 'claude-code-plugin/hooks/library.js';
+const OUTPUTS = [OUTPUT, PLUGIN_OUTPUT];
 const HEADER = 'js/src/header.js';
 const ENTRY = 'js/src/entry.js';
 const SECTION_MARKER = /^\/\/ ---- (\S+) ----$/gm;
@@ -66,10 +69,14 @@ function readRoot(name) {
   return fs.readFileSync(path.join(ROOT, name), 'utf8');
 }
 
+function sectionFiles(built) {
+  return [...built.matchAll(SECTION_MARKER)].map((m) => m[1]);
+}
+
 // The shared library files the build includes, read from the section markers
-// in a built file. Every marker but the entry source's holds one.
+// in the built Sheets file. Every marker but the entry source's holds one.
 function libraryFiles(built) {
-  const files = [...built.matchAll(SECTION_MARKER)].map((m) => m[1]);
+  const files = sectionFiles(built);
   if (files.length === 0 || files[files.length - 1] !== ENTRY) {
     throw new Error('the built file holds no section marker for ' + ENTRY);
   }
@@ -80,8 +87,21 @@ function libraryFiles(built) {
   return library;
 }
 
-function sourceFiles(built) {
-  return [BUILD, HEADER, ...libraryFiles(built), ENTRY];
+// The plugin library's sources that the Sheets file does not hold, read from
+// the plugin library's section markers.
+function pluginOnlySources(read) {
+  const library = libraryFiles(read(OUTPUT));
+  const pluginSources = sectionFiles(read(PLUGIN_OUTPUT));
+  if (pluginSources.length === 0) {
+    throw new Error('the plugin library holds no section marker');
+  }
+  return pluginSources.filter((file) => !library.includes(file));
+}
+
+// Every file the build reads, with the build script. The reader returns a
+// built file's text by name.
+function sourceFiles(read) {
+  return [BUILD, HEADER, ...libraryFiles(read(OUTPUT)), ENTRY, ...pluginOnlySources(read)];
 }
 
 // Writes a scratch tree with the given files, read through the reader, and
@@ -98,10 +118,22 @@ function scratchTree(files, read) {
 }
 
 // A scratch copy of the working tree's build script, sources, and committed
-// built file.
+// built files.
 function workingCopy() {
-  const built = readRoot(OUTPUT);
-  return scratchTree([...sourceFiles(built), OUTPUT], readRoot);
+  return scratchTree([...sourceFiles(readRoot), ...OUTPUTS], readRoot);
+}
+
+// Each built file's bytes in a tree, or null for a missing one.
+function readOutputs(dir) {
+  return OUTPUTS.map((name) => {
+    const file = path.join(dir, name);
+    return fs.existsSync(file) ? fs.readFileSync(file) : null;
+  });
+}
+
+function sameOutputs(before, after) {
+  return before.every((bytes, k) =>
+    (bytes === null || after[k] === null ? bytes === after[k] : bytes.equals(after[k])));
 }
 
 function runBuild(dir, args, cwd) {
@@ -304,15 +336,15 @@ function repeats(names) {
 // ---- Cases -----------------------------------------------------------------
 
 function cleanCheckoutCases() {
-  check('a build of the committed sources is byte-identical to the committed Sheets file', () => {
+  check('a build of the committed sources is byte-identical to each committed built file', () => {
     const show = (name) => childProcess.execFileSync('git', ['-C', ROOT, 'show', 'HEAD:' + name],
       { stdio: ['ignore', 'pipe', 'pipe'] });
-    const committed = show(OUTPUT);
-    const dir = scratchTree(sourceFiles(committed.toString('utf8')), show);
+    const committed = OUTPUTS.map(show);
+    const dir = scratchTree(sourceFiles((name) => show(name).toString('utf8')), show);
     const result = runBuild(dir, []);
     if (result.status !== 0) return 'the build exited ' + result.status + ': ' + result.stderr;
-    if (!fs.readFileSync(path.join(dir, OUTPUT)).equals(committed)) {
-      return 'the built file differs from the committed one';
+    if (!sameOutputs(committed, readOutputs(dir))) {
+      return 'a built file differs from the committed one';
     }
     const again = runBuild(dir, ['--check']);
     if (again.status !== 0) return 'the check exited ' + again.status + ' after a build';
@@ -324,40 +356,50 @@ function cleanCheckoutCases() {
     return result.status === 0 ? null : 'the check exited ' + result.status + ': ' + result.stderr;
   });
 
-  check('the build writes the same file from any directory', () => {
+  check('the build writes the same files from any directory, and prints each one', () => {
     const dir = workingCopy();
-    const before = fs.readFileSync(path.join(dir, OUTPUT));
+    const before = readOutputs(dir);
     const result = runBuild(dir, [], os.tmpdir());
     if (result.status !== 0) return 'the build exited ' + result.status + ': ' + result.stderr;
-    return fs.readFileSync(path.join(dir, OUTPUT)).equals(before) ? null : 'the built file changed';
+    if (result.stdout !== OUTPUTS.join('\n') + '\n') return 'the build printed ' + JSON.stringify(result.stdout);
+    return sameOutputs(before, readOutputs(dir)) ? null : 'a built file changed';
   });
 }
 
 // Requires the check to fail on a scratch tree, to print the build command,
-// and to leave the stale file as it found it.
+// and to leave each built file as it found it.
 function expectStale(name, edit) {
   check(name, () => {
     const dir = workingCopy();
     edit(dir);
-    const output = path.join(dir, OUTPUT);
-    const before = fs.existsSync(output) ? fs.readFileSync(output) : null;
+    const before = readOutputs(dir);
     const result = runBuild(dir, ['--check']);
     if (result.status === 0) return 'the check exited 0';
     if (!(result.stdout + result.stderr).includes(BUILD_COMMAND)) {
       return 'the message does not hold `' + BUILD_COMMAND + '`: ' + result.stderr;
     }
-    const after = fs.existsSync(output) ? fs.readFileSync(output) : null;
-    if (String(before) !== String(after)) return 'the check wrote the Sheets file';
+    if (!sameOutputs(before, readOutputs(dir))) return 'the check wrote a built file';
     return null;
   });
 }
 
 function staleCases() {
   const library = libraryFiles(readRoot(OUTPUT));
+  const pluginOnly = pluginOnlySources(readRoot);
   for (const file of library) {
     expectStale('an edit to the shared library file ' + file + ' without a rebuild fails the check',
       (dir) => appendLine(path.join(dir, file), '// an edit with no rebuild'));
   }
+  // Only the plugin library holds these sources, so these cases fail when the
+  // check skips the plugin library.
+  for (const file of pluginOnly) {
+    expectStale('an edit to the plugin library source ' + file + ' without a rebuild fails the check',
+      (dir) => appendLine(path.join(dir, file), '// an edit with no rebuild'));
+  }
+  expectStale('a hand edit to the plugin library fails the check',
+    (dir) => appendLine(path.join(dir, PLUGIN_OUTPUT), '// a hand edit'));
+  expectStale('a missing plugin library fails the check',
+    (dir) => fs.rmSync(path.join(dir, PLUGIN_OUTPUT)));
   expectStale('an edit to the Sheets entry source without a rebuild fails the check',
     (dir) => appendLine(path.join(dir, ENTRY), '// an edit with no rebuild'));
   expectStale('an edit to the license header without a rebuild fails the check',
@@ -379,23 +421,32 @@ function staleCases() {
     appendLine(path.join(dir, library[0]), '// an edit with a rebuild');
     const build = runBuild(dir, []);
     if (build.status !== 0) return 'the build exited ' + build.status + ': ' + build.stderr;
-    if (!fs.readFileSync(path.join(dir, OUTPUT), 'utf8').includes('// an edit with a rebuild')) {
-      return 'the built file does not carry the edit';
+    for (const output of OUTPUTS) {
+      if (!fs.readFileSync(path.join(dir, output), 'utf8').includes('// an edit with a rebuild')) {
+        return output + ' does not carry the edit';
+      }
     }
     const result = runBuild(dir, ['--check']);
     return result.status === 0 ? null : 'the check exited ' + result.status;
   });
 
-  for (const file of [HEADER, ENTRY, library[0]]) {
+  for (const file of [HEADER, ENTRY, library[0], ...pluginOnly]) {
     check('a missing source ' + file + ' fails the build and the check', () => {
       const dir = workingCopy();
       fs.rmSync(path.join(dir, file));
-      const before = fs.readFileSync(path.join(dir, OUTPUT));
-      const build = runBuild(dir, []);
+      // The check runs while each built file matches the build, so it can
+      // exit non-zero only on the missing source.
+      const committed = readOutputs(dir);
       const result = runBuild(dir, ['--check']);
-      if (build.status === 0) return 'the build exited 0';
       if (result.status === 0) return 'the check exited 0';
-      if (!fs.readFileSync(path.join(dir, OUTPUT)).equals(before)) return 'the build wrote the Sheets file';
+      if (!sameOutputs(committed, readOutputs(dir))) return 'the check wrote a built file';
+      // The build runs on stale built files: a build that writes either file
+      // before it reaches the missing source leaves that file with other bytes.
+      for (const output of OUTPUTS) appendLine(path.join(dir, output), '// a stale built file');
+      const stale = readOutputs(dir);
+      const build = runBuild(dir, []);
+      if (build.status === 0) return 'the build exited 0';
+      if (!sameOutputs(stale, readOutputs(dir))) return 'the build wrote a built file';
       return null;
     });
   }
@@ -504,6 +555,18 @@ function builtFileCases() {
     if (!entry) return 'the Sheets entry source holds no [VERSION] line';
     if (!output || output[0] !== entry[0]) return 'the Sheets file holds ' + (output && output[0]);
     return null;
+  });
+
+  // Node reads a .mjs file as an ES module whatever its text holds, as the
+  // engine reads every plugin file. A name the export line lists and no
+  // source declares fails the load.
+  check('the plugin library loads as one ES module with at least one export', () => {
+    const dir = scratchTree(['library.mjs'], () => readRoot(PLUGIN_OUTPUT));
+    const result = childProcess.spawnSync(process.execPath, ['--input-type=module', '--eval',
+      'import * as library from "./library.mjs"; process.stdout.write(String(Object.keys(library).length));'],
+    { cwd: dir, encoding: 'utf8' });
+    if (result.status !== 0) return 'the load exited ' + result.status + ': ' + result.stderr;
+    return Number(result.stdout) > 0 ? null : 'the module exports ' + result.stdout + ' names';
   });
 }
 

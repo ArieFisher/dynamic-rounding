@@ -88,16 +88,17 @@ A capture from the extension holds real page content, and this repository is pub
 
 ### The manual test page
 
-`docs/test-pages/test-tables-1.html` holds one table per shape the extension handles, each with the result to expect. It is the page I load to check a change by hand, so it is the only place a manual test can name.
+`docs/test-pages/test-tables-1.html` holds one table per shape the extension handles, each with the result to expect. It is the page I load to check a change by hand, so it is the only place a manual test of the extension can name.
 
 - **Every change that adds a kind of test names the table in that page to test it on.** Give me the section number in the pull request's manual tests and in chat only when the test cannot run automatically: in the test suites, or on the page in a headless browser. Run every other test, and report it under `## Tested`. A test with no table to run it on is a test I cannot run.
 - **A change to a table shape the page already holds needs no new table.** Point at the section that holds it.
 - **A change that turns on a shape the page does not hold gets a new section, in the same branch.** Merged cells are the example: nothing on the page carried one, so no amount of simplifying it could tell the new reading from the old. The measure is whether the shape matters to someone using the extension, not whether the change was large.
 - Each new section states what the table holds and what to expect. Where a passing result looks like nothing happened, it states what a failure looks like, in the present tense. It never states what a setting does to the table, what the extension did before a change, or the issue behind a fixture. A row whose result waits on an open design decision links to that decision's issue. A row label carries "rounds" or "held" only when that row is the exception to the section's expectation.
+- **A manual test of the Claude Code plugin runs on the plugin test prompt.** The plugin draws no page, so the test runs on the table that the prompt in `claude-code-plugin/README.md` makes the model write, with the written text to expect under it. When a change turns on a shape the prompt's table does not hold, add the shape to that table in the same branch.
 
 ### Docs track behavior
 
-Living documents: `README.md`, `CONTRIBUTING.md`, `MAINTAINERS.md`, `chrome-extension/README.md`, `docs/design.md`, `docs/test-pages/test-tables-1.html`, `docs/vocabulary.md`, `js/README.md`, `js/tests-googlesheets-tab.md`, `python/README.md`, the `.agent/` instruction files, and this file. Sprint plans and logs, research notes, and released `js/CHANGELOG.md` entries are historical records. Mark them, never rewrite them.
+Living documents: `README.md`, `CONTRIBUTING.md`, `MAINTAINERS.md`, `chrome-extension/README.md`, `claude-code-plugin/README.md`, `docs/design.md`, `docs/test-pages/test-tables-1.html`, `docs/vocabulary.md`, `js/README.md`, `js/tests-googlesheets-tab.md`, `python/README.md`, the `.agent/` instruction files, and this file. Sprint plans and logs, research notes, and released `js/CHANGELOG.md` entries are historical records. Mark them, never rewrite them.
 
 - A pull request that changes behavior updates every living document its change invalidates, in the same branch. If none apply, write "No doc impact" in the body.
 
@@ -153,7 +154,9 @@ A Product section leads with the underlying issue: the flaw in the code that let
 ```bash
 node scripts/build-sheets.js
 ```
-CI runs `node scripts/build-sheets.js --check` and fails when the committed file differs from the build. The shared library files are part of the Sheets library, so rebuild after a change to one of them as well.
+CI runs `node scripts/build-sheets.js --check` and fails when a committed file differs from the build. The shared library files are part of the Sheets library, so rebuild after a change to one of them as well.
+
+The same build writes the plugin library, `claude-code-plugin/hooks/library.js`, from the shared library files and the extension's settings contract. It is generated too: never edit it by hand, and commit it with the Sheets file when a rebuild changes it.
 
 Run the test suite:
 ```bash
@@ -178,6 +181,20 @@ node chrome-extension/tests.js
 
 The tests live in pieces under `chrome-extension/tests/`, and `tests.js` joins them in its order list and runs them as one script. A new helper function goes in `helpers.js`. Each other piece holds the tests for one area of the extension, named on its first line; add a test to the piece for the area it tests. A new piece goes in the order list.
 
+#### Claude Code plugin
+
+Run the Node suite, part of CI on every PR. It covers the markdown adapter, the text table step, and the plugin test prompt's table in the plugin's README:
+```bash
+node claude-code-plugin/tests.js
+```
+
+Run the engine's two commands before opening a pull request that touches the plugin, and report both under `## Tested`. The first reads the plugin's manifest and hooks module the way the engine will, and the second runs the engine test on each surface:
+```bash
+claude plugin validate --strict claude-code-plugin
+claude plugin test claude-code-plugin
+```
+CI runs neither: it holds no Claude Code, and the plugin API is early access, so a Claude Code release can change either result with no change in this repository.
+
 #### Python
 
 Run the test suite:
@@ -198,7 +215,7 @@ pytest
 
 ### How versions move (this repository)
 
-The `Bump package versions on merge` workflow (`.github/workflows/bump-version.yml`) runs after every merged PR. `scripts/bump-versions.py` holds the table of packages and their version files. If the PR touched `python/**`, `chrome-extension/**`, or `js/**` — documentation included — it bumps the patch of the matching version file, or the minor version when the merged PR carries the `minor` label (the patch then resets to 0), opens a bump PR titled `chore(version): bump after #NNN`, waits for the required checks, merges it, and deletes the bump branch. For JS it also runs the Sheets build (`node scripts/build-sheets.js`), so the version-bump PR carries a `js/round_dynamic.js` that matches the build, and turns the `## [Unreleased]` heading in `js/CHANGELOG.md` into the new version's heading. Nobody edits those version lines or release headings by hand. To release a minor version, add the `minor` label to the PR before merging it.
+The `Bump package versions on merge` workflow (`.github/workflows/bump-version.yml`) runs after every merged PR. `scripts/bump-versions.py` holds the table of packages and their version files. If the PR touched `python/**`, `chrome-extension/**`, `claude-code-plugin/**`, or `js/**` — documentation included — it bumps the patch of the matching version file, or the minor version when the merged PR carries the `minor` label (the patch then resets to 0), opens a bump PR titled `chore(version): bump after #NNN`, waits for the required checks, merges it, and deletes the bump branch. For JS it also runs the Sheets build (`node scripts/build-sheets.js`), so the version-bump PR carries a `js/round_dynamic.js` that matches the build, and turns the `## [Unreleased]` heading in `js/CHANGELOG.md` into the new version's heading. The plugin's version file is its manifest, `claude-code-plugin/.claude-plugin/plugin.json`; no build follows its bump, because the plugin library holds no version. A pull request that changes a shared library file holds the rebuilt Sheets file and plugin library, so the workflow bumps the extension, the Sheets library, and the plugin after it merges. Nobody edits those version lines or release headings by hand. To release a minor version, add the `minor` label to the PR before merging it.
 
 ## Agents
 
