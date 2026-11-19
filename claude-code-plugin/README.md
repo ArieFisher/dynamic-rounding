@@ -15,7 +15,7 @@ At the prompt of a terminal session:
 Run `/simplify-data`, the toggle command. Every markdown table in the transcript shows simplified numbers, and the status entry "simplify-data: on" shows. Run the command again, and every table shows as the model wrote it.
 
 - The plugin is off at the start of every session.
-- The engine keeps each reply block as the model wrote it. While the plugin is on, press ctrl+o to see the originals.
+- The engine keeps each reply block as the model wrote it. Turn the plugin off to see the originals.
 - Numbers in prose stay as written. A table inside a fenced code block stays as written too.
 
 ## What simplifies
@@ -28,7 +28,7 @@ The plugin reads each cell of a markdown table the way the Chrome extension read
 - A date simplifies to its year. A time stays as written.
 - An identifier shape, such as a phone number, an IP address, or a web address, stays as written.
 
-The plugin test prompt below holds one column of each kind.
+The table in the plugin test prompt below holds a currency amount, a bracketed number, a percentage, a unit number, and a date.
 
 ## Known limits
 
@@ -68,7 +68,5 @@ Run `/simplify-data`. Expect the status entry to show, the columns to stay align
 ```
 
 A failure shows as columns that no longer align, or as a dim line that reports a skipped hook.
-
-Press ctrl+o. Expect the originals.
 
 Run `/simplify-data` again. Expect the table as the model wrote it, and no status entry.
