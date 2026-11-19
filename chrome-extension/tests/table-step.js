@@ -266,7 +266,7 @@ function applyTableStepPatches(text, patches) {
   const contentSrc = sourceByName('content.js');
   const DECL = (name) => new RegExp(`^\\s*function\\s+${name}\\s*\\(`, 'm');
   const MOVED = ['isAmbiguousDateDecision', 'resolveAmbiguousDates', 'datasetMaxMagnitude',
-    'classifiedCellPatches', 'tablePatches'];
+    'classifiedCellPatches', 'tablePatches', 'applyPatches'];
   // Every hand-written JavaScript file the extension and the Sheets library
   // ship, outside the tests. The Sheets library itself is skipped: the Sheets
   // build writes it from these files, so it holds a copy of table.js by
@@ -289,7 +289,7 @@ function applyTableStepPatches(text, patches) {
   eq('table step source: the walk finds the extension\'s content script', files.some((f) => f.endsWith('content.js')), true);
   const declaredIn = (name) => files.filter((file) => DECL(name).test(fs.readFileSync(file, 'utf8')))
     .map((file) => path.relative(path.join(__dirname, '..'), file));
-  eq('table step source: each table step function has one declaration in the repository',
+  eq('table step source: each function in lib/dr-simplify/table.js has one declaration in the repository',
     MOVED.map((name) => [name, declaredIn(name)]),
     MOVED.map((name) => [name, ['chrome-extension/lib/dr-simplify/table.js']]));
   // The page-free part of a cell's patches: content.js's cellPatches holds

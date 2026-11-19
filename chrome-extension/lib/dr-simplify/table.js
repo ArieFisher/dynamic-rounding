@@ -116,3 +116,13 @@ function tablePatches(entries, settings, passedMaxMag) {
     ({ entry, patches: classifiedCellPatches(entry, maxMag, settings) }));
   return { maxMag, cells };
 }
+
+// Apply patches to a text, last patch first, so each earlier patch's position
+// still counts into the text as passed in. For a caller with no page: the
+// extension writes through the patch writer, one text piece at a time.
+function applyPatches(text, patches) {
+  return patches
+    .slice()
+    .sort((a, b) => b.index - a.index)
+    .reduce((out, p) => out.slice(0, p.index) + p.newNum + out.slice(p.index + p.numStr.length), text);
+}
