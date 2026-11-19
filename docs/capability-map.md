@@ -1,10 +1,10 @@
 # Capability map
 
-What DynamicRounding does, grouped by layer, and how each platform does it. The [design document](design.md) holds how each part works.
+What DynamicRounding does, grouped by kind, and how each platform does it. The [design document](design.md) holds how each part works.
 
 **Legend:** **shared**: the platform runs the one shared library · **own**: the platform runs its own copy · **—**: the platform does not use it · **⚑**: refactor target
 
-| Layer | Capability | What it does | Extension | Plugin | Sheets | Python |
+| Group | Capability | What it does | Extension | Plugin | Sheets | Python |
 | --- | --- | --- | --- | --- | --- | --- |
 | Core | Settings contract | Setting names and default values | shared | shared | own, fixed | own |
 | | Classification ladder | One cell at a time: number shapes, format and group marks, identifier shapes, dates and times | shared | shared | shared | own, pandas module only: a whole string read as one number ⚑ |
@@ -23,7 +23,7 @@ What DynamicRounding does, grouped by layer, and how each platform does it. The 
 
 ## Refactor targets
 
-⚑ marks a place where the code does not match the decoupled design. Every ⚑ sits in the core or the output format layer. The adapters and the application layer differ by platform by design.
+⚑ marks a place where the code does not match the decoupled design. Every ⚑ sits in the core or the output format group. The adapters and the application group differ by platform by design.
 
 **Python runs its own copy of the core.** The shared case table runs in the Python suite, so Python must give the same rounding results; see [Reuse across platforms](design.md#reuse-across-platforms). Python is a different language, so sharing the core means one specification and one set of test cases that both copies pass.
 
