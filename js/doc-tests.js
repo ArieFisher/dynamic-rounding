@@ -283,14 +283,12 @@ function extractPythonPairs(doc, text) {
 
 const jsReadme = read('js/README.md');
 const pyReadme = read('python/README.md');
-const design = read('docs/design.md');
 const rootReadme = read('README.md');
 const sheetsTab = read('js/tests-googlesheets-tab.md');
 
 assertMinCount('js/README.md (formulas)', extractFormulaPairs('js/README.md', jsReadme), 5);
 assertMinCount('js/README.md (offset table)', extractOffsetTable('js/README.md', jsReadme), 5);
 assertMinCount('js/README.md (text cells)', extractTextCellBullets('js/README.md', jsReadme), 5);
-assertMinCount('docs/design.md (offset table)', extractOffsetTable('docs/design.md', design), 5);
 assertMinCount('python/README.md', extractPythonPairs('python/README.md', pyReadme), 7);
 assertMinCount('python/README.md (offset table)', extractOffsetTable('python/README.md', pyReadme), 5);
 assertMinCount('README.md', extractFormulaPairs('README.md', rootReadme) + extractPythonPairs('README.md', rootReadme), 2);

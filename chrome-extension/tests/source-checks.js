@@ -563,7 +563,6 @@
 
 (function rightClickRegisters_theLivingDocumentsStateTheRoute() {
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
-  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const extensionReadme = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
 
   const loadTimeScanRow = vocabularyMd.split('\n')
@@ -577,17 +576,6 @@
   eq('right-click: that row keeps the geometry probe as the unmarked grid route',
     /unmarked grid/i.test(loadTimeScanRow) && /geometry probe/i.test(loadTimeScanRow), true);
 
-  const detectionParagraph = designMd.split('\n')
-    .find((line) => /^\*\*Detection\.\*\*/.test(line)) || '';
-  eq('right-click: docs/design.md keeps a Detection paragraph',
-    detectionParagraph !== '', true);
-  eq('right-click: the Detection paragraph states the right-click route',
-    /right-click/i.test(detectionParagraph) &&
-      /nomination step/i.test(detectionParagraph) &&
-      /chain root/i.test(detectionParagraph), true);
-  eq('right-click: the Detection paragraph states the gutter outcome',
-    /gutter[\s\S]{0,120}scrolling pane/i.test(detectionParagraph), true);
-
   const readmeDetectionPoint = extensionReadme.split('\n')
     .find((line) => /^1\. \*\*Detection runs on demand/.test(line)) || '';
   eq('right-click: chrome-extension/README.md keeps its first detection point',
@@ -598,23 +586,23 @@
       /chain root/i.test(readmeDetectionPoint), true);
 })();
 
-// the three living documents each state the 1000-cell budget, per AGENTS.md's
-// rule that a behavior-invalidating change updates every living document it
-// invalidates in the same branch.
+// the two living documents each state the data test's cell budget, per
+// AGENTS.md's rule that a behavior-invalidating change updates every living
+// document it invalidates in the same branch. The budget comes from the
+// detection settings, so a change to the setting fails here until both
+// documents state the new value.
 (function dataTestBudget_livingDocumentsStateTheBudget() {
   const readmeMd = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
-  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
+  const budget = String(DR_DETECTION_SETTINGS.dataTestCellBudget);
   // The pattern matches a reworded sentence and fails on a sentence with no
-  // budget: the digits 1000 must sit within 80 characters of either
+  // budget: the budget's digits must sit within 80 characters of either
   // "data test" or "cell read(s)".
-  const statesBudget = (text) =>
-    /1000[\s\S]{0,80}(data test|cell reads?)|(data test|cell reads?)[\s\S]{0,80}1000/i.test(text);
-  eq('living documents: chrome-extension/README.md states the 1000-cell budget',
+  const statesBudget = (text) => new RegExp(
+    `${budget}[\\s\\S]{0,80}(data test|cell reads?)|(data test|cell reads?)[\\s\\S]{0,80}${budget}`, 'i').test(text);
+  eq(`living documents: chrome-extension/README.md states the ${budget}-cell budget`,
     statesBudget(readmeMd), true);
-  eq('living documents: docs/design.md states the 1000-cell budget',
-    statesBudget(designMd), true);
-  eq('living documents: docs/vocabulary.md states the 1000-cell budget',
+  eq(`living documents: docs/vocabulary.md states the ${budget}-cell budget`,
     statesBudget(vocabularyMd), true);
 })();
 
@@ -1520,14 +1508,11 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
     Object.prototype.hasOwnProperty.call(DR_DETECTION_SETTINGS, 'pillboxAutoCollapseMs'), false);
 })();
 
-// Living documents: docs/design.md's package table and docs/vocabulary.md both
-// carry the detection settings, per AGENTS.md's rule that a behavior-invalidating
-// change updates every living document it invalidates in the same branch.
+// Living documents: docs/vocabulary.md defines the detection settings, per
+// AGENTS.md's rule that a behavior-invalidating change updates every living
+// document it invalidates in the same branch.
 (function detectionSettings_livingDocumentsCarryTheTerm() {
-  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
-  eq('living documents: docs/design.md carries the detection settings',
-    designMd.includes('detection settings'), true);
   eq('living documents: docs/vocabulary.md defines the detection settings',
     vocabularyMd.includes('detection settings'), true);
 })();
@@ -1586,7 +1571,6 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 
 (function gridNesting_livingDocumentsAndTheTestPageStateTheRule() {
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
-  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const extensionReadme = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
   const testPage = fs.readFileSync(
     path.join(__dirname, '..', 'docs', 'test-pages', 'test-tables-1.html'), 'utf8');
@@ -1603,8 +1587,6 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 
   eq('nesting: chrome-extension/README.md states the nesting depth',
     /nesting depth/i.test(extensionReadme), true);
-  eq('nesting: docs/design.md states the nesting depth',
-    /nesting depth/i.test(designMd), true);
 
   const sectionStart = testPage.indexOf('13. Pinned-pane vendor grid');
   const nextHeadingAt = testPage.indexOf('<h2>', sectionStart);
@@ -1626,12 +1608,10 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 //
 // Two doc-pin blocks already stand in this suite (the nesting rule's and the
 // data-test budget's); this one follows them. The vocabulary defines the term
-// and the registry row lists it; the design document's state-ownership paragraph
-// lists it among the per-table registry fields.
+// and the registry row lists it.
 
 (function shapeFingerprint_theLivingDocumentsStateTheField() {
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
-  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
 
   const fingerprintRow = vocabularyMd.split('\n')
     .find((line) => /^\|\s*shape fingerprint\s*\|/i.test(line)) || '';
@@ -1652,22 +1632,12 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
     .find((line) => /^\|\s*registry\s*\|/i.test(line)) || '';
   eq('fingerprint docs: the registry row lists the shape fingerprint among its details',
     /shape fingerprint/i.test(registryRow), true);
-
-  const stateOwnership = designMd.split('\n')
-    .find((line) => /The registry keys per-table storage on the live element/i.test(line)) || '';
-  eq('fingerprint docs: docs/design.md keeps its per-table registry sentence',
-    stateOwnership !== '', true);
-  eq('fingerprint docs: that sentence lists the shape fingerprint',
-    /shape fingerprint/i.test(stateOwnership), true);
-  eq('fingerprint docs: that sentence states when the fingerprint carries header texts',
-    /header row/i.test(stateOwnership), true);
 })();
 
 // --- the living documents state the pending table rule ---
 
 (function pendingRetest_livingDocumentsStateTheRule() {
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
-  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const extensionReadme = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
 
   const pendingRow = vocabularyMd.split('\n')
@@ -1678,21 +1648,6 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
     /subtree observer/i.test(pendingRow), true);
   eq('pending: the pending table row states the re-test cap',
     /re-test cap/i.test(pendingRow), true);
-
-  const designParagraphs = designMd.split('\n\n');
-  const detectionParagraph = designParagraphs.find((p) => /^\*\*Detection\.\*\*/.test(p)) || '';
-  eq('pending: docs/design.md carries a Detection paragraph',
-    detectionParagraph !== '', true);
-  eq('pending: the Detection paragraph states that an empty chain leaves a pending table',
-    /pending table/i.test(detectionParagraph), true);
-  eq('pending: the Detection paragraph states the cap on failed re-tests',
-    /reaches the cap/i.test(detectionParagraph), true);
-
-  const stateParagraph = designParagraphs.find((p) => /hold state outside the model/i.test(p)) || '';
-  eq('pending: docs/design.md lists the state held outside the model',
-    stateParagraph !== '', true);
-  eq('pending: that list names each pending table\'s subtree observer',
-    /pending table[^.]*observer/i.test(stateParagraph), true);
 
   const detectionPoint = extensionReadme.split('\n')
     .find((line) => /Detection runs on demand/i.test(line)) || '';
@@ -2001,22 +1956,16 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 })();
 
 // the living documents name the detection settings in the capture
-// paragraph or row a reader would consult — the README's capture section,
-// the design document's Capture paragraph, and the vocabulary's capture state
-// row — loose enough to survive rewording, tight enough to fail if the
+// paragraph or row a reader would consult — the README's capture section and
+// the vocabulary's capture state row — loose enough to survive rewording, tight enough to fail if the
 // mention is dropped.
 (function captureDetectionSettingsLivingDocumentsNameTheTerm() {
   const readmeMd = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
-  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
 
   const readmeCaptureSection = (readmeMd.split('\n## Capture\n')[1] || '').split('\n## ')[0];
   eq('living documents: chrome-extension/README.md\'s capture paragraph names the detection settings',
     readmeCaptureSection.includes('detection settings'), true);
-
-  const designCaptureParagraph = designMd.split('\n').find((line) => line.startsWith('**Capture.**')) || '';
-  eq('living documents: docs/design.md\'s Capture paragraph names the detection settings',
-    designCaptureParagraph.includes('detection settings'), true);
 
   const vocabularyCaptureStateRow = vocabularyMd.split('\n').find((line) => line.startsWith('| capture state |')) || '';
   eq('living documents: docs/vocabulary.md\'s capture state row names the detection settings',

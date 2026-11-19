@@ -1,6 +1,6 @@
 # Capability map
 
-What DynamicRounding does, grouped by kind, and how each platform does it. The [design document](design.md) holds how each part works.
+What DynamicRounding does, grouped by kind, and how each platform does it. The [design document](design.md) holds the system's shape and the reasons behind it.
 
 **Legend:** **shared**: the platform runs the one shared library · **own**: the platform runs its own copy · **—**: the platform does not use it · **⚑**: refactor target
 
@@ -25,7 +25,7 @@ What DynamicRounding does, grouped by kind, and how each platform does it. The [
 
 ⚑ marks a place where the code does not match the decoupled design. Every ⚑ sits in the core or the output format group. The adapters and the application group differ by platform by design.
 
-**Python runs its own copy of the core.** The shared case table runs in the Python suite, so Python must give the same rounding results; see [Reuse across platforms](design.md#reuse-across-platforms). Python is a different language, so sharing the core means one specification and one set of test cases that both copies pass.
+**Python runs its own copy of the core.** The shared case table runs in the Python suite, so Python must give the same rounding results; see [How the code is shared](design.md#how-the-code-is-shared). Python is a different language, so sharing the core means one specification and one set of test cases that both copies pass.
 
 - Classification ladder: the pandas module reads a whole string as one number, so "today I ate 1,234 hotdogs" stays as written.
 - Simplify numbers: Python holds its own rounding.
