@@ -6,7 +6,10 @@
 // cell's text in the whole text. A cell carries no kind flag, so the text
 // table step works the same on any adapter's cells.
 
-const FENCE = /^\s*(`{3,}|~{3,})/;
+const FENCE = /^(\s*)(`{3,}|~{3,})/;
+// Four columns: the indentation at which markdown reads a line as code, and
+// the width a tab counts for.
+const CODE_INDENT = 4;
 // Matched against a trimmed line. With the outer whitespace in the pattern,
 // the match time grows with the square of a long run of spaces.
 const SEPARATOR_ROW = /^(?=.*\|)\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$/;
@@ -15,24 +18,31 @@ const isSeparatorRow = (line) => SEPARATOR_ROW.test(line.trim());
 
 function fenceParts(line) {
   const match = FENCE.exec(line);
-  return match === null ? null : { fence: match[1], rest: line.slice(match[0].length) };
+  if (match === null) return null;
+  const [whole, indent, fence] = match;
+  const columns = [...indent].reduce((sum, character) => sum + (character === '\t' ? CODE_INDENT : 1), 0);
+  return { fence, columns, rest: line.slice(whole.length) };
 }
 
-// The opening fence on a line, or null. A line with a backtick after its
-// backtick fence is inline code, and holds no opening fence.
+// The opening fence on a line, with its indentation in columns, or null. A
+// line with a backtick after its backtick fence is inline code, and holds no
+// opening fence. The indentation has no limit here, because a fence inside a
+// list item sits as deep as the item's text.
 function openingFence(line) {
   const parts = fenceParts(line);
   if (parts === null) return null;
-  return parts.fence[0] === '`' && parts.rest.includes('`') ? null : parts.fence;
+  return parts.fence[0] === '`' && parts.rest.includes('`') ? null : parts;
 }
 
 // A fenced code block ends at a fence of its opening fence's character, at
-// least as long, with nothing after it. Any other fence line is a line of the
-// block, so a block can hold a shorter fence or one of the other character.
-function isClosingFence(line, fence) {
+// least as long, with nothing after it, and indented less than four columns
+// deeper. Any other fence line is a line of the block, so a block can hold a
+// shorter fence, one of the other character, or an indented one.
+function isClosingFence(line, opening) {
   const parts = fenceParts(line);
-  return parts !== null && parts.fence[0] === fence[0]
-    && parts.fence.length >= fence.length && parts.rest.trim() === '';
+  return parts !== null && parts.fence[0] === opening.fence[0]
+    && parts.fence.length >= opening.fence.length && parts.rest.trim() === ''
+    && parts.columns - opening.columns < CODE_INDENT;
 }
 
 function linesWithStart(text) {
@@ -73,13 +83,13 @@ export function markdownTables(text) {
   const isRow = (entry) => entry !== undefined && entry.line.includes('|') && openingFence(entry.line) === null;
   const tables = [];
   // The opening fence of the fenced code block the walk is inside, or null.
-  let fence = null;
+  let opening = null;
   for (let i = 0; i < lines.length; i++) {
-    if (fence !== null) {
-      if (isClosingFence(lines[i].line, fence)) fence = null;
+    if (opening !== null) {
+      if (isClosingFence(lines[i].line, opening)) opening = null;
       continue;
     }
-    fence = openingFence(lines[i].line);
+    opening = openingFence(lines[i].line);
     const isHeaderRow = isRow(lines[i])
       && lines[i + 1] !== undefined && isSeparatorRow(lines[i + 1].line);
     if (!isHeaderRow) continue;

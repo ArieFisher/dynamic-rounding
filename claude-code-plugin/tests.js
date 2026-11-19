@@ -138,6 +138,15 @@ const simplify = (text, settings = DR_DEFAULTS) =>
   const carriageReturns = lines('```', ...table, '```', '', ...table).replaceAll('\n', '\r\n');
   eq('adapter: a fence line that ends in a carriage return closes the block',
     firstCellStarts(carriageReturns), [lastHeaderCell(carriageReturns)]);
+  const indentedFence = lines('```yaml', 'note: |', '    ```', ...table, '```', '', ...table);
+  eq('adapter: a fence line indented four spaces deeper than the opening fence closes nothing',
+    firstCellStarts(indentedFence), [lastHeaderCell(indentedFence)]);
+  const tabbedFence = lines('```yaml', 'note: |', '\t```', ...table, '```', '', ...table);
+  eq('adapter: a fence line indented by a tab closes nothing',
+    firstCellStarts(tabbedFence), [lastHeaderCell(tabbedFence)]);
+  const inListItem = lines('- Item:', '', '    ```', ...table, '    ```', '', ...table);
+  eq('adapter: a fence line indented as deep as the opening fence closes the block',
+    firstCellStarts(inListItem), [lastHeaderCell(inListItem)]);
 })();
 
 (function adapter_readsAnIndentedTable() {
@@ -191,6 +200,10 @@ const simplify = (text, settings = DR_DEFAULTS) =>
   eq('text table step: a table under an unclosed fence stays as written', simplify(unclosed), unclosed);
   const nested = lines('````markdown', '```text', ...table, '```', '````');
   eq('text table step: a table in a fenced code block inside a longer fence stays as written', simplify(nested), nested);
+  const docstring = lines('```python', 'def report():', '    """', '    ```',
+    ...table.map((row) => '    ' + row), '    ```', '    """', '```');
+  eq('text table step: a table between indented fence lines in a fenced code block stays as written',
+    simplify(docstring), docstring);
 })();
 
 (function step_escapedPipeKeepsTheFirstColumnWhole() {
