@@ -434,12 +434,19 @@ function staleCases() {
     check('a missing source ' + file + ' fails the build and the check', () => {
       const dir = workingCopy();
       fs.rmSync(path.join(dir, file));
-      const before = readOutputs(dir);
-      const build = runBuild(dir, []);
+      // The check runs while each built file matches the build, so it can
+      // exit non-zero only on the missing source.
+      const committed = readOutputs(dir);
       const result = runBuild(dir, ['--check']);
-      if (build.status === 0) return 'the build exited 0';
       if (result.status === 0) return 'the check exited 0';
-      if (!sameOutputs(before, readOutputs(dir))) return 'the build wrote a built file';
+      if (!sameOutputs(committed, readOutputs(dir))) return 'the check wrote a built file';
+      // The build runs on stale built files: a build that writes either file
+      // before it reaches the missing source leaves that file with other bytes.
+      for (const output of OUTPUTS) appendLine(path.join(dir, output), '// a stale built file');
+      const stale = readOutputs(dir);
+      const build = runBuild(dir, []);
+      if (build.status === 0) return 'the build exited 0';
+      if (!sameOutputs(stale, readOutputs(dir))) return 'the build wrote a built file';
       return null;
     });
   }
