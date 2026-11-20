@@ -1869,9 +1869,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   }
 })();
 
-// The link filter holds on a cell with numbers in separate pieces: a number inside a link stays, and
+// A markup range holds on a cell with numbers in separate pieces: a number inside a link stays, and
 // once the cell is rounded the record's kept positions drive the preview.
-(function gridSeparatePieces_linkFilter() {
+(function gridSeparatePieces_markupRange() {
   const grid = makeE2EGridWrapper([['125126']]);
   const [cell] = grid.cellEls;
   const plain = makeElementNode('p', [makeTextNode('125')]);
@@ -3485,9 +3485,9 @@ function everyRowRead(kind, largeIn) {
 })();
 
 (function mergeLadderDivergence_mixedTextLinkedNumber() {
-  // OLD preview copy's mixed-text fallback never applied filterLinkMatches —
+  // OLD preview copy's mixed-text fallback never applied the link rule —
   // "<text> 42" with "42" wrapped in <a> would surface 42 as a sample the
-  // engine never touches (filterLinkMatches drops it).
+  // engine never touches (its markup range holds it).
   function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   const mixedLinkCell = makeLinkCell(['42'], 'See page for details');
   const table = {

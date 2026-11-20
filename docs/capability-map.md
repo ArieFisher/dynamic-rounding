@@ -12,7 +12,7 @@ What DynamicRounding does, grouped by kind, and how each platform does it. The [
 | | Simplify numbers | Round a plain number against its order of magnitude | shared | shared | shared | own ⚑ |
 | | Simplify dates and times | Drop the parts of a date or time finer than the granularity, e.g. day to year | shared ⚑ | shared ⚑ | shared ⚑ | — ⚑ |
 | Output format | Write-back | Turn a rounded number back into text: US group marks, trailing zeros trimmed, the characters around the digits left as written | shared ⚑ | shared ⚑ | shared ⚑ | — (returns numbers) |
-| Adapters | Input adapter | Find the table and list its cells, each with its position, its value, and the facts its text does not show (e.g. a footnote mark, a whole-cell link) | detection, then the native-table adapter or the grid adapter | markdown adapter | Sheets input step: the cell range passed to the formula | a value, a list, or a pandas series |
+| Adapters | Input adapter | Find the table and list its cells, each with its position, its value, and the facts its text does not show (e.g. a footnote mark, a link) | detection, then the native-table adapter or the grid adapter | markdown adapter | Sheets input step: the cell range passed to the formula | a value, a list, or a pandas series |
 | | Output writer | Apply each cell's patches at the cell's place in the source | patch writer: edits the page's text pieces | text table step: rewrites the markdown text | returns cell values | returns values or a series |
 | Application | Interaction | How the user starts, stops, and adjusts simplification | right-click, table pillbox, sidebar | toggle command, status entry | formula call | function call |
 | | Visual feedback | Show the user what changed | pulse | — | — | — |
@@ -57,13 +57,15 @@ The core needs the full text for two reasons. The classification ladder tells a 
 
 The code for three rules reads the row and column: the range expression, the first-row and first-column exclusions, and the column post-pass.
 
-Only the extension adds facts the text does not show, because only a page holds them:
+The extension adds facts the text does not show, because only a page holds them:
 
-- whether the whole cell is a link
+- the markup ranges: where the text sits inside a link or a code element
 - where each superscript sits, e.g. a footnote mark
 - whether the cell's digits sit in more than one text piece
 
-With them, the core skips a link, keeps a footnote mark out of a number, and does not read numbers in separate text pieces as one identifier.
+The markdown adapter finds the markup ranges in the text itself, from markdown's link and code span syntax.
+
+With them, the core keeps a number inside a link or code as written, keeps a footnote mark out of a number, and does not read numbers in separate text pieces as one identifier.
 
 | Platform | How the input adapter lists the cells |
 | --- | --- |

@@ -359,7 +359,8 @@ function toNumber(value) {
 // "12," at the "12" and "9,850." at the "9,850". A comma or period that ends
 // a number is sentence punctuation ("ref 12, total 9,850."), and every later
 // step searches the live text for the match string, so a trailing mark in it
-// makes the link filter and the patch step miss a number that is right there.
+// makes the placement step and the patch step miss a number that is right
+// there.
 //
 // Whitespace between digit groups is a group mark only in the group shape
 // (groupShapePattern, core.js, the one copy the number shape test reads
@@ -1379,17 +1380,15 @@ function getIdentifierMaskedRanges(text) {
  * the simplification options, and returns its decision as data. In the
  * extension the text is the rendered text (the raw text when the rendered
  * text is empty) or a simplified cell's stored original; in Sheets it is the
- * cell value. Four more values come from the page, and the caller derives
- * them: whether the cell's whole text is a link (isCellWholeLink
- * reads the anchors' text), whether the cell holds a superscript, the superscript
- * spans in the text classifyCell reads (getSuperscriptRanges), and whether
- * the cell's digits sit in more than one text piece (from the piece layout),
- * so the join of numbers in separate pieces never reads as one spaced
- * identifier. The bare names the ladder calls come from lib/dr-number's
+ * cell value. Four more values come from the cell's source, and the caller
+ * derives them: the markup ranges, the spans of the text that the source
+ * marks as a link or as code (getMarkupRanges in lib/dr-table on a page, the
+ * markdown adapter in the plugin); whether the cell holds a superscript; the
+ * superscript spans in the text classifyCell reads (getSuperscriptRanges);
+ * and whether the cell's digits sit in more than one text piece (from the
+ * piece layout), so the join of numbers in separate pieces never reads as one
+ * spaced identifier. The bare names the ladder calls come from lib/dr-number's
  * core.js, parsing.js, and identifiers.js, loaded ahead of this file.
- *
- * The link filter needs the page too, so the caller runs it over an extracted
- * decision's matches (see finalizeExtractedDecision in lib/dr-table).
  */
 
 /**
@@ -1410,10 +1409,11 @@ function isWholeCellQuoted(trimmedText) {
  * a clock time ("18:30<sup>2</sup>") never joins its digits; the blanks keep
  * every position in place.
  */
-function extractSimplifyMatches(text, superscriptRanges) {
+function extractSimplifyMatches(text, superscriptRanges, markupRanges = []) {
   const shapeText = superscriptRanges.reduce(
     (t, r) => t.slice(0, r.start) + ' '.repeat(r.end - r.start) + t.slice(r.end), text);
   const masked = [
+    ...markupRanges,
     ...getQuoteMaskedRanges(text),
     ...getIdentifierMaskedRanges(shapeText),
     ...superscriptRanges,
@@ -1432,7 +1432,7 @@ function extractSimplifyMatches(text, superscriptRanges) {
  *   reason: the rule that gave the mode. For a skip: 'out-of-range', the
  *     exclusion getExclusionReason returns ('first-row', 'first-column',
  *     'percent', 'currency'), 'quoted', 'times-disabled', 'dates-disabled',
- *     'impossible-date', 'identifier', 'link', or 'no-number'. 'superscript'
+ *     'impossible-date', 'identifier', 'markup', or 'no-number'. 'superscript'
  *     marks a cell with a superscript whose text the number reader reads as one
  *     number, skipped or extracted. 'unit' marks a unit number, and
  *     'simplify' every other cell that simplifies.
@@ -1441,8 +1441,7 @@ function extractSimplifyMatches(text, superscriptRanges) {
  *       findDates in lib/dr-number
  *     'date' (needs the column post-pass) → { dates }, at least one of them
  *       all-numeric (isAmbiguousDate), plus pending: 'ambiguous-date'
- *     'extracted' → { matches } — matches still need the caller's link
- *       filter; see file header. A cell that is one number (a pure cell, a
+ *     'extracted' → { matches }. A cell that is one number (a pure cell, a
  *       bracketed number, or a unit number) holds one match.
  */
 function classifyCell(input, options) {
@@ -1451,7 +1450,7 @@ function classifyCell(input, options) {
     rowIndex,
     columnIndex,
     ranges,
-    isWholeLink = false,
+    markupRanges = [],
     hasSuperscript = false,
     superscriptRanges = [],
     digitsSpanPieces = false,
@@ -1460,9 +1459,10 @@ function classifyCell(input, options) {
   // A cell that is one number gets one match over its digits alone, so the
   // write-back leaves a sign, a bracket, a currency sign, a percent sign, a
   // suffix, or a currency code where the page put it.
-  const oneNumber = (match, reason) => (isWholeLink
-    ? { mode: 'skip', reason: 'link' }
-    : { mode: 'extracted', reason, value: { matches: [match] } });
+  const oneNumber = (match, reason) => (
+    overlapsMaskedRange(markupRanges, match.index, match.index + match.numStr.length)
+      ? { mode: 'skip', reason: 'markup' }
+      : { mode: 'extracted', reason, value: { matches: [match] } });
 
   if (!isInRanges(rowIndex, columnIndex, ranges)) {
     return { mode: 'skip', reason: 'out-of-range' };
@@ -1500,8 +1500,7 @@ function classifyCell(input, options) {
   // extraction masks each superscript span.
   if (hasSuperscript) {
     const isNumber = toNumber(text) !== null;
-    if (isNumber && isWholeLink) return { mode: 'skip', reason: 'link' };
-    const matches = extractSimplifyMatches(text, superscriptRanges);
+    const matches = extractSimplifyMatches(text, superscriptRanges, markupRanges);
     if (matches.length === 0) return { mode: 'skip', reason: isNumber ? 'superscript' : 'no-number' };
     return { mode: 'extracted', reason: isNumber ? 'superscript' : 'simplify', value: { matches } };
   }
@@ -1524,7 +1523,7 @@ function classifyCell(input, options) {
   const unit = matchUnitNumber(text);
   if (unit) return oneNumber(unit, 'unit');
 
-  const matches = extractSimplifyMatches(text, superscriptRanges);
+  const matches = extractSimplifyMatches(text, superscriptRanges, markupRanges);
   if (matches.length === 0) return { mode: 'skip', reason: 'no-number' };
   return { mode: 'extracted', reason: 'simplify', value: { matches } };
 }

@@ -118,7 +118,7 @@ function runRowHeaderTable(optsOverrides) {
 function isRounded(cell) { return cell.classList.contains('dr-ext-rounded'); }
 
 // Helper: build a mock anchor element that looks enough like a DOM <a> node
-// for isCellWholeLink and filterLinkMatches to consume.
+// for getMarkupRanges to consume.
 function makeMockAnchor(text) {
   const anchor = {
     innerText: text,
@@ -145,7 +145,7 @@ function makeMockTextNode(text, insideAnchor, cell) {
   };
 }
 
-// Build a mock cell for isCellWholeLink / filterLinkMatches testing.
+// Build a mock cell for getMarkupRanges testing.
 // anchors: array of anchor text strings that appear as <a> children
 // outsideText: text in the cell that is NOT inside any anchor (null if none)
 // cell.innerText = outsideText + anchor texts combined (as visible text)
@@ -173,7 +173,7 @@ function makeLinkCell(anchors, outsideText) {
     tagName: 'TD',
   };
 
-  // Build text nodes list for filterLinkMatches's createTreeWalker.
+  // Build text nodes list for getMarkupRanges's createTreeWalker.
   // We model the DOM structure: anchor text is inside anchor nodes, outside text is bare.
   const textNodes = [];
   if (outsideText) {
@@ -574,7 +574,7 @@ function makeSuperscriptCell(segments) {
     dataset: {},
     title: '',
     tagName: 'TD',
-    // querySelectorAll('a') → no anchors so filterLinkMatches is a no-op
+    // querySelectorAll('a') → no anchors so getMarkupRanges holds nothing
     querySelectorAll: (sel) => sel === 'a' ? [] : [],
     // querySelector('sup') → truthy iff any segment is inside <sup>
     querySelector: (sel) => sel === 'sup' && hasSup ? { tagName: 'SUP' } : null,
@@ -1246,11 +1246,15 @@ function makeKeyStatsGrid() {
   ])]);
   setGridCellPieces(dollar, [makeElementNode('sym', [makeTextNode('$')]), makeElementNode('num', [makeTextNode('337.91')])]);
   setGridCellPieces(split, [makeTextNode('4.'), makeElementNode('dec', [makeTextNode('91')]), makeTextNode('tn')]);
-  const anchor = makeElementNode('a', [makeTextNode('7.5m')]);
+  const anchorText = makeTextNode('7.5m');
+  const anchor = makeElementNode('a', [anchorText]);
   anchor.innerText = '7.5m';
+  anchor.closest = (sel) => (sel === 'a' ? anchor : null);
+  anchorText.parentElement = anchor;
   setGridCellPieces(link, [anchor]);
   link.innerText = '7.5m';
   link.querySelectorAll = (sel) => (sel === 'a' ? [anchor] : []);
+  link.contains = (node) => node === anchor;
   setGridCellPieces(date, [makeTextNode('2024-'), makeElementNode('md', [makeTextNode('03-15')])]);
   return grid;
 }
@@ -3186,8 +3190,8 @@ function tkRead(kind, pair, settings) {
   const foundIn = (table) => findTables(rwEl('div', {}, [place(table)]), { styleProbe: inlineStyleProbe })
     .filter((el) => isDataTable(el));
   // The count runs on the rewrite page too: the data test reads each cell
-  // through the per-cell read the pass runs, and its link filter walks the
-  // cell's text pieces with the page's tree walker.
+  // through the per-cell read the pass runs, and its markup range read walks
+  // the cell's text pieces with the page's tree walker.
   let count = 0;
   withRewritePage(() => { count = foundIn(rwDrawTable(kind, pair.sections, drawOpts).table).length; });
   const tables = [];

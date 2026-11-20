@@ -2,9 +2,10 @@
 
 // The markdown adapter: presents the markdown tables in a text as cells.
 // markdownTables returns one list of cells per table. A cell is
-// { text, rowIndex, columnIndex, start }, where start is the position of the
-// cell's text in the whole text. A cell carries no kind flag, so the text
-// table step works the same on any adapter's cells.
+// { text, rowIndex, columnIndex, start, markupRanges }, where start is the
+// position of the cell's text in the whole text, and markupRanges holds the
+// cell's links and code spans as positions in its text. A cell carries no
+// kind flag, so the text table step works the same on any adapter's cells.
 
 const FENCE = /^(\s*)(`{3,}|~{3,})/;
 // The indentation, in columns, at which markdown reads a line as code.
@@ -43,6 +44,40 @@ function isClosingFence(line, opening) {
     && parts.columns - opening.columns < CODE_INDENT;
 }
 
+// A link's text may hold brackets one level deep, as a citation such as
+// "[[12]](url)" does; its destination holds no parenthesis and no line break.
+// Each search stops at the next unmatched bracket, so the scan stays linear
+// in the cell's length.
+const LINK = /!?\[(?:[^[\]]|\[[^[\]]*\])*\]\([^()\n]*\)/g;
+const BACKTICK_RUN = /`+/g;
+
+// A code span opens at a run of backticks and closes at the next run of the
+// same length. A run with no such partner is a literal backtick.
+function codeSpanRanges(text) {
+  const runs = [...text.matchAll(BACKTICK_RUN)].map((m) => ({ start: m.index, end: m.index + m[0].length }));
+  // For each run, the index of the next run of the same length, found in one
+  // walk from the end.
+  const nextOfLength = new Map();
+  const partner = runs.map(() => -1);
+  for (let i = runs.length - 1; i >= 0; i--) {
+    const length = runs[i].end - runs[i].start;
+    partner[i] = nextOfLength.get(length) ?? -1;
+    nextOfLength.set(length, i);
+  }
+  const ranges = [];
+  for (let i = 0; i < runs.length; i++) {
+    if (partner[i] === -1) continue;
+    ranges.push({ start: runs[i].start, end: runs[partner[i]].end });
+    i = partner[i];
+  }
+  return ranges;
+}
+
+function markupRanges(text) {
+  const links = [...text.matchAll(LINK)].map((m) => ({ start: m.index, end: m.index + m[0].length }));
+  return [...links, ...codeSpanRanges(text)];
+}
+
 function linesWithStart(text) {
   let start = 0;
   return text.split('\n').map((line) => {
@@ -70,7 +105,7 @@ function rowCells({ line, start }, rowIndex) {
   const isOutside = (piece) => piece.text.trim() === '';
   return pieces
     .slice(isOutside(pieces[0]) ? 1 : 0, isOutside(pieces.at(-1)) ? -1 : undefined)
-    .map((piece, columnIndex) => ({ ...piece, rowIndex, columnIndex }));
+    .map((piece, columnIndex) => ({ ...piece, rowIndex, columnIndex, markupRanges: markupRanges(piece.text) }));
 }
 
 // The header row is row 0 and the separator row presents no cells. A table

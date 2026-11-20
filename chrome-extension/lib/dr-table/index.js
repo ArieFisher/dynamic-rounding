@@ -23,8 +23,7 @@ const DR_TABLE = {
   makeAdapter,
   // classify.js
   getSuperscriptRanges,
-  isCellWholeLink,
-  filterLinkMatches,
+  getMarkupRanges,
   classifyTableCell,
   // detect.js
   looksLikeGrid,
