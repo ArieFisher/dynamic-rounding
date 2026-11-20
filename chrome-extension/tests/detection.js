@@ -4,22 +4,58 @@
 // Numbers inside links
 // ---------------------------------------------------------------------------
 
-// --- Cell whose entire content is inside <a> is left unrounded ---
-// isCellWholeLink(<td><a href="#">1234</a></td>) must return true.
 (function ac1_wholeLinkCell() {
-  const cell = makeLinkCell(['1234'], null);
-  eq('isCellWholeLink returns true for <td><a>1234</a></td>',
-    isCellWholeLink(cell), true);
+  withLinkCreateTreeWalker(function() {
+    const cell = makeLinkCell(['1234'], null);
+    eq('getMarkupRanges covers the whole text of <td><a>1234</a></td>',
+      getMarkupRanges(cell, null), [{ start: 0, end: 4 }]);
+  });
 })();
 
-// Converse: a cell with NO anchor must return false.
 (function ac1_noLinkCell() {
   const plainCell = {
     innerText: '1234',
     querySelectorAll: () => [],
   };
-  eq('converse: isCellWholeLink returns false when no <a> present',
-    isCellWholeLink(plainCell), false);
+  eq('converse: getMarkupRanges holds nothing when no <a> or <code> is present',
+    getMarkupRanges(plainCell, null), []);
+  eq('converse: getMarkupRanges holds nothing for a cell with no querySelectorAll',
+    getMarkupRanges({ innerText: '123' }, null), []);
+})();
+
+// A <code> element marks a markup range the same way an <a> does.
+(function ac1_codeCell() {
+  withLinkCreateTreeWalker(function() {
+    const code = { tagName: 'CODE' };
+    const cell = {
+      innerText: 'Set 9,876,543 to 4,236,000',
+      querySelectorAll: (sel) => sel === 'code' ? [code] : [],
+      contains: (node) => node === code,
+      _textNodes: [
+        { nodeValue: 'Set ', parentElement: { closest: () => null } },
+        { nodeValue: '9,876,543', parentElement: { closest: (sel) => sel === 'code' ? code : null } },
+        { nodeValue: ' to 4,236,000', parentElement: { closest: () => null } },
+      ],
+    };
+    eq('getMarkupRanges covers the text inside <code>',
+      getMarkupRanges(cell, null), [{ start: 4, end: 13 }]);
+  });
+})();
+
+// A link around the whole table sits outside the cell, so it marks nothing.
+(function ac1_linkOutsideCell() {
+  withLinkCreateTreeWalker(function() {
+    const outer = { tagName: 'A' };
+    const inner = { tagName: 'A' };
+    const cell = {
+      innerText: '1234',
+      querySelectorAll: (sel) => sel === 'a' ? [inner] : [],
+      contains: (node) => node === inner,
+      _textNodes: [{ nodeValue: '1234', parentElement: { closest: (sel) => sel === 'a' ? outer : null } }],
+    };
+    eq('getMarkupRanges skips a link that sits outside the cell',
+      getMarkupRanges(cell, null), []);
+  });
 })();
 
 // via roundTable: a pure-numeric whole-link cell is skipped (mode = 'skip'),
@@ -47,23 +83,20 @@
 })();
 
 // --- Mixed visible text with <a>5</a> inline — linked number preserved ---
-// isCellWholeLink must return false (not the whole cell text is in links).
-// filterLinkMatches must drop 5 and keep the other number.
 (function ac3_inlineLinkPreservesLinkedNumber() {
   withLinkCreateTreeWalker(function() {
-    // Cell: "Revenue 3000 " + <a>5</a>; the matches count in the pieces' flat
+    // Cell: "Revenue 3000 " + <a>5</a>; the ranges count in the pieces' flat
     // text, "Revenue 3000 5", which the layout holds as the original.
     const cell = makeLinkCell(['5'], 'Revenue 3000 ');
     const original = cell._textNodes.map((node) => node.nodeValue);
+    const markupRanges = getMarkupRanges(cell, { original, toFlat: null });
+    eq('getMarkupRanges covers only the linked 5', markupRanges, [{ start: 13, end: 14 }]);
 
-    eq('isCellWholeLink is false for mixed cell',
-      isCellWholeLink(cell), false);
-
-    const matches = extractNumbersInText(original.join(''));
-    const filtered = filterLinkMatches(cell, matches, { original, toFlat: null });
-    const nums = filtered.map(m => m.num);
-    eq('linked number 5 is absent from filtered matches', nums.includes(5), false);
-    eq('non-linked 3000 survives filtering', nums.includes(3000), true);
+    const decision = classifyCell({ text: original.join(''), rowIndex: 1, columnIndex: 1, ranges: null, markupRanges },
+      { simplifyFirstColumn: true, simplifyFirstRow: true, simplifyDates: true, simplifyTimes: true });
+    const nums = decision.value.matches.map(m => m.num);
+    eq('linked number 5 is absent from the matches', nums.includes(5), false);
+    eq('non-linked 3000 stays in the matches', nums.includes(3000), true);
   });
 })();
 
@@ -258,10 +291,14 @@
 })();
 
 (function dataTest_aWholeLinkCellFails() {
+  const anchor = { tagName: 'A', innerText: '42' };
+  anchor.closest = (sel) => (sel === 'a' ? anchor : null);
   const linkCell = withTextPiece({
     textContent: '42', innerText: '42',
-    querySelectorAll: (sel) => (sel === 'a' ? [{ innerText: '42' }] : []),
+    querySelectorAll: (sel) => (sel === 'a' ? [anchor] : []),
+    contains: (node) => node === anchor,
   });
+  linkCell.childNodes[0].parentElement = anchor;
   const table = { rows: [
     { cells: [withTextPiece({ textContent: 'Name' }), withTextPiece({ textContent: 'Page' })] },
     { cells: [withTextPiece({ textContent: 'Tami' }), linkCell] },
@@ -511,8 +548,8 @@ const consistentCellCountStepPasses = (children) =>
 //     parentNode === cell
 //   - cell.querySelector('sup'): returns a truthy object when any inSup:true
 //     segment exists; null otherwise
-//   - cell.querySelectorAll('a'): returns [] (no anchors, so filterLinkMatches
-//     keeps all matches)
+//   - cell.querySelectorAll('a'): returns [] (no anchors, so getMarkupRanges
+//     holds nothing)
 // ---------------------------------------------------------------------------
 
 // Standard opts for the exponent tests.
@@ -741,7 +778,7 @@ const supTestOpts = {
   // RG3: Anchor text node intact after rounding an adjacent number
   // Cell structure (flat): "1234 lithium-7"
   // "1234" is in a plain node; "lithium-7" is inside an anchor node.
-  // filterLinkMatches excludes "7" (inside anchor), so only "1234" is rounded.
+  // The markup range excludes "7" (inside anchor), so only "1234" is rounded.
   // 1234 with offsetTop=-0.5 rounds to 1000 (confirmed: step=500, round(1234/500)=2, 2×500=1000).
   // The anchor text node must be exactly "lithium-7" after rounding.
   withSupCreateTreeWalker(function() {

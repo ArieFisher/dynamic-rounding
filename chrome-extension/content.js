@@ -831,8 +831,8 @@ function buildCaptureStateResponse() {
 // record, so the cell holds only the page's text, and the pass then treats it
 // as fresh.
 // The pass then classifies every cell through classifyTableCell in
-// lib/dr-table: the classification ladder (lib/dr-simplify), the placement
-// step (placeDecision), and the link filter.
+// lib/dr-table: the classification ladder (lib/dr-simplify) and the
+// placement step (placeDecision).
 // The table step (tablePatches in lib/dr-simplify/table.js) then resolves
 // ambiguous dates per column, finds the max magnitude over the dataset, and
 // builds each cell's patches. The pass drops a changed date or time that

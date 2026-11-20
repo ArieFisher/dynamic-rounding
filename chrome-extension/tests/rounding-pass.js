@@ -3485,9 +3485,9 @@ function everyRowRead(kind, largeIn) {
 })();
 
 (function mergeLadderDivergence_mixedTextLinkedNumber() {
-  // OLD preview copy's mixed-text fallback never applied filterLinkMatches —
+  // OLD preview copy's mixed-text fallback never applied the link rule —
   // "<text> 42" with "42" wrapped in <a> would surface 42 as a sample the
-  // engine never touches (filterLinkMatches drops it).
+  // engine never touches (its markup range holds it).
   function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   const mixedLinkCell = makeLinkCell(['42'], 'See page for details');
   const table = {

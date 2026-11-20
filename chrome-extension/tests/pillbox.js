@@ -475,7 +475,7 @@
       [{ tag: 'td', text: 'Header' }],
       [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
     ]);
-    // Must have querySelectorAll on individual cells (used by roundTable → filterLinkMatches)
+    // Must have querySelectorAll on individual cells (used by roundTable → getMarkupRanges)
     table._cells.forEach(c => { c.querySelectorAll = () => []; });
     const input = injectTablePillboxEntry(table);
 

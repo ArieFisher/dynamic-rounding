@@ -100,10 +100,23 @@
     { mode: 'time', reason: 'simplify' });
 })();
 
-(function classifyCell_link() {
-  eq('classifyCell: whole-cell link cell is skipped',
-    classifyCell({ text: '42', rowIndex: 1, columnIndex: 1, ranges: null, isWholeLink: true }, LADDER_OPTS),
-    { mode: 'skip', reason: 'link' });
+(function classifyCell_markup() {
+  const whole = [{ start: 0, end: 2 }];
+  eq('classifyCell: a cell whose number is a markup range is skipped',
+    classifyCell({ text: '42', rowIndex: 1, columnIndex: 1, ranges: null, markupRanges: whole }, LADDER_OPTS),
+    { mode: 'skip', reason: 'markup' });
+  eq('classifyCell: a number inside a markup range keeps its digits while the others round',
+    classifyCell({ text: 'see 9,876,543 and 4,236,000', rowIndex: 1, columnIndex: 1, ranges: null,
+      markupRanges: [{ start: 4, end: 13 }] }, LADDER_OPTS).value.matches.map((m) => m.numStr),
+    ['4,236,000']);
+  eq('classifyCell: a cell whose every number sits in markup ranges is skipped',
+    classifyCell({ text: '[1,234,567](https://x.test)', rowIndex: 1, columnIndex: 1, ranges: null,
+      markupRanges: [{ start: 0, end: 27 }] }, LADDER_OPTS),
+    { mode: 'skip', reason: 'no-number' });
+  eq('classifyCell: a superscript cell inside a markup range keeps its digits',
+    classifyCell({ text: '1012', rowIndex: 1, columnIndex: 1, ranges: null, hasSuperscript: true,
+      superscriptRanges: [{ start: 2, end: 4 }], markupRanges: [{ start: 0, end: 4 }] }, LADDER_OPTS),
+    { mode: 'skip', reason: 'superscript' });
 })();
 
 (function classifyCell_superscript() {
@@ -168,8 +181,8 @@
     classifyCell(at('CAD45.67'), currencyOff), { mode: 'skip', reason: 'currency' });
   eq('classifyCell: a code after the number excludes the cell with the currency setting off',
     classifyCell(at('45.67 USD'), currencyOff), { mode: 'skip', reason: 'currency' });
-  eq('classifyCell: a unit number that is a whole link is skipped',
-    classifyCell(at('7.5m', { isWholeLink: true }), LADDER_OPTS), { mode: 'skip', reason: 'link' });
+  eq('classifyCell: a unit number inside a markup range is skipped',
+    classifyCell(at('7.5m', { markupRanges: [{ start: 0, end: 4 }] }), LADDER_OPTS), { mode: 'skip', reason: 'markup' });
   eq('classifyCell: an identifier is not a unit number',
     classifyCell(at('DT1234'), LADDER_OPTS), { mode: 'skip', reason: 'no-number' });
   eq('classifyCell: a plain currency number holds its digits as one match',
@@ -438,9 +451,9 @@ const bracketOpts = Object.assign({}, DR_DEFAULTS, {
 })();
 
 (function bracketedWholeLinkStaysUnchanged() {
-  eq('bracketed: a bracketed cell that is one whole link stays unchanged',
-    classifyCell({ text: '(1,234)', rowIndex: 1, columnIndex: 1, ranges: null, isWholeLink: true }, bracketOpts),
-    { mode: 'skip', reason: 'link' });
+  eq('bracketed: a bracketed cell that is one markup range stays unchanged',
+    classifyCell({ text: '(1,234)', rowIndex: 1, columnIndex: 1, ranges: null, markupRanges: [{ start: 0, end: 7 }] }, bracketOpts),
+    { mode: 'skip', reason: 'markup' });
 })();
 
 (function bracketedQuotedCellStaysUnchanged() {

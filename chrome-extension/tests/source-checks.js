@@ -45,23 +45,9 @@
 // blocks (which assert no sibling files contain new identifiers) cover scope
 // without depending on git history shape.
 
-// --- Static analysis: link-aware functions are defined and exported ---
+// --- Static analysis: the markup range read is defined ---
 (function ac_staticAnalysis() {
-  eq('static: isCellWholeLink is defined', typeof isCellWholeLink, 'function');
-  eq('static: filterLinkMatches is defined', typeof filterLinkMatches, 'function');
-
-  // isCellWholeLink: cell with no querySelectorAll support returns false safely
-  eq('static: isCellWholeLink handles cell without querySelectorAll',
-    isCellWholeLink({ innerText: '123' }), false);
-
-  // filterLinkMatches: returns original matches when cell has no querySelectorAll
-  const dummyMatches = [{ numStr: '100', num: 100, index: 0 }];
-  eq('static: filterLinkMatches returns matches unchanged when cell has no querySelectorAll',
-    filterLinkMatches({ innerText: '100' }, dummyMatches), dummyMatches);
-
-  // filterLinkMatches: empty matches returned as-is
-  eq('static: filterLinkMatches handles empty matches array',
-    filterLinkMatches({ innerText: '100', querySelectorAll: () => [] }, []).length, 0);
+  eq('static: getMarkupRanges is defined', typeof getMarkupRanges, 'function');
 })();
 
 // --- Regression guards ---
@@ -1378,8 +1364,7 @@ checkPackageObjectMatchesDeclarations('dr-number', 'DR_NUMBER',
     'GridAdapter',
     'makeAdapter',
     'getSuperscriptRanges',
-    'isCellWholeLink',
-    'filterLinkMatches',
+    'getMarkupRanges',
     'classifyTableCell',
     'collectTextPieces',
     'mapRenderedToFlat',

@@ -977,26 +977,6 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   eq('regression: "{A1:E8, G3:G}" -> 2 ranges', r.ranges && r.ranges.length, 2);
 })();
 
-// --- Mixed cell — <a>5</a> preserved, 1234 outside rounds ---
-// filterLinkMatches must drop the match for '5' (inside anchor) and keep '1234' (outside).
-(function ac2_filterLinkMatches_mixedCell() {
-  withLinkCreateTreeWalker(function() {
-    // Cell: "1234 and " + <a>5</a>  — innerText = "1234 and 5"
-    // We model: outsideText = "1234 and ", anchor = "5"; the matches count in
-    // the pieces' flat text, which the layout holds as the original.
-    const cell = makeLinkCell(['5'], '1234 and ');
-    const original = cell._textNodes.map((node) => node.nodeValue);
-
-    const matches = extractNumbersInText(original.join('')); // finds 1234 and 5
-    const filtered = filterLinkMatches(cell, matches, { original, toFlat: null });
-
-    // '5' inside anchor must be dropped; '1234' outside must be kept.
-    const nums = filtered.map(m => m.num);
-    eq('filterLinkMatches keeps 1234 (outside anchor)', nums.includes(1234), true);
-    eq('filterLinkMatches drops 5 (inside anchor)', nums.includes(5), false);
-  });
-})();
-
 // --- Hidden-sortkey regression guard ---
 // A cell like <td><span style="display:none">700023000</span>+2.3%</td>
 // The implementation reads cell.innerText (which browsers exclude hidden text from).

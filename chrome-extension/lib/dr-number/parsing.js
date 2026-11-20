@@ -43,7 +43,8 @@
 // "12," at the "12" and "9,850." at the "9,850". A comma or period that ends
 // a number is sentence punctuation ("ref 12, total 9,850."), and every later
 // step searches the live text for the match string, so a trailing mark in it
-// makes the link filter and the patch step miss a number that is right there.
+// makes the placement step and the patch step miss a number that is right
+// there.
 //
 // Whitespace between digit groups is a group mark only in the group shape
 // (groupShapePattern, core.js, the one copy the number shape test reads

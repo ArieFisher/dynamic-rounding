@@ -269,8 +269,8 @@ function sitsOffscreen(el, styleProbe) {
  * (looksLikeGrid). Each cell goes through classifyTableCell, the function
  * the rounding pass calls for every cell, under DETECTION_OPTIONS (every
  * switch on) and no range expression. A cell counts when its decision is not
- * skip, so a whole-link cell, a cell holding only an identifier shape, a
- * number inside a link, and a number split across text pieces add nothing.
+ * skip, so a cell holding only an identifier shape, a number inside a
+ * markup range, and a number split across text pieces add nothing.
  *
  * The walk spends one budget of DR_DETECTION_SETTINGS.dataTestCellBudget cell
  * reads, counted across every row and cell in order; an empty cell counts as

@@ -4407,6 +4407,69 @@ TSLA,75,"248.09","18,606.75"
     </div>
   </section>
 
+  <section>
+    <h2>38. Numbers inside code</h2>
+    <p>A native table and a grid holding the same rows. Each Value cell
+      holds a number inside a code element, alone or among words, except the
+      last row, which holds a plain number.</p>
+    <p class="expect">Expect: table pillbox at load on both tables. A number
+      inside code or inside a link stays as written, and every other number
+      rounds: "sold 9,850" becomes "sold 10,000", "56,304 rows" becomes
+      "55,000 rows", and 7,765 becomes 8,000. A failure shows new digits
+      inside a code element.</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Case</th>
+          <th scope="col">Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Whole-cell code</th>
+          <td><code>4,127</code></td>
+        </tr>
+        <tr>
+          <th scope="row">Code inside words</th>
+          <td>Set <code>limit 9,850</code>, sold 9,850</td>
+        </tr>
+        <tr>
+          <th scope="row">Code beside a link</th>
+          <td><code>v12</code> and <a href="#38">ref 3,420</a>, 56,304 rows</td>
+        </tr>
+        <tr>
+          <th scope="row">Plain number</th>
+          <td>7,765</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="aria-grid" role="grid" aria-label="Numbers inside code">
+      <div class="g-row" role="row">
+        <span role="columnheader">Case</span>
+        <span role="columnheader">Value</span>
+      </div>
+      <div role="rowgroup">
+        <div class="g-row" role="row">
+          <span role="rowheader">Whole-cell code</span>
+          <span role="cell"><code>4,127</code></span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="rowheader">Code inside words</span>
+          <span role="cell">Set <code>limit 9,850</code>, sold 9,850</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="rowheader">Code beside a link</span>
+          <span role="cell"><code>v12</code> and <a href="#38">ref 3,420</a>, 56,304 rows</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="rowheader">Plain number</span>
+          <span role="cell">7,765</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
 </body>
 
 </html>

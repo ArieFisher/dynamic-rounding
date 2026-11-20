@@ -44,8 +44,22 @@ const simplify = (text, settings = DR_DEFAULTS) =>
     [[0, 0, 'Item'], [0, 1, 'Revenue'], [1, 0, 'Item 12'], [1, 1, '4,236,000'], [2, 0, 'Item 7'], [2, 1, '8,120']]);
   eq('adapter: each cell\'s start is the position of its text in the whole text',
     cells.every((cell) => text.slice(cell.start, cell.start + cell.text.length) === cell.text), true);
-  eq('adapter: a cell carries its text, row, column, and start, and nothing else',
-    Object.keys(cells[0]).sort(), ['columnIndex', 'rowIndex', 'start', 'text']);
+  eq('adapter: a cell carries its text, row, column, start, and markup ranges, and nothing else',
+    Object.keys(cells[0]).sort(), ['columnIndex', 'markupRanges', 'rowIndex', 'start', 'text']);
+})();
+
+(function adapter_marksLinksAndCodeSpans() {
+  const rangesOf = (cellText) => markdownTables(lines('| a | b |', '| --- | --- |', `| x |${cellText}|`))[0][3].markupRanges;
+  const spans = (cellText) => rangesOf(cellText).map((r) => cellText.slice(r.start, r.end));
+  eq('adapter: a link is a markup range, its target included',
+    spans(' see [9,876,543](https://x.test/2024) and 4,236,000 '), ['[9,876,543](https://x.test/2024)']);
+  eq('adapter: an image is a markup range', spans(' ![chart 12](c.png) '), ['![chart 12](c.png)']);
+  eq('adapter: a code span is a markup range', spans(' set `9,876,543` here '), ['`9,876,543`']);
+  eq('adapter: a code span closes only at a backtick run of its own length',
+    spans(' ``a ` 12`` and 34 '), ['``a ` 12``']);
+  eq('adapter: a backtick with no partner opens no code span', spans(' 1,234` and 5,678 '), []);
+  eq('adapter: brackets with no target are no link', spans(' [12] and 34 '), []);
+  eq('adapter: a cell with no link and no code holds no markup range', spans(' 4,236,000 '), []);
 })();
 
 (function adapter_tableEndsAtTheFirstLineWithNoPipe() {
@@ -238,6 +252,25 @@ const simplify = (text, settings = DR_DEFAULTS) =>
   ), settings).split('\n');
   eq('text table step: beside 4,236,000, the value 8,120 rounds in the other band', written[3], '| Item 7 | 8,100 |');
   eq('text table step: alone in a second table, 8,120 rounds in the top band', written[7], '| Item 7 | 8,000 |');
+})();
+
+(function step_holdsNumbersInLinksAndCode() {
+  const text = lines(
+    '| Item | Value |',
+    '| --- | ---: |',
+    '| Whole link | [1,234,567](https://x.test) |',
+    '| Link in words | see [9,876,543](https://x.test) and 4,236,000 |',
+    '| Code | `9,876,543` |',
+    '| Plain | 2,345,678 |',
+  );
+  eq('step: a number inside a link or a code span stays as written, and the others round', simplify(text), lines(
+    '| Item | Value |',
+    '| --- | ---: |',
+    '| Whole link | [1,234,567](https://x.test) |',
+    '| Link in words | see [9,876,543](https://x.test) and 4,000,000 |',
+    '| Code | `9,876,543` |',
+    '| Plain | 2,500,000 |',
+  ));
 })();
 
 (function step_returnsATextWithNoTableUnchanged() {
