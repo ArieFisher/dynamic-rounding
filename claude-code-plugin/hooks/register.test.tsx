@@ -29,8 +29,18 @@ const REPLY_BLOCK = {
 
 const SURFACES = ['terminal', 'desktop', 'vscode', 'mobile'] as const
 
-test('the toggle command simplifies a reply block, then restores it, on every surface', async ($, on) => {
-  // Nothing sits beneath the plugin: each hook here stands for the engine.
+// Nothing sits beneath a test's hooks, so each one stands in for the engine's
+// handling of its event. This one replaces the engine's drawing with one Text
+// that the test can read.
+const engineDrawing = ($, e) => {
+  const { Text } = $.ui.resolve(e)
+
+  return <Text>{e.props.text}</Text>
+}
+
+const drawnText = async (ui) => (await ui.find({ type: 'Text' }))?.text
+
+test('the toggle command simplifies a reply block, then draws it as written again, on every surface', async ($, on) => {
   const statusEntries: (string | undefined)[] = []
   on('command.register', () => ({ value: { command: 'simplify-data' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -39,27 +49,22 @@ test('the toggle command simplifies a reply block, then restores it, on every su
 
     return { value: undefined }
   })
-  on('ui.render', ($, e) => {
-    const { Text } = $.ui.resolve(e)
-
-    return <Text>{e.props.text}</Text>
-  })
+  on('ui.render', engineDrawing)
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ ...REPLY_BLOCK, surface })
-    const drawnText = async () => (await ui.find({ type: 'Text' }))?.text
 
-    expect(await drawnText()).toBe(ORIGINALS)
+    expect(await drawnText(ui)).toBe(ORIGINALS)
 
     const onOutput = await $.command.run({ command: 'simplify-data' })
     expect(onOutput.text).toBe('simplify-data: on')
-    expect(await drawnText()).toBe(WRITTEN_TEXT)
+    expect(await drawnText(ui)).toBe(WRITTEN_TEXT)
 
     const offOutput = await $.command.run({ command: 'simplify-data' })
     expect(offOutput.text).toBe('simplify-data: off')
-    expect(await drawnText()).toBe(ORIGINALS)
+    expect(await drawnText(ui)).toBe(ORIGINALS)
 
     await ui.unmount()
   }
@@ -68,16 +73,12 @@ test('the toggle command simplifies a reply block, then restores it, on every su
 })
 
 test('the plugin starts off, so a reply block draws as written', async ($, on) => {
-  on('ui.render', ($, e) => {
-    const { Text } = $.ui.resolve(e)
-
-    return <Text>{e.props.text}</Text>
-  })
+  on('ui.render', engineDrawing)
 
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ ...REPLY_BLOCK, surface })
 
-    expect((await ui.find({ type: 'Text' }))?.text).toBe(ORIGINALS)
+    expect(await drawnText(ui)).toBe(ORIGINALS)
     await ui.unmount()
   }
 })
