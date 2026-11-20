@@ -7,9 +7,9 @@
 // table step works the same on any adapter's cells.
 
 const FENCE = /^(\s*)(`{3,}|~{3,})/;
-// Four columns: the indentation at which markdown reads a line as code, and
-// the width a tab counts for.
+// The indentation, in columns, at which markdown reads a line as code.
 const CODE_INDENT = 4;
+const TAB_WIDTH = 4;
 // Matched against a trimmed line. With the outer whitespace in the pattern,
 // the match time grows with the square of a long run of spaces.
 const SEPARATOR_ROW = /^(?=.*\|)\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$/;
@@ -21,7 +21,7 @@ function fenceParts(line) {
   const match = FENCE.exec(line);
   if (match === null) return null;
   const [whole, indent, fence] = match;
-  const columns = [...indent].reduce((sum, character) => sum + (character === '\t' ? CODE_INDENT : 1), 0);
+  const columns = [...indent].reduce((sum, character) => sum + (character === '\t' ? TAB_WIDTH : 1), 0);
   return { fence, columns, rest: line.slice(whole.length) };
 }
 
