@@ -182,10 +182,10 @@ The plugin simplifies the numbers in the markdown tables of a Claude Code sessio
 ## Implementations
 | Platform | Install | Code |
 | --- | --- | --- |
-| Google Sheets | [Copy template](https://docs.google.com/spreadsheets/d/1GdHvYk3dVzJErrGH7yDULW6srM0gaHeYMGMn3k0-GY4) | [js/](http://./js/) |
-| Chrome Extension | [Load unpacked](https://developer.chrome.com/docs/extensions/mv3/getstarted/development-basics/#load-unpacked) | [chrome-extension/](http://./chrome-extension/) |
-| Claude Code | `claude plugin install dynamic-rounding --marketplace ArieFisher/dynamic-rounding` | [claude-code-plugin/](http://./claude-code-plugin/) |
-| Python | `pip install dynamic-rounding` | [python/](http://./python/) |
+| Google Sheets | [Copy template](https://docs.google.com/spreadsheets/d/1GdHvYk3dVzJErrGH7yDULW6srM0gaHeYMGMn3k0-GY4) | [js/](./js/) |
+| Chrome Extension | [Load unpacked](https://developer.chrome.com/docs/extensions/mv3/getstarted/development-basics/#load-unpacked) | [chrome-extension/](./chrome-extension/) |
+| Claude Code | `claude plugin install dynamic-rounding --marketplace ArieFisher/dynamic-rounding` | [claude-code-plugin/](./claude-code-plugin/) |
+| Python | `pip install dynamic-rounding` | [python/](./python/) |
 
 
 
