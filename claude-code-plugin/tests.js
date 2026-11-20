@@ -275,6 +275,25 @@ const simplify = (text, settings = DR_DEFAULTS) =>
   ));
 })();
 
+(function step_holdsDatesAndTimesInLinksAndCode() {
+  const text = lines(
+    '| Item | When |',
+    '| --- | --- |',
+    '| Code | released `2024-01-15` |',
+    '| Link | [2024-03-15](notes.md) |',
+    '| Time | `14:30` |',
+    '| Plain | 2024-03-15 |',
+  );
+  eq('step: a date or a time inside a link or a code span stays as written, and a plain date simplifies', simplify(text), lines(
+    '| Item | When |',
+    '| --- | --- |',
+    '| Code | released `2024-01-15` |',
+    '| Link | [2024-03-15](notes.md) |',
+    '| Time | `14:30` |',
+    '| Plain | 2024 |',
+  ));
+})();
+
 (function step_returnsATextWithNoTableUnchanged() {
   const prose = 'Revenue was 4,236,000 in 2024, up from 983,321.';
   eq('text table step: a text with no table returns unchanged', simplify(prose), prose);

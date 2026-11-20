@@ -1396,16 +1396,45 @@ function isWholeCellQuoted(trimmedText) {
 }
 
 /**
+ * The text with each range blanked to spaces. The blanks keep every position
+ * in place, so a position in the result is the same position in the text.
+ */
+function blankRanges(text, ranges) {
+  return ranges.reduce(
+    (t, r) => t.slice(0, r.start) + ' '.repeat(r.end - r.start) + t.slice(r.end), text);
+}
+
+/**
+ * The dates findDates reads from the trimmed text, leaving out each date that
+ * overlaps a markup range, and the spans of the dates left out. A date only
+ * partly inside a link ("<a>Jan 15</a>, 2024") is left out whole. Each round
+ * blanks the dates it leaves out, so a date beside them, a bare year
+ * included, is read in the next round; every round blanks at least one date,
+ * so the rounds end.
+ */
+function readDatesOutsideMarkup(trimmed, markupInTrimmed) {
+  const heldSpans = [];
+  let readText = trimmed;
+  for (;;) {
+    const found = findDates(readText);
+    if (!found) return { dates: null, heldSpans };
+    const inside = found.filter((d) => overlapsMaskedRange(markupInTrimmed, d.start, d.end));
+    if (inside.length === 0) return { dates: found, heldSpans };
+    const spans = inside.map((d) => ({ start: d.start, end: d.end }));
+    heldSpans.push(...spans);
+    readText = blankRanges(readText, spans);
+  }
+}
+
+/**
  * The masked ranges are one list, so a new kind of text whose numbers stay as
  * written is one more source here. The identifier scan and the clock-time
- * scan read the text with each superscript span blanked to spaces, so a
- * footnote marker right after a phone number ("416-555-1234<sup>1</sup>") or
- * a clock time ("18:30<sup>2</sup>") never joins its digits; the blanks keep
- * every position in place.
+ * scan read the text with each superscript span blanked, so a footnote marker
+ * right after a phone number ("416-555-1234<sup>1</sup>") or a clock time
+ * ("18:30<sup>2</sup>") never joins its digits.
  */
 function extractSimplifyMatches(text, superscriptRanges, markupRanges = []) {
-  const shapeText = superscriptRanges.reduce(
-    (t, r) => t.slice(0, r.start) + ' '.repeat(r.end - r.start) + t.slice(r.end), text);
+  const shapeText = blankRanges(text, superscriptRanges);
   const masked = [
     ...markupRanges,
     ...getQuoteMaskedRanges(text),
@@ -1450,11 +1479,14 @@ function classifyCell(input, options) {
     digitsSpanPieces = false,
   } = input;
   const trimmed = text.trim();
+  // The markup ranges, then each date or time that overlaps one: its digits
+  // stay as written too.
+  let held = markupRanges;
   // A cell that is one number gets one match over its digits alone, so the
   // write-back leaves a sign, a bracket, a currency sign, a percent sign, a
   // suffix, or a currency code where the page put it.
   const oneNumber = (match, reason) => (
-    overlapsMaskedRange(markupRanges, match.index, match.index + match.numStr.length)
+    overlapsMaskedRange(held, match.index, match.index + match.numStr.length)
       ? { mode: 'skip', reason: 'markup' }
       : { mode: 'extracted', reason, value: { matches: [match] } });
 
@@ -1469,16 +1501,28 @@ function classifyCell(input, options) {
     return { mode: 'skip', reason: 'quoted' };
   }
 
+  // A date or a time that overlaps a markup range stays as written, and its
+  // digits join the held ranges for the number steps.
+  const lead = text.length - text.trimStart().length;
+  const markupInTrimmed = markupRanges.map((r) => ({ start: r.start - lead, end: r.end - lead }));
+  const fromTrimmed = (r) => ({ start: r.start + lead, end: r.end + lead });
+
   // A clock time, or an ISO date-time with its date kept, follows the "times"
   // switch. Checked before findDates, which would otherwise match the date of
   // a space-separated date-time.
+  let dates = null;
   if (isDateTimeLike(trimmed) || isTimeLike(trimmed)) {
-    return options.simplifyTimes
-      ? { mode: 'time', reason: 'simplify' }
-      : { mode: 'skip', reason: 'times-disabled' };
+    if (!overlapsMaskedRange(markupInTrimmed, 0, trimmed.length)) {
+      return options.simplifyTimes
+        ? { mode: 'time', reason: 'simplify' }
+        : { mode: 'skip', reason: 'times-disabled' };
+    }
+    held = [...held, fromTrimmed({ start: 0, end: trimmed.length })];
+  } else {
+    const read = readDatesOutsideMarkup(trimmed, markupInTrimmed);
+    dates = read.dates;
+    held = [...held, ...read.heldSpans.map(fromTrimmed)];
   }
-
-  const dates = findDates(trimmed);
   if (dates) {
     if (!options.simplifyDates) return { mode: 'skip', reason: 'dates-disabled' };
     if (dates.some((d) => d.impossible)) return { mode: 'skip', reason: 'impossible-date' };
@@ -1494,7 +1538,7 @@ function classifyCell(input, options) {
   // extraction masks each superscript span.
   if (hasSuperscript) {
     const isNumber = toNumber(text) !== null;
-    const matches = extractSimplifyMatches(text, superscriptRanges, markupRanges);
+    const matches = extractSimplifyMatches(text, superscriptRanges, held);
     if (matches.length === 0) return { mode: 'skip', reason: isNumber ? 'superscript' : 'no-number' };
     return { mode: 'extracted', reason: isNumber ? 'superscript' : 'simplify', value: { matches } };
   }
@@ -1517,7 +1561,7 @@ function classifyCell(input, options) {
   const unit = matchUnitNumber(text);
   if (unit) return oneNumber(unit, 'unit');
 
-  const matches = extractSimplifyMatches(text, superscriptRanges, markupRanges);
+  const matches = extractSimplifyMatches(text, superscriptRanges, held);
   if (matches.length === 0) return { mode: 'skip', reason: 'no-number' };
   return { mode: 'extracted', reason: 'simplify', value: { matches } };
 }

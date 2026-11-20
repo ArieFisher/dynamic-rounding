@@ -992,8 +992,9 @@
 
   <section>
     <h2>8. Linked numbers</h2>
-    <p class="expect">Expect: table pillbox at load. A number that is a link, or sits
-      inside one, stays as written. A plain number beside a link rounds.</p>
+    <p class="expect">Expect: table pillbox at load. A number or a date that is a
+      link, or sits inside one, stays as written. A plain number beside a link
+      rounds.</p>
 
     <!--
       Whole-cell link                -> the cell's entire text is the link; held
@@ -1005,6 +1006,8 @@
                                         holds
       Same number, linked then plain -> the plain 9,850 rounds; the linked 9,850
                                         holds
+      Linked date                    -> the date holds
+      Partly linked date             -> the whole date holds, the year too
     -->
     <table>
       <thead>
@@ -1037,6 +1040,14 @@
         <tr>
           <th scope="row">Same number, linked then plain</th>
           <td>Listed <a href="#8">9,850</a>, sold 9,850</td>
+        </tr>
+        <tr>
+          <th scope="row">Linked date</th>
+          <td><a href="#8">2024-03-15</a></td>
+        </tr>
+        <tr>
+          <th scope="row">Partly linked date</th>
+          <td><a href="#8">Jan 15</a>, 2024</td>
         </tr>
       </tbody>
     </table>
@@ -4413,7 +4424,8 @@ TSLA,75,"248.09","18,606.75"
       holds a number inside a code element, alone or among words, except the
       last row, which holds a plain number.</p>
     <p class="expect">Expect: table pillbox at load on both tables. A number
-      inside code or inside a link stays as written, and every other number
+      inside code or inside a link stays as written, and so does a date
+      inside code; every other number
       rounds: "sold 9,850" becomes "sold 10,000", "56,304 rows" becomes
       "55,000 rows", and 7,765 becomes 8,000. A failure shows new digits
       inside a code element.</p>
@@ -4442,6 +4454,10 @@ TSLA,75,"248.09","18,606.75"
           <th scope="row">Plain number</th>
           <td>7,765</td>
         </tr>
+        <tr>
+          <th scope="row">Date inside code</th>
+          <td><code>2024-01-15</code></td>
+        </tr>
       </tbody>
     </table>
     <div class="aria-grid" role="grid" aria-label="Numbers inside code">
@@ -4465,6 +4481,10 @@ TSLA,75,"248.09","18,606.75"
         <div class="g-row" role="row">
           <span role="rowheader">Plain number</span>
           <span role="cell">7,765</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="rowheader">Date inside code</span>
+          <span role="cell"><code>2024-01-15</code></span>
         </div>
       </div>
     </div>
