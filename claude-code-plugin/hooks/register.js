@@ -28,9 +28,9 @@ export const register = (on) => {
 
   on('command.run', { command: 'simplify-data' }, async ($) => {
     const isNowOn = await update($, isOn, (value) => !value);
-    const outputRow = `simplify-data: ${isNowOn ? 'on' : 'off'}`;
-    $.ui.status(isNowOn ? outputRow : undefined);
-    return { text: outputRow };
+    const valueText = `simplify-data: ${isNowOn ? 'on' : 'off'}`;
+    $.ui.status(isNowOn ? valueText : undefined);
+    return { text: valueText };
   });
 
   // The hook reads the on/off value while drawing, so the engine draws every

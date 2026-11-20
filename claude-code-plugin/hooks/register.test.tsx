@@ -32,7 +32,7 @@ const SURFACES = ['terminal', 'desktop', 'vscode', 'mobile'] as const
 // Nothing sits beneath a test's hooks, so each one stands in for the engine's
 // handling of its event. This one replaces the engine's drawing with one Text
 // that the test can read.
-const drawTextHook = ($, e) => {
+const engineDrawing = ($, e) => {
   const { Text } = $.ui.resolve(e)
 
   return <Text>{e.props.text}</Text>
@@ -49,7 +49,7 @@ test('the toggle command simplifies a reply block, then draws it as written agai
 
     return { value: undefined }
   })
-  on('ui.render', drawTextHook)
+  on('ui.render', engineDrawing)
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
@@ -73,7 +73,7 @@ test('the toggle command simplifies a reply block, then draws it as written agai
 })
 
 test('the plugin starts off, so a reply block draws as written', async ($, on) => {
-  on('ui.render', drawTextHook)
+  on('ui.render', engineDrawing)
 
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ ...REPLY_BLOCK, surface })
