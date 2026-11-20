@@ -2,67 +2,32 @@
 
 Data can tell rich stories, but sometimes the numbers get in the way.
 
-This library makes data more readable, helping us see the patterns that allow us to read the stories it contains.
-
-
-## Implementations
-
-| Platform | Location | Install |
-| --- | --- | --- |
-| Google Sheets | [js/](./js/) | [Copy template](https://docs.google.com/spreadsheets/d/1GdHvYk3dVzJErrGH7yDULW6srM0gaHeYMGMn3k0-GY4) |
-| Chrome Extension | [chrome-extension/](./chrome-extension/) | [Load unpacked](https://developer.chrome.com/docs/extensions/mv3/getstarted/development-basics/#load-unpacked) |
-| Python | [python/](./python/) | `pip install dynamic-rounding` |
-| Claude Code | [claude-code-plugin/](./claude-code-plugin/) | `claude plugin install dynamic-rounding --marketplace ArieFisher/dynamic-rounding` |
-
-## Quick Examples
-
-### Platform 1. Google Sheets
-
-This library includes a custom Google Sheets function for easily simplifying data.
-
-- `=ROUND_DYNAMIC(87054321)` → 85,000,000
-- `=ROUND_DYNAMIC(A1:A10)` → rounds the whole dataset 
-
-Note: there does not (yet) exist a spreadsheet function to simplify data that (a) can operate on a dataset (b) simplifies declaratively.
-
-The defaults handle most cases, and advanced users can tweak its output to put different ‘lenses’ on the data, to see it in ways that their specific situation calls for.
-
-### Platform 2. Chrome Extension
+This tool makes data easier to read, letting us see the stories within.
 
 [1 minute video demo](https://share.descript.com/view/Y76MAoqM06p)
 
-The extension works where you do - in your browser.  It simplifies numbers - *in place* - as you browse, read email, use tools or chat with LLMs.
-
-If you do come across data you want to understand better, instead of you pasting data from a browser into a spreadsheet, the Chrome extension effectively pastes a spreadsheet into your browser.
+It works where you do - in your browser, AI chats, and spreadsheets.  It simplifies numbers - *in place* - as you browse, read email, use tools or chat with LLMs.
 
 The intention is to enrich your experience without adding any mental load - you do the same activities but get more out of them.
-### Platform 3. Python
-#### 3a. Simple python
-Data professionals may explore their data with python libraries.
 
-- `from dynamic_rounding import round_dynamic`
-- Single value: `round_dynamic(87054321)` → 85,000,000
-- Dataset: `round_dynamic([4428910, 983321, 42109])` → \[4,500,000, 1,000,000, 40,000\]
 
-#### 3b. pandas
-- `from dynamic_rounding.pandas import round_dynamic_series`
-- Entire series:  `round_dynamic_series(df['revenue'])`
+| Platform | Adds the ability to simplify: |
+| --- | --- |
+| Google Sheets | * entire ranges <br> * mixed number/text cells <br> * cells containing multiple numbers |
+| Chrome Extension | * while browsing (vs. pasting into a spreadsheet or LLM) <br> * dates and times |
+| Claude Code | * tables in the terminal or App |
+| Python | * dataframes (native or pandas) |
 
-### Platform 4. Claude Code plugin
 
-The plugin simplifies the numbers in the markdown tables of a Claude Code session, in place, in the transcript.
 
-- Install, in a terminal: `claude plugin install dynamic-rounding --marketplace ArieFisher/dynamic-rounding`
-- Run `/simplify-data` to turn it on, and again to turn it off
-- The model's reply stays as written: the plugin changes only what the transcript shows
-
-# Why make data readable? (an extended example)
+<br><br>
+# Why make data readable? 
 Most data I see has one thing in common — it's nearly impossible to understand.
 
 Who knows this the best?  The people who design pricing pages. 
 
 <div align="center" style="line-height: 0;"> <img src="docs/media/image01.png" alt="image" width="800"></div>
-<p align="center" style="margin-top: 4px;"><em> Can you tell at a glance which of these options costs 2x another, and 11x more than the cheapest?</em> </p>
+<p align="center" style="margin-top: 4px;"><em> Can you tell at a glance which of these options costs 11x more than the other?</em> </p>
 
 You probably can't, at least not easily, even though the data is there.  What these designers understand is that our working memory is limited.
 
@@ -73,12 +38,12 @@ You probably can't, at least not easily, even though the data is there.  What th
 <p>Cognitive psychologist George Miller found that humans can hold at most 6 or 7 things in our head at once.  
 <div align="center" style="line-height: 0;"> <img src="docs/media/image04.png" alt="image" width="400"></div>
 
-
+<br><br>
 So if working memory maxes out at about seven items, **what chance do we have** at understanding this?
 <div align="center" style="line-height: 0;"> <img src="docs/media/image06.png" alt="image" width="500"></div>
 <p align="center" style="margin-top: 4px;"><em> This table contains over 50 numbers that are <u><b>each</b></u> bigger than 6 or 7 digits.  <br> It is just one of <u><b>127 pages</b></u> of that year's financial statements. </em> </p>
 
-This is good data.  It tells a rich story of Splunk’s past, present, and future. Spend a few seconds looking at it - can you see Splunk's story?
+It's a shame because this is good data - it contains the story of Splunk’s past, present, and future. Spend a few seconds looking at it - can you see Splunk's story?
 
 If not, don’t blame yourself. **It’s not you.**  It's an impossible task. 
 
@@ -157,17 +122,72 @@ Confident in your choice?  Now try it on simplified data.
 
 <br>**Answer**: The outliers are the first and last values.  On its first day after going public, \~1 B shares of Netflix traded.  This went up and down until the 7th day when only 30mm traded.
 
-### Task 2: Spot average trading volume
+### Task 2: Average trading volume
 
-Excluding the outliers, what was Netflix's average trading volume that week?  Don't use a calculator or spreadsheet.  Take a few seconds before reading on.
+Excluding the outliers, what was Netflix's average trading volume that week?  Take a few seconds to look at the picture above and see if you can figure it out just by looking.
+<br><br>
 
 <div align="center" style="line-height: 0;"> <img src="docs/media/image12.png" alt="image" width="600"></div>
 
 <br>**Answer**: The average trading volume in the first 7 days (excluding the outliers) was ~85 million.
 
-Look at the original table again. I don't think many of us could *still* see as much with just our eyes and brain. 
+Look at the original table again. Even now, when we already know the answer, its *still* hard to see.  
+<div align="center" style="line-height: 0;"> <img src="docs/media/image10.png" alt="image" width="600"></div>
 
+<br><br>
 This simple tool helps us unlock insights by working with us, amplifying the way we naturally explore and understand data.
+
+## Quick Examples
+
+### Platform 1. Google Sheets
+
+This library includes a custom Google Sheets function for easily simplifying data.
+
+- `=ROUND_DYNAMIC(87054321)` → 85,000,000
+- `=ROUND_DYNAMIC(A1:A10)` → rounds the whole dataset 
+
+The defaults handle most cases, and advanced users can tweak its output to put different ‘lenses’ on the data.
+
+### Platform 2. Chrome Extension
+
+[1 minute video demo](https://share.descript.com/view/Y76MAoqM06p)
+
+The extension works where you do - in your browser.  It simplifies numbers - *in place* - as you browse, read email, use tools or chat with LLMs.
+
+If you do come across data you want to understand better, instead of you pasting data from a browser into a spreadsheet, the Chrome extension effectively pastes a spreadsheet into your browser.
+
+The intention is to enrich your experience without adding any mental load - you do the same activities but get more out of them.
+### Platform 3. Python
+#### 3a. Simple python
+Data professionals may explore their data with python libraries.
+
+- `from dynamic_rounding import round_dynamic`
+- Single value: `round_dynamic(87054321)` → 85,000,000
+- Dataset: `round_dynamic([4428910, 983321, 42109])` → \[4,500,000, 1,000,000, 40,000\]
+
+#### 3b. pandas
+- `from dynamic_rounding.pandas import round_dynamic_series`
+- Entire series:  `round_dynamic_series(df['revenue'])`
+
+### Platform 4. Claude Code plugin
+
+The plugin simplifies the numbers in the markdown tables of a Claude Code session, in place, in the transcript.
+
+- Install, in a terminal: `claude plugin install dynamic-rounding --marketplace ArieFisher/dynamic-rounding`
+- Run `/simplify-data` to turn it on, and again to turn it off
+- The model's reply stays as written: the plugin changes only what the transcript shows
+
+
+
+## Implementations
+| Platform | Install | Code |
+| --- | --- | --- |
+| Google Sheets | [Copy template](https://docs.google.com/spreadsheets/d/1GdHvYk3dVzJErrGH7yDULW6srM0gaHeYMGMn3k0-GY4) | [js/](http://./js/) |
+| Chrome Extension | [Load unpacked](https://developer.chrome.com/docs/extensions/mv3/getstarted/development-basics/#load-unpacked) | [chrome-extension/](http://./chrome-extension/) |
+| Claude Code | `claude plugin install dynamic-rounding --marketplace ArieFisher/dynamic-rounding` | [claude-code-plugin/](http://./claude-code-plugin/) |
+| Python | `pip install dynamic-rounding` | [python/](http://./python/) |
+
+
 
 ## License
 
