@@ -68,7 +68,7 @@ With them, the core skips a link, keeps a footnote mark out of a number, and doe
 | Platform | How the input adapter lists the cells |
 | --- | --- |
 | Extension | Detection finds the table. The adapter reads each cell's rendered text and counts its row and column. |
-| Plugin | The markdown adapter splits each table line at its column dividers and records each cell's position in the text. |
+| Plugin | The markdown adapter splits each row at its pipes and records each cell's position in the text. |
 | Sheets | The cell range arrives as a grid. The Sheets input step sends a number cell straight to the rounding, past the classification ladder. |
 | Python | The values arrive as a value, a list, or a pandas series. |
 
