@@ -124,6 +124,12 @@
     classifyCell({ text: ' x 2023-01-01 then 2024-03-15', rowIndex: 1, columnIndex: 1, ranges: null,
       markupRanges: [{ start: 3, end: 13 }] }, dateOpts).value.dates.map((d) => [d.start, d.end]),
     [[18, 28]]);
+  eq('classifyCell: a date partly inside a markup range stays as written whole',
+    classifyCell({ text: 'Jan 15, 2024', rowIndex: 1, columnIndex: 1, ranges: null,
+      markupRanges: [{ start: 0, end: 6 }] }, dateOpts), { mode: 'skip', reason: 'no-number' });
+  eq('classifyCell: a bare year beside a date inside a markup range still reads as a date',
+    classifyCell({ text: '2023-01-01 2024', rowIndex: 1, columnIndex: 1, ranges: null,
+      markupRanges: [{ start: 0, end: 10 }] }, dateOpts).value.dates.map((d) => [d.year, d.start]), [[2024, 11]]);
   eq('classifyCell: a superscript cell inside a markup range keeps its digits',
     classifyCell({ text: '1012', rowIndex: 1, columnIndex: 1, ranges: null, hasSuperscript: true,
       superscriptRanges: [{ start: 2, end: 4 }], markupRanges: [{ start: 0, end: 4 }] }, LADDER_OPTS),
