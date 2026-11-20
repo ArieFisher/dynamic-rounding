@@ -13,7 +13,7 @@ The intention is to enrich your experience without adding any mental load - you 
 
 | Platform | Adds the ability to simplify: |
 | --- | --- |
-| Google Sheets | * entire ranges <br> * mixed number/text cells <br> * cells containing multiple numbers |
+| Google Sheets | * entire datasets <br> * mixed number/text cells <br> * cells containing multiple numbers |
 | Chrome Extension | * while browsing (vs. pasting into a spreadsheet or LLM) <br> * dates and times |
 | Claude Code | * tables in the terminal or App |
 | Python | * dataframes (native or pandas) |
