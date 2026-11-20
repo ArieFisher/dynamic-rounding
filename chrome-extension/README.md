@@ -79,7 +79,7 @@ A number right after "@" belongs to an at-name or an address and never rounds, s
 
 ## Links and code
 
-A number inside a link (`<a>`) or a code element (`<code>`) stays as written, and the cell's other numbers round: "See ref 12, total 9,850" with "ref 12" linked becomes "See ref 12, total 10,000". A cell whose only numbers sit inside links or code stays as written.
+A number inside a link (`<a>`) or a code element (`<code>`) stays as written, and the cell's other numbers round: "See ref 12, total 9,850" with "ref 12" linked becomes "See ref 12, total 10,000". A cell whose only numbers sit inside links or code stays as written. A date or a time inside a link or code stays as written too.
 
 ## Extension errors
 

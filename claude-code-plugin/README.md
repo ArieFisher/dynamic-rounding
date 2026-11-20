@@ -27,7 +27,7 @@ The plugin reads each cell of a markdown table the way the Chrome extension read
 - A currency amount, a percentage, a bracketed number, and a unit number round their digits and keep their marks.
 - A date simplifies to its year. A time stays as written.
 - An identifier shape, such as a phone number, an IP address, or a web address, stays as written.
-- A number inside a link or an image, its target included, or inside inline code stays as written, and the cell's other numbers round.
+- A number, a date, or a time inside a link or an image, its target included, or inside inline code stays as written, and the cell's other numbers round.
 
 The table in the plugin test prompt below holds a currency amount, a bracketed number, a percentage, a unit number, a date, a link, and inline code.
 
@@ -51,12 +51,12 @@ Write this markdown table exactly as it is, with no other text:
 | South 7 | $983,321 | (18,250) | 9.6% | 0.82m | 2024-03-18 | `983,321` |
 | East | $1,268,450 | 96,400 | 12.4% | 1.14m | 2024-04-02 | 1,268,450 per [plan 96,400](plans/east-7.md) |
 | West | $3,710,900 | (204,700) | 36.2% | 2.37m | 2024-04-09 | `run 204,700` then 3,710,900 |
-| Online | $52,480 | 8,120 | 0.5% | 0.04m | 2024-04-11 | 52,480 |
+| Online | $52,480 | 8,120 | 0.5% | 0.04m | 2024-04-11 | since `2024-04-11`, 52,480 |
 ```
 
-The table holds five revenue figures, with a number in the header row and in two cells of the first column. The Notes column holds numbers inside links and inside inline code, beside plain numbers.
+The table holds five revenue figures, with a number in the header row and in two cells of the first column. The Notes column holds numbers and a date inside links and inside inline code, beside plain numbers.
 
-Run `/simplify-data`. Expect the status entry to show, the columns to stay aligned, and the table to hold these values. Every number inside a link or inline code keeps its digits:
+Run `/simplify-data`. Expect the status entry to show, the columns to stay aligned, and the table to hold these values. Every number and date inside a link or inline code keeps its digits:
 
 ```text
 | Region | Revenue 2024 | Change | Share | Costs | Updated | Notes |
@@ -65,7 +65,7 @@ Run `/simplify-data`. Expect the status entry to show, the columns to stay align
 | South 7 | $1,000,000 | (20,000) | 9.5% | 0.8m | 2024 | `983,321` |
 | East | $1,500,000 | 95,000 | 10% | 1m | 2024 | 1,500,000 per [plan 96,400](plans/east-7.md) |
 | West | $3,500,000 | (200,000) | 35% | 2.5m | 2024 | `run 204,700` then 3,500,000 |
-| Online | $50,000 | 8,000 | 0.5% | 0.04m | 2024 | 50,000 |
+| Online | $50,000 | 8,000 | 0.5% | 0.04m | 2024 | since `2024-04-11`, 50,000 |
 ```
 
 A failure shows as columns that no longer align, or as a dim line that reports a skipped hook.

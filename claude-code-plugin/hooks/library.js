@@ -1396,16 +1396,24 @@ function isWholeCellQuoted(trimmedText) {
 }
 
 /**
+/**
+ * The text with each range blanked to spaces. The blanks keep every position
+ * in place, so a position in the result is the same position in the text.
+ */
+function blankRanges(text, ranges) {
+  return ranges.reduce(
+    (t, r) => t.slice(0, r.start) + ' '.repeat(r.end - r.start) + t.slice(r.end), text);
+}
+
+/**
  * The masked ranges are one list, so a new kind of text whose numbers stay as
  * written is one more source here. The identifier scan and the clock-time
- * scan read the text with each superscript span blanked to spaces, so a
- * footnote marker right after a phone number ("416-555-1234<sup>1</sup>") or
- * a clock time ("18:30<sup>2</sup>") never joins its digits; the blanks keep
- * every position in place.
+ * scan read the text with each superscript span blanked, so a footnote marker
+ * right after a phone number ("416-555-1234<sup>1</sup>") or a clock time
+ * ("18:30<sup>2</sup>") never joins its digits.
  */
 function extractSimplifyMatches(text, superscriptRanges, markupRanges = []) {
-  const shapeText = superscriptRanges.reduce(
-    (t, r) => t.slice(0, r.start) + ' '.repeat(r.end - r.start) + t.slice(r.end), text);
+  const shapeText = blankRanges(text, superscriptRanges);
   const masked = [
     ...markupRanges,
     ...getQuoteMaskedRanges(text),
@@ -1469,16 +1477,22 @@ function classifyCell(input, options) {
     return { mode: 'skip', reason: 'quoted' };
   }
 
+  // The date and time readers read the trimmed text with each markup range
+  // blanked, so a date or a time inside a link or code is never found, and its
+  // digits reach the number steps, which hold them.
+  const lead = text.length - text.trimStart().length;
+  const dateText = blankRanges(text, markupRanges).slice(lead, lead + trimmed.length);
+
   // A clock time, or an ISO date-time with its date kept, follows the "times"
   // switch. Checked before findDates, which would otherwise match the date of
   // a space-separated date-time.
-  if (isDateTimeLike(trimmed) || isTimeLike(trimmed)) {
+  if (isDateTimeLike(dateText) || isTimeLike(dateText)) {
     return options.simplifyTimes
       ? { mode: 'time', reason: 'simplify' }
       : { mode: 'skip', reason: 'times-disabled' };
   }
 
-  const dates = findDates(trimmed);
+  const dates = findDates(dateText);
   if (dates) {
     if (!options.simplifyDates) return { mode: 'skip', reason: 'dates-disabled' };
     if (dates.some((d) => d.impossible)) return { mode: 'skip', reason: 'impossible-date' };
