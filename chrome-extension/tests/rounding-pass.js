@@ -1869,9 +1869,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   }
 })();
 
-// The link filter holds on a cell with numbers in separate pieces: a number inside a link stays, and
+// A markup range holds on a cell with numbers in separate pieces: a number inside a link stays, and
 // once the cell is rounded the record's kept positions drive the preview.
-(function gridSeparatePieces_linkFilter() {
+(function gridSeparatePieces_markupRange() {
   const grid = makeE2EGridWrapper([['125126']]);
   const [cell] = grid.cellEls;
   const plain = makeElementNode('p', [makeTextNode('125')]);

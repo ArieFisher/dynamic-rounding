@@ -144,10 +144,8 @@
 // Regression: test page Table 8, "Linked number in text". The cell reads
 // "See <a>ref 12</a>, total 9,850". The linked 12 holds and 9,850 rounds,
 // with no patch left unlanded. A number scan that took "12," as the match
-// string would break both steps: the link filter could not find it in one text node
-// (the comma sits in the next node) and kept the linked number, and the
-// patch step found "12" where it expected "12," and skipped it, logging
-// "1 of 2 extracted-cell patches did not land".
+// string would break the patch step: it found "12" where it expected "12,"
+// and skipped it, logging "1 of 2 extracted-cell patches did not land".
 (function linkedReferenceFollowedByComma() {
   withReactiveCreateTreeWalker(function () {
     const opts = {

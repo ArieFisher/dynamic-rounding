@@ -44,10 +44,11 @@ function isClosingFence(line, opening) {
     && parts.columns - opening.columns < CODE_INDENT;
 }
 
-// A link's text holds no square bracket, and its destination no parenthesis
-// and no line break, so each search stops at the next bracket and the scan
-// stays linear in the cell's length.
-const LINK = /!?\[[^[\]]*\]\([^()\n]*\)/g;
+// A link's text may hold brackets one level deep, as a citation such as
+// "[[12]](url)" does; its destination holds no parenthesis and no line break.
+// Each search stops at the next unmatched bracket, so the scan stays linear
+// in the cell's length.
+const LINK = /!?\[(?:[^[\]]|\[[^[\]]*\])*\]\([^()\n]*\)/g;
 const BACKTICK_RUN = /`+/g;
 
 // A code span opens at a run of backticks and closes at the next run of the

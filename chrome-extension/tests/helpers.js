@@ -3190,8 +3190,8 @@ function tkRead(kind, pair, settings) {
   const foundIn = (table) => findTables(rwEl('div', {}, [place(table)]), { styleProbe: inlineStyleProbe })
     .filter((el) => isDataTable(el));
   // The count runs on the rewrite page too: the data test reads each cell
-  // through the per-cell read the pass runs, and its link filter walks the
-  // cell's text pieces with the page's tree walker.
+  // through the per-cell read the pass runs, and its markup range read walks
+  // the cell's text pieces with the page's tree walker.
   let count = 0;
   withRewritePage(() => { count = foundIn(rwDrawTable(kind, pair.sections, drawOpts).table).length; });
   const tables = [];

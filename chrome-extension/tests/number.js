@@ -229,10 +229,9 @@ eq('extractAll: zero is excluded',
 
 // --- A comma that ends a number is punctuation, not a separator ---
 // The match string must end in a digit. A trailing comma in numStr breaks
-// every step that searches the live text for that string: the link filter
-// cannot find "12," inside the <a> whose text node ends at "12", so the
-// linked number is kept; the patch step then finds "12" where it expects
-// "12," and skips, and the cell logs a patch that did not land.
+// every step that searches the live text for that string: the patch step
+// finds "12" where it expects "12," and skips, and the cell logs a patch that
+// did not land.
 eq('extractAll: comma after a number is left out of the match',
   extractNumbersInText('See ref 12, total 9,850'),
   [

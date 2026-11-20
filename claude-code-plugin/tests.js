@@ -53,6 +53,8 @@ const simplify = (text, settings = DR_DEFAULTS) =>
   const spans = (cellText) => rangesOf(cellText).map((r) => cellText.slice(r.start, r.end));
   eq('adapter: a link is a markup range, its target included',
     spans(' see [9,876,543](https://x.test/2024) and 4,236,000 '), ['[9,876,543](https://x.test/2024)']);
+  eq('adapter: a link whose text holds brackets is a markup range',
+    spans(' [[12,345]](https://x.test) and [see [1,234]](x) '), ['[[12,345]](https://x.test)', '[see [1,234]](x)']);
   eq('adapter: an image is a markup range', spans(' ![chart 12](c.png) '), ['![chart 12](c.png)']);
   eq('adapter: a code span is a markup range', spans(' set `9,876,543` here '), ['`9,876,543`']);
   eq('adapter: a code span closes only at a backtick run of its own length',
