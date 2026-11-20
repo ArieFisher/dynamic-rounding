@@ -6,9 +6,9 @@ This tool makes data easier to read, letting us see the stories within.
 
 [1 minute video demo](https://share.descript.com/view/Y76MAoqM06p)
 
-It works where you do - in your browser, AI chats, and spreadsheets.  It simplifies numbers - *in place* - as you browse, read email, use tools or chat with LLMs.
+It works where you do — in your browser, AI chats, and spreadsheets. It simplifies numbers *in place* as you browse, chat, and work.
 
-The intention is to enrich your experience without adding any mental load - you do the same activities but get more out of them.
+You don't have to change a thing — you simply get more out of what you're already doing.
 
 
 | Platform | Adds the ability to simplify: |
