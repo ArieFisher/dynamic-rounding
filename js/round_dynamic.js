@@ -1411,13 +1411,6 @@ function blankRanges(text, ranges) {
 }
 
 /**
- * The masked ranges are one list, so a new kind of text whose numbers stay as
- * written is one more source here. The identifier scan and the clock-time
- * scan read the text with each superscript span blanked, so a footnote marker
- * right after a phone number ("416-555-1234<sup>1</sup>") or a clock time
- * ("18:30<sup>2</sup>") never joins its digits.
- */
-/**
  * The dates findDates reads from the trimmed text, leaving out each date that
  * overlaps a markup range, and the spans of the dates left out. A date only
  * partly inside a link ("<a>Jan 15</a>, 2024") is left out whole. Each round
@@ -1439,6 +1432,13 @@ function readDatesOutsideMarkup(trimmed, markupInTrimmed) {
   }
 }
 
+/**
+ * The masked ranges are one list, so a new kind of text whose numbers stay as
+ * written is one more source here. The identifier scan and the clock-time
+ * scan read the text with each superscript span blanked, so a footnote marker
+ * right after a phone number ("416-555-1234<sup>1</sup>") or a clock time
+ * ("18:30<sup>2</sup>") never joins its digits.
+ */
 function extractSimplifyMatches(text, superscriptRanges, markupRanges = []) {
   const shapeText = blankRanges(text, superscriptRanges);
   const masked = [
