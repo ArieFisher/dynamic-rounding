@@ -180,9 +180,6 @@
       white-space: nowrap;
     }
 
-    /* Tester's notes stay closed until the reader opens them. A section's
-       notes outside its first block sit beside their tables, and show while
-       that block is open. */
     .tester-notes {
       margin: 0 0 16px;
     }
@@ -231,6 +228,9 @@
       margin-top: 12px;
     }
 
+    /* A section's later notes sit beside their tables, outside its tester's
+       notes, so they need their own rule to show only while the tester's
+       notes are open. */
     section:has(> details.tester-notes:not([open])) .tester-note {
       display: none;
     }
@@ -3553,10 +3553,10 @@ TSLA,75,"248.09","18,606.75"
         <li><b>Press the table pillbox of the first native table on and open the
           sidebar,</b> so the sidebar is bound to it. Press "Remove the native
           table". Expect: the sidebar shows "Right-click a table to connect it
-          here." and its switch shows off. With no scroll, each table pillbox in
-          section 28 stays on its table's top-right corner as the tables move up.
-          A failure shows the table pillbox left below its table, at the spot it
-          held before the removal.</li>
+          here." and its switch shows off. With no scroll, the first grid's table
+          pillbox, just below, stays on the grid's top-right corner as the grid
+          moves up. A failure shows the table pillbox left below the grid, at the
+          spot it held before the removal.</li>
         <li><b>Right-click the first grid, then press "Remove the grid".</b>
           Expect: the sidebar shows the same no-table state. Removing a table
           that is not the active one leaves the sidebar bound where it is.</li>
