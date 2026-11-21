@@ -56,13 +56,26 @@ const TABLE_PILLBOX_ANCHOR_PREFIX = '--dr-table-';
 const TABLE_PILLBOX_ANCHOR_LOAD = Math.random().toString(36).slice(2, 8);
 let tablePillboxAnchorCount = 0;
 // A page whose own code removes the anchor name each time the view writes it
-// fights the style observer with no pause, and the tab hangs. Such a page
-// changes nothing but the name. The observer answers this many removals in a
-// row that leave the rest of the table's style as the view last saw it; a
-// page that rewrites the style itself starts the count again. At the cap the
+// fights the style observer inside one task, with no pause, and the tab
+// hangs. Such a page changes nothing but the name. In one task, the observer
+// answers this many removals that leave the rest of the table's style as the
+// view last saw it. A page that rewrites the style itself, or the start of a
+// later task, starts the count again, so a framework update and a page that
+// writes the same style on each refresh both keep the name. At the cap the
 // observer stops for that table for good, its table pillbox leaves the table,
 // and the observer writes one debug row. This view alone reads it.
 const TABLE_PILLBOX_ANCHOR_NAME_ONLY_REWRITES = 1;
+
+// Runs fn in a later task. Chrome slows timers in a background tab; a channel
+// message is not a timer.
+function atNextTask(fn) {
+  const channel = new MessageChannel();
+  channel.port1.onmessage = () => {
+    channel.port1.close();
+    fn();
+  };
+  channel.port2.postMessage(null);
+}
 
 function syncTablePillbox(table) {
   const view = tablePillboxViews.get(table);
@@ -258,6 +271,7 @@ function anchorTablePillbox(table, button) {
       DR_LOG.debug(DR_LOG.formatRow('anchor name rewrite stop'));
       return;
     } else {
+      if (anchor.nameOnlyRewrites === 0) atNextTask(() => { anchor.nameOnlyRewrites = 0; });
       anchor.nameOnlyRewrites++;
     }
     writeTableAnchorName(table, name);

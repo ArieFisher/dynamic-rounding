@@ -397,16 +397,30 @@ function withAnchorComputedStyle(sheetNames, fn) {
   try { fn(); } finally { global.window.getComputedStyle = orig; }
 }
 
-// The style observer each anchor constructs, so a test can run its callback.
+// The style observer each anchor constructs, so a test can run its callback,
+// and the functions the view runs in a later task, so a test can start that
+// task.
 function withCapturedStyleObservers(fn) {
-  const orig = global.MutationObserver;
+  const origObserver = global.MutationObserver;
+  const origChannel = global.MessageChannel;
   const observers = [];
+  const nextTasks = [];
   global.MutationObserver = class {
     constructor(cb) { this.cb = cb; this.disconnected = false; observers.push(this); }
     observe(target, options) { this.target = target; this.options = options; }
     disconnect() { this.disconnected = true; }
   };
-  try { fn(observers); } finally { global.MutationObserver = orig; }
+  global.MessageChannel = class {
+    constructor() {
+      this.port1 = { onmessage: null, close() {} };
+      this.port2 = { postMessage: () => nextTasks.push(() => this.port1.onmessage({})) };
+    }
+  };
+  const startNextTask = () => nextTasks.splice(0).forEach((run) => run());
+  try { fn(observers, startNextTask); } finally {
+    global.MutationObserver = origObserver;
+    global.MessageChannel = origChannel;
+  }
 }
 
 function makeAnchorTestTable(first) {
@@ -576,6 +590,27 @@ function makeAnchorTestTable(first) {
       eq('anchor: a second removal of the name alone in a row stops the style observer', styleObserver.disconnected, true);
       eq('anchor: after the stop, the table holds no name of the extension\'s', table.style.anchorName, '');
       eq('anchor: the stop writes one debug row', rows, ['Dynamic Rounding: anchor name rewrite stop']);
+    });
+  });
+  forgetRegisteredTable(table);
+})();
+
+// A page that writes the same style on each update, such as a morphing update
+// that removes the style attribute the extension added, in separate tasks.
+(function tablePillboxAnchor_theSameRemovalInALaterTaskGetsTheNameBack() {
+  const table = makeAnchorTestTable('50000');
+  withCapturedStyleObservers((observers, startNextTask) => {
+    withAnchorComputedStyle(null, () => {
+      withTablePillboxDocumentMock(function () { registerDataTable(table); });
+      const name = tablePillboxes.get(table).style.positionAnchor;
+      const styleObserver = observers.find((o) => o.target === table);
+      for (let update = 0; update < 3; update++) {
+        table.style.anchorName = '';
+        styleObserver.cb([{ type: 'attributes', attributeName: 'style', target: table }]);
+        startNextTask();
+      }
+      eq('anchor: the same removal in three separate tasks gets the name back each time', table.style.anchorName, name);
+      eq('anchor: removals in separate tasks keep the style observer connected', styleObserver.disconnected, false);
     });
   });
   forgetRegisteredTable(table);
