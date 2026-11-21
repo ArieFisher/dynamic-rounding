@@ -640,6 +640,11 @@
       margin: 0;
     }
 
+    .story-notes {
+      margin: 12px 0 0;
+      font-size: 0.92em;
+    }
+
     .pattern-list {
       list-style: none;
       padding: 0;
@@ -1034,7 +1039,7 @@
     <h2>1. Basic data table</h2>
     <div class="puzzle-card">
       <p class="puzzle-eyebrow"><span><b>Puzzle 01</b></span><span>Cloud bill</span><span>8 numbers</span><span>About a minute</span></p>
-      <h3 class="puzzle-question">What kind of business pays this bill?</h3>
+      <h3 class="puzzle-question">What kind of business is this, judging only by its cloud bill?</h3>
       <ol class="puzzle-checklist">
         <li>Read the bill</li>
         <li>Press the table pillbox to simplify it</li>
@@ -1101,11 +1106,12 @@
                   <span class="data" style="flex: 9.4"></span>
                 </div>
                 <ul class="pattern-list">
-                  <li class="delivery"><b>90%</b><span>pays to deliver large files to many people in many
-                    places: video, music, or game assets.</span></li>
-                  <li class="data"><b>10%</b><span>measures what those people watch or play.</span></li>
-                  <li><b>&lt;$20</b><span>goes to servers, so the business runs on managed
-                    services.</span></li>
+                  <li class="delivery"><b>90%</b><span>goes to serving large files worldwide (CDN,
+                    storage, load balancing).</span></li>
+                  <li class="data"><b>10%</b><span>goes to data processing (likely telemetry,
+                    recommendations, analytics).</span></li>
+                  <li><b>~0%</b><span>goes to compute, so the application runs somewhere
+                    else.</span></li>
                 </ul>
               </div>
             </details>
@@ -1116,7 +1122,14 @@
                 <span class="redacted" aria-hidden="true"><i></i><i></i><i></i></span>
               </summary>
               <div class="panel-body">
-                <p class="story-headline">A media, streaming, or gaming platform.</p>
+                <p class="story-headline">This is almost certainly a media, streaming, or
+                  game/download platform.</p>
+                <p class="story-notes">Notice: just 8 lines of a cloud invoice reveal a lot
+                  about this company's <b>business</b> (media delivery), <b>architecture</b>
+                  (globally scaled delivery, publish/subscribe messaging), <b>vendor model</b>
+                  (likely multi-cloud, since its application servers do not appear here), and
+                  leading-edge <b>data maturity</b> (both streaming <em>and</em> batch
+                  pipelines).</p>
               </div>
             </details>
           </div>
