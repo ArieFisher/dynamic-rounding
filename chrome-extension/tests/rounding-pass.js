@@ -3966,14 +3966,13 @@ function everyRowRead(kind, largeIn) {
   };
   const saved = {
     document: global.document, chrome: global.chrome, window: global.window,
-    MutationObserver: global.MutationObserver, ResizeObserver: global.ResizeObserver,
+    MutationObserver: global.MutationObserver,
     Node: global.Node, NodeFilter: global.NodeFilter,
   };
   global.document = sharedDoc;
   global.chrome = { runtime: { onMessage: { addListener() {} }, sendMessage() {} } };
   global.window = { addEventListener() {}, getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) };
   global.MutationObserver = class { observe() {} disconnect() {} };
-  global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
   global.Node = { ELEMENT_NODE: 1 };
   global.NodeFilter = { SHOW_TEXT: 4 };
 
@@ -4078,7 +4077,7 @@ function everyRowRead(kind, largeIn) {
       stub6.getAttribute('aria-pressed'), 'true');
     } finally {
     global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
-    global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
+    global.MutationObserver = saved.MutationObserver;
     global.Node = saved.Node; global.NodeFilter = saved.NodeFilter;
   }
 })();

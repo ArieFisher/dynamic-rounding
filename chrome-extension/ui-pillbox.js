@@ -4,8 +4,8 @@
  * The table pillbox view: the table pillbox's geometry, styles, creation and
  * positioning, and the flash and pulse highlights.
  *
- * Module-level state here is drawing state only: button elements, resize
- * observers, and once-only flags. The registry and the active table are held
+ * Module-level state here is drawing state only: button elements, anchor
+ * names, and once-only flags. The registry and the active table are held
  * in DR_MODEL (app/model.js). On a press, this view publishes an intent topic
  * on DR_BUS for the controller in content.js. Apart from the settings notice
  * subscription below, every other load-time listener this view needs is
@@ -28,23 +28,24 @@ const TABLE_PILLBOX_COLOR_OFF = '#cccccc';
 // delay. This view alone reads it, so it lives here and not in the detection
 // settings.
 const TABLE_PILLBOX_AUTO_COLLAPSE_MS = 3000;
-// isTablePillboxSpotClipped reads one style per ancestor on every reposition,
-// so this cap bounds that cost per table. Real pages nest a table well under
-// 100 ancestors deep. Ancestors past the cap count as cutting off nothing.
-const TABLE_PILLBOX_CLIP_WALK_CAP = 100;
-// The view places the table pillbox after this wait, so the page's entrance
-// animations and centering have run before it measures the table's box.
-const TABLE_PILLBOX_POSITION_DELAY_MS = 150;
+// The table pillbox's offset from its table's top-right corner, in the
+// coordinates the browser resolves against the table's box.
+const TABLE_PILLBOX_OFFSET_X_PX = TABLE_PILLBOX_DOT_OVERHANG_PX - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX;
+const TABLE_PILLBOX_OFFSET_Y_PX = TABLE_PILLBOX_DOT_OVERLAP_PX - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX;
+// A table with no box, such as one set to display: none, leaves the anchor
+// unresolved. The browser then uses this fallback, which places the table
+// pillbox far outside the window.
+const TABLE_PILLBOX_NO_ANCHOR_PX = -100000;
 // Must stay longer than the pulse animation (0.6 s, run twice), so the
 // animation ends first.
 const PULSE_CLEANUP_MS = 1500;
-// Overflow values that cut off an element's content at its box.
-const CLIPPING_OVERFLOW = new Set(['hidden', 'scroll', 'auto', 'clip']);
 
 // --- Per-table pillbox infrastructure ---
 
-// A table (native or grid) → { button, resizeObserver }.
+// A table (native or grid) → { button, priorAnchorName }. priorAnchorName is
+// the table's inline anchor-name before the view added its own.
 const tablePillboxViews = new WeakMap();
+let tablePillboxAnchorCount = 0;
 
 function syncTablePillbox(table) {
   const view = tablePillboxViews.get(table);
@@ -59,7 +60,7 @@ function removeTablePillbox(table) {
   if (view.button.parentElement) {
     view.button.parentElement.removeChild(view.button);
   }
-  view.resizeObserver.disconnect();
+  table.style.anchorName = view.priorAnchorName;
   tablePillboxViews.delete(table);
 }
 
@@ -77,7 +78,9 @@ function ensureTablePillboxStyleInjected() {
   const style = document.createElement('style');
   style.textContent = `
     .dr-ext-table-pillbox {
-      position: absolute;
+      position: fixed;
+      left: calc(anchor(right, ${TABLE_PILLBOX_NO_ANCHOR_PX}px) + ${TABLE_PILLBOX_OFFSET_X_PX}px);
+      top: calc(anchor(top, ${TABLE_PILLBOX_NO_ANCHOR_PX}px) + ${TABLE_PILLBOX_OFFSET_Y_PX}px);
       z-index: 2147483646;
       display: inline-flex;
       justify-content: flex-end;
@@ -147,28 +150,6 @@ function ensureTablePillboxStyleInjected() {
   tablePillboxStyleInjected = true;
 }
 
-// The table pillbox sits in the page body, outside every page area, so the
-// positioning hides it while its spot is out of a page area's view.
-// isTablePillboxSpotClipped returns true when the point (x, y), in
-// window coordinates, sits outside the box of an ancestor that cuts off its
-// content on that axis. The walk stops at the page body, whose overflow the
-// window scroll covers, and at TABLE_PILLBOX_CLIP_WALK_CAP ancestors.
-function isTablePillboxSpotClipped(table, x, y) {
-  let el = table.parentElement;
-  for (let i = 0; el && el !== document.body && i < TABLE_PILLBOX_CLIP_WALK_CAP; i++) {
-    const style = window.getComputedStyle(el);
-    const clipsX = CLIPPING_OVERFLOW.has(style.overflowX);
-    const clipsY = CLIPPING_OVERFLOW.has(style.overflowY);
-    if (clipsX || clipsY) {
-      const box = el.getBoundingClientRect();
-      if (clipsX && (x < box.left || x > box.right)) return true;
-      if (clipsY && (y < box.top || y > box.bottom)) return true;
-    }
-    el = el.parentElement;
-  }
-  return false;
-}
-
 function windowScrollOffset() {
   return {
     x: window.scrollX || 0,
@@ -176,34 +157,23 @@ function windowScrollOffset() {
   };
 }
 
-function positionTablePillbox(table, button) {
-  const rect = table.getBoundingClientRect();
-  const computedStyle = window.getComputedStyle(table);
-  // The centre of the dot, which sits over the table's top-right corner.
-  const spotX = rect.right + TABLE_PILLBOX_DOT_OVERHANG_PX - TABLE_PILLBOX_DOT_PX / 2;
-  const spotY = rect.top + TABLE_PILLBOX_DOT_OVERLAP_PX - TABLE_PILLBOX_DOT_PX / 2;
-  if (
-    (rect.width === 0 && rect.height === 0) ||
-    computedStyle.display === 'none' ||
-    computedStyle.visibility === 'hidden' ||
-    isTablePillboxSpotClipped(table, spotX, spotY)
-  ) {
-    button.style.display = 'none';
-    return;
-  }
-  button.style.display = '';
-  const { x: scrollX, y: scrollY } = windowScrollOffset();
-  // Position so the dot's bottom = rect.top + scrollY + TABLE_PILLBOX_DOT_OVERLAP_PX
-  // and the dot's right = rect.right + scrollX + TABLE_PILLBOX_DOT_OVERHANG_PX.
-  // The button has TABLE_PILLBOX_HIT_PAD_PX padding on every side; with flex-end /
-  // flex-start the dot sits inside the button's content box, so its right
-  // edge is button.right - padding (not button.right). One padding subtracts
-  // from each axis — there is no double-padding term.
-  const padding = TABLE_PILLBOX_HIT_PAD_PX;
-  const buttonLeft = (rect.right + scrollX + TABLE_PILLBOX_DOT_OVERHANG_PX) - TABLE_PILLBOX_DOT_PX - padding;
-  const buttonTop  = (rect.top   + scrollY + TABLE_PILLBOX_DOT_OVERLAP_PX)  - TABLE_PILLBOX_DOT_PX - padding;
-  button.style.left = buttonLeft + 'px';
-  button.style.top  = buttonTop  + 'px';
+// The browser keeps the table pillbox on its table's top-right corner through
+// every scroll and every layout change, so no script moves it. position: fixed
+// matters: a fixed element can anchor to a table inside a fixed box, such as a
+// dialog, where an absolutely positioned one cannot. The browser hides the
+// table pillbox while page areas cut off the whole table, and shows it while
+// any part of the table is in view.
+//
+// The page can give the table an anchor name of its own, so the view adds its
+// name to the list rather than replacing it.
+function anchorTablePillbox(table, button) {
+  const name = '--dr-table-' + (++tablePillboxAnchorCount);
+  const priorAnchorName = table.style.anchorName || '';
+  const pageAnchorName = window.getComputedStyle(table).anchorName;
+  const hasPageAnchorName = pageAnchorName && pageAnchorName !== 'none';
+  table.style.anchorName = hasPageAnchorName ? pageAnchorName + ', ' + name : name;
+  button.style.positionAnchor = name;
+  return priorAnchorName;
 }
 
 /** Guard so the global tap-outside collapse listener is added only once */
@@ -227,11 +197,8 @@ function createTablePillbox(table) {
   dot.appendChild(knob);
   button.appendChild(dot);
 
+  const priorAnchorName = anchorTablePillbox(table, button);
   (document.body || document.documentElement).appendChild(button);
-
-  setTimeout(() => {
-    positionTablePillbox(table, button);
-  }, TABLE_PILLBOX_POSITION_DELAY_MS);
 
   let pointerType = '';
   button.addEventListener('pointerdown', (e) => {
@@ -273,12 +240,7 @@ function createTablePillbox(table) {
 
   button.addEventListener('mousedown', (e) => e.stopPropagation());
 
-  const resizeObserver = new ResizeObserver(() => {
-    positionTablePillbox(table, button);
-  });
-  resizeObserver.observe(table);
-
-  tablePillboxViews.set(table, { button, resizeObserver });
+  tablePillboxViews.set(table, { button, priorAnchorName });
 
   // Global tap-outside collapse (added once for all table pillboxes)
   if (!_globalTapCollapseAdded) {
@@ -293,33 +255,6 @@ function createTablePillbox(table) {
   }
 
   return button;
-}
-
-// A settings write can register a table that has no table pillbox, so the
-// walk skips a registered table with no button.
-function repositionAllTablePillboxes() {
-  for (const table of DR_MODEL.getRegisteredTables()) {
-    const view = tablePillboxViews.get(table);
-    if (view) {
-      positionTablePillbox(table, view.button);
-    }
-  }
-}
-
-// Reposition every table pillbox on scroll/resize. A scroll event fires on the
-// element that scrolled and does not bubble, so the scroll listener runs in
-// the capture phase: it runs on a page area's scroll as well as the window's.
-// The browser fires at most one scroll event per scrolling element per frame.
-//
-// Content above a table that grows or leaves the page moves the table without
-// resizing it, so the table's own observer does not run; the page body's size
-// changes instead. The browser delivers resize observations at most once per
-// frame. A table pillbox is absolutely positioned, so moving one leaves the
-// body's size unchanged and starts no further observation.
-function ensureScrollResizeListeners() {
-  window.addEventListener('scroll', repositionAllTablePillboxes, { capture: true, passive: true });
-  window.addEventListener('resize', repositionAllTablePillboxes, { passive: true });
-  new ResizeObserver(repositionAllTablePillboxes).observe(document.body || document.documentElement);
 }
 
 let highlightStyleInjected = false;

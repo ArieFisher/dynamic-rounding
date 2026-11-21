@@ -251,6 +251,7 @@ function makeTablePillboxTestTable(rowsOrCells, extra) {
     tagName: 'TABLE',
     rows,
     dataset: {},
+    style: {},
     _cells: cells,
     // classList on the table itself — used by flashActiveTable
     classList: {
@@ -283,14 +284,18 @@ function makeTablePillboxTestTable(rowsOrCells, extra) {
   return table;
 }
 
-// A planted record gets an observer stub, so the view's teardown runs on it
-// unchanged.
-/** @param {WeakMap} views The view's map from table to { button, resizeObserver }. */
+// A planted record holds no prior anchor name, and a planted table gets a
+// style object when it has none, so the view's teardown, which writes the
+// table's anchor name, runs on it unchanged.
+/** @param {WeakMap} views The view's map from table to { button, priorAnchorName }. */
 function tablePillboxButtons(views) {
   return {
     has: (table) => views.has(table),
     get: (table) => (views.has(table) ? views.get(table).button : undefined),
-    set: (table, button) => views.set(table, { button, resizeObserver: { disconnect() {} } }),
+    set: (table, button) => {
+      if (!table.style) table.style = {};
+      views.set(table, { button, priorAnchorName: '' });
+    },
     delete: (table) => views.delete(table),
   };
 }
@@ -778,8 +783,7 @@ function makeWalkEl(opts) {
     nodeType: 1,
     parentElement: null,
     parentNode: null,
-    // getBoundingClientRect — needed by positionTablePillbox when createTablePillbox
-    // fires its deferred setTimeout; return a zero-area rect so the table pillbox hides.
+    // A zero-area box: walk-up tests read no geometry from it.
     getBoundingClientRect: function() { return { width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0 }; },
     // closest() stub: no <table> ancestor
     closest: function() { return null; },
@@ -799,8 +803,8 @@ function withFindTargetEnv(elements, fn) {
   const origDocument = global.document;
 
   // Patch the bare getComputedStyle global (used by looksLikeGrid) to use each
-  // element's _display property. Also patch window.getComputedStyle (used by
-  // positionTablePillbox) as a courtesy, though it is not exercised in walk-up tests.
+  // element's _display property. Also patch window.getComputedStyle, which the
+  // table pillbox view reads for the table's anchor name.
   global.getComputedStyle = function(el) {
     if (el && el._display !== undefined) return { display: el._display };
     return { display: 'block', visibility: 'visible' };
@@ -1645,6 +1649,7 @@ function makeAriaGrid(embeddedTables) {
 
   return {
     tagName: 'DIV',
+    style: {},
     classList: {
       contains(c) { return classes.has(c); },
       add(c)      { classes.add(c); },
@@ -2090,7 +2095,7 @@ function withRightClickSandbox(run) {
 
   const saved = {
     document: global.document, chrome: global.chrome, window: global.window,
-    MutationObserver: global.MutationObserver, ResizeObserver: global.ResizeObserver,
+    MutationObserver: global.MutationObserver,
     Node: global.Node, NodeFilter: global.NodeFilter,
     getComputedStyle: global.getComputedStyle, setTimeout: global.setTimeout,
   };
@@ -2101,7 +2106,6 @@ function withRightClickSandbox(run) {
     getComputedStyle: () => ({ display: 'flex', visibility: 'visible' }),
   };
   global.MutationObserver = CapturingRightClickMO;
-  global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
   global.Node = { ELEMENT_NODE: 1 };
   global.NodeFilter = { SHOW_TEXT: 4 };
   // The geometry probe reads layout through the bare getComputedStyle global.
@@ -2131,7 +2135,7 @@ function withRightClickSandbox(run) {
     });
   } finally {
     global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
-    global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
+    global.MutationObserver = saved.MutationObserver;
     global.Node = saved.Node; global.NodeFilter = saved.NodeFilter;
     global.getComputedStyle = saved.getComputedStyle; global.setTimeout = saved.setTimeout;
     delete global.__rcr_DR_MODEL;
@@ -2228,6 +2232,7 @@ function makeScrollingRowgroupGrid(headerTexts, dataRows) {
   rowgroup.querySelectorAll = (sel) => (sel === '[role="row"]' ? dataRowEls : []);
   const wrapperEl = makeElementNode('aria-grid', [headerRow, rowgroup]);
   wrapperEl.tagName = 'DIV';
+  wrapperEl.style = {};
   wrapperEl.matches = (sel) => sel === GRID_ARIA_SELECTOR_TEXT;
   wrapperEl.querySelector = () => null;
   wrapperEl.querySelectorAll = function (sel) {

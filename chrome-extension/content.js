@@ -527,8 +527,6 @@ function teardownTableEntry(table) {
 }
 
 if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
-  ensureScrollResizeListeners();
-
   // MutationObserver to watch for dynamically added/removed tables and grids.
   // A removal counts its unregistered tables and dropped pending tables
   // across one callback and writes one row for each count, so a page that

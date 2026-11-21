@@ -381,84 +381,89 @@
     tablePillboxes.has(table), true);
 })();
 
-// --- Anchor geometry (rest state, scroll=0) ---
-// button left/top place the dot's bottom-right at
-//   dot.bottom = rect.top  + scrollY + TABLE_PILLBOX_DOT_OVERLAP_PX
-//   dot.right  = rect.right + scrollX + TABLE_PILLBOX_DOT_OVERHANG_PX
-// With justify-content: flex-end + padding: TABLE_PILLBOX_HIT_PAD_PX, the dot sits
-// inside the button's content box on both axes, so its right edge is
-// button.right - padding (not button.right). The button offsets are therefore:
-//   buttonLeft = (rect.right + scrollX + TABLE_PILLBOX_DOT_OVERHANG_PX) - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX
-//   buttonTop  = (rect.top   + scrollY + TABLE_PILLBOX_DOT_OVERLAP_PX)  - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX
-// One padding term per axis, not two.
-// All arithmetic is done in terms of the exposed globalThis constants.
+// --- Anchoring: the browser places the table pillbox ---
+// The view gives each table an anchor name and points its table pillbox at
+// that name. The browser then holds the table pillbox on the table's corner,
+// so no test here reads a position.
 
-(function tablePillbox_positionTablePillbox_anchorGeometry_noScroll() {
-  const tableRect = { top: 100, right: 500, bottom: 200, left: 100, width: 400, height: 100 };
-  const table = { getBoundingClientRect() { return tableRect; } };
-  const buttonEl = { style: {} };
-
-  const origScrollX = global.window.scrollX;
-  const origScrollY = global.window.scrollY;
-  global.window.scrollX = 0;
-  global.window.scrollY = 0;
-
-  positionTablePillbox(table, buttonEl);
-
-  global.window.scrollX = origScrollX;
-  global.window.scrollY = origScrollY;
-
-  const left = parseFloat(buttonEl.style.left);
-  const top  = parseFloat(buttonEl.style.top);
-
-  const expectedLeft = (tableRect.right + 0 + TABLE_PILLBOX_DOT_OVERHANG_PX) - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX;
-  const expectedTop  = (tableRect.top   + 0 + TABLE_PILLBOX_DOT_OVERLAP_PX)  - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX;
-
-  eq('positionTablePillbox: button left matches anchor formula (scroll=0)',
-    left, expectedLeft);
-  eq('positionTablePillbox: button top matches anchor formula (scroll=0)',
-    top, expectedTop);
-
-  // Cross-check: derive the dot's bottom-right edges from the button offset
-  // and assert they sit at the spec-defined anchor. dot.right (document) =
-  // button.left + (button width) - padding-right = button.left + DOT + PAD.
-  // dot.bottom (document) = button.top + padding-top + DOT.
-  const dotRight  = left + TABLE_PILLBOX_DOT_PX + TABLE_PILLBOX_HIT_PAD_PX;
-  const dotBottom = top  + TABLE_PILLBOX_HIT_PAD_PX + TABLE_PILLBOX_DOT_PX;
-  eq('positionTablePillbox: dot.right sits TABLE_PILLBOX_DOT_OVERHANG_PX past table right edge',
-    dotRight, tableRect.right + TABLE_PILLBOX_DOT_OVERHANG_PX);
-  eq('positionTablePillbox: dot.bottom sits TABLE_PILLBOX_DOT_OVERLAP_PX below table top edge',
-    dotBottom, tableRect.top + TABLE_PILLBOX_DOT_OVERLAP_PX);
+(function tablePillboxAnchor_tableAndTablePillboxShareOneName() {
+  const tableA = makeTablePillboxTestTable([[{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }], [{ tag: 'td', text: '200' }, { tag: 'td', text: '300' }]]);
+  const tableB = makeTablePillboxTestTable([[{ tag: 'td', text: '70000' }, { tag: 'td', text: '400' }], [{ tag: 'td', text: '500' }, { tag: 'td', text: '600' }]]);
+  withTablePillboxDocumentMock(function () {
+    registerDataTable(tableA);
+    registerDataTable(tableB);
+  });
+  const nameA = tableA.style.anchorName;
+  eq('anchor: a registered table gets an anchor name of the extension\'s own',
+    /^--dr-table-\d+$/.test(nameA), true);
+  eq('anchor: the table pillbox anchors to its table\'s name',
+    tablePillboxes.get(tableA).style.positionAnchor, nameA);
+  eq('anchor: a second table gets a different name',
+    tableB.style.anchorName !== nameA && tablePillboxes.get(tableB).style.positionAnchor === tableB.style.anchorName, true);
+  removeTablePillbox(tableA);
+  eq('anchor: removing the table pillbox takes the name off its table', tableA.style.anchorName, '');
+  forgetRegisteredTable(tableA);
+  forgetRegisteredTable(tableB);
 })();
 
-// --- Anchor geometry with non-zero scroll ---
-// scrollX=200, scrollY=300 should shift both axes accordingly.
+(function tablePillboxAnchor_keepsThePagesOwnAnchorName() {
+  const origGetComputedStyle = global.window.getComputedStyle;
+  try {
+    // The page's stylesheet names the table; the inline style holds nothing.
+    global.window.getComputedStyle = () => ({ display: 'block', visibility: 'visible', anchorName: '--page-own' });
+    const fromSheet = { style: {} };
+    const buttonA = { style: {} };
+    const priorA = anchorTablePillbox(fromSheet, buttonA);
+    eq('anchor: a name from the page\'s stylesheet stays first in the table\'s list',
+      fromSheet.style.anchorName, '--page-own, ' + buttonA.style.positionAnchor);
+    eq('anchor: the prior inline name of a table named by the stylesheet is empty', priorA, '');
 
-(function tablePillbox_positionTablePillbox_anchorGeometry_withScroll() {
-  const tableRect = { top: 100, right: 500, bottom: 200, left: 100, width: 400, height: 100 };
-  const table = { getBoundingClientRect() { return tableRect; } };
-  const buttonEl = { style: {} };
+    // The page names the table inline.
+    global.window.getComputedStyle = () => ({ display: 'block', visibility: 'visible', anchorName: '--page-inline' });
+    const inline = { style: { anchorName: '--page-inline' } };
+    const buttonB = { style: {} };
+    const priorB = anchorTablePillbox(inline, buttonB);
+    eq('anchor: an inline name the page set stays first in the table\'s list',
+      inline.style.anchorName, '--page-inline, ' + buttonB.style.positionAnchor);
+    eq('anchor: the inline name the page set is the prior name to restore', priorB, '--page-inline');
 
-  const origScrollX = global.window.scrollX;
-  const origScrollY = global.window.scrollY;
-  global.window.scrollX = 200;
-  global.window.scrollY = 300;
+    // A table with no anchor name computes the keyword none.
+    global.window.getComputedStyle = () => ({ display: 'block', visibility: 'visible', anchorName: 'none' });
+    const unnamed = { style: {} };
+    const buttonC = { style: {} };
+    anchorTablePillbox(unnamed, buttonC);
+    eq('anchor: a table the page names nothing holds the extension\'s name alone',
+      unnamed.style.anchorName, buttonC.style.positionAnchor);
+  } finally {
+    global.window.getComputedStyle = origGetComputedStyle;
+  }
+})();
 
-  positionTablePillbox(table, buttonEl);
+(function tablePillboxAnchor_removalRestoresThePagesInlineName() {
+  const table = makeTablePillboxTestTable([[{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }], [{ tag: 'td', text: '200' }, { tag: 'td', text: '300' }]]);
+  table.style.anchorName = '--page-inline';
+  const origGetComputedStyle = global.window.getComputedStyle;
+  global.window.getComputedStyle = () => ({ display: 'block', visibility: 'visible', anchorName: '--page-inline' });
+  try {
+    withTablePillboxDocumentMock(function () { registerDataTable(table); });
+  } finally {
+    global.window.getComputedStyle = origGetComputedStyle;
+  }
+  removeTablePillbox(table);
+  eq('anchor: removing the table pillbox puts back the inline name the page set',
+    table.style.anchorName, '--page-inline');
+  forgetRegisteredTable(table);
+})();
 
-  global.window.scrollX = origScrollX;
-  global.window.scrollY = origScrollY;
-
-  const left = parseFloat(buttonEl.style.left);
-  const top  = parseFloat(buttonEl.style.top);
-
-  const expectedLeft = (tableRect.right + 200 + TABLE_PILLBOX_DOT_OVERHANG_PX) - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX;
-  const expectedTop  = (tableRect.top   + 300 + TABLE_PILLBOX_DOT_OVERLAP_PX)  - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX;
-
-  eq('positionTablePillbox: button left includes scrollX offset',
-    left, expectedLeft);
-  eq('positionTablePillbox: button top includes scrollY offset',
-    top, expectedTop);
+// The browser resolves left and top against the table's box. The dot sits
+// TABLE_PILLBOX_DOT_OVERHANG_PX past the table's right edge, with its bottom
+// TABLE_PILLBOX_DOT_OVERLAP_PX below the table's top edge. The dot sits inside
+// the button's padding on both axes, so one padding term applies per axis.
+(function tablePillboxAnchor_offsetsPlaceTheDotOverTheCorner() {
+  eq('anchor: the dot\'s right edge sits TABLE_PILLBOX_DOT_OVERHANG_PX past the table\'s right edge',
+    TABLE_PILLBOX_OFFSET_X_PX + TABLE_PILLBOX_DOT_PX + TABLE_PILLBOX_HIT_PAD_PX, TABLE_PILLBOX_DOT_OVERHANG_PX);
+  eq('anchor: the dot\'s bottom edge sits TABLE_PILLBOX_DOT_OVERLAP_PX below the table\'s top edge',
+    TABLE_PILLBOX_OFFSET_Y_PX + TABLE_PILLBOX_HIT_PAD_PX + TABLE_PILLBOX_DOT_PX, TABLE_PILLBOX_DOT_OVERLAP_PX);
 })();
 
 // --- /: the two directions of a press ---
@@ -769,349 +774,6 @@
   eq('table pillbox: the Enter key handler publishes no toggle', published.length, 0);
   eq('table pillbox: the Enter key handler calls no click', clickCalls, 0);
   eq('table pillbox: the Enter key handler keeps the key event off the page', stopCalls, 1);
-})();
-
-// ---------------------------------------------------------------------------
-// Visibility gate in positionTablePillbox
-// ---------------------------------------------------------------------------
-//
-// positionTablePillbox hides the table pillbox label (labelEl.style.display = 'none')
-// when the table is offscreen or invisible, and shows it (labelEl.style.display = '')
-// when the table is normally visible.
-//
-// All four tests stub window.getComputedStyle (and/or the rect) then restore
-// the original before returning, so surrounding tests are unaffected.
-
-// display:none (computed style) → labelEl.style.display === 'none'
-(function visGate_displayNone() {
-  const origGetComputedStyle = global.window.getComputedStyle;
-  global.window.getComputedStyle = () => ({ display: 'none', visibility: 'visible' });
-
-  const table = {
-    getBoundingClientRect() { return { width: 400, height: 200, top: 100, right: 500, bottom: 300, left: 100 }; },
-  };
-  const labelEl = { style: {} };
-
-  positionTablePillbox(table, labelEl);
-
-  global.window.getComputedStyle = origGetComputedStyle;
-
-  eq('visGate: display:none table → labelEl.style.display is "none"',
-    labelEl.style.display, 'none');
-})();
-
-// visibility:hidden (computed style) → labelEl.style.display === 'none'
-(function visGate_visibilityHidden() {
-  const origGetComputedStyle = global.window.getComputedStyle;
-  global.window.getComputedStyle = () => ({ display: 'block', visibility: 'hidden' });
-
-  const table = {
-    getBoundingClientRect() { return { width: 400, height: 200, top: 100, right: 500, bottom: 300, left: 100 }; },
-  };
-  const labelEl = { style: {} };
-
-  positionTablePillbox(table, labelEl);
-
-  global.window.getComputedStyle = origGetComputedStyle;
-
-  eq('visGate: visibility:hidden table → labelEl.style.display is "none"',
-    labelEl.style.display, 'none');
-})();
-
-// zero-area bounding rect → labelEl.style.display === 'none'
-(function visGate_zeroAreaRect() {
-  // No need to override getComputedStyle — default stub returns visible style.
-  const table = {
-    getBoundingClientRect() { return { width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0 }; },
-  };
-  const labelEl = { style: {} };
-
-  positionTablePillbox(table, labelEl);
-
-  eq('visGate: zero-area rect table → labelEl.style.display is "none"',
-    labelEl.style.display, 'none');
-})();
-
-// normal rect + no hiding → labelEl.style.display === '' (visible)
-(function visGate_normalVisible() {
-  // Default getComputedStyle stub returns display:block / visibility:visible.
-  const origScrollX = global.window.scrollX;
-  const origScrollY = global.window.scrollY;
-  global.window.scrollX = 0;
-  global.window.scrollY = 0;
-
-  const table = {
-    getBoundingClientRect() { return { width: 400, height: 200, top: 100, right: 500, bottom: 300, left: 100 }; },
-  };
-  const labelEl = { style: {} };
-
-  positionTablePillbox(table, labelEl);
-
-  global.window.scrollX = origScrollX;
-  global.window.scrollY = origScrollY;
-
-  eq('visGate: normal visible table → labelEl.style.display is "" (shown)',
-    labelEl.style.display, '');
-})();
-
-// ---------------------------------------------------------------------------
-// Clip gate in positionTablePillbox: a table inside a scrolling page area
-// ---------------------------------------------------------------------------
-//
-// A web application such as a chat page scrolls a page area, not the window.
-// The table pillbox sits in the page body, so the area's edges never cut it off.
-// positionTablePillbox hides the table pillbox while the dot's centre sits outside the box
-// of any ancestor whose overflow cuts off its content, on the axis that
-// ancestor cuts. The dot's centre sits TABLE_PILLBOX_DOT_PX / 2 inside the table's
-// top-right corner, less the overhang and overlap.
-
-// Builds table → ancestors[0] → ancestors[1] → … → body. Each ancestor spec
-// holds its overflow on both axes and its box.
-function withClipChain(ancestorSpecs, tableRect, fn) {
-  const body = { _name: 'body', parentElement: null };
-  const ancestors = ancestorSpecs.map((spec) => ({
-    _spec: spec,
-    getBoundingClientRect() { return spec.box; },
-  }));
-  for (let i = 0; i < ancestors.length; i++) {
-    ancestors[i].parentElement = ancestors[i + 1] || body;
-  }
-  const table = {
-    parentElement: ancestors[0] || body,
-    getBoundingClientRect() { return tableRect; },
-  };
-  const styleReads = [];
-  const origGetComputedStyle = global.window.getComputedStyle;
-  const origBody = global.document.body;
-  const origScrollX = global.window.scrollX;
-  const origScrollY = global.window.scrollY;
-  global.window.getComputedStyle = (el) => {
-    styleReads.push(el);
-    const spec = el._spec || {};
-    return {
-      display: 'block', visibility: 'visible',
-      overflowX: spec.overflowX || 'visible',
-      overflowY: spec.overflowY || 'visible',
-    };
-  };
-  global.document.body = body;
-  global.window.scrollX = 0;
-  global.window.scrollY = 0;
-  try {
-    fn({ table, body, ancestors, styleReads });
-  } finally {
-    global.window.getComputedStyle = origGetComputedStyle;
-    global.document.body = origBody;
-    global.window.scrollX = origScrollX;
-    global.window.scrollY = origScrollY;
-  }
-}
-
-// The scrolling page area spans 100 to 700 down the screen. The dot's centre
-// sits 3 px below the table's top edge.
-const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 1000, height: 600 };
-
-(function clipGate_tableTopScrolledAboveAreaTop_hidden() {
-  withClipChain(
-    [{ overflowX: 'hidden', overflowY: 'auto', box: CLIP_PANEL_BOX }],
-    { top: 40, bottom: 400, left: 100, right: 900, width: 800, height: 360 },
-    ({ table }) => {
-      const buttonEl = { style: {} };
-      positionTablePillbox(table, buttonEl);
-      eq('clipGate: a table whose top scrolled above its scrolling area hides its table pillbox',
-        buttonEl.style.display, 'none');
-    });
-})();
-
-(function clipGate_tableBelowAreaBottom_hidden() {
-  withClipChain(
-    [{ overflowX: 'hidden', overflowY: 'auto', box: CLIP_PANEL_BOX }],
-    { top: 900, bottom: 1300, left: 100, right: 900, width: 800, height: 400 },
-    ({ table }) => {
-      const buttonEl = { style: {} };
-      positionTablePillbox(table, buttonEl);
-      eq('clipGate: a table below its scrolling area\'s bottom edge hides its table pillbox',
-        buttonEl.style.display, 'none');
-    });
-})();
-
-(function clipGate_tableTopInsideArea_shownAndPlaced() {
-  const tableRect = { top: 200, bottom: 500, left: 100, right: 900, width: 800, height: 300 };
-  withClipChain(
-    [{ overflowX: 'hidden', overflowY: 'auto', box: CLIP_PANEL_BOX }],
-    tableRect,
-    ({ table }) => {
-      const buttonEl = { style: {} };
-      positionTablePillbox(table, buttonEl);
-      eq('clipGate: a table whose top sits inside its scrolling area shows its table pillbox',
-        buttonEl.style.display, '');
-      eq('clipGate: that table pillbox sits at the table\'s top-right corner',
-        [parseFloat(buttonEl.style.left), parseFloat(buttonEl.style.top)],
-        [tableRect.right + TABLE_PILLBOX_DOT_OVERHANG_PX - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX,
-         tableRect.top + TABLE_PILLBOX_DOT_OVERLAP_PX - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX]);
-    });
-})();
-
-(function clipGate_wideTableRightEdgePastSidewaysBox_hidden() {
-  // A box that scrolls sideways around a table wider than it, inside a page
-  // area that scrolls down. The table's top is in view; its right edge is not.
-  withClipChain(
-    [
-      { overflowX: 'auto', overflowY: 'hidden', box: { top: 150, bottom: 450, left: 50, right: 650, width: 600, height: 300 } },
-      { overflowX: 'hidden', overflowY: 'auto', box: CLIP_PANEL_BOX },
-    ],
-    { top: 150, bottom: 450, left: 50, right: 1250, width: 1200, height: 300 },
-    ({ table }) => {
-      const buttonEl = { style: {} };
-      positionTablePillbox(table, buttonEl);
-      eq('clipGate: a wide table whose right edge sits past its sideways-scrolling box hides its table pillbox',
-        buttonEl.style.display, 'none');
-    });
-})();
-
-(function clipGate_axisWithVisibleOverflow_neverHides() {
-  // The ancestor cuts off sideways only; the table's top sits above it, on
-  // the axis the ancestor leaves open. A browser keeps one axis visible only
-  // beside clip: it computes visible beside hidden, scroll, or auto as auto.
-  withClipChain(
-    [{ overflowX: 'clip', overflowY: 'visible', box: CLIP_PANEL_BOX }],
-    { top: 40, bottom: 400, left: 100, right: 900, width: 800, height: 360 },
-    ({ table }) => {
-      const buttonEl = { style: {} };
-      positionTablePillbox(table, buttonEl);
-      eq('clipGate: an ancestor that cuts off one axis never hides the table pillbox on the other',
-        buttonEl.style.display, '');
-    });
-})();
-
-(function clipGate_visibleOverflowAncestor_neverHides() {
-  withClipChain(
-    [{ overflowX: 'visible', overflowY: 'visible', box: CLIP_PANEL_BOX }],
-    { top: 40, bottom: 400, left: 100, right: 900, width: 800, height: 360 },
-    ({ table }) => {
-      const buttonEl = { style: {} };
-      positionTablePillbox(table, buttonEl);
-      eq('clipGate: an ancestor that cuts off nothing never hides the table pillbox',
-        buttonEl.style.display, '');
-    });
-})();
-
-(function clipGate_walkStopsAtBody() {
-  // The window scroll covers the body and the root element, so the walk
-  // never reads either: a body set to cut off its content hides nothing.
-  withClipChain([], { top: 40, bottom: 400, left: 100, right: 900, width: 800, height: 360 },
-    ({ table, body, styleReads }) => {
-      body._spec = { overflowX: 'hidden', overflowY: 'hidden', box: CLIP_PANEL_BOX };
-      body.getBoundingClientRect = () => CLIP_PANEL_BOX;
-      const buttonEl = { style: {} };
-      positionTablePillbox(table, buttonEl);
-      eq('clipGate: the walk stops at the page body, so the body\'s overflow hides nothing',
-        buttonEl.style.display, '');
-      eq('clipGate: the walk never reads the page body\'s style',
-        styleReads.includes(body), false);
-    });
-})();
-
-(function clipGate_walkCap() {
-  // TABLE_PILLBOX_CLIP_WALK_CAP plain ancestors, then one that would hide the
-  // table pillbox. The walk stops at the cap and never reaches it.
-  const plain = Array.from({ length: TABLE_PILLBOX_CLIP_WALK_CAP }, () => ({ box: CLIP_PANEL_BOX }));
-  const specs = plain.concat([{ overflowX: 'hidden', overflowY: 'auto', box: CLIP_PANEL_BOX }]);
-  withClipChain(specs, { top: 40, bottom: 400, left: 100, right: 900, width: 800, height: 360 },
-    ({ table, ancestors, styleReads }) => {
-      const buttonEl = { style: {} };
-      positionTablePillbox(table, buttonEl);
-      eq('clipGate: an ancestor past the walk cap hides nothing',
-        buttonEl.style.display, '');
-      eq('clipGate: the walk reads no ancestor past the cap',
-        styleReads.includes(ancestors[TABLE_PILLBOX_CLIP_WALK_CAP]), false);
-    });
-})();
-
-// ---------------------------------------------------------------------------
-// Scroll wiring: a scroll inside a page area moves every table pillbox
-// ---------------------------------------------------------------------------
-//
-// A scroll event fires on the element that scrolled and does not bubble, so a
-// plain window listener runs on the window's own scroll alone. The capture
-// phase on the window runs on every scroll on the page.
-
-(function scrollWiring_captureListenerRepositionsEveryTablePillbox() {
-  const listeners = [];
-  const origAdd = global.window.addEventListener;
-  const origRegistered = DR_MODEL.getRegisteredTables;
-  global.window.addEventListener = (type, handler, options) => {
-    listeners.push({ type, handler, options });
-  };
-  const tableRect = { top: 200, bottom: 500, left: 100, right: 900, width: 800, height: 300 };
-  const table = { getBoundingClientRect() { return tableRect; } };
-  const buttonEl = { style: {} };
-  tablePillboxes.set(table, buttonEl);
-  const tableWithNoPillbox = {};
-  DR_MODEL.getRegisteredTables = () => [tableWithNoPillbox, table];
-  const origScrollX = global.window.scrollX;
-  const origScrollY = global.window.scrollY;
-  global.window.scrollX = 0;
-  global.window.scrollY = 0;
-  try {
-    ensureScrollResizeListeners();
-    const scroll = listeners.find((l) => l.type === 'scroll');
-    eq('scrollWiring: the scroll listener runs in the capture phase',
-      Boolean(scroll && scroll.options && scroll.options.capture), true);
-    // An inner page area scrolls: the event's target is that area, not the
-    // document.
-    if (scroll) scroll.handler({ type: 'scroll', target: { _name: 'chat column' } });
-    eq('scrollWiring: a scroll inside a page area repositions the table pillbox',
-      parseFloat(buttonEl.style.top),
-      tableRect.top + TABLE_PILLBOX_DOT_OVERLAP_PX - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX);
-  } finally {
-    global.window.addEventListener = origAdd;
-    DR_MODEL.getRegisteredTables = origRegistered;
-    tablePillboxes.delete(table);
-    global.window.scrollX = origScrollX;
-    global.window.scrollY = origScrollY;
-  }
-})();
-
-// Content above a table that grows or leaves the page moves the table with no
-// scroll and no change to the table's size. The page body's size changes.
-(function layoutWiring_bodyResizeRepositionsEveryTablePillbox() {
-  const observers = [];
-  const origResizeObserver = global.ResizeObserver;
-  const origRegistered = DR_MODEL.getRegisteredTables;
-  global.ResizeObserver = class {
-    constructor(callback) { this.callback = callback; this.targets = []; observers.push(this); }
-    observe(target) { this.targets.push(target); }
-    unobserve() {}
-    disconnect() {}
-  };
-  const tableRect = { top: 200, bottom: 500, left: 100, right: 900, width: 800, height: 300 };
-  const table = { getBoundingClientRect() { return tableRect; } };
-  const buttonEl = { style: {} };
-  tablePillboxes.set(table, buttonEl);
-  DR_MODEL.getRegisteredTables = () => [table];
-  const origScrollX = global.window.scrollX;
-  const origScrollY = global.window.scrollY;
-  global.window.scrollX = 0;
-  global.window.scrollY = 0;
-  try {
-    ensureScrollResizeListeners();
-    const bodyObserver = observers.find((o) => o.targets.includes(global.document.body));
-    eq('layoutWiring: a resize observer watches the page body', Boolean(bodyObserver), true);
-    // The content above the table grows by 150 px.
-    tableRect.top = 350;
-    tableRect.bottom = 650;
-    if (bodyObserver) bodyObserver.callback([{ target: global.document.body }], bodyObserver);
-    eq('layoutWiring: a change to the body size repositions the table pillbox',
-      parseFloat(buttonEl.style.top),
-      350 + TABLE_PILLBOX_DOT_OVERLAP_PX - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX);
-  } finally {
-    global.ResizeObserver = origResizeObserver;
-    DR_MODEL.getRegisteredTables = origRegistered;
-    tablePillboxes.delete(table);
-    global.window.scrollX = origScrollX;
-    global.window.scrollY = origScrollY;
-  }
 })();
 
 // =============================================================================
@@ -2627,7 +2289,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     };
   })();
   const gridEl = {
-    nodeType: 1, tagName: 'DIV', className: 'grid-wrapper', children: rows,
+    nodeType: 1, tagName: 'DIV', className: 'grid-wrapper', children: rows, style: {},
     classList: gridClassList, parentElement: null, parentNode: null,
     // applySidebarRounding calls table.querySelector(...) directly, with no `&&`
     // guard, so this must exist (returning "not already rounded"), and
