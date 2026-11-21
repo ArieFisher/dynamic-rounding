@@ -110,7 +110,6 @@ function ensureTablePillboxStyleInjected() {
   style.textContent = `
     .dr-ext-table-pillbox {
       position: fixed;
-      position-visibility: anchors-visible;
       left: calc(anchor(right, ${TABLE_PILLBOX_NO_ANCHOR_PX}px) + ${TABLE_PILLBOX_OFFSET_X_PX}px);
       top: calc(anchor(top, ${TABLE_PILLBOX_NO_ANCHOR_PX}px) + ${TABLE_PILLBOX_OFFSET_Y_PX}px);
       z-index: 2147483646;
@@ -231,9 +230,10 @@ function dropCopiedAnchorNames(root) {
 // The browser keeps the table pillbox on its table's top-right corner through
 // every scroll and every layout change, so no script moves it. position: fixed
 // matters: a fixed element can anchor to a table inside a box the page pins to
-// the window, where an absolutely positioned one cannot. position-visibility
-// hides the table pillbox while page areas cut off the whole table. Chrome's
-// default for it has changed between versions, so the rule sets it.
+// the window, where an absolutely positioned one cannot. Chrome's default
+// position-visibility hides the table pillbox while page areas cut off the
+// whole table. The rule leaves it unset: Chrome renamed the value and warns on
+// the old name, and versions too old for the new name ignore it either way.
 //
 // What the page set in the table's inline style, apart from the view's names:
 // every other declaration, and the page's own anchor names.
