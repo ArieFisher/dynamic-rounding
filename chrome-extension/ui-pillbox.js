@@ -5,9 +5,9 @@
  * positioning, and the flash and pulse highlights.
  *
  * Module-level state here is drawing state only: button elements, anchor
- * names and their style observers, and once-only flags. The registry and the active table are held
- * in DR_MODEL (app/model.js). On a press, this view publishes an intent topic
- * on DR_BUS for the controller in content.js. Apart from the settings notice
+ * names and their style observers, and once-only flags. The registry and the
+ * active table are held in DR_MODEL (app/model.js). On a press, this view
+ * publishes an intent topic on DR_BUS for the controller in content.js. Apart from the settings notice
  * subscription below, every other load-time listener this view needs is
  * wired in content.js, which loads after this file.
  */
@@ -188,6 +188,22 @@ function withoutViewAnchorNames(names) {
 function writeTableAnchorName(table, name) {
   const pageNames = withoutViewAnchorNames(anchorNameList(window.getComputedStyle(table).anchorName));
   table.style.anchorName = pageNames.concat(name).join(', ');
+}
+
+// A page that copies a table, or builds a sticky header from one, adds an
+// element that carries the original's anchor name. A copy that never
+// registers would keep that name, and the browser anchors the original's
+// table pillbox to the last element in page order that holds it. This drops
+// every extension name from each element in an added subtree, except the
+// element's own. One selector query per added subtree.
+function dropCopiedAnchorNames(root) {
+  const elements = [root].concat(Array.from(root.querySelectorAll('[style*="' + TABLE_PILLBOX_ANCHOR_PREFIX + '"]')));
+  for (const el of elements) {
+    const names = anchorNameList(el.style.anchorName);
+    const view = tablePillboxViews.get(el);
+    const kept = names.filter((n) => !n.startsWith(TABLE_PILLBOX_ANCHOR_PREFIX) || (view && n === view.anchor.name));
+    if (kept.length !== names.length) el.style.anchorName = kept.join(', ');
+  }
 }
 
 // The browser keeps the table pillbox on its table's top-right corner through

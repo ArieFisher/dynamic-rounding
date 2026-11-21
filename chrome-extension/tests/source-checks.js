@@ -244,6 +244,16 @@
     fnBody.includes('top: calc(anchor(top, ${TABLE_PILLBOX_NO_ANCHOR_PX}px) + ${TABLE_PILLBOX_OFFSET_Y_PX}px)'), true);
 })();
 
+// The added-node pass drops copied anchor names before it registers anything,
+// so a copy that registers starts from a list without the original's name.
+(function anchoredTablePillbox_addedNodePassDropsCopiedNames() {
+  const src = allContentSrc;
+  const drop = src.indexOf('dropCopiedAnchorNames(node);');
+  const inject = src.indexOf('injectTablePillboxes(node);');
+  eq('anchored-table-pillbox: the added-node pass drops copied anchor names, then registers tables',
+    drop !== -1 && inject !== -1 && drop < inject && src.slice(drop, inject).split('\n').length <= 2, true);
+})();
+
 // The anchor functions need Chrome 125, so the manifest holds that floor.
 (function anchoredTablePillbox_manifestMinimumChrome() {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));

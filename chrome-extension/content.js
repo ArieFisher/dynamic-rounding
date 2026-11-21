@@ -537,6 +537,7 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
+        dropCopiedAnchorNames(node);
         injectTablePillboxes(node);
       }
       for (const node of mutation.removedNodes) {

@@ -493,6 +493,27 @@ function makeAnchorTestTable(first) {
   forgetRegisteredTable(copy);
 })();
 
+// A copy that never registers, such as a sticky header built from the table,
+// keeps the original's name unless the added-node pass drops it.
+(function tablePillboxAnchor_anAddedCopyThatNeverRegistersDropsTheOriginalsName() {
+  const original = makeAnchorTestTable('50000');
+  withAnchorComputedStyle(null, () => {
+    withTablePillboxDocumentMock(function () { registerDataTable(original); });
+  });
+  const originalName = original.style.anchorName;
+  const header = { style: { anchorName: '--page-own, ' + originalName } };
+  const copy = { style: { anchorName: originalName }, querySelectorAll: () => [header] };
+  dropCopiedAnchorNames(copy);
+  eq('anchor: an added copy holds no extension name', copy.style.anchorName, '');
+  eq('anchor: an element inside the added copy keeps the page\'s own name alone', header.style.anchorName, '--page-own');
+  eq('anchor: the original keeps its name', original.style.anchorName, originalName);
+
+  original.querySelectorAll = () => [];
+  dropCopiedAnchorNames(original);
+  eq('anchor: a registered table the page moves keeps its own name', original.style.anchorName, originalName);
+  forgetRegisteredTable(original);
+})();
+
 // A page that rewrites the table's whole style attribute drops the anchor name.
 (function tablePillboxAnchor_aStyleRewriteGetsTheNameBack() {
   const table = makeAnchorTestTable('50000');
@@ -2645,7 +2666,7 @@ function makeAnchorTestTable(first) {
 
 // --- the route needs no pending observer ---
 
-(function rightClickRegisters_runtime_theRouteInstallsNoObserver() {
+(function rightClickRegisters_runtime_theRouteInstallsNoContentObserver() {
   withRightClickSandbox(function (ctx) {
     const grid = makeDatabaseQueryGrid();
 

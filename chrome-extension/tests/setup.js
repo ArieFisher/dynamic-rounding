@@ -152,6 +152,7 @@ Object.defineProperty(globalThis, 'highlightStyleInjected', {
 });
 globalThis.syncTablePillbox = syncTablePillbox;
 globalThis.anchorTablePillbox = anchorTablePillbox;
+globalThis.dropCopiedAnchorNames = dropCopiedAnchorNames;
 globalThis.createTablePillbox = createTablePillbox;
 globalThis.registerDataTable = registerDataTable;
 globalThis.injectTablePillboxes = injectTablePillboxes;
