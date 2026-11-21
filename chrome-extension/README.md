@@ -20,7 +20,7 @@ The table pillbox sits over the table's top-right corner. Chrome holds it there 
 
 Chrome hides the table pillbox while page areas cut off the whole table, and shows it while any part of the table is in view. While a table's top has scrolled past the edge of a page area and the rest of the table is still in view, its table pillbox sits over that edge. A table wider than a box that scrolls sideways shows its table pillbox at the table's top-right corner, past the box's edge.
 
-The table pillbox sits in the page body, outside the page's own markup, because an element added inside a framework-built page's markup can crash the page on its next redraw, the same reason every cell write is a patch. The extension adds its anchor name to the table's own style, after any anchor name the page gave the table. It writes the name again when the page rewrites the table's style, and takes it off when it removes the table pillbox.
+The table pillbox sits in the page body, outside the page's own markup, because an element added inside a framework-built page's markup can crash the page on its next redraw, the same reason every cell write is a patch. The extension adds its anchor name to the table's own style, after any anchor name the page gave the table. It writes the name again when the page rewrites the table's style, and takes it off when it removes the table pillbox. A page whose own code removes the name again as soon as the extension writes it would hang the tab, so on the second removal in one task the extension stops writing the name for that table: that table's table pillbox leaves the table, and the right-click menu still reaches it.
 
 ## The sidebar serves one tab
 

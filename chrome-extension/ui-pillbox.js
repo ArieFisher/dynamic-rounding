@@ -54,6 +54,13 @@ const TABLE_PILLBOX_ANCHOR_PREFIX = '--dr-table-';
 // earlier load never matches a name from this one.
 const TABLE_PILLBOX_ANCHOR_LOAD = Math.random().toString(36).slice(2, 8);
 let tablePillboxAnchorCount = 0;
+// A page whose own code removes the anchor name each time the view writes it
+// fights the style observer inside one task, with no pause, and the tab
+// hangs. One rewrite per task covers a page that rewrites the table's style
+// once; a second can only come from a page undoing the view's write. At the
+// cap the observer stops for that table for good, its table pillbox leaves the
+// table, and the observer writes one debug row. This view alone reads it.
+const TABLE_PILLBOX_ANCHOR_REWRITES_PER_TASK = 1;
 
 function syncTablePillbox(table) {
   const view = tablePillboxViews.get(table);
@@ -215,14 +222,16 @@ function dropCopiedAnchorNames(root) {
 //
 // A page that rewrites the table's whole style attribute drops the anchor
 // name, and the table pillbox would leave the table for good. The style
-// observer writes the name again, and records the page's new inline value as
-// the one to restore.
+// observer writes the name again, up to TABLE_PILLBOX_ANCHOR_REWRITES_PER_TASK
+// times in one task, and records the page's new inline value as the one to
+// restore.
 function anchorTablePillbox(table, button) {
   const name = TABLE_PILLBOX_ANCHOR_PREFIX + TABLE_PILLBOX_ANCHOR_LOAD + '-' + (++tablePillboxAnchorCount);
   const anchor = {
     name,
     priorAnchorName: withoutViewAnchorNames(anchorNameList(table.style.anchorName)).join(', '),
     styleObserver: null,
+    rewritesThisTask: 0,
   };
   writeTableAnchorName(table, name);
   button.style.positionAnchor = name;
@@ -230,6 +239,14 @@ function anchorTablePillbox(table, button) {
     const inlineNames = anchorNameList(table.style.anchorName);
     if (inlineNames.includes(name)) return;
     anchor.priorAnchorName = withoutViewAnchorNames(inlineNames).join(', ');
+    if (anchor.rewritesThisTask >= TABLE_PILLBOX_ANCHOR_REWRITES_PER_TASK) {
+      anchor.styleObserver.disconnect();
+      DR_LOG.debug(DR_LOG.formatRow('anchor name rewrite stop'));
+      return;
+    }
+    // The fight runs in microtasks, so it never reaches this reset.
+    if (anchor.rewritesThisTask === 0) setTimeout(() => { anchor.rewritesThisTask = 0; }, 0);
+    anchor.rewritesThisTask++;
     writeTableAnchorName(table, name);
   });
   anchor.styleObserver.observe(table, { attributes: true, attributeFilter: ['style'] });

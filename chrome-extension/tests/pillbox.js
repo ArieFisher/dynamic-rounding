@@ -553,6 +553,69 @@ function makeAnchorTestTable(first) {
     TABLE_PILLBOX_OFFSET_Y_PX + TABLE_PILLBOX_HIT_PAD_PX + TABLE_PILLBOX_DOT_PX, TABLE_PILLBOX_DOT_OVERLAP_PX);
 })();
 
+// A page whose own code removes the anchor name each time the view writes it.
+// In a browser the fight runs in microtasks with no task between rewrites.
+(function tablePillboxAnchor_aPageThatFightsTheRewriteStopsTheObserver() {
+  const table = makeAnchorTestTable('50000');
+  const origSetTimeout = global.setTimeout;
+  const resets = [];
+  global.setTimeout = (fn) => { resets.push(fn); return resets.length; };
+  try {
+    withCapturedStyleObservers((observers) => {
+      withAnchorComputedStyle(null, () => {
+        withTablePillboxDocumentMock(function () { registerDataTable(table); });
+        const name = tablePillboxes.get(table).style.positionAnchor;
+        const styleObserver = observers.find((o) => o.target === table);
+        const pageRemovesTheName = () => {
+          table.style.anchorName = '';
+          styleObserver.cb([{ type: 'attributes', attributeName: 'style', target: table }]);
+        };
+
+        pageRemovesTheName();
+        eq('anchor: the first removal in a task gets the name back', table.style.anchorName, name);
+
+        const rows = logRowsDuring(() => {
+          for (let i = 0; i < 50 && !styleObserver.disconnected; i++) pageRemovesTheName();
+        });
+        eq('anchor: the second removal in the same task stops the style observer', styleObserver.disconnected, true);
+        eq('anchor: after the stop, the table holds no name of the extension\'s', table.style.anchorName, '');
+        eq('anchor: the stop writes one debug row', rows, ['Dynamic Rounding: anchor name rewrite stop']);
+      });
+    });
+  } finally {
+    global.setTimeout = origSetTimeout;
+  }
+  forgetRegisteredTable(table);
+})();
+
+// A page that rewrites the table's style once in each of two tasks gets the
+// name back both times.
+(function tablePillboxAnchor_aRewriteInALaterTaskGetsTheNameBackAgain() {
+  const table = makeAnchorTestTable('50000');
+  const origSetTimeout = global.setTimeout;
+  const resets = [];
+  global.setTimeout = (fn) => { resets.push(fn); return resets.length; };
+  try {
+    withCapturedStyleObservers((observers) => {
+      withAnchorComputedStyle(null, () => {
+        withTablePillboxDocumentMock(function () { registerDataTable(table); });
+        const name = tablePillboxes.get(table).style.positionAnchor;
+        const styleObserver = observers.find((o) => o.target === table);
+        table.style.anchorName = '--page-first';
+        styleObserver.cb([{ type: 'attributes', attributeName: 'style', target: table }]);
+        resets.splice(0).forEach((fn) => fn());
+        table.style.anchorName = '--page-second';
+        styleObserver.cb([{ type: 'attributes', attributeName: 'style', target: table }]);
+        eq('anchor: a rewrite in a later task gets the name back again', table.style.anchorName, '--page-second, ' + name);
+        eq('anchor: the style observer stays connected across tasks', styleObserver.disconnected, false);
+      });
+    });
+  } finally {
+    global.setTimeout = origSetTimeout;
+  }
+  forgetRegisteredTable(table);
+})();
+
 // --- /: the two directions of a press ---
 // A press on a table showing the original simplifies it; a press on a simplified table resets
 // it. Each direction is driven here through the call the press path makes.
