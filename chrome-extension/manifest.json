@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Dynamic Rounding",
-  "version": "2.4.42",
+  "version": "2.4.43",
   "description": "Applies dynamic rounding to tables on arbitrary websites.",
+  "minimum_chrome_version": "125",
   "permissions": [
     "contextMenus",
     "activeTab",

@@ -147,8 +147,6 @@
     typeof DR_MODEL.isTableOn, 'function');
   eq('table-pillbox: syncTablePillbox is defined',
     typeof syncTablePillbox, 'function');
-  eq('table-pillbox: positionTablePillbox is defined',
-    typeof positionTablePillbox, 'function');
   eq('table-pillbox: createTablePillbox is defined',
     typeof createTablePillbox, 'function');
   eq('table-pillbox: resetTable is defined',
@@ -171,8 +169,6 @@
     /function\s+isTableOn\b/.test(src), true);
   eq('table-pillbox: defines syncTablePillbox',
     /function\s+syncTablePillbox\b/.test(src), true);
-  eq('table-pillbox: defines positionTablePillbox',
-    /function\s+positionTablePillbox\b/.test(src), true);
   eq('table-pillbox: defines createTablePillbox',
     /function\s+createTablePillbox\b/.test(src), true);
   eq('table-pillbox: defines injectTablePillboxes',
@@ -235,19 +231,34 @@
   eq('expanding-table-pillbox: TABLE_PILLBOX_COLOR_ON referenced in ensureTablePillboxStyleInjected',
     fnBody.includes('TABLE_PILLBOX_COLOR_ON'), true);
 
-  // positionTablePillbox body should reference the geometry constants
-  const ptStart = src.indexOf('function positionTablePillbox');
-  const ptEnd = src.indexOf('\nfunction ', ptStart + 1);
-  const ptBody = ptStart !== -1 ? src.slice(ptStart, ptEnd !== -1 ? ptEnd : ptStart + 1000) : '';
+  // A fixed table pillbox can anchor to a table inside a box the page pins to
+  // the window; an absolutely positioned one cannot.
+  eq('anchored-table-pillbox: the table pillbox is fixed, so a table inside a box pinned to the window can anchor it',
+    /\.dr-ext-table-pillbox \{\s*position: fixed;/.test(fnBody), true);
+  // Chrome's default for position-visibility has changed between versions.
+  eq('anchored-table-pillbox: the table pillbox hides while page areas cut off its whole table, on every Chrome version',
+    /\.dr-ext-table-pillbox \{[^}]*position-visibility: anchors-visible;/.test(fnBody), true);
+  eq('anchored-table-pillbox: left resolves against the table\'s right edge, with the off-screen fallback',
+    fnBody.includes('left: calc(anchor(right, ${TABLE_PILLBOX_NO_ANCHOR_PX}px) + ${TABLE_PILLBOX_OFFSET_X_PX}px)'), true);
+  eq('anchored-table-pillbox: top resolves against the table\'s top edge, with the off-screen fallback',
+    fnBody.includes('top: calc(anchor(top, ${TABLE_PILLBOX_NO_ANCHOR_PX}px) + ${TABLE_PILLBOX_OFFSET_Y_PX}px)'), true);
+})();
 
-  eq('expanding-table-pillbox: TABLE_PILLBOX_HIT_PAD_PX referenced in positionTablePillbox',
-    ptBody.includes('TABLE_PILLBOX_HIT_PAD_PX'), true);
-  eq('expanding-table-pillbox: TABLE_PILLBOX_DOT_PX referenced in positionTablePillbox',
-    ptBody.includes('TABLE_PILLBOX_DOT_PX'), true);
-  eq('expanding-table-pillbox: TABLE_PILLBOX_DOT_OVERLAP_PX referenced in positionTablePillbox',
-    ptBody.includes('TABLE_PILLBOX_DOT_OVERLAP_PX'), true);
-  eq('expanding-table-pillbox: TABLE_PILLBOX_DOT_OVERHANG_PX referenced in positionTablePillbox',
-    ptBody.includes('TABLE_PILLBOX_DOT_OVERHANG_PX'), true);
+// The added-node pass drops copied anchor names before it registers anything,
+// so a copy that registers starts from a list without the original's name.
+(function anchoredTablePillbox_addedNodePassDropsCopiedNames() {
+  const src = allContentSrc;
+  const drop = src.indexOf('dropCopiedAnchorNames(node);');
+  const inject = src.indexOf('injectTablePillboxes(node);');
+  eq('anchored-table-pillbox: the added-node pass drops copied anchor names, then registers tables',
+    drop !== -1 && inject !== -1 && drop < inject && src.slice(drop, inject).split('\n').length <= 2, true);
+})();
+
+// The anchor functions need Chrome 125, so the manifest holds that floor.
+(function anchoredTablePillbox_manifestMinimumChrome() {
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
+  eq('anchored-table-pillbox: the manifest requires Chrome 125 or later',
+    Number(manifest.minimum_chrome_version) >= 125, true);
 })();
 
 (function layerLoadOrderAcrossEntryPoints() {
@@ -1743,7 +1754,6 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
       NodeFilter: { SHOW_TEXT: 4 },
       Node: { ELEMENT_NODE: 1 },
       MutationObserver: class { observe() {} disconnect() {} },
-      ResizeObserver: class { observe() {} unobserve() {} disconnect() {} },
       chrome: {
         runtime: {
           sendMessage(msg) { sentMessages.push(msg); },

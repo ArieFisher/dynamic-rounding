@@ -2363,14 +2363,13 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
   };
   const saved = {
     document: global.document, chrome: global.chrome, window: global.window,
-    MutationObserver: global.MutationObserver, ResizeObserver: global.ResizeObserver,
+    MutationObserver: global.MutationObserver,
     Node: global.Node, NodeFilter: global.NodeFilter,
   };
   global.document = captureDoc;
   global.chrome = captureChrome;
   global.window = { addEventListener() {}, getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) };
   global.MutationObserver = CapturingTableObserverMO;
-  global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
   global.Node = { ELEMENT_NODE: 1 };
   global.NodeFilter = { SHOW_TEXT: 4 };
 
@@ -2432,7 +2431,7 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
       freshDR_MODEL.hasTable(table2), false);
   } finally {
     global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
-    global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
+    global.MutationObserver = saved.MutationObserver;
     global.Node = saved.Node; global.NodeFilter = saved.NodeFilter;
   }
 })();
@@ -2461,14 +2460,13 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
   };
   const saved = {
     document: global.document, chrome: global.chrome, window: global.window,
-    MutationObserver: global.MutationObserver, ResizeObserver: global.ResizeObserver,
+    MutationObserver: global.MutationObserver,
     Node: global.Node, NodeFilter: global.NodeFilter,
   };
   global.document = captureDoc;
   global.chrome = captureChrome;
   global.window = { addEventListener() {}, getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) };
   global.MutationObserver = CapturingTableObserverMO;
-  global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
   global.Node = { ELEMENT_NODE: 1 };
   global.NodeFilter = { SHOW_TEXT: 4 };
 
@@ -2500,31 +2498,23 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
   } finally {
     delete global.__rt506_DR_MODEL;
     global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
-    global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
+    global.MutationObserver = saved.MutationObserver;
     global.Node = saved.Node; global.NodeFilter = saved.NodeFilter;
   }
 })();
 
 // --- The teardown both the removal observer and the
 // mismatch path run. One function discards a table's registration and every
-// per-table resource the extension holds beside it: the table pillbox, the resize
-// observer, a virtualized grid's re-apply observer and its pending timer, and
-// the registry entry. The teardown writes no
+// per-table resource the extension holds beside it: the table pillbox, the
+// table's anchor name, a virtualized grid's re-apply observer and its pending
+// timer, and the registry entry. The teardown writes no
 // row: each caller writes its own. ---
 
 (function shapeFingerprint_theTeardownDiscardsTheEntryAndEveryResourceBesideIt() {
   const grid = makeDatabaseQueryGrid();
-  const resizeObservers = [];
-  const savedResizeObserver = global.ResizeObserver;
   const clearedTimers = [];
   const savedClearTimeout = global.clearTimeout;
   let gridObserverDisconnects = 0;
-  global.ResizeObserver = class {
-    constructor() { this.disconnected = false; resizeObservers.push(this); }
-    observe() {}
-    unobserve() {}
-    disconnect() { this.disconnected = true; }
-  };
   global.clearTimeout = function (id) { clearedTimers.push(id); return savedClearTimeout(id); };
 
   try {
@@ -2535,13 +2525,15 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
 
     eq('fingerprint teardown: the grid registers and gets a table pillbox before the teardown (precondition)',
       DR_MODEL.hasTable(grid.scrollPaneEl) && tablePillboxes.has(grid.scrollPaneEl), true);
+    eq('fingerprint teardown: the grid holds an anchor name before the teardown (precondition)',
+      /^--dr-table-/.test(grid.scrollPaneEl.style.anchorName), true);
 
     const rows = logRowsDuring(() => teardownTableEntry(grid.scrollPaneEl));
 
     eq('fingerprint teardown: the teardown writes no row', rows, []);
     eq('fingerprint teardown: the table pillbox comes off the page', removedTablePillboxes.length, 1);
-    eq('fingerprint teardown: the resize observer disconnects',
-      resizeObservers.length === 1 && resizeObservers[0].disconnected, true);
+    eq('fingerprint teardown: the table\'s anchor name comes off',
+      grid.scrollPaneEl.style.anchorName, '');
     eq('fingerprint teardown: the pending re-apply timer is cleared',
       clearedTimers.includes(pendingTimer), true);
     eq('fingerprint teardown: the timer record goes with it',
@@ -2556,7 +2548,6 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
     eq('fingerprint teardown: the fingerprint goes with the entry',
       DR_MODEL.getTableFingerprint(grid.scrollPaneEl), null);
   } finally {
-    global.ResizeObserver = savedResizeObserver;
     global.clearTimeout = savedClearTimeout;
     forgetRegisteredTable(grid.scrollPaneEl);
   }
@@ -2620,7 +2611,7 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
   const captureChrome = { runtime: { onMessage: { addListener() {} }, sendMessage() {} } };
   const saved = {
     document: global.document, chrome: global.chrome, window: global.window,
-    MutationObserver: global.MutationObserver, ResizeObserver: global.ResizeObserver,
+    MutationObserver: global.MutationObserver,
     Node: global.Node, NodeFilter: global.NodeFilter,
     setTimeout: global.setTimeout, clearTimeout: global.clearTimeout,
   };
@@ -2628,7 +2619,6 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
   global.chrome = captureChrome;
   global.window = { addEventListener() {}, getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) };
   global.MutationObserver = CapturingRemovalMO;
-  global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
   global.Node = { ELEMENT_NODE: 1 };
   global.NodeFilter = { SHOW_TEXT: 4 };
   global.setTimeout = function (callback, ms) {
@@ -2704,7 +2694,7 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
         global.__pending_pendingRetestTimers.has(rootItself)], [false, false]);
   } finally {
     global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
-    global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
+    global.MutationObserver = saved.MutationObserver;
     global.Node = saved.Node; global.NodeFilter = saved.NodeFilter;
     global.setTimeout = saved.setTimeout; global.clearTimeout = saved.clearTimeout;
     delete global.__pending_pendingRoots;
