@@ -4,8 +4,15 @@
 <head>
   <meta charset="UTF-8">
   <title>DynamicRounding table test page</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&display=swap" rel="stylesheet">
   <style>
     :root {
+      --page: #f4f2ec;
+      --card: #ffffff;
+      --card-edge: #e4e0d5;
+      --display: "Fraunces", Georgia, "Times New Roman", serif;
       --ink: #1f2328;
       --muted: #59636e;
       --rule: #d0d7de;
@@ -16,20 +23,46 @@
     body {
       font-family: system-ui, sans-serif;
       color: var(--ink);
-      margin: 32px auto;
-      padding: 0 24px;
-      max-width: 960px;
+      background: var(--page);
+      margin: 0 auto;
+      padding: 0 32px 48px;
+      max-width: 1024px;
       line-height: 1.4;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
     }
 
     h1 {
-      font-size: 1.6em;
-      margin: 0 0 8px;
+      font-family: var(--display);
+      font-optical-sizing: auto;
+      font-weight: 600;
+      font-size: clamp(2.4em, 6vw, 3.6em);
+      line-height: 1.02;
+      letter-spacing: -0.02em;
+      margin: 0 0 16px;
     }
 
     h2 {
-      font-size: 1.25em;
-      margin: 0 0 12px;
+      font-family: var(--display);
+      font-weight: 600;
+      font-size: 1.45em;
+      line-height: 1.2;
+      margin: 0 0 14px;
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+
+    .section-num {
+      flex: none;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.55em;
+      font-weight: 600;
+      color: var(--muted);
+      border: 1px solid var(--card-edge);
+      border-radius: 6px;
+      padding: 3px 7px;
+      transform: translateY(-3px);
     }
 
     h3 {
@@ -37,10 +70,23 @@
       margin: 32px 0 12px;
     }
 
-    section {
-      border-top: 1px solid var(--rule-soft);
-      padding-top: 28px;
-      margin-bottom: 48px;
+    body > section {
+      background: var(--card);
+      border: 1px solid var(--card-edge);
+      border-radius: 16px;
+      padding: 28px 32px;
+      margin-bottom: 20px;
+      scroll-margin-top: 20px;
+    }
+
+    body > section:has(.puzzle-card) {
+      background: none;
+      border: none;
+      padding: 0;
+    }
+
+    body > section:has(.puzzle-card) > h2 {
+      padding: 0 4px;
     }
 
     body > p,
@@ -57,6 +103,292 @@
       padding-left: 1.4em;
     }
 
+    section > .expect {
+      max-width: none;
+      background: #f6f8fa;
+      border-left: 3px solid #afb8c1;
+      border-radius: 0 8px 8px 0;
+      padding: 10px 14px;
+    }
+
+    section > ul.expect,
+    section > ol.expect {
+      padding-left: 2em;
+    }
+
+    /* Page header: two ways to use the page. */
+    .hero {
+      padding: 56px 0 40px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+      gap: 24px 48px;
+      align-items: end;
+    }
+
+    .hero-eyebrow {
+      margin: 0 0 14px;
+      font-size: 0.75em;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .hero-lede {
+      font-size: 1.15em;
+      line-height: 1.5;
+      color: #3b3a36;
+      max-width: 46ch;
+      margin: 0;
+    }
+
+    /* A before and after of three numbers, set as text, not a table. */
+    .hero-demo {
+      background: var(--card);
+      border: 1px solid var(--card-edge);
+      border-radius: 16px;
+      padding: 18px 20px;
+      font-variant-numeric: tabular-nums;
+      box-shadow: 0 18px 40px -28px rgba(60, 50, 20, 0.45);
+    }
+
+    .hero-demo-head {
+      display: grid;
+      grid-template-columns: 1fr 20px 1fr;
+      font-size: 0.72em;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--rule-soft);
+    }
+
+    .hero-demo-row {
+      display: grid;
+      grid-template-columns: 1fr 20px 1fr;
+      align-items: baseline;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--rule-soft);
+    }
+
+    .hero-demo-row:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .hero-demo-row .before {
+      color: var(--muted);
+      font-size: 0.95em;
+    }
+
+    .hero-demo-row .arrow {
+      color: #afb8c1;
+    }
+
+    .hero-demo-row .after {
+      font-family: var(--display);
+      font-weight: 600;
+      font-size: 1.35em;
+    }
+
+    .paths {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .path {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: var(--card);
+      border: 1px solid var(--card-edge);
+      border-radius: 16px;
+      padding: 22px 24px;
+      color: inherit;
+      text-decoration: none;
+    }
+
+    a.path {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #fff;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    a.path:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 16px 32px -20px rgba(0, 0, 0, 0.6);
+    }
+
+    .path-kicker {
+      font-size: 0.72em;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      opacity: 0.7;
+    }
+
+    .path-title {
+      font-family: var(--display);
+      font-weight: 600;
+      font-size: 1.5em;
+      line-height: 1.15;
+    }
+
+    .path p {
+      margin: 0;
+      line-height: 1.5;
+      font-size: 0.95em;
+      max-width: none;
+    }
+
+    .path .path-fine {
+      font-size: 0.85em;
+      color: var(--muted);
+    }
+
+    .path-go {
+      margin-top: auto;
+      padding-top: 8px;
+      font-weight: 600;
+    }
+
+    /* Contents: a sticky column on wide screens, a closed list above the
+       sections on narrow ones. */
+    .site-nav {
+      background: var(--card);
+      border: 1px solid var(--card-edge);
+      border-radius: 16px;
+      padding: 14px 18px;
+      margin-bottom: 20px;
+      font-size: 0.88em;
+    }
+
+    .site-nav summary {
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .site-nav ol {
+      list-style: none;
+      margin: 10px 0 0;
+      padding: 0;
+      columns: 2 220px;
+    }
+
+    .site-nav li {
+      break-inside: avoid;
+    }
+
+    .site-nav a {
+      display: flex;
+      gap: 8px;
+      padding: 4px 6px;
+      border-radius: 6px;
+      color: var(--muted);
+      text-decoration: none;
+    }
+
+    .site-nav a:hover,
+    .site-nav a.current {
+      background: var(--page);
+      color: var(--ink);
+    }
+
+    .site-nav .toc-num {
+      flex: none;
+      width: 1.6em;
+      text-align: right;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.9em;
+    }
+
+    .site-nav .toc-puzzle::after {
+      content: "Puzzle";
+      margin-left: auto;
+      align-self: center;
+      font-size: 0.7em;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #fff;
+      background: var(--ink);
+      border-radius: 999px;
+      padding: 1px 7px;
+    }
+
+    .site-footer {
+      padding: 24px 4px 0;
+      font-size: 0.85em;
+      color: var(--muted);
+    }
+
+    .site-footer a {
+      color: inherit;
+    }
+
+    @media (min-width: 1200px) {
+      body {
+        max-width: 1320px;
+        grid-template-columns: 230px minmax(0, 1fr);
+        column-gap: 40px;
+      }
+
+      body > * {
+        grid-column: 2;
+      }
+
+      body > .site-nav {
+        grid-column: 1;
+        grid-row: 1 / span 300;
+        position: sticky;
+        top: 20px;
+        align-self: start;
+        max-height: calc(100vh - 40px);
+        overflow-y: auto;
+        margin-top: 20px;
+        background: none;
+        border: none;
+        padding: 0;
+      }
+
+      .site-nav summary {
+        list-style: none;
+        pointer-events: none;
+        font-size: 0.75em;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--muted);
+        padding: 0 6px;
+      }
+
+      .site-nav ol {
+        columns: auto;
+      }
+    }
+
+    @media (max-width: 760px) {
+      body {
+        padding: 0 16px 32px;
+      }
+
+      .hero {
+        grid-template-columns: minmax(0, 1fr);
+        padding-top: 32px;
+      }
+
+      .paths {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      body > section {
+        padding: 20px 18px;
+      }
+    }
+
     .expect {
       font-size: 0.9em;
       color: var(--muted);
@@ -70,20 +402,109 @@
       margin-bottom: 0;
     }
 
-    .puzzle {
+    /* Puzzle card. The interface stays in ink on paper; colour marks data
+       only: series 1 for delivery, series 2 for data. */
+    .puzzle-card {
+      --paper: #fbf9f4;
+      --paper-edge: #e7e2d6;
+      --ink-soft: #3b3a36;
+      --series-1: #2a78d6;
+      --series-2: #eb6834;
+      --serif: "Fraunces", Georgia, "Times New Roman", serif;
+      background: var(--paper);
+      border: 1px solid var(--paper-edge);
+      border-radius: 14px;
+      padding: 28px 28px 24px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03), 0 12px 32px -20px rgba(60, 50, 20, 0.25);
+    }
+
+    .puzzle-eyebrow {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin: 0 0 10px;
+      font-size: 0.72em;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .puzzle-eyebrow b {
+      color: var(--ink);
+    }
+
+    .puzzle-eyebrow span + span::before {
+      content: "";
+      display: inline-block;
+      width: 4px;
+      height: 4px;
+      margin: 0 10px 2px 0;
+      border-radius: 50%;
+      background: currentColor;
+      vertical-align: middle;
+    }
+
+    .puzzle-card h3.puzzle-question {
+      font-family: var(--serif);
+      font-optical-sizing: auto;
+      font-weight: 600;
+      font-size: 2em;
+      line-height: 1.12;
+      letter-spacing: -0.01em;
+      margin: 0 0 18px;
+      max-width: 30ch;
+    }
+
+    .puzzle-checklist {
+      list-style: none;
+      counter-reset: checklist;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 0;
+      margin: 0 0 24px;
+      max-width: none;
+      font-size: 0.85em;
+    }
+
+    .puzzle-checklist li {
+      counter-increment: checklist;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 12px 5px 5px;
+      border: 1px solid var(--paper-edge);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--ink-soft);
+    }
+
+    .puzzle-checklist li::before {
+      content: counter(checklist);
+      display: grid;
+      place-items: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--ink);
+      color: #fff;
+      font-size: 0.8em;
       font-weight: 600;
     }
 
-    /* A puzzle's data patterns and story sit beside a table that leaves at
-       least half the width free, and below a wider one. The table cell
-       takes nearly all free space on its line, so the panels widen only
-       when they wrap onto a line of their own. */
+    .puzzle-card:has(details.patterns[open]) .puzzle-checklist .check-patterns::before,
+    .puzzle-card:has(details.story[open]) .puzzle-checklist .check-story::before {
+      content: "\2713";
+      background: #1a7f37;
+    }
+
     .puzzle-layout {
       display: flex;
       flex-wrap: wrap;
-      gap: 16px 24px;
+      gap: 20px 28px;
       align-items: flex-start;
-      margin-bottom: 16px;
     }
 
     .puzzle-table {
@@ -92,41 +513,217 @@
 
     .puzzle-table table {
       margin-bottom: 0;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
     }
 
     .puzzle-reveals {
-      flex: 1 0 calc(50% - 12px);
+      flex: 1 0 calc(50% - 14px);
       container-type: inline-size;
     }
 
     .puzzle-panels {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 14px;
     }
 
     .puzzle-panels details {
-      border: 1px solid var(--rule);
-      border-radius: 4px;
-      padding: 8px 12px;
+      border: 1px solid var(--paper-edge);
+      border-radius: 12px;
+      background: #fff;
+      interpolate-size: allow-keywords;
+      transition: box-shadow 0.2s ease;
     }
 
-    .puzzle-panels details[open] {
-      background: var(--head);
+    .puzzle-panels details:hover {
+      box-shadow: 0 6px 18px -12px rgba(60, 50, 20, 0.35);
+    }
+
+    .puzzle-panels details::details-content {
+      block-size: 0;
+      overflow: hidden;
+      opacity: 0;
+      transition: block-size 0.3s ease, opacity 0.3s ease,
+        content-visibility 0.3s allow-discrete;
+    }
+
+    .puzzle-panels details[open]::details-content {
+      block-size: auto;
+      opacity: 1;
     }
 
     .puzzle-panels summary {
+      list-style: none;
       cursor: pointer;
+      padding: 14px 16px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 10px 12px;
+    }
+
+    .puzzle-panels summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .panel-name {
+      font-family: var(--serif);
       font-weight: 600;
+      font-size: 1.2em;
     }
 
-    .puzzle-panels details > ul,
-    .puzzle-panels details > p {
-      margin: 8px 0 0;
+    .panel-action {
+      font-size: 0.78em;
+      font-weight: 600;
+      padding: 5px 12px;
+      border-radius: 999px;
+      background: var(--ink);
+      color: #fff;
     }
 
-    /* Below a wide table the panels share one row. A closed panel beside an
-       open one narrows to a tab with its title set sideways. */
+    .panel-action::after {
+      content: "Reveal";
+    }
+
+    details[open] > summary .panel-action {
+      background: transparent;
+      color: var(--muted);
+      box-shadow: inset 0 0 0 1px var(--rule);
+    }
+
+    details[open] > summary .panel-action::after {
+      content: "Hide";
+    }
+
+    /* A closed panel shows blacked-out lines where its text sits. */
+    .redacted {
+      grid-column: 1 / -1;
+      display: grid;
+      gap: 7px;
+    }
+
+    .redacted i {
+      height: 9px;
+      border-radius: 3px;
+      background: #e9e5da;
+    }
+
+    .redacted i:nth-child(1) { width: 92%; }
+    .redacted i:nth-child(2) { width: 78%; }
+    .redacted i:nth-child(3) { width: 55%; }
+
+    details[open] .redacted {
+      display: none;
+    }
+
+    .panel-body {
+      padding: 0 16px 16px;
+    }
+
+    .split-bar {
+      display: flex;
+      gap: 2px;
+      height: 10px;
+      margin: 2px 0 14px;
+    }
+
+    .split-bar span {
+      border-radius: 999px;
+    }
+
+    .split-bar .delivery { background: var(--series-1); }
+    .split-bar .data { background: var(--series-2); }
+
+    .pattern-tiles {
+      list-style: none;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      padding: 0;
+      margin: 0;
+      max-width: none;
+    }
+
+    .pattern-tiles li {
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: var(--paper);
+    }
+
+    .tile-value {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--serif);
+      font-weight: 600;
+      font-size: 1.7em;
+      line-height: 1.1;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .tile-value::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+      background: var(--key, transparent);
+      box-shadow: inset 0 0 0 1px var(--key-ring, transparent);
+      flex: none;
+    }
+
+    .pattern-tiles .delivery { --key: var(--series-1); }
+    .pattern-tiles .data { --key: var(--series-2); }
+    .pattern-tiles .servers { --key-ring: #8c959f; }
+    .pattern-tiles .total .tile-value::before { display: none; }
+
+    .tile-label {
+      display: block;
+      margin-top: 4px;
+      font-size: 0.82em;
+      line-height: 1.35;
+      color: var(--ink-soft);
+    }
+
+    .story-headline {
+      font-family: var(--serif);
+      font-weight: 600;
+      font-size: 1.45em;
+      line-height: 1.2;
+      margin: 0 0 12px;
+    }
+
+    .story-reasons {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 12px;
+      display: grid;
+      gap: 8px;
+      max-width: none;
+    }
+
+    .story-reasons li {
+      display: grid;
+      grid-template-columns: 4.2em 1fr;
+      gap: 10px;
+      align-items: baseline;
+      font-size: 0.92em;
+    }
+
+    .story-reasons b {
+      font-family: var(--serif);
+      font-size: 1.15em;
+      text-align: right;
+    }
+
+    .story-note {
+      margin: 0;
+      padding-top: 12px;
+      border-top: 1px solid var(--paper-edge);
+      font-size: 0.9em;
+      color: var(--ink-soft);
+    }
+
     @container (min-width: 560px) {
       .puzzle-panels {
         flex-direction: row;
@@ -138,12 +735,34 @@
         min-width: 0;
       }
 
+      .pattern-tiles {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
       .puzzle-panels:has(details[open]) details:not([open]) {
         flex: 0 0 auto;
       }
 
-      .puzzle-panels:has(details[open]) details:not([open]) summary {
+      .puzzle-panels:has(details[open]) details:not([open]) > summary {
         writing-mode: vertical-rl;
+        grid-template-columns: auto;
+        padding: 16px 12px;
+      }
+
+      .puzzle-panels:has(details[open]) details:not([open]) .redacted {
+        display: none;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .puzzle-card {
+        padding: 20px 16px;
+        margin-left: -8px;
+        margin-right: -8px;
+      }
+
+      .puzzle-card h3.puzzle-question {
+        font-size: 1.6em;
       }
     }
 
@@ -425,27 +1044,64 @@
 
 <body>
 
-  <h1>DynamicRounding table test page</h1>
-  <p>One fixture per kind of table the Chrome extension handles, plus the kinds
-    it leaves alone. Load the unpacked extension, allow file URL access (or
-    serve this page over localhost), and check each section against its stated
-    expectation. Details sit in HTML comments next to each fixture.</p>
-  <p class="expect">Every expectation assumes the default settings unless a
-    step says otherwise: first row and first column excluded,
-    currency and percent on, dates on at year granularity, times off. A table pillbox
-    is the small on/off control at a table's top-right corner.</p>
-  <p>Some sections are also puzzles, for any reader. Look at the table,
-    simplify it, and work out the story in the numbers. Open the data
-    patterns or the story at any time, and click a title again to hide
-    it.</p>
+  <details class="site-nav">
+    <summary>Contents</summary>
+    <ol id="toc"></ol>
+  </details>
+
+  <header class="hero">
+    <div>
+      <p class="hero-eyebrow">DynamicRounding · Table test page</p>
+      <h1>See the story in the numbers.</h1>
+      <p class="hero-lede">Each table on this page is a shape the DynamicRounding
+        extension meets on real pages. Read one as a puzzle, or check it as a test.</p>
+    </div>
+    <div class="hero-demo" aria-hidden="true">
+      <div class="hero-demo-head"><span>Before</span><span></span><span>After</span></div>
+      <div class="hero-demo-row"><span class="before">$4,228,910.4100</span><span class="arrow">→</span><span class="after">$4,000,000</span></div>
+      <div class="hero-demo-row"><span class="before">$62,583.3113</span><span class="arrow">→</span><span class="after">$65,000</span></div>
+      <div class="hero-demo-row"><span class="before">$17.24</span><span class="arrow">→</span><span class="after">$15</span></div>
+    </div>
+  </header>
+
+  <div class="paths">
+    <a class="path" href="#s-1">
+      <span class="path-kicker">For anyone</span>
+      <span class="path-title">Solve a puzzle</span>
+      <p>Look at a table, simplify it, and work out the story in the numbers.
+        Open the data patterns or the story at any time, and click a title
+        again to hide it.</p>
+      <span class="path-go">Start puzzle 01 →</span>
+    </a>
+    <div class="path">
+      <span class="path-kicker">For testers</span>
+      <span class="path-title">Check a fixture</span>
+      <p>One fixture per kind of table the Chrome extension handles, plus the
+        kinds it leaves alone. Load the unpacked extension, allow file URL
+        access (or serve this page over localhost), and check each section
+        against its stated expectation. Details sit in HTML comments next to
+        each fixture.</p>
+      <p class="path-fine">Every expectation assumes the default settings
+        unless a step says otherwise: first row and first column excluded,
+        currency and percent on, dates on at year granularity, times off. A
+        table pillbox is the small on/off control at a table's top-right
+        corner.</p>
+    </div>
+  </div>
 
   <section>
     <h2>1. Basic data table</h2>
-    <p class="puzzle">Puzzle: what business pays this cloud bill? Look at
-      the numbers, press the table pillbox to simplify them, and work out
-      what kind of business this is.</p>
-    <div class="puzzle-layout">
-      <div class="puzzle-table">
+    <div class="puzzle-card">
+      <p class="puzzle-eyebrow"><span><b>Puzzle 01</b></span><span>Cloud bill</span><span>8 numbers</span><span>About a minute</span></p>
+      <h3 class="puzzle-question">What kind of business pays this bill?</h3>
+      <ol class="puzzle-checklist">
+        <li>Read the bill</li>
+        <li>Press the table pillbox to simplify it</li>
+        <li class="check-patterns">Find the data patterns</li>
+        <li class="check-story">Name the business</li>
+      </ol>
+      <div class="puzzle-layout">
+        <div class="puzzle-table">
         <table>
           <thead>
             <tr>
@@ -488,30 +1144,53 @@
             </tr>
           </tbody>
         </table>
-      </div>
-      <div class="puzzle-reveals">
-        <div class="puzzle-panels">
-          <details>
-            <summary>Data patterns</summary>
-            <ul>
-              <li>Total spend is about $10M.</li>
-              <li>90% of spend serves traffic worldwide: Cloud CDN, Cloud
-                Storage, and Cloud Load Balancing.</li>
-              <li>10% of spend goes to data: BigQuery, Cloud Dataflow, Cloud
-                Dataproc, and Cloud Pub/Sub.</li>
-              <li>Infrastructure spend is close to zero: Compute Engine costs
-                under $20. The architecture is fully serverless.</li>
-            </ul>
-          </details>
-          <details>
-            <summary>Story</summary>
-            <p>The business runs a media, streaming, or gaming platform.</p>
-            <p>Nine dollars in ten pay to deliver large files to many people
-              in many places: video, music, or game assets. The data spend
-              measures what those people watch or play. The bill holds almost
-              nothing for servers, so the business runs on managed
-              services.</p>
-          </details>
+        </div>
+        <div class="puzzle-reveals">
+          <div class="puzzle-panels">
+            <details class="patterns">
+              <summary>
+                <span class="panel-name">Data patterns</span>
+                <span class="panel-action"></span>
+                <span class="redacted" aria-hidden="true"><i></i><i></i><i></i></span>
+              </summary>
+              <div class="panel-body">
+                <div class="split-bar" role="img"
+                  aria-label="Spend split: delivery 90.6%, data 9.4%, servers under 0.01%">
+                  <span class="delivery" style="flex: 90.6"></span>
+                  <span class="data" style="flex: 9.4"></span>
+                </div>
+                <ul class="pattern-tiles">
+                  <li class="total"><span class="tile-value">$10M</span>
+                    <span class="tile-label">Total spend</span></li>
+                  <li class="delivery"><span class="tile-value">90%</span>
+                    <span class="tile-label">Serves traffic worldwide: CDN, Storage, Load Balancing</span></li>
+                  <li class="data"><span class="tile-value">10%</span>
+                    <span class="tile-label">Goes to data: BigQuery, Dataflow, Dataproc, Pub/Sub</span></li>
+                  <li class="servers"><span class="tile-value">&lt;$20</span>
+                    <span class="tile-label">Goes to servers: the architecture is fully serverless</span></li>
+                </ul>
+              </div>
+            </details>
+            <details class="story">
+              <summary>
+                <span class="panel-name">Story</span>
+                <span class="panel-action"></span>
+                <span class="redacted" aria-hidden="true"><i></i><i></i><i></i></span>
+              </summary>
+              <div class="panel-body">
+                <p class="story-headline">A media, streaming, or gaming platform.</p>
+                <ul class="story-reasons">
+                  <li><b>90%</b><span>pays to deliver large files to many people in many
+                    places: video, music, or game assets.</span></li>
+                  <li><b>10%</b><span>measures what those people watch or play.</span></li>
+                  <li><b>&lt;$20</b><span>goes to servers, so the business runs on managed
+                    services.</span></li>
+                </ul>
+                <p class="story-note">Eight numbers, three patterns, one business. None of
+                  it needed a calculator once the bill was simplified.</p>
+              </div>
+            </details>
+          </div>
         </div>
       </div>
     </div>
@@ -4620,6 +5299,52 @@ TSLA,75,"248.09","18,606.75"
     </div>
   </section>
 
+  <footer class="site-footer">DynamicRounding ·
+    <a href="https://github.com/ArieFisher/dynamic-rounding">Source on GitHub</a></footer>
+
+  <script>
+    /* The script builds the contents from each section heading at load,
+       so the headings stay the one copy of the section names. */
+    (function buildContents() {
+      const list = document.getElementById('toc');
+      const links = new Map();
+      document.querySelectorAll('body > section').forEach((section) => {
+        const heading = section.querySelector('h2');
+        const match = heading && heading.textContent.match(/^(\d+)\.\s*(.*)$/);
+        if (!match) return;
+        if (!section.id) section.id = 's-' + match[1];
+        const number = document.createElement('span');
+        number.className = 'section-num';
+        number.textContent = match[1];
+        heading.textContent = match[2];
+        heading.prepend(number);
+        const link = document.createElement('a');
+        link.href = '#' + section.id;
+        if (section.querySelector('.puzzle-card')) link.classList.add('toc-puzzle');
+        const num = document.createElement('span');
+        num.className = 'toc-num';
+        num.textContent = match[1];
+        link.append(num, document.createTextNode(match[2]));
+        const item = document.createElement('li');
+        item.append(link);
+        list.append(item);
+        links.set(section, link);
+      });
+      const nav = document.querySelector('.site-nav');
+      const wide = window.matchMedia('(min-width: 1200px)');
+      const syncOpen = () => { nav.open = wide.matches; };
+      syncOpen();
+      wide.addEventListener('change', syncOpen);
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          links.forEach((link) => link.classList.remove('current'));
+          links.get(entry.target).classList.add('current');
+        });
+      }, { rootMargin: '-20% 0px -70% 0px' });
+      links.forEach((link, section) => observer.observe(section));
+    })();
+  </script>
 </body>
 
 </html>
