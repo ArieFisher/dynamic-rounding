@@ -74,30 +74,77 @@
       font-weight: 600;
     }
 
-    details {
-      max-width: 68ch;
-      margin: 0 0 12px;
+    /* A puzzle's data patterns and story sit beside a table that leaves at
+       least half the width free, and below a wider one. The table cell
+       takes nearly all free space on its line, so the panels widen only
+       when they wrap onto a line of their own. */
+    .puzzle-layout {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px 24px;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+
+    .puzzle-table {
+      flex: 1000 0 auto;
+    }
+
+    .puzzle-table table {
+      margin-bottom: 0;
+    }
+
+    .puzzle-reveals {
+      flex: 1 0 calc(50% - 12px);
+      container-type: inline-size;
+    }
+
+    .puzzle-panels {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .puzzle-panels details {
       border: 1px solid var(--rule);
       border-radius: 4px;
       padding: 8px 12px;
     }
 
-    details[open] {
+    .puzzle-panels details[open] {
       background: var(--head);
     }
 
-    summary {
+    .puzzle-panels summary {
       cursor: pointer;
       font-weight: 600;
     }
 
-    details > :last-child {
-      margin-bottom: 0;
+    .puzzle-panels details > ul,
+    .puzzle-panels details > p {
+      margin: 8px 0 0;
     }
 
-    details > ul,
-    details > p {
-      margin-top: 8px;
+    /* Below a wide table the panels share one row. A closed panel beside an
+       open one narrows to a tab with its title set sideways. */
+    @container (min-width: 560px) {
+      .puzzle-panels {
+        flex-direction: row;
+        align-items: stretch;
+      }
+
+      .puzzle-panels details {
+        flex: 1 1 0;
+        min-width: 0;
+      }
+
+      .puzzle-panels:has(details[open]) details:not([open]) {
+        flex: 0 0 auto;
+      }
+
+      .puzzle-panels:has(details[open]) details:not([open]) summary {
+        writing-mode: vertical-rl;
+      }
     }
 
     pre {
@@ -121,6 +168,15 @@
     /* Native tables and grids share one look: the header row and the label
        column in bold on a light ground, one rule between cells, digits in
        tabular figures. */
+    table,
+    .aria-grid,
+    .plain-grid,
+    .plan-grid,
+    .dg--table-wrapper,
+    #tr-grid {
+      font-size: 0.875em;
+    }
+
     table {
       border-collapse: collapse;
       margin-bottom: 24px;
@@ -130,7 +186,7 @@
     th,
     td {
       border: 1px solid var(--rule);
-      padding: 8px 12px;
+      padding: 6px 10px;
       min-width: 80px;
       text-align: left;
       vertical-align: top;
@@ -379,77 +435,86 @@
     currency and percent on, dates on at year granularity, times off. A table pillbox
     is the small on/off control at a table's top-right corner.</p>
   <p>Some sections are also puzzles, for any reader. Look at the table,
-    simplify it, and work out the story in the numbers. Open the hint for
-    the patterns, then the answer for the story; click either again to
-    hide it.</p>
+    simplify it, and work out the story in the numbers. Open the data
+    patterns or the story at any time, and click a title again to hide
+    it.</p>
 
   <section>
     <h2>1. Basic data table</h2>
     <p class="puzzle">Puzzle: what business pays this cloud bill? Look at
       the numbers, press the table pillbox to simplify them, and work out
       what kind of business this is.</p>
-    <table>
-      <thead>
-        <tr>
-          <th scope="col">Service Name</th>
-          <th scope="col">Cloud Bill</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>Cloud CDN</td>
-          <td>$4,228,910.4100</td>
-        </tr>
-        <tr>
-          <td>Cloud Storage</td>
-          <td>$3,812,105.5929</td>
-        </tr>
-        <tr>
-          <td>Cloud Load Balancing</td>
-          <td>$1,011,204.393</td>
-        </tr>
-        <tr>
-          <td>BigQuery</td>
-          <td>$824,479</td>
-        </tr>
-        <tr>
-          <td>Cloud Dataflow</td>
-          <td>$62,583.3113</td>
-        </tr>
-        <tr>
-          <td>Cloud Dataproc</td>
-          <td>$43,937.77</td>
-        </tr>
-        <tr>
-          <td>Cloud Pub/Sub</td>
-          <td>$9,911.21</td>
-        </tr>
-        <tr>
-          <td>Compute Engine</td>
-          <td>$17.24</td>
-        </tr>
-      </tbody>
-    </table>
-    <details>
-      <summary>Hint: the patterns</summary>
-      <ul>
-        <li>Total spend is about $10M.</li>
-        <li>90% of spend serves traffic worldwide: Cloud CDN, Cloud Storage,
-          and Cloud Load Balancing.</li>
-        <li>10% of spend goes to data: BigQuery, Cloud Dataflow, Cloud
-          Dataproc, and Cloud Pub/Sub.</li>
-        <li>Infrastructure spend is close to zero: Compute Engine costs under $20.
-          The architecture is fully serverless.</li>
-      </ul>
-    </details>
-    <details>
-      <summary>Answer: the story</summary>
-      <p>The business runs a media, streaming, or gaming platform.</p>
-      <p>Nine dollars in ten pay to deliver large files to many people in
-        many places: video, music, or game assets. The data spend measures
-        what those people watch or play. The bill holds almost nothing for
-        servers, so the business runs on managed services.</p>
-    </details>
+    <div class="puzzle-layout">
+      <div class="puzzle-table">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Service Name</th>
+              <th scope="col">Cloud Bill</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Cloud CDN</td>
+              <td>$4,228,910.4100</td>
+            </tr>
+            <tr>
+              <td>Cloud Storage</td>
+              <td>$3,812,105.5929</td>
+            </tr>
+            <tr>
+              <td>Cloud Load Balancing</td>
+              <td>$1,011,204.393</td>
+            </tr>
+            <tr>
+              <td>BigQuery</td>
+              <td>$824,479</td>
+            </tr>
+            <tr>
+              <td>Cloud Dataflow</td>
+              <td>$62,583.3113</td>
+            </tr>
+            <tr>
+              <td>Cloud Dataproc</td>
+              <td>$43,937.77</td>
+            </tr>
+            <tr>
+              <td>Cloud Pub/Sub</td>
+              <td>$9,911.21</td>
+            </tr>
+            <tr>
+              <td>Compute Engine</td>
+              <td>$17.24</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="puzzle-reveals">
+        <div class="puzzle-panels">
+          <details>
+            <summary>Data patterns</summary>
+            <ul>
+              <li>Total spend is about $10M.</li>
+              <li>90% of spend serves traffic worldwide: Cloud CDN, Cloud
+                Storage, and Cloud Load Balancing.</li>
+              <li>10% of spend goes to data: BigQuery, Cloud Dataflow, Cloud
+                Dataproc, and Cloud Pub/Sub.</li>
+              <li>Infrastructure spend is close to zero: Compute Engine costs
+                under $20. The architecture is fully serverless.</li>
+            </ul>
+          </details>
+          <details>
+            <summary>Story</summary>
+            <p>The business runs a media, streaming, or gaming platform.</p>
+            <p>Nine dollars in ten pay to deliver large files to many people
+              in many places: video, music, or game assets. The data spend
+              measures what those people watch or play. The bill holds almost
+              nothing for servers, so the business runs on managed
+              services.</p>
+          </details>
+        </div>
+      </div>
+    </div>
     <p class="expect">Expect: table pillbox at load. Every cost rounds.</p>
   </section>
 
