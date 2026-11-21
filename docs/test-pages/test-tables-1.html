@@ -70,6 +70,36 @@
       margin-bottom: 0;
     }
 
+    .puzzle {
+      font-weight: 600;
+    }
+
+    details {
+      max-width: 68ch;
+      margin: 0 0 12px;
+      border: 1px solid var(--rule);
+      border-radius: 4px;
+      padding: 8px 12px;
+    }
+
+    details[open] {
+      background: var(--head);
+    }
+
+    summary {
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    details > :last-child {
+      margin-bottom: 0;
+    }
+
+    details > ul,
+    details > p {
+      margin-top: 8px;
+    }
+
     pre {
       border: 1px solid var(--rule);
       padding: 12px;
@@ -348,44 +378,79 @@
     step says otherwise: first row and first column excluded,
     currency and percent on, dates on at year granularity, times off. A table pillbox
     is the small on/off control at a table's top-right corner.</p>
+  <p>Some sections are also puzzles, for any reader. Look at the table,
+    simplify it, and work out the story in the numbers. Open the hint for
+    the patterns, then the answer for the story; click either again to
+    hide it.</p>
 
   <section>
     <h2>1. Basic data table</h2>
-    <p class="expect">Expect: table pillbox at load. Every cost rounds.</p>
+    <p class="puzzle">Puzzle: what business pays this cloud bill? Look at
+      the numbers, press the table pillbox to simplify them, and work out
+      what kind of business this is.</p>
     <table>
       <thead>
         <tr>
           <th scope="col">Service Name</th>
-          <th scope="col">Cost ($)</th>
+          <th scope="col">Cloud Bill</th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td>GKE</td>
-          <td>1,671,739.50</td>
+          <td>Cloud CDN</td>
+          <td>$4,228,910.4100</td>
+        </tr>
+        <tr>
+          <td>Cloud Storage</td>
+          <td>$3,812,105.5929</td>
+        </tr>
+        <tr>
+          <td>Cloud Load Balancing</td>
+          <td>$1,011,204.393</td>
+        </tr>
+        <tr>
+          <td>BigQuery</td>
+          <td>$824,479</td>
+        </tr>
+        <tr>
+          <td>Cloud Dataflow</td>
+          <td>$62,583.3113</td>
+        </tr>
+        <tr>
+          <td>Cloud Dataproc</td>
+          <td>$43,937.77</td>
+        </tr>
+        <tr>
+          <td>Cloud Pub/Sub</td>
+          <td>$9,911.21</td>
         </tr>
         <tr>
           <td>Compute Engine</td>
-          <td>1,310,383.29</td>
-        </tr>
-        <tr>
-          <td>Cloud Spanner</td>
-          <td>24,278.50</td>
-        </tr>
-        <tr>
-          <td>AI Platform</td>
-          <td>13,377.48</td>
-        </tr>
-        <tr>
-          <td>Dataflow</td>
-          <td>149.42</td>
-        </tr>
-        <tr>
-          <td>Cloud Functions</td>
-          <td>17.98</td>
+          <td>$17.24</td>
         </tr>
       </tbody>
     </table>
+    <details>
+      <summary>Hint: the patterns</summary>
+      <ul>
+        <li>Total spend is about $10M.</li>
+        <li>90% of spend serves traffic worldwide: Cloud CDN, Cloud Storage,
+          and Cloud Load Balancing.</li>
+        <li>10% of spend goes to data: BigQuery, Cloud Dataflow, Cloud
+          Dataproc, and Cloud Pub/Sub.</li>
+        <li>Infrastructure spend is close to zero: Compute Engine costs under $20.
+          The architecture is fully serverless.</li>
+      </ul>
+    </details>
+    <details>
+      <summary>Answer: the story</summary>
+      <p>The business runs a media, streaming, or gaming platform.</p>
+      <p>Nine dollars in ten pay to deliver large files to many people in
+        many places: video, music, or game assets. The data spend measures
+        what those people watch or play. The bill holds almost nothing for
+        servers, so the business runs on managed services.</p>
+    </details>
+    <p class="expect">Expect: table pillbox at load. Every cost rounds.</p>
   </section>
 
   <section>
