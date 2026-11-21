@@ -310,9 +310,16 @@ function repositionAllTablePillboxes() {
 // element that scrolled and does not bubble, so the scroll listener runs in
 // the capture phase: it runs on a page area's scroll as well as the window's.
 // The browser fires at most one scroll event per scrolling element per frame.
+//
+// Content above a table that grows or leaves the page moves the table without
+// resizing it, so the table's own observer does not run; the page body's size
+// changes instead. The browser delivers resize observations at most once per
+// frame. A table pillbox is absolutely positioned, so moving one leaves the
+// body's size unchanged and starts no further observation.
 function ensureScrollResizeListeners() {
   window.addEventListener('scroll', repositionAllTablePillboxes, { capture: true, passive: true });
   window.addEventListener('resize', repositionAllTablePillboxes, { passive: true });
+  new ResizeObserver(repositionAllTablePillboxes).observe(document.body || document.documentElement);
 }
 
 let highlightStyleInjected = false;

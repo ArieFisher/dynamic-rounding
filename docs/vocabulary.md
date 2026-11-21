@@ -250,13 +250,14 @@ Figures that describe what one lens does to one dataset. Each one reads a list o
 
 ## Puzzles
 
-Terms for the manual test page's second use: a set of puzzles for any reader.
+Terms for the manual test page: its puzzles for any reader, and the notes it holds for testers.
 
 | Term | Meaning | Not | Example | Search pattern | Block pattern |
 | --- | --- | --- | --- | --- | --- |
 | puzzle | A section of the manual test page that also holds a question for the reader: what story its table tells once simplified. It holds the question, the data patterns, and the story. The reader opens or hides either panel at any time. | quiz, challenge | Section 1 of the manual test page is a puzzle about a cloud bill. | `\bpuzzle(s\|es)?\b` | — |
 | data pattern | A fact a reader can see in a puzzle's simplified table, a step between the numbers and the story. e.g. "90% of spend serves traffic". A puzzle holds its data patterns in one panel. | hint (of a puzzle), clue, puzzle pattern | The data patterns state that the bill shows almost no infrastructure spend. | `\bdata pattern(s\|es)?\b` | — |
 | story | A puzzle's answer: the business or event behind the numbers, with a short discussion of how the data patterns lead to it. | answer, solution (of a puzzle) | The story of the cloud bill is a media, streaming, or gaming platform. | `\bstory\b\|\bstories\b` | — |
+| tester's notes | The panel in a section of the manual test page that holds what the table holds, the steps to run, and the result to expect. It stays closed until the reader opens it. Notes the section places beside its later tables show only while the panel is open. The page header holds one more panel, for the page's own setup. | test notes, expectations (the panel) | A tester opens a section's tester's notes to read its expected result. | `\btester's notes\b` | — |
 
 ## Working terms
 

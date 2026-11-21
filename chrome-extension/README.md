@@ -16,7 +16,7 @@ A table loses its original values when a content script re-injection empties the
 
 ## Where the table pillbox sits
 
-The table pillbox sits over the table's top-right corner and follows it through every scroll: the window's, and a scroll inside a page area such as a chat column. It shows only while that corner is in view. When the table's top passes above the edge of a page area that scrolls, its table pillbox disappears, the way a table pillbox on a page that scrolls as a whole leaves the screen with its table. A table wider than a box that scrolls sideways shows its table pillbox once the reader scrolls the box to the table's right edge.
+The table pillbox sits over the table's top-right corner and follows it through every scroll: the window's, and a scroll inside a page area such as a chat column. It also follows the table when a change to the page's height moves the table, such as content above it growing or a table above it leaving the page. It shows only while that corner is in view. When the table's top passes above the edge of a page area that scrolls, its table pillbox disappears, the way a table pillbox on a page that scrolls as a whole leaves the screen with its table. A table wider than a box that scrolls sideways shows its table pillbox once the reader scrolls the box to the table's right edge.
 
 The table pillbox sits in the page body, outside the page's own markup, because an element added inside a framework-built page's markup can crash the page on its next redraw, the same reason every cell write is a patch. A scrolling area therefore cannot cut the table pillbox off, and the hiding rule above does that job.
 

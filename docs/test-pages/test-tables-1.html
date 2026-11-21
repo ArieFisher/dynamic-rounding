@@ -103,7 +103,7 @@
       padding-left: 1.4em;
     }
 
-    section > .expect {
+    section .expect {
       max-width: none;
       background: #f6f8fa;
       border-left: 3px solid #afb8c1;
@@ -111,119 +111,51 @@
       padding: 10px 14px;
     }
 
-    section > ul.expect,
-    section > ol.expect {
+    section ul.expect,
+    section ol.expect {
       padding-left: 2em;
     }
 
-    /* Page header: two ways to use the page. */
     .hero {
-      padding: 56px 0 40px;
-      display: grid;
-      grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-      gap: 24px 48px;
-      align-items: end;
-    }
-
-    .hero-eyebrow {
-      margin: 0 0 14px;
-      font-size: 0.75em;
-      font-weight: 600;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--muted);
+      padding: 56px 0 32px;
     }
 
     .hero-lede {
       font-size: 1.15em;
       line-height: 1.5;
       color: #3b3a36;
-      max-width: 46ch;
+      max-width: 52ch;
       margin: 0;
     }
 
-    /* A before and after of three numbers, set as text, not a table. */
-    .hero-demo {
-      background: var(--card);
-      border: 1px solid var(--card-edge);
-      border-radius: 16px;
-      padding: 18px 20px;
-      font-variant-numeric: tabular-nums;
-      box-shadow: 0 18px 40px -28px rgba(60, 50, 20, 0.45);
-    }
-
-    .hero-demo-head {
-      display: grid;
-      grid-template-columns: 1fr 20px 1fr;
-      font-size: 0.72em;
-      font-weight: 600;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--muted);
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--rule-soft);
-    }
-
-    .hero-demo-row {
-      display: grid;
-      grid-template-columns: 1fr 20px 1fr;
-      align-items: baseline;
-      padding: 9px 0;
-      border-bottom: 1px solid var(--rule-soft);
-    }
-
-    .hero-demo-row:last-child {
-      border-bottom: none;
-      padding-bottom: 0;
-    }
-
-    .hero-demo-row .before {
-      color: var(--muted);
-      font-size: 0.95em;
-    }
-
-    .hero-demo-row .arrow {
-      color: #afb8c1;
-    }
-
-    .hero-demo-row .after {
-      font-family: var(--display);
-      font-weight: 600;
-      font-size: 1.35em;
-    }
-
-    .paths {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 16px;
-      margin-bottom: 32px;
-    }
-
-    .path {
+    .puzzle-banner {
       display: flex;
-      flex-direction: column;
-      gap: 8px;
-      background: var(--card);
-      border: 1px solid var(--card-edge);
-      border-radius: 16px;
-      padding: 22px 24px;
-      color: inherit;
-      text-decoration: none;
-    }
-
-    a.path {
+      flex-wrap: wrap;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px 32px;
       background: var(--ink);
-      border-color: var(--ink);
       color: #fff;
+      border-radius: 16px;
+      padding: 24px 28px;
+      margin-bottom: 16px;
+      text-decoration: none;
       transition: transform 0.15s ease, box-shadow 0.15s ease;
     }
 
-    a.path:hover {
+    .puzzle-banner:hover {
       transform: translateY(-2px);
       box-shadow: 0 16px 32px -20px rgba(0, 0, 0, 0.6);
     }
 
-    .path-kicker {
+    .banner-text {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-width: 60ch;
+    }
+
+    .banner-kicker {
       font-size: 0.72em;
       font-weight: 600;
       letter-spacing: 0.14em;
@@ -231,29 +163,96 @@
       opacity: 0.7;
     }
 
-    .path-title {
+    .banner-title {
       font-family: var(--display);
       font-weight: 600;
       font-size: 1.5em;
       line-height: 1.15;
     }
 
-    .path p {
-      margin: 0;
+    .banner-body {
       line-height: 1.5;
       font-size: 0.95em;
-      max-width: none;
     }
 
-    .path .path-fine {
-      font-size: 0.85em;
+    .banner-go {
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .tester-notes {
+      margin: 0 0 16px;
+    }
+
+    .tester-notes > summary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      list-style: none;
+      cursor: pointer;
+      padding: 4px 12px;
+      border: 1px dashed #afb8c1;
+      border-radius: 999px;
+      font-size: 0.75em;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
       color: var(--muted);
     }
 
-    .path-go {
-      margin-top: auto;
-      padding-top: 8px;
+    .tester-notes > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .tester-notes > summary::before {
+      content: "";
+      width: 5px;
+      height: 5px;
+      border-right: 1.5px solid currentColor;
+      border-bottom: 1.5px solid currentColor;
+      transform: rotate(-45deg);
+      transition: transform 0.2s ease;
+    }
+
+    .tester-notes[open] > summary {
+      border-style: solid;
+      color: var(--ink);
+      background: #f6f8fa;
+    }
+
+    .tester-notes[open] > summary::before {
+      transform: rotate(45deg);
+    }
+
+    .tester-notes > summary + * {
+      margin-top: 12px;
+    }
+
+    /* A section's later notes sit beside their tables, outside its tester's
+       notes, so they need their own rule to show only while the tester's
+       notes are open. */
+    section:has(> details.tester-notes:not([open])) .tester-note {
+      display: none;
+    }
+
+    .page-notes {
+      margin-bottom: 24px;
+    }
+
+    .page-notes > p {
+      max-width: 68ch;
+      color: var(--ink-soft, #3b3a36);
+    }
+
+    /* Column names in a note, set like the header cells they stand for. */
+    .col {
       font-weight: 600;
+      font-size: 0.9em;
+      background: var(--head);
+      border: 1px solid var(--rule);
+      border-radius: 4px;
+      padding: 0 5px;
+      white-space: nowrap;
     }
 
     /* Contents: a sticky column on wide screens, a closed list above the
@@ -376,12 +375,7 @@
       }
 
       .hero {
-        grid-template-columns: minmax(0, 1fr);
         padding-top: 32px;
-      }
-
-      .paths {
-        grid-template-columns: minmax(0, 1fr);
       }
 
       body > section {
@@ -1050,44 +1044,35 @@
   </details>
 
   <header class="hero">
-    <div>
-      <p class="hero-eyebrow">DynamicRounding · Table test page</p>
-      <h1>See the story in the numbers.</h1>
-      <p class="hero-lede">Each table on this page is a shape the DynamicRounding
-        extension meets on real pages. Read one as a puzzle, or check it as a test.</p>
-    </div>
-    <div class="hero-demo" aria-hidden="true">
-      <div class="hero-demo-head"><span>Before</span><span></span><span>After</span></div>
-      <div class="hero-demo-row"><span class="before">$4,228,910.4100</span><span class="arrow">→</span><span class="after">$4,000,000</span></div>
-      <div class="hero-demo-row"><span class="before">$62,583.3113</span><span class="arrow">→</span><span class="after">$65,000</span></div>
-      <div class="hero-demo-row"><span class="before">$17.24</span><span class="arrow">→</span><span class="after">$15</span></div>
-    </div>
+    <h1>See the stories in readable data</h1>
+    <p class="hero-lede">Each table on this page is a shape the DynamicRounding
+      extension meets on real pages. Read one as a puzzle, or check it as a
+      test.</p>
   </header>
 
-  <div class="paths">
-    <a class="path" href="#s-1">
-      <span class="path-kicker">For anyone</span>
-      <span class="path-title">Solve a puzzle</span>
-      <p>Look at a table, simplify it, and work out the story in the numbers.
-        Open the data patterns or the story at any time, and click a title
-        again to hide it.</p>
-      <span class="path-go">Start puzzle 01 →</span>
-    </a>
-    <div class="path">
-      <span class="path-kicker">For testers</span>
-      <span class="path-title">Check a fixture</span>
-      <p>One fixture per kind of table the Chrome extension handles, plus the
-        kinds it leaves alone. Load the unpacked extension, allow file URL
-        access (or serve this page over localhost), and check each section
-        against its stated expectation. Details sit in HTML comments next to
-        each fixture.</p>
-      <p class="path-fine">Every expectation assumes the default settings
-        unless a step says otherwise: first row and first column excluded,
-        currency and percent on, dates on at year granularity, times off. A
-        table pillbox is the small on/off control at a table's top-right
-        corner.</p>
-    </div>
-  </div>
+  <a class="puzzle-banner" href="#s-1">
+    <span class="banner-text">
+      <span class="banner-kicker">For anyone</span>
+      <span class="banner-title">Solve a puzzle</span>
+      <span class="banner-body">Look at a table, simplify it, and work out the
+        story in the numbers. Open the data patterns or the story at any time,
+        and click a title again to hide it.</span>
+    </span>
+    <span class="banner-go">Start puzzle 01 →</span>
+  </a>
+
+  <details class="tester-notes page-notes">
+    <summary>Tester's notes</summary>
+    <p>One fixture per kind of table the Chrome extension handles, plus the
+      kinds it leaves alone. Load the unpacked extension, allow file URL
+      access (or serve this page over localhost), and check each section
+      against its stated expectation. Details sit in HTML comments next to
+      each fixture.</p>
+    <p>Every expectation assumes the default settings unless a step says
+      otherwise: first row and first column excluded, currency and percent
+      on, dates on at year granularity, times off. A table pillbox is the
+      small on/off control at a table's top-right corner.</p>
+  </details>
 
   <section>
     <h2>1. Basic data table</h2>
@@ -1194,13 +1179,19 @@
         </div>
       </div>
     </div>
-    <p class="expect">Expect: table pillbox at load. Every cost rounds.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p class="expect">Expect: table pillbox at load. Every cost rounds.</p>
+    </details>
   </section>
 
   <section>
     <h2>2. Currency and percent cells</h2>
-    <p class="expect">Expect: table pillbox at load. Each number rounds and keeps its
-      currency or percent sign. The first column stays as written.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p class="expect">Expect: table pillbox at load. Each number rounds and keeps its
+        currency or percent sign. The first column stays as written.</p>
+    </details>
     <table>
       <thead>
         <tr>
@@ -1232,8 +1223,11 @@
 
   <section>
     <h2>3. Set-aware precision across magnitudes</h2>
-    <p>The values in this table span about ten orders of magnitude.</p>
-    <p class="expect">Expect: table pillbox at load.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>The values in this table span about ten orders of magnitude.</p>
+      <p class="expect">Expect: table pillbox at load.</p>
+    </details>
 
     <!--
       Set-aware precision is computed across the whole table, not per column.
@@ -1323,15 +1317,18 @@
 
   <section>
     <h2>4. Dates, times, timestamps</h2>
-    <p>Each row holds a date, a time, or a timestamp, apart from two rows
-      shaped like dates that are not. The Governed by column names the setting
-      that covers the row.</p>
-    <p class="expect">Expect: table pillbox at load. Each date shows its own year. Each
-      time stays as written until the Times setting is on. With Times on, a
-      time in the last hour of the clock stays in that hour at hour and at
-      minute; a failure shows 00:00, 12:00 a.m., 12:00 AM, or the next day's
-      date. The cell holding two clock times stays as written with Times on
-      or off.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>Each row holds a date, a time, or a timestamp, apart from two rows
+        shaped like dates that are not. The <span class="col">Sidebar settings</span>
+        column holds the sidebar setting that covers the row.</p>
+      <p class="expect">Expect: table pillbox at load. Each date shows its own year. Each
+        time stays as written until the times switch is on. With the times switch on, a
+        time in the last hour of the clock stays in that hour at hour and at
+        minute; a failure shows 00:00, 12:00 a.m., 12:00 AM, or the next day's
+        date. The cell holding two clock times stays as written with the times
+        switch on or off.</p>
+    </details>
 
     <!--
       Expected output at the shipped defaults: dates on at year granularity, times
@@ -1413,7 +1410,7 @@
         <tr>
           <th scope="col">Format</th>
           <th scope="col">Value</th>
-          <th scope="col">Governed by</th>
+          <th scope="col">Sidebar settings</th>
         </tr>
       </thead>
       <tbody>
@@ -1505,7 +1502,7 @@
         <tr>
           <th scope="row">Word that starts like a month</th>
           <td>market 21, 2015</td>
-          <td>Words</td>
+          <td>Numbers</td>
         </tr>
         <tr>
           <th scope="row">Quoted, held back</th>
@@ -1588,11 +1585,14 @@
 
   <section>
     <h2>5. Signs, symbols, quoting</h2>
-    <p class="expect">Expect: table pillbox at load. Each number rounds and keeps its
-      sign and its currency or percent symbol: the accounting negative keeps
-      its brackets, the plus stays on a positive result, and the Unicode minus
-      comes back as a hyphen. The quoted number stays as written, and 35.0
-      drops its trailing zero.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p class="expect">Expect: table pillbox at load. Each number rounds and keeps its
+        sign and its currency or percent symbol: the accounting negative keeps
+        its brackets, the plus stays on a positive result, and the Unicode minus
+        comes back as a hyphen. The quoted number stays as written, and 35.0
+        drops its trailing zero.</p>
+    </details>
 
     <!--
       Accounting negative   (1,234,567)  -> reads as a negative, comes back in brackets
@@ -1657,10 +1657,13 @@
 
   <section>
     <h2>6. Numbers inside text</h2>
-    <p class="expect">Expect: table pillbox at load. Each quantity inside the text
-      rounds, both ends of a range included, and the words and markup around it
-      stay as written. The serial number, the quoted span, and the era years
-      ("2898 AD", "AD 79", "500 BC") stay as written.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p class="expect">Expect: table pillbox at load. Each quantity inside the text
+        rounds, both ends of a range included, and the words and markup around it
+        stay as written. The serial number, the quoted span, and the era years
+        ("2898 AD", "AD 79", "500 BC") stay as written.</p>
+    </details>
 
     <!--
       Revenue grew 12,345 units in Q3      -> 12,345 rounds; Q3 is an identifier
@@ -1744,13 +1747,16 @@
 
   <section>
     <h2>7. Footnotes and superscripts</h2>
-    <p class="expect">Expect: table pillbox at load. A number with a letter or star
-      footnote rounds and keeps its footnote. A number with a numeric footnote
-      stays as written, and so does a power of ten; the coefficient before a power
-      of ten rounds. The last row raises its footnote with the style
-      <code>vertical-align: super</code> and no <code>&lt;sup&gt;</code>: with a
-      space before the footnote, 5,432 rounds and the raised 12 stays. A failure
-      shows 10 in place of the raised 12.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p class="expect">Expect: table pillbox at load. A number with a letter or star
+        footnote rounds and keeps its footnote. A number with a numeric footnote
+        stays as written, and so does a power of ten; the coefficient before a power
+        of ten rounds. The last row's footnote sits raised by the style
+        <code>vertical-align: super</code> and no <code>&lt;sup&gt;</code>: with a
+        space before the footnote, 5,432 rounds and the raised 12 stays. A failure
+        shows 10 in place of the raised 12.</p>
+    </details>
 
     <!--
       1,234 with letter footnote     -> rounds; the sup element survives
@@ -1801,9 +1807,12 @@
 
   <section>
     <h2>8. Linked numbers</h2>
-    <p class="expect">Expect: table pillbox at load. A number or a date that is a
-      link, or sits inside one, stays as written. A plain number beside a link
-      rounds.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p class="expect">Expect: table pillbox at load. A number or a date that is a
+        link, or sits inside one, stays as written. A plain number beside a link
+        rounds.</p>
+    </details>
 
     <!--
       Whole-cell link                -> the cell's entire text is the link; held
@@ -1864,13 +1873,16 @@
 
   <section>
     <h2>9. Ambiguous date columns</h2>
-    <p>A column of row labels, then three columns of all-numeric dates. In the
-      first date column, one cell has a first part over twelve, which only a
-      day can be. In the second, no cell settles the reading. In the third, one
-      cell reads day-first and another month-first.</p>
-    <p class="expect">Expect: table pillbox at load. The first date column shows
-      years. The row labels and the other two date columns stay as
-      written.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>A column of row labels, then three columns of all-numeric dates. In the
+        first date column, one cell holds a first part over twelve, which only a
+        day can be. In the second, every date can be read either way. In the
+        third, one date fits only day-first and another only month-first.</p>
+      <p class="expect">Expect: table pillbox at load. The first date column shows
+        years. The row labels and the other two date columns stay as
+        written.</p>
+    </details>
 
     <!--
       Day-first resolved: 25/04/2020 has a first part over twelve, which can only
@@ -1917,11 +1929,14 @@
 
   <section>
     <h2>10. ARIA grid with row groups</h2>
-    <p class="expect">Expect: table pillbox at load. The header row and the Region
-      column stay as written. Every other row rounds, the Total row below the
-      row group included, and its values appear in the lens preview. The
-      Total values share magnitude 6 with the body values, so every value
-      rounds as it does in a table without a Total row.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p class="expect">Expect: table pillbox at load. The header row and the <span class="col">Region</span>
+        column stay as written. Every other row rounds, the Total row below the
+        row group included, and its values appear in the lens preview. The
+        Total values share magnitude 6 with the body values, so every value
+        rounds as it does in a table without a Total row.</p>
+    </details>
 
     <!--
       The load-time scan picks up any role="grid" or role="table" element that
@@ -1990,8 +2005,11 @@
 
   <section>
     <h2>11. ARIA table without row groups</h2>
-    <p class="expect">Expect: table pillbox at load. The first row stays as written.
-      Every other row rounds.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p class="expect">Expect: table pillbox at load. The first row stays as written.
+        Every other row rounds.</p>
+    </details>
 
     <!--
       role="table" is accepted the same way role="grid" is. With no rowgroup,
@@ -2040,8 +2058,11 @@
 
   <section>
     <h2>12. Unmarked grid, found by right-click</h2>
-    <p class="expect">Expect: no table pillbox at load. Right-click any cell: a
-      table pillbox appears on the whole grid.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p class="expect">Expect: no table pillbox at load. Right-click any cell: a
+        table pillbox appears on the whole grid.</p>
+    </details>
 
     <!--
       No table element, no ARIA role, no known vendor class. The load-time scan
@@ -2100,10 +2121,13 @@
 
   <section>
     <h2>13. Pinned-pane vendor grid</h2>
-    <p>A pane of pinned row numbers beside a scrolling pane of data.</p>
-    <p class="expect">Expect: one table pillbox at load, on the scrolling pane, and
-      none on the row numbers. The pane's first row and first column stay as
-      written. Every other cell rounds.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>A pane of pinned row numbers beside a scrolling pane of data.</p>
+      <p class="expect">Expect: one table pillbox at load, on the scrolling pane, and
+        none on the row numbers. The pane's first row and first column stay as
+        written. Every other cell rounds.</p>
+    </details>
 
     <!--
       Database-query-shaped DOM: a role="table" wrapper holding a pinned pane of row
@@ -2173,13 +2197,16 @@
 
   <section>
     <h2>14. ARIA grid with bare table rows</h2>
-    <p>Table rows with no table element around them.</p>
-    <p class="expect">Expect: table pillbox at load. Every number outside the first
-      row and the first column rounds. In the last row the first cell spans
-      two columns, so its number sits in the third column: a range expression
-      naming column C reaches it, and one naming column B does not. A failure
-      shows the last number rounding with column B named, and staying as
-      written with column C named.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>Table rows with no table element around them.</p>
+      <p class="expect">Expect: table pillbox at load. Every number outside the first
+        row and the first column rounds. In the last row the first cell spans
+        two columns, so its number sits in the third column: a range expression
+        of column C includes it, and one of column B does not. A failure
+        shows the last number rounding with column B in the range expression,
+        and staying as written with column C in it.</p>
+    </details>
 
     <!--
       Kaggle-shaped DOM: a role="grid" element whose rows are orphan tr
@@ -2215,8 +2242,11 @@
 
   <section>
     <h2>15. Table added after load</h2>
-    <p class="expect">Expect: no table until the button is pressed. Press it: a
-      table appears and gets a table pillbox within a moment.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p class="expect">Expect: no table until the button is pressed. Press it: a
+        table appears and gets a table pillbox within a moment.</p>
+    </details>
 
     <!--
       Exercises the mutation observer: nodes added after the initial scan are
@@ -2256,13 +2286,16 @@
 
   <section>
     <h2>16. Accessibility artifacts, never toggled</h2>
-    <p>Tables and grids a page hides from assistive technology, or draws far
-      off-screen.</p>
-    <p class="expect">Expect: no table pillbox on any table or grid in 16a and 16b.
-      A table pillbox on one of them is a failure.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>Tables and grids a page hides from assistive technology, or draws far
+        off-screen.</p>
+      <p class="expect">Expect: no table pillbox on any table or grid in 16a and 16b.
+        A table pillbox on one of them is a failure.</p>
+    </details>
 
     <h3>16a. Marked hidden for assistive technology</h3>
-    <p class="expect">The table and the grid are left visible here on
+    <p class="expect tester-note">The table and the grid are left visible here on
       purpose.</p>
     <!-- aria-hidden on the element itself, or any ancestor, marks an accessibility artifact. -->
     <table aria-hidden="true">
@@ -2298,7 +2331,7 @@
     </div>
 
     <h3>16b. Positioned far off-screen</h3>
-    <p class="expect">Expect: nothing renders below this heading, and no table pillbox
+    <p class="expect tester-note">Expect: nothing renders below this heading, and no table pillbox
       appears near the page corner.</p>
     <!--
       An element, or its nearest positioned ancestor, with a large negative
@@ -2342,7 +2375,7 @@
     </div>
 
     <h3>16c. Beside a labeled chart</h3>
-    <p class="expect">Expect: a table pillbox on the table and a table pillbox on the grid,
+    <p class="expect tester-note">Expect: a table pillbox on the table and a table pillbox on the grid,
       the same as on any other table. A missing table pillbox is a failure.</p>
     <!--
       A labeled chart image shares the positioned box with both. The chart does
@@ -2390,7 +2423,10 @@
 
   <section>
     <h2>17. Tables that fail the data test</h2>
-    <p class="expect">Expect: no table pillbox on any of the three.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p class="expect">Expect: no table pillbox on any of the three.</p>
+    </details>
 
     <h3>17a. One row only</h3>
     <table>
@@ -2414,8 +2450,8 @@
     </table>
 
     <h3>17c. No numbers anywhere</h3>
-    <p class="expect">Expect: right-click any cell: nothing on the page
-      changes. A failure flashes the table.</p>
+    <p class="expect tester-note">Expect: right-click any cell: nothing on the page
+      changes. A failure shows a flash on the table.</p>
     <table>
       <tr>
         <th>City</th>
@@ -2434,9 +2470,12 @@
 
   <section>
     <h2>18. Grid too small to qualify</h2>
-    <p>A grid of four rows, one short of the smallest grid the extension
-      reads.</p>
-    <p class="expect">Expect: right-click any cell: no table pillbox appears.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>A grid of four rows, one short of the smallest grid the extension
+        reads.</p>
+      <p class="expect">Expect: right-click any cell: no table pillbox appears.</p>
+    </details>
     <div class="plain-grid">
       <div class="plain-row">
         <span class="plain-cell">Item</span>
@@ -2467,10 +2506,13 @@
 
   <section>
     <h2>19. TSV, plain text</h2>
-    <p>Tab-separated text in a preformatted block, with no rows or cells. A
-      site that draws the same file as an HTML table gets a table pillbox, as in
-      section 1.</p>
-    <p class="expect">Expect: no table pillbox.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>Tab-separated text in a preformatted block, with no rows or cells. A
+        site that draws the same file as an HTML table gets a table pillbox, as in
+        section 1.</p>
+      <p class="expect">Expect: no table pillbox.</p>
+    </details>
     <pre>
 country	population	gdp_usd
 India	1,428,627,663	3,732,224,000,000
@@ -2482,9 +2524,12 @@ Iceland	375,318	31,020,000,000
 
   <section>
     <h2>20. CSV, plain text</h2>
-    <p>Comma-separated text in a preformatted block, the way the browser shows
-      a raw .csv file.</p>
-    <p class="expect">Expect: no table pillbox.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>Comma-separated text in a preformatted block, the way the browser shows
+        a raw .csv file.</p>
+      <p class="expect">Expect: no table pillbox.</p>
+    </details>
     <pre>
 symbol,shares,price,market_value
 AAPL,1200,"189.44","227,328.00"
@@ -2496,10 +2541,13 @@ TSLA,75,"248.09","18,606.75"
 
   <section>
     <h2>21. Mixed-text cell with line breaks in its markup</h2>
-    <p>The second row's number sits inside words, and its cell markup holds
-      line breaks and indentation that the browser hides on screen.</p>
-    <p class="expect">Expect: table pillbox at load. Both rows round, and the markup
-      keeps its line breaks.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>The second row's number sits inside words, and its cell markup holds
+        line breaks and indentation that the browser hides on screen.</p>
+      <p class="expect">Expect: table pillbox at load. Both rows round, and the markup
+        keeps its line breaks.</p>
+    </details>
 
     <!--
       48,215                          -> rounds
@@ -2530,12 +2578,15 @@ TSLA,75,"248.09","18,606.75"
 
   <section>
     <h2>22. Merged cells</h2>
-    <p>Two tables with merged cells.</p>
-    <p class="expect">Expect: a table pillbox at load on both tables.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>Two tables with merged cells.</p>
+      <p class="expect">Expect: a table pillbox at load on both tables.</p>
+    </details>
 
     <h3>22a. A label column merged down</h3>
-    <p class="expect">Expect: every number rounds, 1,250,000 included, and
-      1,250,000 sets the max magnitude for the whole table.</p>
+    <p class="expect tester-note">Expect: every number rounds, 1,250,000 included, and
+      the max magnitude for the whole table comes from 1,250,000.</p>
 
     <!--
       West / East      -> merged down over two rows each; first column, shows the original
@@ -2573,10 +2624,10 @@ TSLA,75,"248.09","18,606.75"
     </table>
 
     <h3>22b. Merged column headers and a total row merged across</h3>
-    <ol class="expect">
+    <ol class="expect tester-note">
       <li><b>Press the table pillbox on.</b> Expect: every number rounds.</li>
       <li><b>Set the range expression to C and apply again.</b> Expect: only the
-        Revenue column changes, the total included, and the pulse covers that
+        <span class="col">Revenue</span> column changes, the total included, and the pulse covers that
         column alone.</li>
     </ol>
 
@@ -2617,57 +2668,61 @@ TSLA,75,"248.09","18,606.75"
 
   <section>
     <h2>23. Cells the page rewrites</h2>
-    <p>Each table in this section changes its own values after its table pillbox is
-      pressed on, the way a live dashboard or a scrolling grid does. Reload
-      the page to start any part again.</p>
-    <p class="expect">Expect: a table pillbox at load on 23a's two tables, 23c's
-      grid, 23d's table, and 23e's table. The extension simplifies each
-      change within a moment, and a restore shows the values the page last
-      wrote.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>The page changes the values of each table in this section after its
+        table pillbox is pressed on, the way a live dashboard or a scrolling grid
+        does. Reload
+        the page to start any part again.</p>
+      <p class="expect">Expect: a table pillbox at load on 23a's two tables, 23c's
+        grid, 23d's table, and 23e's table. The extension simplifies each
+        change within a moment, and a restore shows the values the page last
+        wrote.</p>
+    </details>
 
     <h3>23a. One native table and one grid holding the same values</h3>
-    <p>Every button rewrites the same cell in both tables, so the two results
-      sit side by side.</p>
-    <ol class="expect">
+    <p class="tester-note">When a button below is pressed, the page rewrites the same cell in
+      both tables, so the two results sit side by side.</p>
+    <ol class="expect tester-note">
       <li><b>Pull the sidebar's two offsets apart:</b> largest numbers at -1,
-        all other numbers at 0. The Add a row button shows its effect only at
-        unequal offsets.</li>
+        all other numbers at 0. The effect of the
+        Add a row button shows only at unequal offsets.</li>
       <li><b>Press both table pillboxes on, then each button below.</b> Check each
         result, then press the table pillbox off and check the restore.</li>
     </ol>
-    <ul class="expect">
-      <li><b>Write a new number</b> writes 953,877 into South, Q2. Expect: the
+    <ul class="expect tester-note">
+      <li><b>Write a new number</b>: the page writes 953,877 into South, Q2. Expect: the
         cell shows 953,877 simplified on both tables, and each cell's hover
         text shows 953,877. Restore shows 953,877 and removes the hover
         text.</li>
-      <li><b>Write a round number</b> writes 400,000 into East, Q1. Expect: the
+      <li><b>Write a round number</b>: the page writes 400,000 into East, Q1. Expect: the
         cell shows 400,000 and is no longer simplified: no hover text, and
         restore leaves 400,000.</li>
-      <li><b>Write a word</b> writes n/a into Central, Q3. Expect: the cell
+      <li><b>Write a word</b>: the page writes n/a into Central, Q3. Expect: the cell
         shows n/a with no hover text, and restore leaves n/a.</li>
-      <li><b>Rewrite one piece</b> writes 15,118 into the italic part of West,
+      <li><b>Rewrite one piece</b>: the page writes 15,118 into the italic part of West,
         Q3. Expect: both numbers in the cell show simplified, the bold one
         from 281,745 and the italic one from 15,118. Restore shows 281,745 and
         15,118.</li>
-      <li><b>Redraw the original</b> writes the cell's own original, 1,482,391,
+      <li><b>Redraw the original</b>: the page writes the cell's own original, 1,482,391,
         back into North, Q1, as a page redraw does. Expect: the cell shows
         simplified again within a moment.</li>
-      <li><b>Add a row with a larger value</b> adds a Global row of values
+      <li><b>Add a row with a larger value</b>: the page adds a Global row of values
         above 12,000,000. Expect: on both tables the other cells keep
         their text, including the North row (1,500,000), and the Global
-        values take the rounding of the largest values, 12,000,000 and
+        values round like the largest values, 12,000,000 and
         13,000,000. A failure shows every cell changing when the one larger
         value arrives.</li>
-      <li><b>Swap the column set</b> replaces the headers and the first five rows,
+      <li><b>Swap the column set</b>: the page replaces the headers and the first five rows,
         as a page that loads a different query result into the same table.
         Expect: the extension detects a new table. It shows the original of
         the new values with the table pillbox off, and the sidebar shows the default settings
-        for it, so a press simplifies it under the defaults. The sidebar's
-        active table moves to the new table only when this table was the
-        active one.</li>
-      <li><b>Rewrite as the table pillbox is pressed</b> arms the page. The next
-        table pillbox press on either table first writes 925,006 into that table's
-        South, Q1, in the same moment as the press. Press it with both tables
+        for it, so pressing its table pillbox simplifies it under the defaults.
+        The sidebar's active table becomes the new table only when this table
+        was the active one.</li>
+      <li><b>Rewrite as the table pillbox is pressed</b>: on the next table
+        pillbox press on either table, the page first writes 925,006 into that
+        table's South, Q1, in the same moment as the press. Press it with both tables
         on. Expect: the restore shows 925,006 in that cell and the originals
         everywhere else.</li>
     </ul>
@@ -2828,14 +2883,14 @@ TSLA,75,"248.09","18,606.75"
     </script>
 
     <h3>23b. A table that rewrites every value every 30 seconds</h3>
-    <p>Each update writes a random whole number from 1,000 to 1,000,000 into
-      every cell.</p>
-    <p class="expect">Press its table pillbox on. Expect: after each update every cell
-      shows simplified under the max magnitude the table took when the
+    <p class="tester-note">On each update the page writes a random whole number from 1,000 to
+      1,000,000 into every cell.</p>
+    <p class="expect tester-note">Press its table pillbox on. Expect: after each update every cell
+      shows simplified under the max magnitude set when the
       table pillbox turned on, and each hover text shows the new value. A restore at any
       moment shows the values the page last wrote. Press the table pillbox off and
       on: every cell shows simplified against the values then on the page.</p>
-    <p class="expect" id="rw-live-status">Next update in 30 seconds.</p>
+    <p class="expect tester-note" id="rw-live-status">Next update in 30 seconds.</p>
 
     <!--
       Every update writes every value cell at once: one burst of page edits,
@@ -2889,19 +2944,19 @@ TSLA,75,"248.09","18,606.75"
     </script>
 
     <h3>23c. A scrolling grid that reuses its row elements</h3>
-    <p>The grid holds 60 rows and shows 8. On scroll it keeps the same 8 row
-      elements and writes the next rows' text into them, the way a virtualized
-      grid does. Its Note column alternates between a bold number followed by
-      the word "units", which the page writes as two text pieces, and a plain
-      "1,613 units", which it writes as one. A scroll that moves a plain note
-      into a cell that held a bold one leaves that cell with fewer text pieces
-      than the extension stored for it.</p>
-    <ol class="expect">
+    <p class="tester-note">The grid holds 60 rows and shows 8. On scroll the page keeps the
+      same 8 row elements and writes the next rows' text into them, the way a
+      virtualized grid does. Its <span class="col">Note</span> column holds, row by row in turn,
+      a bold number followed by the word "units", which the page writes as two
+      text pieces, and a plain "1,613 units", which it writes as one. When a
+      scroll moves a plain note into a cell that held a bold one, that cell
+      holds fewer text pieces than the extension stored for it.</p>
+    <ol class="expect tester-note">
       <li><b>Press its table pillbox on with the offsets from 23a, then scroll
         down.</b> Expect: every visible cell shows simplified against the max
-        magnitude the grid took at its first simplification. The rows from
-        Account 031 on hold values above that magnitude, and they take the
-        rounding of the largest values.</li>
+        magnitude set at the grid's first simplification. The rows from
+        Account 031 on hold values above that magnitude, and they round like
+        the largest values.</li>
       <li><b>Scroll back up.</b> Expect: the returning rows show simplified
         again.</li>
       <li><b>Scroll down once more and press the table pillbox off.</b> Expect: each
@@ -2990,15 +3045,15 @@ TSLA,75,"248.09","18,606.75"
     </script>
 
     <h3>23d. The pass target and the cell cap</h3>
-    <p>The extension reads at most 10,000 cells in one pass. The first table
+    <p class="tester-note">The extension reads at most 10,000 cells in one pass. The first table
       holds 1,000 rows of ten value cells, the cap itself; the second holds one
       row more.</p>
-    <ol class="expect">
+    <ol class="expect tester-note">
       <li><b>Build the tables, press the table pillbox of the 1,000-row table on, and
-        start its updates.</b> They write a value into a random cell every 50
-        milliseconds. Expect: each updated value outside the first column
-        shows simplified, one pass a second at most, and the updates write no
-        row in the extension's log while each pass stays under 200 ms. A
+        start its updates.</b> The page writes a value into a random cell
+        every 50 milliseconds. Expect: each updated value outside the first column
+        shows simplified, one pass a second at most, and the extension's log holds
+        no row for the updates while each pass stays under 200 ms. A
         failure shows a <code>re-apply pass</code> row with the pass's
         duration.</li>
       <li><b>Press the table pillbox of the 1,001-row table on.</b> Expect: it simplifies
@@ -3086,14 +3141,15 @@ TSLA,75,"248.09","18,606.75"
     </script>
 
     <h3>23e. A table with nothing to simplify that gains a number</h3>
-    <p>Every value is a round thousand, so the table holds nothing to
-      simplify. The button writes 8,584,629 into East, Units.</p>
-    <ol class="expect">
+    <p class="tester-note">Every value is a round thousand, so the table holds nothing to
+      simplify. When the button is pressed, the page writes 8,584,629 into East,
+      Units.</p>
+    <ol class="expect tester-note">
       <li><b>Press its table pillbox on.</b> Expect: the table pillbox and the
         sidebar pillbox show on, and every value stays as written.</li>
       <li><b>Press Write a new number.</b> Expect: East, Units shows 8,500,000
         within a moment, and the other values stay as written. A failure
-        leaves 8,584,629 on the screen.</li>
+        shows 8,584,629 on the screen.</li>
     </ol>
     <div class="rw-buttons">
       <button type="button" id="rw-gain-write">Write a new number</button>
@@ -3121,15 +3177,18 @@ TSLA,75,"248.09","18,606.75"
 
   <section>
     <h2>24. Identifiers</h2>
-    <p>A native table and a grid holding the same rows. Each Value cell down to
-      "Phone inside words" holds an identifier or an at-name; the last two hold
-      a number. The Count column holds a plain number in every row.</p>
-    <p class="expect">Expect: a table pillbox at load on both tables. Press each
-      table pillbox on: every identifier stays as written, on both tables, with no
-      hover text, and the Count column rounds. The last two Value cells round:
-      "1 234 567" is thousands grouping and reads as one number, and "90210"
-      alone reads as a count. The lens preview samples the Count column and
-      none of the identifiers.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>A native table and a grid holding the same rows. Each <span class="col">Value</span> cell down to
+        "Phone inside words" holds an identifier or an at-name; the last two hold
+        a number. The <span class="col">Count</span> column holds a plain number in every row.</p>
+      <p class="expect">Expect: a table pillbox at load on both tables. Press each
+        table pillbox on: every identifier stays as written, on both tables, with no
+        hover text, and the <span class="col">Count</span> column rounds. The last two <span class="col">Value</span> cells round:
+        "1 234 567" is thousands grouping and is read as one number, and "90210"
+        alone is read as a count. The lens preview holds samples from the <span class="col">Count</span>
+        column and none from the identifiers.</p>
+    </details>
 
     <!--
       Both tables come from one list below, so they always hold the same
@@ -3144,10 +3203,10 @@ TSLA,75,"248.09","18,606.75"
     <div id="id-grid" class="aria-grid" role="grid" aria-label="Identifier shapes"></div>
 
     <h3>24b. A grid of cells with two numbers, one above the other</h3>
-    <p>Each cell holds two numbers, one above the other, in separate text
+    <p class="tester-note">Each cell holds two numbers, one above the other, in separate text
       pieces. Their joined text ("1500 1600") looks like digit groups split by
       a space.</p>
-    <p class="expect">Expect: every number rounds.</p>
+    <p class="expect tester-note">Expect: every number rounds.</p>
     <div class="aria-grid" role="grid" aria-label="Numbers one above the other beside identifiers">
       <div class="g-row" role="row">
         <span role="columnheader">Metric</span>
@@ -3171,12 +3230,12 @@ TSLA,75,"248.09","18,606.75"
       </div>
     </div>
     <h3>24c. Identifiers inside words</h3>
-    <p>A native table and a grid holding the same rows. Each Text cell holds an
+    <p class="tester-note">A native table and a grid holding the same rows. Each <span class="col">Text</span> cell holds an
       identifier beside a count.</p>
-    <p class="expect">Press each table pillbox on. Expect: in each Text cell down to
+    <p class="expect tester-note">Press each table pillbox on. Expect: in each <span class="col">Text</span> cell down to
       "Account number, leading zero", the identifier stays as written and the
       count beside it rounds, on both tables. The last three rows round every number in their
-      Text cell. That result follows a design choice still open: digit groups
+      <span class="col">Text</span> cell. That result follows a design choice still open: digit groups
       split by spaces count as an identifier only when they fill the whole
       cell, and an ISBN inside words needs the word "ISBN".</p>
     <table id="id-text-native">
@@ -3281,19 +3340,22 @@ TSLA,75,"248.09","18,606.75"
 
   <section>
     <h2>25. Numbers in separate text pieces</h2>
-    <p>A native table and a grid holding the same rows. One row puts the "$"
-      in its own tag beside its number. One row holds one number per line. One
-      row holds a split number: one number whose digits sit in two tags, the
-      second in bold. The last row holds a split number beside a whole
-      number.</p>
-    <p class="expect">Expect: a table pillbox at load on both tables.</p>
-    <ol class="expect">
-      <li><b>Press each table pillbox on.</b> Expect: on both tables, the "$" stays
-        and the number beside it rounds, each number in the one-number-per-line
-        cell rounds on its own, the split number stays as written, and in the
-        last row the whole number rounds while the split number stays as
-        written.</li>
-    </ol>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>A native table and a grid holding the same rows. One row holds the "$"
+        in its own tag beside its number. One row holds one number per line. One
+        row holds a split number: one number whose digits sit in two tags, the
+        second in bold. The last row holds a split number beside a whole
+        number.</p>
+      <p class="expect">Expect: a table pillbox at load on both tables.</p>
+      <ol class="expect">
+        <li><b>Press each table pillbox on.</b> Expect: on both tables, the "$" stays
+          and the number beside it rounds, each number in the one-number-per-line
+          cell rounds on its own, the split number stays as written, and in the
+          last row the whole number rounds while the split number stays as
+          written.</li>
+      </ol>
+    </details>
 
     <!--
       $ 337.91 (sign in its own tag)  -> $ stays, 337.91 rounds, both tables
@@ -3364,12 +3426,15 @@ TSLA,75,"248.09","18,606.75"
 
   <section>
     <h2>26. Decimal comma</h2>
-    <p>A native table and a grid holding the same rows. The European style
-      column writes its numbers with a decimal comma; the US style column
-      writes them with a decimal dot.</p>
-    <p class="expect">Expect: a table pillbox at load on both tables. Press each
-      table pillbox on: every cell in the European style column stays as written, on
-      both tables, with no hover text. The US style column rounds.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>A native table and a grid holding the same rows. The <span class="col">European style</span>
+        column holds numbers with a decimal comma; the <span class="col">US style</span> column
+        holds numbers with a decimal dot.</p>
+      <p class="expect">Expect: a table pillbox at load on both tables. Press each
+        table pillbox on: every cell in the <span class="col">European style</span> column stays as written, on
+        both tables, with no hover text. The <span class="col">US style</span> column rounds.</p>
+    </details>
 
     <!--
       13,63 €      -> unchanged, both tables
@@ -3477,25 +3542,31 @@ TSLA,75,"248.09","18,606.75"
 
   <section>
     <h2>27. Active table removed or emptied</h2>
-    <p>Four tables, a native table and a grid in each pair. The first pair
-      removes itself on a button press. The second pair empties itself the way
-      a results grid does while it loads: new headers and a loading row with no
-      number.</p>
-    <p class="expect">Expect: a table pillbox at load on all four tables.</p>
-    <ol class="expect">
-      <li><b>Press the table pillbox of the first native table on and open the
-        sidebar,</b> so the sidebar is bound to it. Press "Remove the native
-        table". Expect: the sidebar shows "Right-click a table to connect it
-        here." and its switch shows off.</li>
-      <li><b>Right-click the first grid, then press "Remove the grid".</b>
-        Expect: the sidebar shows the same no-table state. Removing a table
-        that is not the active one leaves the sidebar bound where it is.</li>
-      <li><b>Press the table pillbox of the second native table on, with the sidebar
-        open, then press "Empty the native result".</b> Expect: the table's
-        table pillbox disappears, and the sidebar shows the same no-table state.</li>
-      <li><b>Do the same with the second grid and "Empty the grid
-        result".</b> Expect: the same.</li>
-    </ol>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>Four tables, a native table and a grid in each pair. The page
+        removes the first pair when its button is pressed. It empties the second
+        pair the way a results page empties a grid while it loads: new headers and
+        a loading row with no number.</p>
+      <p class="expect">Expect: a table pillbox at load on all four tables.</p>
+      <ol class="expect">
+        <li><b>Press the table pillbox of the first native table on and open the
+          sidebar,</b> so the sidebar is bound to it. Press "Remove the native
+          table". Expect: the sidebar shows "Right-click a table to connect it
+          here." and its switch shows off. With no scroll, the first grid's table
+          pillbox, just below, stays on the grid's top-right corner as the grid
+          moves up. A failure shows the table pillbox left below the grid, at the
+          spot it held before the removal.</li>
+        <li><b>Right-click the first grid, then press "Remove the grid".</b>
+          Expect: the sidebar shows the same no-table state. Removing a table
+          that is not the active one leaves the sidebar bound where it is.</li>
+        <li><b>Press the table pillbox of the second native table on, with the sidebar
+          open, then press "Empty the native result".</b> Expect: the table's
+          table pillbox disappears, and the sidebar shows the same no-table state.</li>
+        <li><b>Do the same with the second grid and "Empty the grid
+          result".</b> Expect: the same.</li>
+      </ol>
+    </details>
 
     <!--
       Exercises the removal observer (the first pair) and the shape check
@@ -3600,20 +3671,23 @@ TSLA,75,"248.09","18,606.75"
 
   <section>
     <h2>28. Header cells follow the switches</h2>
-    <p>Three tables: a pricing table as a native table, the same pricing table
-      as a grid, and a volume table. In the native pricing table the "Annual
-      total" row is marked up with header cells. In the volume table the seat
-      counts sit in row headers.</p>
-    <p class="expect">Expect: a table pillbox at load on all three tables.</p>
-    <ol class="expect">
-      <li><b>Under the defaults.</b> Expect: the header row and the first
-        column show the original on each table, and the "Annual total" row rounds on
-        both pricing tables.</li>
-      <li><b>Turn on the first-row switch.</b> Expect: the price headers round
-        on both pricing tables.</li>
-      <li><b>In the volume table, turn on the first-column switch.</b> Expect:
-        the seat counts in the row headers round.</li>
-    </ol>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>Three tables: a pricing table as a native table, the same pricing table
+        as a grid, and a volume table. In the native pricing table the "Annual
+        total" row is marked up with header cells. In the volume table the seat
+        counts sit in row headers.</p>
+      <p class="expect">Expect: a table pillbox at load on all three tables.</p>
+      <ol class="expect">
+        <li><b>Under the defaults.</b> Expect: the header row and the first
+          column show the original on each table, and the "Annual total" row rounds on
+          both pricing tables.</li>
+        <li><b>Turn on the first-row switch.</b> Expect: the price headers round
+          on both pricing tables.</li>
+        <li><b>In the volume table, turn on the first-column switch.</b> Expect:
+          the seat counts in the row headers round.</li>
+      </ol>
+    </details>
 
     <!--
       A native table and a grid of the same pricing comparison, with the
@@ -3700,21 +3774,24 @@ TSLA,75,"248.09","18,606.75"
 
   <section>
     <h2>29. A grid whose row labels carry the row-header role</h2>
-    <p>An order summary as a grid: a header row of two column headers, then
-      five rows that each hold one label with the row-header role beside one
-      amount with the cell role. The "Duties" label holds a button and a
-      tooltip beside its text.</p>
-    <p class="expect">Expect: a table pillbox at load.</p>
-    <ol class="expect">
-      <li><b>Under the defaults.</b> Expect: the header row and the labels
-        show the original, and every amount rounds. A failure leaves
-        every amount as written, with no visible reason.</li>
-      <li><b>Open the sidebar and set the range expression to B2:B6.</b>
-        Expect: the same five amounts round. A failure rounds nothing,
-        because column B names nothing.</li>
-      <li><b>Turn on the first-column switch.</b> Expect: the labels stay as
-        written; "Subtotal · 2 items" keeps its 2. A failure rounds the 2 or changes a label.</li>
-    </ol>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>An order summary as a grid: a header row of two column headers, then
+        five rows that each hold one label with the row-header role beside one
+        amount with the cell role. The "Duties" label holds a button and a
+        tooltip beside its text.</p>
+      <p class="expect">Expect: a table pillbox at load.</p>
+      <ol class="expect">
+        <li><b>Under the defaults.</b> Expect: the header row and the labels
+          show the original, and every amount rounds. A failure shows
+          every amount as written, with no visible reason.</li>
+        <li><b>Open the sidebar and set the range expression to B2:B6.</b>
+          Expect: the same five amounts round. A failure shows every amount
+          as written, because the extension finds no column B.</li>
+        <li><b>Turn on the first-column switch.</b> Expect: the labels stay as
+          written; "Subtotal · 2 items" keeps its 2. A failure shows the 2 rounded or a label changed.</li>
+      </ol>
+    </details>
 
     <!--
       The shape of a storefront order summary: a grid with the table role,
@@ -3761,8 +3838,11 @@ TSLA,75,"248.09","18,606.75"
 
   <section id="pairs">
     <h2>30. Demonstrating the same behaviour for native tables and grids</h2>
-    <p class="expect">Expect the two tables of each subsection to show the
-      same values after every step.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p class="expect">Expect the two tables of each subsection to show the
+        same values after every step.</p>
+    </details>
 
     <h3>30a. Data cells <code>data-cell</code></h3>
     <div class="pair">
@@ -3875,7 +3955,7 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30d. Header row in a head section <code>column-header</code></h3>
-    <ol class="expect">
+    <ol class="expect tester-note">
       <li><b>Turn on the first-row and first-column switches on both tables,
         and pull the sidebar's two offsets apart on both: largest numbers at
         -1, all other numbers at 0.</b> Both tables show "Target 25,000" in
@@ -3939,7 +4019,7 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30e. Header row in a row group <code>head-group</code></h3>
-    <ol class="expect">
+    <ol class="expect tester-note">
       <li><b>Turn on the first-row and first-column switches on both tables,
         and pull the sidebar's two offsets apart on both: largest numbers at
         -1, all other numbers at 0.</b> A failure shows a value at
@@ -4004,7 +4084,7 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30f. Header row with no head section <code>header-row-in-body</code></h3>
-    <ol class="expect">
+    <ol class="expect tester-note">
       <li><b>Turn on the first-row and first-column switches on both tables,
         and pull the sidebar's two offsets apart on both: largest numbers at
         -1, all other numbers at 0.</b> A failure shows a value at
@@ -4215,7 +4295,7 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30j. Total row in a footer <code>footer-row</code></h3>
-    <ol class="expect">
+    <ol class="expect tester-note">
       <li><b>Turn on the first-row and first-column switches on both tables,
         and pull the sidebar's two offsets apart on both: largest numbers at
         -1, all other numbers at 0.</b> Both tables show every body value and
@@ -4285,7 +4365,7 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30k. Total row in a footer group <code>footer-group</code></h3>
-    <ol class="expect">
+    <ol class="expect tester-note">
       <li><b>Turn on the first-row and first-column switches on both tables,
         and pull the sidebar's two offsets apart on both: largest numbers at
         -1, all other numbers at 0.</b> Both tables show every body value and
@@ -4415,7 +4495,7 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30m. Cell merged down rows <code>merged-down</code></h3>
-    <p class="expect">A failure leaves the original 2,734 on one table, read as a first-column
+    <p class="expect tester-note">A failure shows the original 2,734 on one table, read as a first-column
       cell.</p>
     <div class="pair">
       <figure>
@@ -4527,7 +4607,7 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30o. Table inside a cell <code>nested-table</code></h3>
-    <ol class="expect">
+    <ol class="expect tester-note">
       <li><b>At load.</b> Expect: a table pillbox on the outer table and on the
         inner table, on both kinds: four table pillboxes in all. A failure shows
         one table pillbox on the grid side, on the inner grid alone.</li>
@@ -4615,7 +4695,7 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30p. Hidden row <code>hidden-row</code></h3>
-    <ol class="expect">
+    <ol class="expect tester-note">
       <li><b>Turn on the first-row and first-column switches on both tables,
         and pull the sidebar's two offsets apart on both: largest numbers at
         -1, all other numbers at 0.</b> A failure shows a value at
@@ -4682,7 +4762,7 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30q. Hidden cell <code>hidden-cell</code></h3>
-    <ol class="expect">
+    <ol class="expect tester-note">
       <li><b>Turn on the first-row and first-column switches on both tables,
         and pull the sidebar's two offsets apart on both: largest numbers at
         -1, all other numbers at 0.</b> A failure shows a value at
@@ -4739,7 +4819,7 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30r. Hidden text inside a visible cell <code>hidden-fragment</code></h3>
-    <ol class="expect">
+    <ol class="expect tester-note">
       <li><b>Turn on both tables.</b> Expect: the visible 2,734 rounds like
         the other values of its column and the hidden text keeps its
         characters, on both tables. A failure shows the original 2,734 or a different
@@ -4798,22 +4878,25 @@ TSLA,75,"248.09","18,606.75"
 
   <section>
     <h2>31. A grid listed column by column</h2>
-    <p>A plan comparison with no table element and no role, drawn as seven
-      columns side by side: a label column, wider than the rest, then one
-      column per plan. Each column holds one item per row: the plan name on
-      top, then one value per feature.</p>
-    <p class="expect">Expect: no table pillbox at load.</p>
-    <ol class="expect">
-      <li><b>Right-click any value.</b> Expect: a table pillbox appears on the whole
-        grid. A failure shows no table pillbox.</li>
-      <li><b>Turn the grid on under the defaults.</b> Expect: the plan names
-        and the feature labels show the original, and the large values round:
-        1,962,800 shows 2,000,000.</li>
-      <li><b>Open the sidebar and set the range expression to B2:B5.</b>
-        Expect: the Free column's values round, so 12,500 changes, and every
-        other plan's values show as written. A failure changes the Credits
-        row across the Starter, Creator, and Pro plans instead.</li>
-    </ol>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>A plan comparison with no table element and no role, drawn as seven
+        columns side by side: a label column, wider than the rest, then one
+        column per plan. Each column holds one item per row: the plan name on
+        top, then one value per feature.</p>
+      <p class="expect">Expect: no table pillbox at load.</p>
+      <ol class="expect">
+        <li><b>Right-click any value.</b> Expect: a table pillbox appears on the whole
+          grid. A failure shows no table pillbox.</li>
+        <li><b>Turn the grid on under the defaults.</b> Expect: the plan names
+          and the feature labels show the original, and the large values round:
+          1,962,800 shows 2,000,000.</li>
+        <li><b>Open the sidebar and set the range expression to B2:B5.</b>
+          Expect: the <span class="col">Free</span> column's values round, so 12,500 changes, and every
+          other plan's values show as written. A failure shows the Credits
+          row changing across the Starter, Creator, and Pro plans instead.</li>
+      </ol>
+    </details>
 
     <!--
       Seven children side by side, each a column of five items with one span
@@ -4876,26 +4959,29 @@ TSLA,75,"248.09","18,606.75"
 
   <section>
     <h2>32. Tables inside a scrolling page area</h2>
-    <p>A framed area that scrolls on its own, apart from the page. It holds a
-      native table at its top, then a grid, then a table wider than the box
-      around it, which scrolls sideways.</p>
-    <p class="expect">Expect: a table pillbox at load on the native table alone. The
-      grid and the wide table sit below the area's bottom edge.</p>
-    <ol class="expect">
-      <li><b>Scroll inside the area.</b> Expect: each table pillbox stays on its
-        table's top-right corner as the table moves, and the grid's table pillbox
-        appears once the grid's top comes into view. A failure leaves a
-        table pillbox in place while its table moves away.</li>
-      <li><b>Scroll on until the native table's top passes the area's top
-        edge.</b> Expect: its table pillbox disappears. A failure shows the table pillbox
-        outside the area, over the page above it.</li>
-      <li><b>Scroll until the wide table is in view.</b> Expect: no table pillbox
-        while the table's right edge sits past the box. Scroll the box
-        sideways to its end: the table pillbox appears at the table's top-right
-        corner.</li>
-      <li><b>Scroll the page itself.</b> Expect: the table pillboxes in view move
-        with the area.</li>
-    </ol>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>A framed area that scrolls on its own, apart from the page. It holds a
+        native table at its top, then a grid, then a table wider than the box
+        around it, which scrolls sideways.</p>
+      <p class="expect">Expect: a table pillbox at load on the native table alone. The
+        grid and the wide table sit below the area's bottom edge.</p>
+      <ol class="expect">
+        <li><b>Scroll inside the area.</b> Expect: each table pillbox stays on its
+          table's top-right corner as the table moves, and the grid's table pillbox
+          appears once the grid's top comes into view. A failure shows a
+          table pillbox in place while its table moves away.</li>
+        <li><b>Scroll on until the native table's top passes the area's top
+          edge.</b> Expect: its table pillbox disappears. A failure shows the table pillbox
+          outside the area, over the page above it.</li>
+        <li><b>Scroll until the wide table is in view.</b> Expect: no table pillbox
+          while the table's right edge sits past the box. Scroll the box
+          sideways to its end: the table pillbox appears at the table's top-right
+          corner.</li>
+        <li><b>Scroll the page itself.</b> Expect: the table pillboxes in view move
+          with the area.</li>
+      </ol>
+    </details>
 
     <div class="scroll-area">
       <table>
@@ -4972,17 +5058,20 @@ TSLA,75,"248.09","18,606.75"
 
   <section>
     <h2>33. Tables inside a card that cuts off its edges</h2>
-    <p>A native table and a grid, each inside a rounded card whose edges sit
-      against the table and cut off whatever spills past them.</p>
-    <p class="expect">Expect: a table pillbox at load on each.</p>
-    <ol class="expect">
-      <li><b>Right-click a value in the native table.</b> Expect: a blue
-        outline flashes on all four sides of the table, just inside the
-        card's edge. A failure shows a blue line on one side alone, or no
-        line.</li>
-      <li><b>Right-click a value in the grid.</b> Expect: the same outline on
-        all four sides of the grid.</li>
-    </ol>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>A native table and a grid, each inside a rounded card that sits
+        against the table; whatever spills past the card's edges stays hidden.</p>
+      <p class="expect">Expect: a table pillbox at load on each.</p>
+      <ol class="expect">
+        <li><b>Right-click a value in the native table.</b> Expect: a blue
+          outline flashes on all four sides of the table, just inside the
+          card's edge. A failure shows a blue line on one side alone, or no
+          line.</li>
+        <li><b>Right-click a value in the grid.</b> Expect: the same outline on
+          all four sides of the grid.</li>
+      </ol>
+    </details>
 
     <div class="edge-card">
       <table>
@@ -5029,14 +5118,17 @@ TSLA,75,"248.09","18,606.75"
 
   <section>
     <h2>34. Tables whose only digits sit among words</h2>
-    <p>Four tables, each with a Name column and a Note column. The notes hold
-      every digit in each table. In 34a each note holds a number after words.
-      In 34b each note holds a phone number and nothing else. In 34c each note
-      holds a number inside a link, with words around it. In 34d each note
-      holds a number whose digits sit in two text pieces with nothing between
-      them, one of them bold or wrapped in its own element.</p>
-    <p class="expect">Expect: a table pillbox at load on 34a. No table pillbox on 34b, 34c,
-      or 34d; a failure shows a table pillbox at that table's top-right corner.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>Four tables, each with a <span class="col">Name</span> column and a <span class="col">Note</span> column. The notes hold
+        every digit in each table. In 34a each note holds a number after words.
+        In 34b each note holds a phone number and nothing else. In 34c each note
+        holds a number inside a link, with words around it. In 34d each note
+        holds a number whose digits sit in two text pieces with nothing between
+        them, one of them bold or wrapped in its own element.</p>
+      <p class="expect">Expect: a table pillbox at load on 34a. No table pillbox on 34b, 34c,
+        or 34d; a failure shows a table pillbox at that table's top-right corner.</p>
+    </details>
 
     <h3>34a. A number after words</h3>
     <table>
@@ -5069,11 +5161,14 @@ TSLA,75,"248.09","18,606.75"
 
   <section>
     <h2>35. A column of ambiguous dates</h2>
-    <p>A table with a Name column and a Joined column. Every date reads two
-      ways, day first or month first, and no day in the column is above 12.
-      The dates hold every digit in the table.</p>
-    <p class="expect">Expect: no table pillbox; a failure shows a table pillbox at the
-      table's top-right corner.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>A table with a <span class="col">Name</span> column and a <span class="col">Joined</span> column. Every date can be read two
+        ways, day first or month first, and no day in the column is above 12.
+        The dates hold every digit in the table.</p>
+      <p class="expect">Expect: no table pillbox; a failure shows a table pillbox at the
+        table's top-right corner.</p>
+    </details>
     <table>
       <tr><th>Name</th><th>Joined</th></tr>
       <tr><td>Tami</td><td>03/04/2020</td></tr>
@@ -5084,22 +5179,25 @@ TSLA,75,"248.09","18,606.75"
 
   <section>
     <h2>36. Cells with their own hover text</h2>
-    <p>A native table and a grid holding the same rows. In each table the
-      Q1 cell of the North row carries hover text of its own, "Q1 total,
-      all channels". No other cell carries any.</p>
-    <p class="expect">Expect: a table pillbox at load on both tables. Press each
-      table pillbox on: every number rounds, and each simplified cell's hover text
-      shows its original, "Original: 1,482,391" for the North Q1 cell on both
-      tables. Press the table pillbox off: the North Q1 cell's hover text shows "Q1
-      total, all channels" again, and every other cell has none. A failure
-      shows no hover text on a grid cell while simplified, or "Original:
-      1,482,391" after the restore.</p>
-    <p class="expect">The Write new hover text button writes "Q1 total,
-      revised" as the hover text of the North Q1 cell in both tables. Expect:
-      with the table pillbox on, press the button: the cell shows "Q1 total,
-      revised". Press the table pillbox off: the cell still shows "Q1 total,
-      revised" and its number shows 1,482,391. A failure shows "Q1 total, all
-      channels" after the restore.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>A native table and a grid holding the same rows. In each table the
+        Q1 cell of the North row holds hover text of its own, "Q1 total,
+        all channels". No other cell holds any.</p>
+      <p class="expect">Expect: a table pillbox at load on both tables. Press each
+        table pillbox on: every number rounds, and each simplified cell's hover text
+        shows its original, "Original: 1,482,391" for the North Q1 cell on both
+        tables. Press the table pillbox off: the North Q1 cell's hover text shows "Q1
+        total, all channels" again, and every other cell has none. A failure
+        shows no hover text on a grid cell while simplified, or "Original:
+        1,482,391" after the restore.</p>
+      <p class="expect">When the Write new hover text button is pressed, the page
+        writes "Q1 total, revised" as the hover text of the North Q1 cell in both tables. Expect:
+        with the table pillbox on, press the button: the cell shows "Q1 total,
+        revised". Press the table pillbox off: the cell still shows "Q1 total,
+        revised" and its number shows 1,482,391. A failure shows "Q1 total, all
+        channels" after the restore.</p>
+    </details>
     <div class="rw-buttons">
       <button type="button" id="hover-write">Write new hover text</button>
     </div>
@@ -5168,13 +5266,17 @@ TSLA,75,"248.09","18,606.75"
 
   <section>
     <h2>37. Tables that fill in after they appear</h2>
-    <p>A native table and a grid holding the same rows: a Region column and
-      a Units column. Every Units cell starts empty. Press the Fill the tables
-      button to put a number in every Units cell of both tables.</p>
-    <p class="expect">Expect: no table pillbox on either table until the
-      button press. After it, both tables get a table pillbox within a moment.
-      A failure shows no table pillbox on one of the tables after the
-      press.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>A native table and a grid holding the same rows: a <span class="col">Region</span> column
+        and a <span class="col">Units</span> column. Every <span class="col">Units</span> cell starts empty. Press
+        the Fill the tables button to put a number in every <span class="col">Units</span> cell of
+        both tables.</p>
+      <p class="expect">Expect: no table pillbox on either table until the
+        button press. After it, both tables get a table pillbox within a moment.
+        A failure shows no table pillbox on one of the tables after the
+        press.</p>
+    </details>
     <div class="rw-buttons">
       <button type="button" id="late-fill">Fill the tables</button>
     </div>
@@ -5229,15 +5331,18 @@ TSLA,75,"248.09","18,606.75"
 
   <section>
     <h2>38. Numbers inside code</h2>
-    <p>A native table and a grid holding the same rows. Each Value cell
-      holds a number inside a code element, alone or among words, except the
-      last row, which holds a plain number.</p>
-    <p class="expect">Expect: table pillbox at load on both tables. A number
-      inside code or inside a link stays as written, and so does a date
-      inside code; every other number
-      rounds: "sold 9,850" becomes "sold 10,000", "56,304 rows" becomes
-      "55,000 rows", and 7,765 becomes 8,000. A failure shows new digits
-      inside a code element.</p>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>A native table and a grid holding the same rows. Each <span class="col">Value</span> cell
+        holds a number inside a code element, alone or among words, except the
+        last row, which holds a plain number.</p>
+      <p class="expect">Expect: table pillbox at load on both tables. A number
+        inside code or inside a link stays as written, and so does a date
+        inside code; every other number
+        rounds: "sold 9,850" becomes "sold 10,000", "56,304 rows" becomes
+        "55,000 rows", and 7,765 becomes 8,000. A failure shows new digits
+        inside a code element.</p>
+    </details>
 
     <table>
       <thead>
