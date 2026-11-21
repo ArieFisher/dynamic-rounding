@@ -833,7 +833,7 @@
     };
   })();
   const gridEl = {
-    nodeType: 1, tagName: 'DIV', className: 'grid-wrapper', children: rows,
+    nodeType: 1, tagName: 'DIV', className: 'grid-wrapper', children: rows, style: {},
     classList: gridClassList, parentElement: null, parentNode: null,
     querySelector() { return null; },
     querySelectorAll() { return []; },

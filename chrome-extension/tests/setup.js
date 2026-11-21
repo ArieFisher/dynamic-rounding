@@ -55,12 +55,11 @@ global.NodeFilter = { SHOW_TEXT: 4 };
 console.debug = () => {};
 console.warn = () => {};
 
-// Stub observer constructors BEFORE the content scripts run so that content.js
+// Stub the observer constructor BEFORE the content scripts run so that content.js
 // module-level code (guarded by `typeof MutationObserver !== 'undefined'`) sees
-// them and runs the initialisation block. The stubs are no-ops; tests never exercise the
+// it and runs the initialisation block. The stub is a no-op; tests never exercise the
 // real observer callbacks.
 global.MutationObserver = class { observe() {} disconnect() {} };
-global.ResizeObserver  = class { observe() {} unobserve() {} disconnect() {} };
 global.Node = { ELEMENT_NODE: 1 };
 
 // In a browser/extension the content scripts share a single top-level scope,
@@ -152,7 +151,8 @@ Object.defineProperty(globalThis, 'highlightStyleInjected', {
   configurable: true,
 });
 globalThis.syncTablePillbox = syncTablePillbox;
-globalThis.positionTablePillbox = positionTablePillbox;
+globalThis.anchorTablePillbox = anchorTablePillbox;
+globalThis.dropCopiedAnchorNames = dropCopiedAnchorNames;
 globalThis.createTablePillbox = createTablePillbox;
 globalThis.registerDataTable = registerDataTable;
 globalThis.injectTablePillboxes = injectTablePillboxes;
@@ -179,8 +179,9 @@ globalThis.TABLE_PILLBOX_DOT_OVERLAP_PX = TABLE_PILLBOX_DOT_OVERLAP_PX;
 globalThis.TABLE_PILLBOX_DOT_OVERHANG_PX = TABLE_PILLBOX_DOT_OVERHANG_PX;
 globalThis.TABLE_PILLBOX_COLOR_ON = TABLE_PILLBOX_COLOR_ON;
 globalThis.TABLE_PILLBOX_AUTO_COLLAPSE_MS = TABLE_PILLBOX_AUTO_COLLAPSE_MS;
-globalThis.TABLE_PILLBOX_CLIP_WALK_CAP = TABLE_PILLBOX_CLIP_WALK_CAP;
-globalThis.ensureScrollResizeListeners = ensureScrollResizeListeners;
+globalThis.TABLE_PILLBOX_OFFSET_X_PX = TABLE_PILLBOX_OFFSET_X_PX;
+globalThis.TABLE_PILLBOX_ANCHOR_PREFIX = TABLE_PILLBOX_ANCHOR_PREFIX;
+globalThis.TABLE_PILLBOX_OFFSET_Y_PX = TABLE_PILLBOX_OFFSET_Y_PX;
 // _globalTapCollapseAdded is a let; expose getter/setter so tests can reset it.
 Object.defineProperty(globalThis, '_globalTapCollapseAdded', {
   get() { return _globalTapCollapseAdded; },
@@ -288,9 +289,6 @@ function eq(name, actual, expected) {
 const SIDEBAR_HARNESS_TAB = 42;
 const FROM_SIDEBAR_TAB = { tab: { id: SIDEBAR_HARNESS_TAB } };
 
-// The same observer stubs as above, installed again after the eval. Every
-// test that calls createTablePillbox, which constructs a ResizeObserver,
-// reads these.
-global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+// The same observer stub as above, installed again after the eval.
 global.MutationObserver = class { observe() {} disconnect() {} };
 global.Node = { ELEMENT_NODE: 1 };

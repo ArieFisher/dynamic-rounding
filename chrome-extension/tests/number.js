@@ -1444,7 +1444,6 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     window: global.window,
     NodeFilter: global.NodeFilter,
     MutationObserver: global.MutationObserver,
-    ResizeObserver: global.ResizeObserver,
     Node: global.Node,
     DR_DEFAULTS: globalThis.DR_DEFAULTS,
   };

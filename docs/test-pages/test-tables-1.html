@@ -4969,21 +4969,48 @@ TSLA,75,"248.09","18,606.75"
       <ol class="expect">
         <li><b>Scroll inside the area.</b> Expect: each table pillbox stays on its
           table's top-right corner as the table moves, and the grid's table pillbox
-          appears once the grid's top comes into view. A failure shows a
+          appears once any part of the grid comes into view. A failure shows a
           table pillbox in place while its table moves away.</li>
         <li><b>Scroll on until the native table's top passes the area's top
-          edge.</b> Expect: its table pillbox disappears. A failure shows the table pillbox
-          outside the area, over the page above it.</li>
-        <li><b>Scroll until the wide table is in view.</b> Expect: no table pillbox
-          while the table's right edge sits past the box. Scroll the box
-          sideways to its end: the table pillbox appears at the table's top-right
-          corner.</li>
+          edge.</b> Expect: its table pillbox stays on the table's corner, over the
+          area's top edge, while any part of the table is in view, and disappears
+          once the whole table has left the area. A failure shows a table pillbox
+          after its table has left the area.</li>
+        <li><b>Scroll until the wide table is in view.</b> Expect: its table pillbox
+          sits at the table's top-right corner, past the box's right edge. Scroll
+          the box sideways: the table pillbox moves with the corner.</li>
+        <li><b>Scroll the area back to its top and press "Add a line above the
+          first table".</b> Expect: the native table moves down a line, and its
+          table pillbox moves with it at once. A failure shows the table pillbox in
+          its old place until the next scroll.</li>
+        <li><b>Press "Shift the tables sideways".</b> Expect: every table in the
+          area moves right, and each table pillbox moves with its table at once.
+          Press it again to move them back.</li>
         <li><b>Scroll the page itself.</b> Expect: the table pillboxes in view move
           with the area.</li>
       </ol>
     </details>
 
-    <div class="scroll-area">
+    <div class="rw-buttons">
+      <button type="button" id="area-add-line">Add a line above the first table</button>
+      <button type="button" id="area-shift">Shift the tables sideways</button>
+    </div>
+    <script>
+      (function () {
+        // The area sits after these buttons in the page, so each click handler looks it up.
+        function area() { return document.getElementById('scroll-area'); }
+        document.getElementById('area-add-line').addEventListener('click', function () {
+          var line = document.createElement('p');
+          line.textContent = 'A line added above the first table.';
+          area().insertBefore(line, area().firstChild);
+        });
+        document.getElementById('area-shift').addEventListener('click', function () {
+          area().style.paddingLeft = area().style.paddingLeft ? '' : '200px';
+        });
+      })();
+    </script>
+
+    <div class="scroll-area" id="scroll-area">
       <table>
         <thead>
           <tr>
