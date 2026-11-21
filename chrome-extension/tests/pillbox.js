@@ -553,66 +553,60 @@ function makeAnchorTestTable(first) {
     TABLE_PILLBOX_OFFSET_Y_PX + TABLE_PILLBOX_HIT_PAD_PX + TABLE_PILLBOX_DOT_PX, TABLE_PILLBOX_DOT_OVERLAP_PX);
 })();
 
-// A page whose own code removes the anchor name each time the view writes it.
-// In a browser the fight runs in microtasks with no task between rewrites.
+// A page whose own code removes the anchor name each time the view writes it,
+// and changes nothing else in the table's style.
 (function tablePillboxAnchor_aPageThatFightsTheRewriteStopsTheObserver() {
   const table = makeAnchorTestTable('50000');
-  const origSetTimeout = global.setTimeout;
-  const resets = [];
-  global.setTimeout = (fn) => { resets.push(fn); return resets.length; };
-  try {
-    withCapturedStyleObservers((observers) => {
-      withAnchorComputedStyle(null, () => {
-        withTablePillboxDocumentMock(function () { registerDataTable(table); });
-        const name = tablePillboxes.get(table).style.positionAnchor;
-        const styleObserver = observers.find((o) => o.target === table);
-        const pageRemovesTheName = () => {
-          table.style.anchorName = '';
-          styleObserver.cb([{ type: 'attributes', attributeName: 'style', target: table }]);
-        };
+  withCapturedStyleObservers((observers) => {
+    withAnchorComputedStyle(null, () => {
+      withTablePillboxDocumentMock(function () { registerDataTable(table); });
+      const name = tablePillboxes.get(table).style.positionAnchor;
+      const styleObserver = observers.find((o) => o.target === table);
+      const pageRemovesTheName = () => {
+        table.style.anchorName = '';
+        styleObserver.cb([{ type: 'attributes', attributeName: 'style', target: table }]);
+      };
 
-        pageRemovesTheName();
-        eq('anchor: the first removal in a task gets the name back', table.style.anchorName, name);
+      pageRemovesTheName();
+      eq('anchor: the first removal of the name alone gets the name back', table.style.anchorName, name);
 
-        const rows = logRowsDuring(() => {
-          for (let i = 0; i < 50 && !styleObserver.disconnected; i++) pageRemovesTheName();
-        });
-        eq('anchor: the second removal in the same task stops the style observer', styleObserver.disconnected, true);
-        eq('anchor: after the stop, the table holds no name of the extension\'s', table.style.anchorName, '');
-        eq('anchor: the stop writes one debug row', rows, ['Dynamic Rounding: anchor name rewrite stop']);
+      const rows = logRowsDuring(() => {
+        for (let i = 0; i < 50 && !styleObserver.disconnected; i++) pageRemovesTheName();
       });
+      eq('anchor: a second removal of the name alone in a row stops the style observer', styleObserver.disconnected, true);
+      eq('anchor: after the stop, the table holds no name of the extension\'s', table.style.anchorName, '');
+      eq('anchor: the stop writes one debug row', rows, ['Dynamic Rounding: anchor name rewrite stop']);
     });
-  } finally {
-    global.setTimeout = origSetTimeout;
-  }
+  });
   forgetRegisteredTable(table);
 })();
 
-// A page that rewrites the table's style once in each of two tasks gets the
-// name back both times.
-(function tablePillboxAnchor_aRewriteInALaterTaskGetsTheNameBackAgain() {
+// A page that rewrites the table's style twice in one task, as a framework
+// that flushes its updates in microtasks does, without fighting the view.
+(function tablePillboxAnchor_twoPageRewritesInOneTaskKeepTheName() {
   const table = makeAnchorTestTable('50000');
-  const origSetTimeout = global.setTimeout;
-  const resets = [];
-  global.setTimeout = (fn) => { resets.push(fn); return resets.length; };
-  try {
-    withCapturedStyleObservers((observers) => {
-      withAnchorComputedStyle(null, () => {
-        withTablePillboxDocumentMock(function () { registerDataTable(table); });
-        const name = tablePillboxes.get(table).style.positionAnchor;
-        const styleObserver = observers.find((o) => o.target === table);
-        table.style.anchorName = '--page-first';
+  withCapturedStyleObservers((observers) => {
+    withAnchorComputedStyle(null, () => {
+      withTablePillboxDocumentMock(function () { registerDataTable(table); });
+      const name = tablePillboxes.get(table).style.positionAnchor;
+      const styleObserver = observers.find((o) => o.target === table);
+      const pageRewrites = (cssText, anchorName) => {
+        table.style.cssText = cssText;
+        table.style.anchorName = anchorName;
         styleObserver.cb([{ type: 'attributes', attributeName: 'style', target: table }]);
-        resets.splice(0).forEach((fn) => fn());
-        table.style.anchorName = '--page-second';
-        styleObserver.cb([{ type: 'attributes', attributeName: 'style', target: table }]);
-        eq('anchor: a rewrite in a later task gets the name back again', table.style.anchorName, '--page-second, ' + name);
-        eq('anchor: the style observer stays connected across tasks', styleObserver.disconnected, false);
-      });
+      };
+      pageRewrites('width: 400px;', '--page-first');
+      pageRewrites('width: 420px;', '--page-second');
+      pageRewrites('width: 450px;', '');
+      eq('anchor: after three page rewrites, the table holds the extension\'s name', table.style.anchorName, name);
+      eq('anchor: page rewrites that change the style keep the style observer connected', styleObserver.disconnected, false);
+
+      pageRewrites('width: 450px;', '--page-own');
+      pageRewrites('width: 450px;', '--page-other');
+      eq('anchor: a rewrite that changes only the page\'s own anchor names keeps the observer connected',
+        styleObserver.disconnected === false && table.style.anchorName === '--page-other, ' + name, true);
     });
-  } finally {
-    global.setTimeout = origSetTimeout;
-  }
+  });
   forgetRegisteredTable(table);
 })();
 

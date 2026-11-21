@@ -7,9 +7,10 @@
  * Module-level state here is drawing state only: button elements, anchor
  * names and their style observers, and once-only flags. The registry and the
  * active table are held in DR_MODEL (app/model.js). On a press, this view
- * publishes an intent topic on DR_BUS for the controller in content.js. Apart from the settings notice
- * subscription below, every other load-time listener this view needs is
- * wired in content.js, which loads after this file.
+ * publishes an intent topic on DR_BUS for the controller in content.js.
+ * Apart from the settings notice subscription below, every other load-time
+ * listener this view needs is wired in content.js, which loads after this
+ * file.
  */
 
 // Table pillbox geometry constants
@@ -55,12 +56,13 @@ const TABLE_PILLBOX_ANCHOR_PREFIX = '--dr-table-';
 const TABLE_PILLBOX_ANCHOR_LOAD = Math.random().toString(36).slice(2, 8);
 let tablePillboxAnchorCount = 0;
 // A page whose own code removes the anchor name each time the view writes it
-// fights the style observer inside one task, with no pause, and the tab
-// hangs. One rewrite per task covers a page that rewrites the table's style
-// once; a second can only come from a page undoing the view's write. At the
-// cap the observer stops for that table for good, its table pillbox leaves the
-// table, and the observer writes one debug row. This view alone reads it.
-const TABLE_PILLBOX_ANCHOR_REWRITES_PER_TASK = 1;
+// fights the style observer with no pause, and the tab hangs. Such a page
+// changes nothing but the name. The observer answers this many removals in a
+// row that leave the rest of the table's style as the view last saw it; a
+// page that rewrites the style itself starts the count again. At the cap the
+// observer stops for that table for good, its table pillbox leaves the table,
+// and the observer writes one debug row. This view alone reads it.
+const TABLE_PILLBOX_ANCHOR_NAME_ONLY_REWRITES = 1;
 
 function syncTablePillbox(table) {
   const view = tablePillboxViews.get(table);
@@ -220,34 +222,46 @@ function dropCopiedAnchorNames(root) {
 // hides the table pillbox while page areas cut off the whole table. Chrome's
 // default for it has changed between versions, so the rule sets it.
 //
+// What the page set in the table's inline style, apart from the view's names:
+// every other declaration, and the page's own anchor names.
+function pageStyleSnapshot(table) {
+  const otherDeclarations = (table.style.cssText || '').split(';')
+    .map((d) => d.trim())
+    .filter((d) => d && !/^anchor-name\s*:/.test(d));
+  return otherDeclarations.join('; ') + ' | ' + withoutViewAnchorNames(anchorNameList(table.style.anchorName)).join(', ');
+}
+
 // A page that rewrites the table's whole style attribute drops the anchor
 // name, and the table pillbox would leave the table for good. The style
-// observer writes the name again, up to TABLE_PILLBOX_ANCHOR_REWRITES_PER_TASK
-// times in one task, and records the page's new inline value as the one to
-// restore.
+// observer writes the name again, and records the page's new inline value as
+// the one to restore. It stops at TABLE_PILLBOX_ANCHOR_NAME_ONLY_REWRITES.
 function anchorTablePillbox(table, button) {
   const name = TABLE_PILLBOX_ANCHOR_PREFIX + TABLE_PILLBOX_ANCHOR_LOAD + '-' + (++tablePillboxAnchorCount);
   const anchor = {
     name,
     priorAnchorName: withoutViewAnchorNames(anchorNameList(table.style.anchorName)).join(', '),
     styleObserver: null,
-    rewritesThisTask: 0,
+    pageStyle: '',
+    nameOnlyRewrites: 0,
   };
   writeTableAnchorName(table, name);
+  anchor.pageStyle = pageStyleSnapshot(table);
   button.style.positionAnchor = name;
   anchor.styleObserver = new MutationObserver(() => {
     const inlineNames = anchorNameList(table.style.anchorName);
     if (inlineNames.includes(name)) return;
     anchor.priorAnchorName = withoutViewAnchorNames(inlineNames).join(', ');
-    if (anchor.rewritesThisTask >= TABLE_PILLBOX_ANCHOR_REWRITES_PER_TASK) {
+    if (pageStyleSnapshot(table) !== anchor.pageStyle) {
+      anchor.nameOnlyRewrites = 0;
+    } else if (anchor.nameOnlyRewrites >= TABLE_PILLBOX_ANCHOR_NAME_ONLY_REWRITES) {
       anchor.styleObserver.disconnect();
       DR_LOG.debug(DR_LOG.formatRow('anchor name rewrite stop'));
       return;
+    } else {
+      anchor.nameOnlyRewrites++;
     }
-    // The fight runs in microtasks, so it never reaches this reset.
-    if (anchor.rewritesThisTask === 0) setTimeout(() => { anchor.rewritesThisTask = 0; }, 0);
-    anchor.rewritesThisTask++;
     writeTableAnchorName(table, name);
+    anchor.pageStyle = pageStyleSnapshot(table);
   });
   anchor.styleObserver.observe(table, { attributes: true, attributeFilter: ['style'] });
   return anchor;
