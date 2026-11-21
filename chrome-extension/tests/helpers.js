@@ -276,25 +276,22 @@ function makeTablePillboxTestTable(rowsOrCells, extra) {
       }
       return [];
     },
-    getBoundingClientRect() {
-      return { top: 100, right: 500, bottom: 200, left: 100 };
-    },
   }, extra || {});
 
   return table;
 }
 
-// A planted record holds no prior anchor name, and a planted table gets a
-// style object when it has none, so the view's teardown, which writes the
-// table's anchor name, runs on it unchanged.
-/** @param {WeakMap} views The view's map from table to { button, priorAnchorName }. */
+// A planted record holds no prior anchor name and a style observer stub, and a
+// planted table gets a style object when it has none, so the view's teardown,
+// which writes the table's anchor name, runs on it unchanged.
+/** @param {WeakMap} views The view's map from table to { button, anchor }. */
 function tablePillboxButtons(views) {
   return {
     has: (table) => views.has(table),
     get: (table) => (views.has(table) ? views.get(table).button : undefined),
     set: (table, button) => {
       if (!table.style) table.style = {};
-      views.set(table, { button, priorAnchorName: '' });
+      views.set(table, { button, anchor: { name: '', priorAnchorName: '', styleObserver: { disconnect() {} } } });
     },
     delete: (table) => views.delete(table),
   };
@@ -783,8 +780,6 @@ function makeWalkEl(opts) {
     nodeType: 1,
     parentElement: null,
     parentNode: null,
-    // A zero-area box: walk-up tests read no geometry from it.
-    getBoundingClientRect: function() { return { width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0 }; },
     // closest() stub: no <table> ancestor
     closest: function() { return null; },
     _display: disp,

@@ -5,7 +5,7 @@
  * positioning, and the flash and pulse highlights.
  *
  * Module-level state here is drawing state only: button elements, anchor
- * names, and once-only flags. The registry and the active table are held
+ * names and their style observers, and once-only flags. The registry and the active table are held
  * in DR_MODEL (app/model.js). On a press, this view publishes an intent topic
  * on DR_BUS for the controller in content.js. Apart from the settings notice
  * subscription below, every other load-time listener this view needs is
@@ -42,9 +42,17 @@ const PULSE_CLEANUP_MS = 1500;
 
 // --- Per-table pillbox infrastructure ---
 
-// A table (native or grid) → { button, priorAnchorName }. priorAnchorName is
-// the table's inline anchor-name before the view added its own.
+// A table (native or grid) → { button, anchor }. anchor holds the table's
+// anchor name, the inline anchor name the page last set without the view's
+// own (priorAnchorName), and the style observer.
 const tablePillboxViews = new WeakMap();
+// Every anchor name the view writes starts with this prefix. A content script
+// re-injection or a page that copies a table leaves an earlier name on a
+// table, and the prefix lets the view find and drop it.
+const TABLE_PILLBOX_ANCHOR_PREFIX = '--dr-table-';
+// Each content script load names tables with its own token, so a name from an
+// earlier load never matches a name from this one.
+const TABLE_PILLBOX_ANCHOR_LOAD = Math.random().toString(36).slice(2, 8);
 let tablePillboxAnchorCount = 0;
 
 function syncTablePillbox(table) {
@@ -60,7 +68,8 @@ function removeTablePillbox(table) {
   if (view.button.parentElement) {
     view.button.parentElement.removeChild(view.button);
   }
-  table.style.anchorName = view.priorAnchorName;
+  view.anchor.styleObserver.disconnect();
+  table.style.anchorName = view.anchor.priorAnchorName;
   tablePillboxViews.delete(table);
 }
 
@@ -79,6 +88,7 @@ function ensureTablePillboxStyleInjected() {
   style.textContent = `
     .dr-ext-table-pillbox {
       position: fixed;
+      position-visibility: anchors-visible;
       left: calc(anchor(right, ${TABLE_PILLBOX_NO_ANCHOR_PX}px) + ${TABLE_PILLBOX_OFFSET_X_PX}px);
       top: calc(anchor(top, ${TABLE_PILLBOX_NO_ANCHOR_PX}px) + ${TABLE_PILLBOX_OFFSET_Y_PX}px);
       z-index: 2147483646;
@@ -157,23 +167,57 @@ function windowScrollOffset() {
   };
 }
 
+function anchorNameList(value) {
+  if (!value || value === 'none') return [];
+  return value.split(',').map((n) => n.trim()).filter(Boolean);
+}
+
+function withoutViewAnchorNames(names) {
+  return names.filter((n) => !n.startsWith(TABLE_PILLBOX_ANCHOR_PREFIX));
+}
+
+// The page's own anchor names, from its stylesheet or its inline style, stay
+// first in the list, so an element the page anchors to the table stays in
+// place. The list leaves out every name the view wrote earlier, including a
+// name a copied table carries from its original: two elements with one name
+// would anchor the original's table pillbox to the copy.
+//
+// The view writes the list inline once. A stylesheet rule that changes the
+// table's anchor name later, on a class change or a media query, does not
+// reach the table while the table pillbox is on it.
+function writeTableAnchorName(table, name) {
+  const pageNames = withoutViewAnchorNames(anchorNameList(window.getComputedStyle(table).anchorName));
+  table.style.anchorName = pageNames.concat(name).join(', ');
+}
+
 // The browser keeps the table pillbox on its table's top-right corner through
 // every scroll and every layout change, so no script moves it. position: fixed
-// matters: a fixed element can anchor to a table inside a fixed box, such as a
-// dialog, where an absolutely positioned one cannot. The browser hides the
-// table pillbox while page areas cut off the whole table, and shows it while
-// any part of the table is in view.
+// matters: a fixed element can anchor to a table inside a box the page pins to
+// the window, where an absolutely positioned one cannot. position-visibility
+// hides the table pillbox while page areas cut off the whole table. Chrome's
+// default for it has changed between versions, so the rule sets it.
 //
-// The page can give the table an anchor name of its own, so the view adds its
-// name to the list rather than replacing it.
+// A page that rewrites the table's whole style attribute drops the anchor
+// name, and the table pillbox would leave the table for good. The style
+// observer writes the name again, and records the page's new inline value as
+// the one to restore.
 function anchorTablePillbox(table, button) {
-  const name = '--dr-table-' + (++tablePillboxAnchorCount);
-  const priorAnchorName = table.style.anchorName || '';
-  const pageAnchorName = window.getComputedStyle(table).anchorName;
-  const hasPageAnchorName = pageAnchorName && pageAnchorName !== 'none';
-  table.style.anchorName = hasPageAnchorName ? pageAnchorName + ', ' + name : name;
+  const name = TABLE_PILLBOX_ANCHOR_PREFIX + TABLE_PILLBOX_ANCHOR_LOAD + '-' + (++tablePillboxAnchorCount);
+  const anchor = {
+    name,
+    priorAnchorName: withoutViewAnchorNames(anchorNameList(table.style.anchorName)).join(', '),
+    styleObserver: null,
+  };
+  writeTableAnchorName(table, name);
   button.style.positionAnchor = name;
-  return priorAnchorName;
+  anchor.styleObserver = new MutationObserver(() => {
+    const inlineNames = anchorNameList(table.style.anchorName);
+    if (inlineNames.includes(name)) return;
+    anchor.priorAnchorName = withoutViewAnchorNames(inlineNames).join(', ');
+    writeTableAnchorName(table, name);
+  });
+  anchor.styleObserver.observe(table, { attributes: true, attributeFilter: ['style'] });
+  return anchor;
 }
 
 /** Guard so the global tap-outside collapse listener is added only once */
@@ -197,7 +241,7 @@ function createTablePillbox(table) {
   dot.appendChild(knob);
   button.appendChild(dot);
 
-  const priorAnchorName = anchorTablePillbox(table, button);
+  const anchor = anchorTablePillbox(table, button);
   (document.body || document.documentElement).appendChild(button);
 
   let pointerType = '';
@@ -240,7 +284,7 @@ function createTablePillbox(table) {
 
   button.addEventListener('mousedown', (e) => e.stopPropagation());
 
-  tablePillboxViews.set(table, { button, priorAnchorName });
+  tablePillboxViews.set(table, { button, anchor });
 
   // Global tap-outside collapse (added once for all table pillboxes)
   if (!_globalTapCollapseAdded) {

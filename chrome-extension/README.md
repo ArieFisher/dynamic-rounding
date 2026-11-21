@@ -16,11 +16,11 @@ A table loses its original values when a content script re-injection empties the
 
 ## Where the table pillbox sits
 
-The table pillbox sits over the table's top-right corner. Chrome holds it there through every scroll and every change to the page's layout, using its anchor positioning feature, so the extension runs no code to move it: the table pillbox follows its table through the window's scroll, a scroll inside a page area such as a chat column, content growing above the table, a side panel pushing the table sideways, and a table inside a fixed box such as a dialog. The extension needs Chrome 125 or later for this.
+The table pillbox sits over the table's top-right corner. Chrome holds it there through every scroll and every change to the page's layout, using its anchor positioning feature, so the extension runs no code to move it: the table pillbox follows its table through the window's scroll, a scroll inside a page area such as a chat column, content growing above the table, a side panel pushing the table sideways, and a table inside a box the page pins to the window. The extension needs Chrome 125 or later for this.
 
 Chrome hides the table pillbox while page areas cut off the whole table, and shows it while any part of the table is in view. While a table's top has scrolled past the edge of a page area and the rest of the table is still in view, its table pillbox sits over that edge. A table wider than a box that scrolls sideways shows its table pillbox at the table's top-right corner, past the box's edge.
 
-The table pillbox sits in the page body, outside the page's own markup, because an element added inside a framework-built page's markup can crash the page on its next redraw, the same reason every cell write is a patch. The extension adds its anchor name to the table's own style, after any anchor name the page gave the table, and takes it off when it removes the table pillbox.
+The table pillbox sits in the page body, outside the page's own markup, because an element added inside a framework-built page's markup can crash the page on its next redraw, the same reason every cell write is a patch. The extension adds its anchor name to the table's own style, after any anchor name the page gave the table. It writes the name again when the page rewrites the table's style, and takes it off when it removes the table pillbox.
 
 ## The sidebar serves one tab
 

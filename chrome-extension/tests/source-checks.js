@@ -231,10 +231,13 @@
   eq('expanding-table-pillbox: TABLE_PILLBOX_COLOR_ON referenced in ensureTablePillboxStyleInjected',
     fnBody.includes('TABLE_PILLBOX_COLOR_ON'), true);
 
-  // A fixed table pillbox can anchor to a table inside a fixed box, such as a
-  // dialog; an absolutely positioned one cannot.
-  eq('anchored-table-pillbox: the table pillbox is fixed, so a table inside a fixed box can anchor it',
+  // A fixed table pillbox can anchor to a table inside a box the page pins to
+  // the window; an absolutely positioned one cannot.
+  eq('anchored-table-pillbox: the table pillbox is fixed, so a table inside a box pinned to the window can anchor it',
     /\.dr-ext-table-pillbox \{\s*position: fixed;/.test(fnBody), true);
+  // Chrome's default for position-visibility has changed between versions.
+  eq('anchored-table-pillbox: the table pillbox hides while page areas cut off its whole table, on every Chrome version',
+    /\.dr-ext-table-pillbox \{[^}]*position-visibility: anchors-visible;/.test(fnBody), true);
   eq('anchored-table-pillbox: left resolves against the table\'s right edge, with the off-screen fallback',
     fnBody.includes('left: calc(anchor(right, ${TABLE_PILLBOX_NO_ANCHOR_PX}px) + ${TABLE_PILLBOX_OFFSET_X_PX}px)'), true);
   eq('anchored-table-pillbox: top resolves against the table\'s top edge, with the off-screen fallback',

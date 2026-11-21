@@ -500,8 +500,8 @@ function revalidateTableShape(table, opts = {}) {
 }
 
 // Discard one table's registration and every per-table resource the
-// extension holds beside it: the table pillbox, the resize observer that keeps the
-// table pillbox positioned, the table's re-apply observer and its pending timer,
+// extension holds beside it: the table pillbox, the table's anchor name and its
+// style observer, the table's re-apply observer and its pending timer,
 // and the registry entry with the cell originals inside it. Two callers reach
 // this: the removal
 // observer, for a table the page took out; and the shape-fingerprint

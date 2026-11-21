@@ -386,16 +386,45 @@
 // that name. The browser then holds the table pillbox on the table's corner,
 // so no test here reads a position.
 
+// A computed style that reads each element's inline anchor name, falling back
+// to a name the page's stylesheet gives it, as a browser computes it.
+function withAnchorComputedStyle(sheetNames, fn) {
+  const orig = global.window.getComputedStyle;
+  global.window.getComputedStyle = (el) => ({
+    display: 'block', visibility: 'visible',
+    anchorName: (el.style && el.style.anchorName) || (sheetNames && sheetNames.get(el)) || 'none',
+  });
+  try { fn(); } finally { global.window.getComputedStyle = orig; }
+}
+
+// The style observer each anchor constructs, so a test can run its callback.
+function withCapturedStyleObservers(fn) {
+  const orig = global.MutationObserver;
+  const observers = [];
+  global.MutationObserver = class {
+    constructor(cb) { this.cb = cb; this.disconnected = false; observers.push(this); }
+    observe(target, options) { this.target = target; this.options = options; }
+    disconnect() { this.disconnected = true; }
+  };
+  try { fn(observers); } finally { global.MutationObserver = orig; }
+}
+
+function makeAnchorTestTable(first) {
+  return makeTablePillboxTestTable([[{ tag: 'td', text: first }, { tag: 'td', text: '100' }], [{ tag: 'td', text: '200' }, { tag: 'td', text: '300' }]]);
+}
+
 (function tablePillboxAnchor_tableAndTablePillboxShareOneName() {
-  const tableA = makeTablePillboxTestTable([[{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }], [{ tag: 'td', text: '200' }, { tag: 'td', text: '300' }]]);
-  const tableB = makeTablePillboxTestTable([[{ tag: 'td', text: '70000' }, { tag: 'td', text: '400' }], [{ tag: 'td', text: '500' }, { tag: 'td', text: '600' }]]);
-  withTablePillboxDocumentMock(function () {
-    registerDataTable(tableA);
-    registerDataTable(tableB);
+  const tableA = makeAnchorTestTable('50000');
+  const tableB = makeAnchorTestTable('70000');
+  withAnchorComputedStyle(null, () => {
+    withTablePillboxDocumentMock(function () {
+      registerDataTable(tableA);
+      registerDataTable(tableB);
+    });
   });
   const nameA = tableA.style.anchorName;
   eq('anchor: a registered table gets an anchor name of the extension\'s own',
-    /^--dr-table-\d+$/.test(nameA), true);
+    nameA.startsWith(TABLE_PILLBOX_ANCHOR_PREFIX) && !nameA.includes(','), true);
   eq('anchor: the table pillbox anchors to its table\'s name',
     tablePillboxes.get(tableA).style.positionAnchor, nameA);
   eq('anchor: a second table gets a different name',
@@ -407,51 +436,88 @@
 })();
 
 (function tablePillboxAnchor_keepsThePagesOwnAnchorName() {
-  const origGetComputedStyle = global.window.getComputedStyle;
-  try {
-    // The page's stylesheet names the table; the inline style holds nothing.
-    global.window.getComputedStyle = () => ({ display: 'block', visibility: 'visible', anchorName: '--page-own' });
-    const fromSheet = { style: {} };
-    const buttonA = { style: {} };
-    const priorA = anchorTablePillbox(fromSheet, buttonA);
-    eq('anchor: a name from the page\'s stylesheet stays first in the table\'s list',
-      fromSheet.style.anchorName, '--page-own, ' + buttonA.style.positionAnchor);
-    eq('anchor: the prior inline name of a table named by the stylesheet is empty', priorA, '');
+  const fromSheet = { style: {} };
+  const buttonA = { style: {} };
+  let anchorA;
+  withAnchorComputedStyle(new Map([[fromSheet, '--page-own']]), () => { anchorA = anchorTablePillbox(fromSheet, buttonA); });
+  eq('anchor: a name from the page\'s stylesheet stays first in the table\'s list',
+    fromSheet.style.anchorName, '--page-own, ' + buttonA.style.positionAnchor);
+  eq('anchor: the prior inline name of a table named by the stylesheet is empty', anchorA.priorAnchorName, '');
 
-    // The page names the table inline.
-    global.window.getComputedStyle = () => ({ display: 'block', visibility: 'visible', anchorName: '--page-inline' });
-    const inline = { style: { anchorName: '--page-inline' } };
-    const buttonB = { style: {} };
-    const priorB = anchorTablePillbox(inline, buttonB);
-    eq('anchor: an inline name the page set stays first in the table\'s list',
-      inline.style.anchorName, '--page-inline, ' + buttonB.style.positionAnchor);
-    eq('anchor: the inline name the page set is the prior name to restore', priorB, '--page-inline');
+  const inline = { style: { anchorName: '--page-inline' } };
+  const buttonB = { style: {} };
+  let anchorB;
+  withAnchorComputedStyle(null, () => { anchorB = anchorTablePillbox(inline, buttonB); });
+  eq('anchor: an inline name the page set stays first in the table\'s list',
+    inline.style.anchorName, '--page-inline, ' + buttonB.style.positionAnchor);
+  eq('anchor: the inline name the page set is the prior name to restore', anchorB.priorAnchorName, '--page-inline');
 
-    // A table with no anchor name computes the keyword none.
-    global.window.getComputedStyle = () => ({ display: 'block', visibility: 'visible', anchorName: 'none' });
-    const unnamed = { style: {} };
-    const buttonC = { style: {} };
-    anchorTablePillbox(unnamed, buttonC);
-    eq('anchor: a table the page names nothing holds the extension\'s name alone',
-      unnamed.style.anchorName, buttonC.style.positionAnchor);
-  } finally {
-    global.window.getComputedStyle = origGetComputedStyle;
-  }
+  const unnamed = { style: {} };
+  const buttonC = { style: {} };
+  withAnchorComputedStyle(null, () => { anchorTablePillbox(unnamed, buttonC); });
+  eq('anchor: a table the page names nothing holds the extension\'s name alone',
+    unnamed.style.anchorName, buttonC.style.positionAnchor);
 })();
 
 (function tablePillboxAnchor_removalRestoresThePagesInlineName() {
-  const table = makeTablePillboxTestTable([[{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }], [{ tag: 'td', text: '200' }, { tag: 'td', text: '300' }]]);
+  const table = makeAnchorTestTable('50000');
   table.style.anchorName = '--page-inline';
-  const origGetComputedStyle = global.window.getComputedStyle;
-  global.window.getComputedStyle = () => ({ display: 'block', visibility: 'visible', anchorName: '--page-inline' });
-  try {
+  withAnchorComputedStyle(null, () => {
     withTablePillboxDocumentMock(function () { registerDataTable(table); });
-  } finally {
-    global.window.getComputedStyle = origGetComputedStyle;
-  }
+  });
   removeTablePillbox(table);
   eq('anchor: removing the table pillbox puts back the inline name the page set',
     table.style.anchorName, '--page-inline');
+  forgetRegisteredTable(table);
+})();
+
+// A copy of a table carries the original's inline anchor name. Two elements
+// with one name anchor the original's table pillbox to the copy.
+(function tablePillboxAnchor_aCopiedTableDropsTheOriginalsName() {
+  const original = makeAnchorTestTable('50000');
+  const copy = makeAnchorTestTable('50000');
+  withAnchorComputedStyle(null, () => {
+    withTablePillboxDocumentMock(function () { registerDataTable(original); });
+    const originalName = original.style.anchorName;
+    copy.style.anchorName = '--page-inline, ' + originalName;
+    withTablePillboxDocumentMock(function () { registerDataTable(copy); });
+    const copyNames = copy.style.anchorName.split(', ');
+    eq('anchor: a copied table\'s list holds no name of its original', copyNames.includes(originalName), false);
+    eq('anchor: the copied table keeps the page\'s own name first and its own name last',
+      copyNames[0] === '--page-inline' && copyNames[1] === tablePillboxes.get(copy).style.positionAnchor && copyNames.length === 2, true);
+    removeTablePillbox(copy);
+    eq('anchor: removing the copy\'s table pillbox puts back the page\'s name without the original\'s',
+      copy.style.anchorName, '--page-inline');
+  });
+  forgetRegisteredTable(original);
+  forgetRegisteredTable(copy);
+})();
+
+// A page that rewrites the table's whole style attribute drops the anchor name.
+(function tablePillboxAnchor_aStyleRewriteGetsTheNameBack() {
+  const table = makeAnchorTestTable('50000');
+  withCapturedStyleObservers((observers) => {
+    withAnchorComputedStyle(null, () => {
+      withTablePillboxDocumentMock(function () { registerDataTable(table); });
+      const name = tablePillboxes.get(table).style.positionAnchor;
+      const styleObserver = observers.find((o) => o.target === table);
+      eq('anchor: a style observer watches the table\'s style attribute alone',
+        Boolean(styleObserver) && JSON.stringify(styleObserver.options.attributeFilter) === '["style"]' && !styleObserver.options.subtree, true);
+      if (!styleObserver) return;
+
+      table.style.anchorName = '--page-new';
+      styleObserver.cb([{ type: 'attributes', attributeName: 'style', target: table }]);
+      eq('anchor: after the page rewrites the style, the table holds the page\'s name and the extension\'s again',
+        table.style.anchorName, '--page-new, ' + name);
+
+      styleObserver.cb([{ type: 'attributes', attributeName: 'style', target: table }]);
+      eq('anchor: the observer\'s own write leaves the list as it is', table.style.anchorName, '--page-new, ' + name);
+
+      removeTablePillbox(table);
+      eq('anchor: removing the table pillbox disconnects the style observer', styleObserver.disconnected, true);
+      eq('anchor: removing the table pillbox puts back the page\'s newest inline name', table.style.anchorName, '--page-new');
+    });
+  });
   forgetRegisteredTable(table);
 })();
 
@@ -2589,20 +2655,26 @@
 
     // The content scripts build one observer at load, over the document body,
     // for removed subtrees. Everything after this line is the right-click.
+    // The table pillbox's style observer watches the registered table's style
+    // attribute alone; no other observer belongs to the route.
     const observersAtLoad = ctx.constructedObservers.length;
     const observeCallsAtLoad = ctx.observeCalls.length;
 
     ctx.contextmenuHandler({ target: grid.pinnedRowEls[1].children[0] });
 
-    eq('right-click runtime: the resolution and registration construct no observer',
-      ctx.constructedObservers.length - observersAtLoad, 0);
-    eq('right-click runtime: the resolution and registration call observe no times',
-      ctx.observeCalls.length - observeCallsAtLoad, 0);
-    eq('right-click runtime: no observer watches any element of the nest',
-      ctx.observeCalls.some((call) =>
+    const isStyleObserver = (call) => Boolean(call.options && call.options.attributeFilter &&
+      call.options.attributeFilter.length === 1 && call.options.attributeFilter[0] === 'style' &&
+      !call.options.childList && !call.options.subtree);
+    const routeCalls = ctx.observeCalls.slice(observeCallsAtLoad);
+    eq('right-click runtime: the resolution and registration construct one observer, the table pillbox\'s style observer',
+      ctx.constructedObservers.length - observersAtLoad, 1);
+    eq('right-click runtime: that observer watches the registered table\'s style attribute alone',
+      routeCalls.length === 1 && routeCalls[0].target === grid.scrollPaneEl && isStyleObserver(routeCalls[0]), true);
+    eq('right-click runtime: no observer watches the nest for content changes',
+      routeCalls.some((call) => !isStyleObserver(call) && (
         call.target === grid.wrapperEl ||
         call.target === grid.pinnedPaneEl ||
-        call.target === grid.scrollPaneEl), false);
+        call.target === grid.scrollPaneEl)), false);
     eq('right-click runtime: the registration still happened without one',
       ctx.model.hasTable(grid.scrollPaneEl) &&
         ctx.model.getActiveTable() === grid.scrollPaneEl, true);
