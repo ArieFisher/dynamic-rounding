@@ -248,6 +248,16 @@ Figures that describe what one lens does to one dataset. Each one reads a list o
 | plugin library | The file the Sheets build writes into the plugin's folder: the shared library files and the extension's settings contract, joined, with one export line. Committed, and the build's check covers it. | plugin build, bundle | A change to a shared library file changes the plugin library on the next build. | `\bplugin library(s\|es)?\b` | `\bplugin build` |
 | plugin test prompt | The prompt in the plugin's README that makes the model write the manual test table, with the written text to expect. The plugin's counterpart of the manual test page. | — | The plugin test prompt asks for a table of five revenue figures. | `\bplugin test prompt(s\|es)?\b` | — |
 
+## Puzzles
+
+Terms for the manual test page's second use: a set of puzzles for any reader.
+
+| Term | Meaning | Not | Example | Search pattern | Block pattern |
+| --- | --- | --- | --- | --- | --- |
+| puzzle | A section of the manual test page that also holds a question for the reader: what story its table tells once simplified. It holds the question, the hint, and the story. The reader opens the hint and the story on demand. | quiz, challenge | Section 1 of the manual test page is a puzzle about a cloud bill. | `\bpuzzle(s\|es)?\b` | — |
+| hint | The patterns a reader can see in a puzzle's simplified table, the steps between the numbers and the story. e.g. "90% of spend serves traffic". | clue | The hint states that the bill shows almost no infrastructure spend. | `\bhint(s\|es)?\b` | — |
+| story | A puzzle's answer: the business or event behind the numbers, with a short discussion of how the hint leads to it. | answer, solution (of a puzzle) | The story of the cloud bill is a media, streaming, or gaming platform. | `\bstory\b\|\bstories\b` | — |
+
 ## Working terms
 
 Terms for reviews, plans, and discussion.
