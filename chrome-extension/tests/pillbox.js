@@ -1073,6 +1073,47 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   }
 })();
 
+// Content above a table that grows or leaves the page moves the table with no
+// scroll and no change to the table's size. The page body's size changes.
+(function layoutWiring_bodyResizeRepositionsEveryTablePillbox() {
+  const observers = [];
+  const origResizeObserver = global.ResizeObserver;
+  const origRegistered = DR_MODEL.getRegisteredTables;
+  global.ResizeObserver = class {
+    constructor(callback) { this.callback = callback; this.targets = []; observers.push(this); }
+    observe(target) { this.targets.push(target); }
+    unobserve() {}
+    disconnect() {}
+  };
+  const tableRect = { top: 200, bottom: 500, left: 100, right: 900, width: 800, height: 300 };
+  const table = { getBoundingClientRect() { return tableRect; } };
+  const buttonEl = { style: {} };
+  tablePillboxes.set(table, buttonEl);
+  DR_MODEL.getRegisteredTables = () => [table];
+  const origScrollX = global.window.scrollX;
+  const origScrollY = global.window.scrollY;
+  global.window.scrollX = 0;
+  global.window.scrollY = 0;
+  try {
+    ensureScrollResizeListeners();
+    const bodyObserver = observers.find((o) => o.targets.includes(global.document.body));
+    eq('layoutWiring: a resize observer watches the page body', Boolean(bodyObserver), true);
+    // The content above the table grows by 150 px.
+    tableRect.top = 350;
+    tableRect.bottom = 650;
+    if (bodyObserver) bodyObserver.callback([{ target: global.document.body }], bodyObserver);
+    eq('layoutWiring: a change to the body size repositions the table pillbox',
+      parseFloat(buttonEl.style.top),
+      350 + TABLE_PILLBOX_DOT_OVERLAP_PX - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX);
+  } finally {
+    global.ResizeObserver = origResizeObserver;
+    DR_MODEL.getRegisteredTables = origRegistered;
+    tablePillboxes.delete(table);
+    global.window.scrollX = origScrollX;
+    global.window.scrollY = origScrollY;
+  }
+})();
+
 // =============================================================================
 // New AC tests
 // =============================================================================
