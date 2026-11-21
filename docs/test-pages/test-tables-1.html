@@ -505,7 +505,10 @@
       flex: 1000 0 auto;
     }
 
+    /* As wide as the bill's original numbers need, so the table keeps its
+       width once simplified. */
     .puzzle-table table {
+      width: 22em;
       margin-bottom: 0;
       background: #fff;
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -629,74 +632,24 @@
     .split-bar .delivery { background: var(--series-1); }
     .split-bar .data { background: var(--series-2); }
 
-    .pattern-tiles {
-      list-style: none;
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-      padding: 0;
-      margin: 0;
-      max-width: none;
-    }
-
-    .pattern-tiles li {
-      padding: 10px 12px;
-      border-radius: 8px;
-      background: var(--paper);
-    }
-
-    .tile-value {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-family: var(--serif);
-      font-weight: 600;
-      font-size: 1.7em;
-      line-height: 1.1;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .tile-value::before {
-      content: "";
-      width: 10px;
-      height: 10px;
-      border-radius: 3px;
-      background: var(--key, transparent);
-      box-shadow: inset 0 0 0 1px var(--key-ring, transparent);
-      flex: none;
-    }
-
-    .pattern-tiles .delivery { --key: var(--series-1); }
-    .pattern-tiles .data { --key: var(--series-2); }
-    .pattern-tiles .servers { --key-ring: #8c959f; }
-    .pattern-tiles .total .tile-value::before { display: none; }
-
-    .tile-label {
-      display: block;
-      margin-top: 4px;
-      font-size: 0.82em;
-      line-height: 1.35;
-      color: var(--ink-soft);
-    }
-
     .story-headline {
       font-family: var(--serif);
       font-weight: 600;
       font-size: 1.45em;
       line-height: 1.2;
-      margin: 0 0 12px;
+      margin: 0;
     }
 
-    .story-reasons {
+    .pattern-list {
       list-style: none;
       padding: 0;
-      margin: 0 0 12px;
+      margin: 0;
       display: grid;
       gap: 8px;
       max-width: none;
     }
 
-    .story-reasons li {
+    .pattern-list li {
       display: grid;
       grid-template-columns: 4.2em 1fr;
       gap: 10px;
@@ -704,19 +657,26 @@
       font-size: 0.92em;
     }
 
-    .story-reasons b {
+    .pattern-list b {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
       font-family: var(--serif);
       font-size: 1.15em;
-      text-align: right;
     }
 
-    .story-note {
-      margin: 0;
-      padding-top: 12px;
-      border-top: 1px solid var(--paper-edge);
-      font-size: 0.9em;
-      color: var(--ink-soft);
+    .pattern-list b::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+      background: var(--key, transparent);
+      flex: none;
     }
+
+    .pattern-list .delivery { --key: var(--series-1); }
+    .pattern-list .data { --key: var(--series-2); }
 
     @container (min-width: 560px) {
       .puzzle-panels {
@@ -727,10 +687,6 @@
       .puzzle-panels details {
         flex: 1 1 0;
         min-width: 0;
-      }
-
-      .pattern-tiles {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
       }
 
       .puzzle-panels:has(details[open]) details:not([open]) {
@@ -1144,15 +1100,12 @@
                   <span class="delivery" style="flex: 90.6"></span>
                   <span class="data" style="flex: 9.4"></span>
                 </div>
-                <ul class="pattern-tiles">
-                  <li class="total"><span class="tile-value">$10M</span>
-                    <span class="tile-label">Total spend</span></li>
-                  <li class="delivery"><span class="tile-value">90%</span>
-                    <span class="tile-label">Serves traffic worldwide: CDN, Storage, Load Balancing</span></li>
-                  <li class="data"><span class="tile-value">10%</span>
-                    <span class="tile-label">Goes to data: BigQuery, Dataflow, Dataproc, Pub/Sub</span></li>
-                  <li class="servers"><span class="tile-value">&lt;$20</span>
-                    <span class="tile-label">Goes to servers: the architecture is fully serverless</span></li>
+                <ul class="pattern-list">
+                  <li class="delivery"><b>90%</b><span>pays to deliver large files to many people in many
+                    places: video, music, or game assets.</span></li>
+                  <li class="data"><b>10%</b><span>measures what those people watch or play.</span></li>
+                  <li><b>&lt;$20</b><span>goes to servers, so the business runs on managed
+                    services.</span></li>
                 </ul>
               </div>
             </details>
@@ -1164,15 +1117,6 @@
               </summary>
               <div class="panel-body">
                 <p class="story-headline">A media, streaming, or gaming platform.</p>
-                <ul class="story-reasons">
-                  <li><b>90%</b><span>pays to deliver large files to many people in many
-                    places: video, music, or game assets.</span></li>
-                  <li><b>10%</b><span>measures what those people watch or play.</span></li>
-                  <li><b>&lt;$20</b><span>goes to servers, so the business runs on managed
-                    services.</span></li>
-                </ul>
-                <p class="story-note">Eight numbers, three patterns, one business. None of
-                  it needed a calculator once the bill was simplified.</p>
               </div>
             </details>
           </div>
