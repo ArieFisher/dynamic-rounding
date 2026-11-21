@@ -1,24 +1,10 @@
 # Make data readable
 
-Data can tell rich stories, but sometimes the numbers get in the way.
+This tool makes data easier to read.
 
-This tool makes data easier to read, letting us see the stories within.
+It simplifies numbers in place, as you browse, chat, or work.
 
 [1 minute video demo](https://share.descript.com/view/Y76MAoqM06p)
-
-It works where you do — in your browser, AI chats, and spreadsheets. It simplifies numbers *in place* as you browse, chat, and work.
-
-You don't have to change a thing — you simply get more out of what you're already doing.
-
-
-| Platform | Adds the ability to simplify: |
-| --- | --- |
-| Google Sheets | * entire datasets <br> * mixed number/text cells <br> * cells containing multiple numbers |
-| Chrome Extension | * while browsing (vs. pasting into a spreadsheet or LLM) <br> * dates and times |
-| Claude Code | * tables in the terminal or App |
-| Python | * dataframes (native or pandas) |
-
-
 
 <br><br>
 # Why make data readable? 
@@ -177,15 +163,12 @@ The plugin simplifies the numbers in the markdown tables of a Claude Code sessio
 - Run `/simplify-data` to turn it on, and again to turn it off
 - The model's reply stays as written: the plugin changes only what the transcript shows
 
-
-
-## Implementations
-| Platform | Install | Code |
-| --- | --- | --- |
-| Google Sheets | [Copy template](https://docs.google.com/spreadsheets/d/1GdHvYk3dVzJErrGH7yDULW6srM0gaHeYMGMn3k0-GY4) | [js/](./js/) |
-| Chrome Extension | [Load unpacked](https://developer.chrome.com/docs/extensions/mv3/getstarted/development-basics/#load-unpacked) | [chrome-extension/](./chrome-extension/) |
-| Claude Code | `claude plugin install dynamic-rounding --marketplace ArieFisher/dynamic-rounding` | [claude-code-plugin/](./claude-code-plugin/) |
-| Python | `pip install dynamic-rounding` | [python/](./python/) |
+| Platform | Simplify | Install | Code |
+| :---- | :---- | :---- | :---- |
+| Claude Code | \* tables in the terminal or App | `claude plugin install dynamic-rounding --marketplace ArieFisher/dynamic-rounding` | [claude-code-plugin/](https://vscode-vfs+github-002b7b2276223a312c22726566223a7b2274797065223a342c226964223a22646f63732f726561646d65227d7d.vscode-resource.vscode-cdn.net/ArieFisher/dynamic-rounding/claude-code-plugin/) |
+| Chrome Extension | \* while browsing (vs. pasting into a spreadsheet or LLM) <br>\* dates and times | [Load unpacked](https://developer.chrome.com/docs/extensions/mv3/getstarted/development-basics/#load-unpacked) | [chrome-extension/](https://vscode-vfs+github-002b7b2276223a312c22726566223a7b2274797065223a342c226964223a22646f63732f726561646d65227d7d.vscode-resource.vscode-cdn.net/ArieFisher/dynamic-rounding/chrome-extension/) |
+| Google Sheets | \* entire datasets <br>\* mixed number/text cells <br>\* cells containing multiple numbers | [Copy template](https://docs.google.com/spreadsheets/d/1GdHvYk3dVzJErrGH7yDULW6srM0gaHeYMGMn3k0-GY4) | [js/](https://vscode-vfs+github-002b7b2276223a312c22726566223a7b2274797065223a342c226964223a22646f63732f726561646d65227d7d.vscode-resource.vscode-cdn.net/ArieFisher/dynamic-rounding/js/) |
+| Python | \* dataframes (native or pandas) | `pip install dynamic-rounding` | [python/](https://vscode-vfs+github-002b7b2276223a312c22726566223a7b2274797065223a342c226964223a22646f63732f726561646d65227d7d.vscode-resource.vscode-cdn.net/ArieFisher/dynamic-rounding/python/) |
 
 
 
