@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
 // The markdown adapter: presents the markdown tables in a text as cells.
-// markdownTables returns one list of cells per table, in the cell shape the
-// text table step reads. A cell's markup ranges are its links and code spans.
+// markdownTables returns one list of cells per table, in the form the text
+// table step's header states. A cell's markup ranges are its links and code
+// spans.
 
 const FENCE = /^(\s*)(`{3,}|~{3,})/;
 // The indentation, in columns, at which markdown reads a line as code.
