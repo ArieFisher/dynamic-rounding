@@ -2,7 +2,8 @@
 
 /**
  * The classification layer of the lib/dr-table package: the read that turns a
- * cell object into the ladder's input and its decision (classifyTableCell).
+ * cell object into the ladder's input and its classification
+ * (classifyTableCell).
  * Page reads go to the page directly; only the vertical-align check of
  * getSuperscriptRanges reads opts.styleProbe.
  */
@@ -75,7 +76,7 @@ function getMarkupRanges(cell, layout) {
 }
 
 // classifyTableCell writes nothing: the pass counts a split number
-// (entry.split) afterward.
+// (classifiedCell.split) afterward.
 //
 // For a simplified cell, the function classifies the stored original
 // rather than the written text; getSuperscriptRanges and getMarkupRanges
@@ -101,11 +102,11 @@ function classifyTableCell(cellObj, rowIndex, opts, ranges) {
     superscriptRanges,
     digitsSpanPieces,
   }, opts);
-  const placed = placeDecision(classified, layout);
+  const placed = placeClassification(classified, layout);
   return {
     cellObj,
     text,
-    decision: placed,
+    classification: placed,
     split: !!placed.split,
     layout,
     columnIndex: cellObj.columnIndex,

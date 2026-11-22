@@ -92,9 +92,9 @@
     const markupRanges = getMarkupRanges(cell, { original, toFlat: null });
     eq('getMarkupRanges covers only the linked 5', markupRanges, [{ start: 13, end: 14 }]);
 
-    const decision = classifyCell({ text: original.join(''), rowIndex: 1, columnIndex: 1, ranges: null, markupRanges },
+    const classification = classifyCell({ text: original.join(''), rowIndex: 1, columnIndex: 1, ranges: null, markupRanges },
       { simplifyFirstColumn: true, simplifyFirstRow: true, simplifyDates: true, simplifyTimes: true });
-    const nums = decision.value.matches.map(m => m.num);
+    const nums = classification.value.matches.map(m => m.num);
     eq('linked number 5 is absent from the matches', nums.includes(5), false);
     eq('non-linked 3000 stays in the matches', nums.includes(3000), true);
   });
@@ -509,21 +509,21 @@ const consistentCellCountStepPasses = (children) =>
     mapRenderedToFlat('5', '5 kg'), null);
 })();
 
-(function placeDecision_keepsTheNumbersThatSitInOnePiece() {
+(function placeClassification_keepsTheNumbersThatSitInOnePiece() {
   const match = (numStr, index) => ({ numStr, num: Number(numStr), index });
   const extracted = (...matches) => ({ mode: 'extracted', reason: 'simplify', value: { matches } });
   const layout = (original, toFlat) => ({ original, toFlat });
-  eq('placeDecision: pieces on separate lines keep both numbers',
-    placeDecision(extracted(match('1', 0), match('23', 2)), layout(['1', '23'], [0, 1, 1, 2])), extracted(match('1', 0), match('23', 2)));
-  eq('placeDecision: a number across two pieces skips with reason split',
-    placeDecision(extracted(match('123', 0)), layout(['1', '23'], [0, 1, 2])), { mode: 'skip', reason: 'split', split: true });
-  eq('placeDecision: a split number leaves the cell\'s other numbers',
-    placeDecision(extracted(match('123', 0), match('45', 4)), layout(['1', '23 ', '45'], [0, 1, 2, 3, 4, 5])),
+  eq('placeClassification: pieces on separate lines keep both numbers',
+    placeClassification(extracted(match('1', 0), match('23', 2)), layout(['1', '23'], [0, 1, 1, 2])), extracted(match('1', 0), match('23', 2)));
+  eq('placeClassification: a number across two pieces skips with reason split',
+    placeClassification(extracted(match('123', 0)), layout(['1', '23'], [0, 1, 2])), { mode: 'skip', reason: 'split', split: true });
+  eq('placeClassification: a split number leaves the cell\'s other numbers',
+    placeClassification(extracted(match('123', 0), match('45', 4)), layout(['1', '23 ', '45'], [0, 1, 2, 3, 4, 5])),
     Object.assign(extracted(match('45', 4)), { split: true }));
-  eq('placeDecision: a number in one piece stands',
-    placeDecision(extracted(match('123', 0)), layout(['123'], null)), extracted(match('123', 0)));
-  eq('placeDecision: a rendered position converts through toFlat before the piece check',
-    placeDecision(extracted(match('123', 0)), layout(['\n  ', '123', '\n'], [3, 4, 5])), extracted(match('123', 0)));
+  eq('placeClassification: a number in one piece stands',
+    placeClassification(extracted(match('123', 0)), layout(['123'], null)), extracted(match('123', 0)));
+  eq('placeClassification: a rendered position converts through toFlat before the piece check',
+    placeClassification(extracted(match('123', 0)), layout(['\n  ', '123', '\n'], [3, 4, 5])), extracted(match('123', 0)));
 })();
 
 // ---------------------------------------------------------------------------
@@ -4339,9 +4339,9 @@ function cnAdapterCellEls(tableEl) {
   let at = 0;
   for (const piece of pieces) { liveStarts.push(at); at += piece.length; }
   const layout = { original: pieces, liveStarts, toFlat: null };
-  const decision = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, bracketOpts);
+  const classification = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, bracketOpts);
   eq('bracketed: a bracket in its own text piece still places',
-    placeDecision(decision, layout).mode, 'extracted');
+    placeClassification(classification, layout).mode, 'extracted');
 })();
 
 // ---------------------------------------------------------------------------

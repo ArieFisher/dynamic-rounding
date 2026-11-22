@@ -8,7 +8,7 @@
  *
  * Core layer: reads no page and calls no Chrome. classifyCell takes the
  * cell's text, its row and column, the range list parsed once per table, and
- * the simplification options, and returns its decision as data. In the
+ * the simplification options, and returns its classification as data. In the
  * extension the text is the rendered text (the raw text when the rendered
  * text is empty) or a simplified cell's stored original; in Sheets it is the
  * cell value. Four more values come from the cell's source, and the caller
@@ -85,7 +85,7 @@ function extractSimplifyMatches(text, superscriptRanges, markupRanges = []) {
 }
 
 /**
- * Classify a single cell and return a decision: { mode, reason, value?,
+ * Classify a single cell and return a classification: { mode, reason, value?,
  * pending? }.
  *
  *   mode: 'skip' | 'date' | 'time' | 'extracted'
@@ -225,17 +225,17 @@ function pickDateFormatHint(ambiguousList) {
 }
 
 /**
- * Turn a pending ambiguous-date decision (classifyCell's pending:
- * 'ambiguous-date') into its final decision, given the column's format hint
- * from pickDateFormatHint. month-first and day-first give each all-numeric
+ * Turn a pending ambiguous-date classification (classifyCell's pending:
+ * 'ambiguous-date') into its final classification, given the column's format
+ * hint from pickDateFormatHint. month-first and day-first give each all-numeric
  * date of the cell its day and month; mixed and ambiguous cannot be read
  * safely and downgrade the whole cell to skip, so a cell never changes some
  * of its dates and holds others.
  */
-function resolveAmbiguousDateDecision(decision, hint) {
+function resolveAmbiguousDateClassification(classification, hint) {
   if (hint !== 'month-first' && hint !== 'day-first') return { mode: 'skip', reason: 'ambiguous-date' };
   const isMonthFirst = hint === 'month-first';
-  const dates = decision.value.dates.map((d) => (isAmbiguousDate(d)
+  const dates = classification.value.dates.map((d) => (isAmbiguousDate(d)
     ? knownDate(d.year, isMonthFirst ? d.n1 : d.n2, true, d.start, d.end, isMonthFirst ? d.n2Cut : d.n1Cut)
     : d));
   return { mode: 'date', reason: 'simplify', value: { dates } };

@@ -98,27 +98,29 @@ function datasetMode(range, offset_top, offset_other, num_top) {
  * every number the ladder reads in a text cell.
  */
 function roundValues(range, settings) {
-  const numberEntries = [];
-  const textEntries = [];
+  const numberCells = [];
+  const textCells = [];
   range.forEach((row, r) => row.forEach((value, c) => {
     if (typeof value === "number" && isFinite(value)) {
-      numberEntries.push({ r, c, num: value, decision: { mode: "extracted", value: { matches: [{ num: value }] } } });
+      numberCells.push({ r, c, num: value, classification: { mode: "extracted", value: { matches: [{ num: value }] } } });
     } else if (typeof value === "string" && value !== "") {
-      const decision = classifyCell({ text: value, rowIndex: r, columnIndex: c, ranges: null },
+      const classification = classifyCell({ text: value, rowIndex: r, columnIndex: c, ranges: null },
         SHEETS_LADDER_OPTIONS);
-      textEntries.push({ r, columnIndex: c, text: value, decision });
+      textCells.push({ r, columnIndex: c, text: value, classification });
     }
   }));
-  const maxMag = datasetMaxMagnitude(numberEntries.concat(textEntries));
+  const maxMag = datasetMaxMagnitude(numberCells.concat(textCells));
   const roundNumber = (num) => roundValueSetAware(num, maxMag,
     settings.offsetTop, settings.offsetOther, settings.numTop);
 
   const results = new Map();
-  for (const { r, c, num } of numberEntries) {
+  for (const { r, c, num } of numberCells) {
     results.set(r + "," + c, roundNumber(num));
   }
-  for (const { entry, patches } of tablePatches(textEntries, settings, maxMag).cells) {
-    results.set(entry.r + "," + entry.columnIndex, textResult(entry, patches, roundNumber));
+  const { patchedCells } = tablePatches(textCells, settings, maxMag);
+  for (const { classifiedCell, patches } of patchedCells) {
+    const key = classifiedCell.r + "," + classifiedCell.columnIndex;
+    results.set(key, textResult(classifiedCell, patches, roundNumber));
   }
   return range.map((row, r) => row.map((value, c) => {
     const key = r + "," + c;
@@ -132,13 +134,13 @@ function roundValues(range, settings) {
  * a bracketed number returns its rounded value; every other text cell
  * returns its text with the patches applied.
  */
-function textResult(entry, patches, roundNumber) {
-  if (RESULT_KIND === "number" && entry.decision.mode === "extracted") {
-    const bracketed = matchBracketedNumber(entry.text);
-    const num = bracketed ? bracketed.num : toNumber(entry.text);
+function textResult(classifiedCell, patches, roundNumber) {
+  if (RESULT_KIND === "number" && classifiedCell.classification.mode === "extracted") {
+    const bracketed = matchBracketedNumber(classifiedCell.text);
+    const num = bracketed ? bracketed.num : toNumber(classifiedCell.text);
     if (num !== null) return roundNumber(num);
   }
-  return applyPatches(entry.text, patches);
+  return applyPatches(classifiedCell.text, patches);
 }
 
 /**

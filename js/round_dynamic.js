@@ -1377,7 +1377,7 @@ function getIdentifierMaskedRanges(text) {
  *
  * Core layer: reads no page and calls no Chrome. classifyCell takes the
  * cell's text, its row and column, the range list parsed once per table, and
- * the simplification options, and returns its decision as data. In the
+ * the simplification options, and returns its classification as data. In the
  * extension the text is the rendered text (the raw text when the rendered
  * text is empty) or a simplified cell's stored original; in Sheets it is the
  * cell value. Four more values come from the cell's source, and the caller
@@ -1454,7 +1454,7 @@ function extractSimplifyMatches(text, superscriptRanges, markupRanges = []) {
 }
 
 /**
- * Classify a single cell and return a decision: { mode, reason, value?,
+ * Classify a single cell and return a classification: { mode, reason, value?,
  * pending? }.
  *
  *   mode: 'skip' | 'date' | 'time' | 'extracted'
@@ -1594,17 +1594,17 @@ function pickDateFormatHint(ambiguousList) {
 }
 
 /**
- * Turn a pending ambiguous-date decision (classifyCell's pending:
- * 'ambiguous-date') into its final decision, given the column's format hint
- * from pickDateFormatHint. month-first and day-first give each all-numeric
+ * Turn a pending ambiguous-date classification (classifyCell's pending:
+ * 'ambiguous-date') into its final classification, given the column's format
+ * hint from pickDateFormatHint. month-first and day-first give each all-numeric
  * date of the cell its day and month; mixed and ambiguous cannot be read
  * safely and downgrade the whole cell to skip, so a cell never changes some
  * of its dates and holds others.
  */
-function resolveAmbiguousDateDecision(decision, hint) {
+function resolveAmbiguousDateClassification(classification, hint) {
   if (hint !== 'month-first' && hint !== 'day-first') return { mode: 'skip', reason: 'ambiguous-date' };
   const isMonthFirst = hint === 'month-first';
-  const dates = decision.value.dates.map((d) => (isAmbiguousDate(d)
+  const dates = classification.value.dates.map((d) => (isAmbiguousDate(d)
     ? knownDate(d.year, isMonthFirst ? d.n1 : d.n2, true, d.start, d.end, isMonthFirst ? d.n2Cut : d.n1Cut)
     : d));
   return { mode: 'date', reason: 'simplify', value: { dates } };
@@ -1627,50 +1627,52 @@ function resolveAmbiguousDateDecision(decision, hint) {
  *
  * Core layer: reads no page and calls no Chrome. It depends only on
  * lib/dr-number's bare names and the ladder's pickDateFormatHint and
- * resolveAmbiguousDateDecision, loaded ahead of this file.
+ * resolveAmbiguousDateClassification, loaded ahead of this file.
  *
- * The step reads one entry per classified cell. An entry is any object
- * carrying:
- *   text         the classified text (a simplified cell's stored original)
- *   decision     the ladder's decision (classifyCell)
- *   columnIndex  the cell's grid column, by which the column post-pass
- *                groups cells
+ * The step reads one classified cell per cell. A classified cell is any
+ * object carrying:
+ *   text            the classified text (a simplified cell's stored original)
+ *   classification  the ladder's classification (classifyCell)
+ *   columnIndex     the cell's grid column, by which the column post-pass
+ *                   groups cells
  * The step copies every other field through untouched, so a caller can carry
  * its own per-cell data beside them.
  */
 
-function isAmbiguousDateDecision(decision) {
-  return decision.pending === 'ambiguous-date';
+function isAmbiguousDateClassification(classification) {
+  return classification.pending === 'ambiguous-date';
 }
 
 // The column post-pass: resolve each ambiguous date against its column's
 // format hint. It groups cells by grid column, so a merged cell cannot split
 // one column into two groups that read 7/4/99 as July in one row and April in
 // another.
-function resolveAmbiguousDates(entries) {
+function resolveAmbiguousDates(classifiedCells) {
   const ambiguousDatesByCol = new Map();
-  for (const { decision, columnIndex } of entries) {
-    if (!isAmbiguousDateDecision(decision)) continue;
+  for (const { classification, columnIndex } of classifiedCells) {
+    if (!isAmbiguousDateClassification(classification)) continue;
     if (!ambiguousDatesByCol.has(columnIndex)) ambiguousDatesByCol.set(columnIndex, []);
-    ambiguousDatesByCol.get(columnIndex).push(...decision.value.dates.filter(isAmbiguousDate));
+    ambiguousDatesByCol.get(columnIndex).push(...classification.value.dates.filter(isAmbiguousDate));
   }
   const hintByCol = new Map(Array.from(ambiguousDatesByCol,
     ([columnIndex, ambiguousDates]) => [columnIndex, pickDateFormatHint(ambiguousDates)]));
-  return entries.map((entry) => {
-    if (!isAmbiguousDateDecision(entry.decision)) return entry;
-    const decision = resolveAmbiguousDateDecision(entry.decision, hintByCol.get(entry.columnIndex));
-    return Object.assign({}, entry, { decision });
+  return classifiedCells.map((classifiedCell) => {
+    if (!isAmbiguousDateClassification(classifiedCell.classification)) return classifiedCell;
+    const classification = resolveAmbiguousDateClassification(
+      classifiedCell.classification, hintByCol.get(classifiedCell.columnIndex));
+    return Object.assign({}, classifiedCell, { classification });
   });
 }
 
 // passedMaxMag when the caller passes one, else the max magnitude over each
-// number of every extracted cell in entries; a date or time cell adds none.
-function datasetMaxMagnitude(entries, passedMaxMag) {
+// number of every extracted cell in classifiedCells; a date or time cell adds
+// none.
+function datasetMaxMagnitude(classifiedCells, passedMaxMag) {
   if (passedMaxMag != null) return passedMaxMag;
   const allNums = [];
-  for (const { decision } of entries) {
-    if (decision.mode === 'extracted') {
-      for (const m of decision.value.matches) allNums.push(m.num);
+  for (const { classification } of classifiedCells) {
+    if (classification.mode === 'extracted') {
+      for (const m of classification.value.matches) allNums.push(m.num);
     }
   }
   return findMaxMagnitude([allNums]);
@@ -1682,21 +1684,21 @@ function datasetMaxMagnitude(entries, passedMaxMag) {
 // one patch per number whose written digits differ from the match, which
 // catches a number that is unchanged but whose display simplifies (e.g.
 // "35.0" to "35").
-function classifiedCellPatches(entry, maxMag, settings) {
-  const { text, decision } = entry;
+function classifiedCellPatches(classifiedCell, maxMag, settings) {
+  const { text, classification } = classifiedCell;
   const { offsetTop, offsetOther, numTop } = settings;
-  if (decision.mode === 'date' || decision.mode === 'time') {
+  if (classification.mode === 'date' || classification.mode === 'time') {
     const trimmed = text.trim();
     const lead = text.length - text.trimStart().length;
-    const rounded = decision.mode === 'date'
-      ? roundDateText(trimmed, settings.dateGranularity, decision.value.dates)
+    const rounded = classification.mode === 'date'
+      ? roundDateText(trimmed, settings.dateGranularity, classification.value.dates)
       : roundTimeText(trimmed, settings.timeGranularity);
     if (rounded === null || rounded === trimmed) return [];
     return [{ index: lead, numStr: trimmed, newNum: rounded }];
   }
-  if (decision.mode === 'extracted') {
+  if (classification.mode === 'extracted') {
     const patches = [];
-    for (const m of decision.value.matches) {
+    for (const m of classification.value.matches) {
       const rounded = roundValueSetAware(m.num, maxMag, offsetTop, offsetOther, numTop);
       const newNum = formatNumber(rounded, m.numStr);
       if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
@@ -1709,8 +1711,8 @@ function classifiedCellPatches(entry, maxMag, settings) {
 /**
  * The table step (see the file header).
  *
- * @param {object[]} entries - One entry per classified cell, in page order,
- *   each carrying text, decision, and columnIndex.
+ * @param {object[]} classifiedCells - One classified cell per cell, in page
+ *   order, each carrying text, classification, and columnIndex.
  * @param {{offsetTop: number, offsetOther: number, numTop: number,
  *          dateGranularity: string, timeGranularity: string}} settings -
  *   Resolved offsets and num_top, and the date and time granularity.
@@ -1719,16 +1721,17 @@ function classifiedCellPatches(entry, maxMag, settings) {
  *   the dataset in Sheets, number cells included. When given, the step
  *   rounds against it and computes none of its own.
  * @returns {{maxMag: number|null,
- *            cells: Array<{entry: object, patches: object[]}>}}
- *   cells holds one result per entry, in input order: the entry after the
- *   column post-pass, and its patches in the classified text.
+ *            patchedCells: Array<{classifiedCell: object, patches: object[]}>}}
+ *   patchedCells holds one patched cell per classified cell, in input order:
+ *   the classified cell after the column post-pass, and its patches in the
+ *   classified text.
  */
-function tablePatches(entries, settings, passedMaxMag) {
-  const resolved = resolveAmbiguousDates(entries);
+function tablePatches(classifiedCells, settings, passedMaxMag) {
+  const resolved = resolveAmbiguousDates(classifiedCells);
   const maxMag = datasetMaxMagnitude(resolved, passedMaxMag);
-  const cells = resolved.map((entry) =>
-    ({ entry, patches: classifiedCellPatches(entry, maxMag, settings) }));
-  return { maxMag, cells };
+  const patchedCells = resolved.map((classifiedCell) =>
+    ({ classifiedCell, patches: classifiedCellPatches(classifiedCell, maxMag, settings) }));
+  return { maxMag, patchedCells };
 }
 
 // Apply patches to a text, last patch first, so each earlier patch's position
@@ -1843,27 +1846,29 @@ function datasetMode(range, offset_top, offset_other, num_top) {
  * every number the ladder reads in a text cell.
  */
 function roundValues(range, settings) {
-  const numberEntries = [];
-  const textEntries = [];
+  const numberCells = [];
+  const textCells = [];
   range.forEach((row, r) => row.forEach((value, c) => {
     if (typeof value === "number" && isFinite(value)) {
-      numberEntries.push({ r, c, num: value, decision: { mode: "extracted", value: { matches: [{ num: value }] } } });
+      numberCells.push({ r, c, num: value, classification: { mode: "extracted", value: { matches: [{ num: value }] } } });
     } else if (typeof value === "string" && value !== "") {
-      const decision = classifyCell({ text: value, rowIndex: r, columnIndex: c, ranges: null },
+      const classification = classifyCell({ text: value, rowIndex: r, columnIndex: c, ranges: null },
         SHEETS_LADDER_OPTIONS);
-      textEntries.push({ r, columnIndex: c, text: value, decision });
+      textCells.push({ r, columnIndex: c, text: value, classification });
     }
   }));
-  const maxMag = datasetMaxMagnitude(numberEntries.concat(textEntries));
+  const maxMag = datasetMaxMagnitude(numberCells.concat(textCells));
   const roundNumber = (num) => roundValueSetAware(num, maxMag,
     settings.offsetTop, settings.offsetOther, settings.numTop);
 
   const results = new Map();
-  for (const { r, c, num } of numberEntries) {
+  for (const { r, c, num } of numberCells) {
     results.set(r + "," + c, roundNumber(num));
   }
-  for (const { entry, patches } of tablePatches(textEntries, settings, maxMag).cells) {
-    results.set(entry.r + "," + entry.columnIndex, textResult(entry, patches, roundNumber));
+  const { patchedCells } = tablePatches(textCells, settings, maxMag);
+  for (const { classifiedCell, patches } of patchedCells) {
+    const key = classifiedCell.r + "," + classifiedCell.columnIndex;
+    results.set(key, textResult(classifiedCell, patches, roundNumber));
   }
   return range.map((row, r) => row.map((value, c) => {
     const key = r + "," + c;
@@ -1877,13 +1882,13 @@ function roundValues(range, settings) {
  * a bracketed number returns its rounded value; every other text cell
  * returns its text with the patches applied.
  */
-function textResult(entry, patches, roundNumber) {
-  if (RESULT_KIND === "number" && entry.decision.mode === "extracted") {
-    const bracketed = matchBracketedNumber(entry.text);
-    const num = bracketed ? bracketed.num : toNumber(entry.text);
+function textResult(classifiedCell, patches, roundNumber) {
+  if (RESULT_KIND === "number" && classifiedCell.classification.mode === "extracted") {
+    const bracketed = matchBracketedNumber(classifiedCell.text);
+    const num = bracketed ? bracketed.num : toNumber(classifiedCell.text);
     if (num !== null) return roundNumber(num);
   }
-  return applyPatches(entry.text, patches);
+  return applyPatches(classifiedCell.text, patches);
 }
 
 /**

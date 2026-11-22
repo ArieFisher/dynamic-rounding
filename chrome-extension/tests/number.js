@@ -2609,9 +2609,9 @@ const LADDER_OPTS = {
   // The number span steps past every sign, so a cell that draws its sign in
   // one piece and its digits in another still simplifies.
   for (const sign of CURRENCY_SIGNS) {
-    const decision = classifyCell({ text: sign + '450', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS);
+    const classification = classifyCell({ text: sign + '450', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS);
     eq('currencies: a cell drawn as "' + sign + '" beside "450" keeps its number',
-      placeDecision(decision, { original: [sign, '450'], toFlat: null }).value.matches,
+      placeClassification(classification, { original: [sign, '450'], toFlat: null }).value.matches,
       [{ numStr: '450', num: 450, index: sign.length }]);
   }
 })();

@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
 /**
- * placeDecision checks a classifyCell decision against the cell's text pieces
- * before the table step and drops a split number, so the number stays out of
+ * placeClassification checks a classifyCell classification against the
+ * cell's text pieces before the table step and drops a split number, so the number stays out of
  * the max magnitude and the pass counts the cell under split number.
  * flatPatches runs after the table step builds the patches, and moves each
  * patch into flat-text positions for the patch writer. Both read plain
@@ -73,27 +73,27 @@ function flatPatches(patches, layout) {
 }
 
 /**
- * The placement step: place a classifyCell decision in the cell's text
+ * The placement step: place a classifyCell classification in the cell's text
  * pieces. The patch writer edits one text piece per patch, so a number stands
  * only when its digits sit in one text piece. The function drops a number
  * whose characters cross a text piece boundary (a split number) from the
- * decision, so it stays as written while the cell's other numbers round. When
- * no number remains, the function returns a skip with reason 'split'. Both
+ * classification, so it stays as written while the cell's other numbers
+ * round. When no number remains, the function returns a skip with reason 'split'. Both
  * outcomes carry split: true, which the pass reads to count the cell once
  * under split number, however many split numbers it holds. A date or time
  * passes through; its text piece check runs when its patch is built, because
  * only a changed value needs one. For a cell with no layout, the function
  * returns a skip with reason 'pieces-changed'.
  *
- * @param {object} decision - classifyCell's decision
+ * @param {object} classification - classifyCell's classification
  * @param {PieceLayout|null} layout
- * @returns {object} the placed decision
+ * @returns {object} the placed classification
  */
-function placeDecision(decision, layout) {
+function placeClassification(classification, layout) {
   if (!layout) return { mode: 'skip', reason: 'pieces-changed' };
-  if (decision.mode !== 'extracted') return decision;
-  const inOnePiece = decision.value.matches.filter((m) => layoutPieceHolding(layout, m.index, m.numStr.length));
-  if (inOnePiece.length === decision.value.matches.length) return decision;
+  if (classification.mode !== 'extracted') return classification;
+  const inOnePiece = classification.value.matches.filter((m) => layoutPieceHolding(layout, m.index, m.numStr.length));
+  if (inOnePiece.length === classification.value.matches.length) return classification;
   if (inOnePiece.length === 0) return { mode: 'skip', reason: 'split', split: true };
-  return Object.assign({}, decision, { value: { matches: inOnePiece }, split: true });
+  return Object.assign({}, classification, { value: { matches: inOnePiece }, split: true });
 }

@@ -268,7 +268,7 @@ function sitsOffscreen(el, styleProbe) {
  * data test (isDataTable) and of the geometry probe's numeric step
  * (looksLikeGrid). Each cell goes through classifyTableCell, the function
  * the rounding pass calls for every cell, under DETECTION_OPTIONS (every
- * switch on) and no range expression. A cell counts when its decision is not
+ * switch on) and no range expression. A cell counts when its mode is not
  * skip, so a cell holding only an identifier shape, a number inside a
  * markup range, and a number split across text pieces add nothing.
  *
@@ -292,12 +292,12 @@ function holdsRoundableCell(rows) {
     for (const cellObj of rows[i].getCells()) {
       if (cellsRead >= DR_DETECTION_SETTINGS.dataTestCellBudget) break walk;
       cellsRead++;
-      const { decision, columnIndex } = classifyTableCell(cellObj, i, DETECTION_OPTIONS, null);
-      if (isAmbiguousDateDecision(decision)) pending.push({ decision, columnIndex });
-      else if (decision.mode !== 'skip') return true;
+      const { classification, columnIndex } = classifyTableCell(cellObj, i, DETECTION_OPTIONS, null);
+      if (isAmbiguousDateClassification(classification)) pending.push({ classification, columnIndex });
+      else if (classification.mode !== 'skip') return true;
     }
   }
-  return resolveAmbiguousDates(pending).some((entry) => entry.decision.mode !== 'skip');
+  return resolveAmbiguousDates(pending).some((classifiedCell) => classifiedCell.classification.mode !== 'skip');
 }
 
 /**

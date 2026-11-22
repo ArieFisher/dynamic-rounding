@@ -81,7 +81,7 @@
     classifyCell({ text: '2020-01-01', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
     { mode: 'date', reason: 'simplify', value: { dates: [{
       year: 2020, month: 1, monthBeforeYear: false, start: 0, end: 10, dayCut: { start: 7, end: 10 } }] } });
-  eq('classifyCell: ambiguous numeric date returns a pending decision',
+  eq('classifyCell: ambiguous numeric date returns a pending classification',
     classifyCell({ text: '03/04/2020', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
     { mode: 'date', reason: 'simplify', pending: 'ambiguous-date', value: { dates: [{
       year: 2020, n1: 3, n2: 4, start: 0, end: 10, n1Cut: { start: 0, end: 3 }, n2Cut: { start: 3, end: 6 } }] } });
@@ -211,7 +211,7 @@
     { mode: 'skip', reason: 'no-number' });
 })();
 
-(function pickDateFormatHint_and_resolveAmbiguousDateDecision() {
+(function pickDateFormatHint_and_resolveAmbiguousDateClassification() {
   eq('pickDateFormatHint: n1 > 12 only -> day-first', pickDateFormatHint([{ n1: 25, n2: 4 }]), 'day-first');
   eq('pickDateFormatHint: n2 > 12 only -> month-first', pickDateFormatHint([{ n1: 3, n2: 25 }]), 'month-first');
   eq('pickDateFormatHint: both > 12 across the column -> mixed',
@@ -219,19 +219,19 @@
   eq('pickDateFormatHint: neither > 12 -> ambiguous', pickDateFormatHint([{ n1: 3, n2: 4 }]), 'ambiguous');
 
   const dates0304 = findDates('03/04/2020');
-  eq('resolveAmbiguousDateDecision: month-first resolves n1 as month, n2 as day',
-    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'month-first'),
+  eq('resolveAmbiguousDateClassification: month-first resolves n1 as month, n2 as day',
+    resolveAmbiguousDateClassification({ value: { dates: dates0304 } }, 'month-first'),
     { mode: 'date', reason: 'simplify', value: { dates: [{
       year: 2020, month: 3, monthBeforeYear: true, start: 0, end: 10, dayCut: { start: 3, end: 6 } }] } });
-  eq('resolveAmbiguousDateDecision: day-first resolves n2 as month, n1 as day',
-    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'day-first'),
+  eq('resolveAmbiguousDateClassification: day-first resolves n2 as month, n1 as day',
+    resolveAmbiguousDateClassification({ value: { dates: dates0304 } }, 'day-first'),
     { mode: 'date', reason: 'simplify', value: { dates: [{
       year: 2020, month: 4, monthBeforeYear: true, start: 0, end: 10, dayCut: { start: 0, end: 3 } }] } });
-  eq('resolveAmbiguousDateDecision: mixed downgrades to skip',
-    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'mixed'),
+  eq('resolveAmbiguousDateClassification: mixed downgrades to skip',
+    resolveAmbiguousDateClassification({ value: { dates: dates0304 } }, 'mixed'),
     { mode: 'skip', reason: 'ambiguous-date' });
-  eq('resolveAmbiguousDateDecision: ambiguous downgrades to skip',
-    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'ambiguous'),
+  eq('resolveAmbiguousDateClassification: ambiguous downgrades to skip',
+    resolveAmbiguousDateClassification({ value: { dates: dates0304 } }, 'ambiguous'),
     { mode: 'skip', reason: 'ambiguous-date' });
 })();
 
@@ -361,8 +361,8 @@ const IDENTIFIER_SPAN_NEAR_MISSES = [
 
 (function identifierShapes_holdTheirDigitsInsideText() {
   const extractedNumbers = (text) => {
-    const decision = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS);
-    return decision.mode === 'extracted' ? decision.value.matches.map((m) => m.numStr) : decision;
+    const classification = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS);
+    return classification.mode === 'extracted' ? classification.value.matches.map((m) => m.numStr) : classification;
   };
   for (const [text, expected] of IDENTIFIER_SPAN_CELLS) {
     eq(`identifier shape inside text: "${text}" rounds only its quantity`, extractedNumbers(text), expected);
@@ -418,9 +418,9 @@ const CLOCK_TIME_SPAN_NEAR_MISSES = [
 
 (function clockTimes_holdTheirDigitsInsideText() {
   const extractedNumbers = (text, opts) => {
-    const decision = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, opts);
-    if (decision.mode === 'extracted') return decision.value.matches.map((m) => m.numStr);
-    return decision.reason === 'no-number' ? [] : decision;
+    const classification = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, opts);
+    if (classification.mode === 'extracted') return classification.value.matches.map((m) => m.numStr);
+    return classification.reason === 'no-number' ? [] : classification;
   };
   const timesOn = Object.assign({}, LADDER_OPTS, { simplifyTimes: true });
   for (const [text, expected] of CLOCK_TIME_SPAN_CELLS) {
