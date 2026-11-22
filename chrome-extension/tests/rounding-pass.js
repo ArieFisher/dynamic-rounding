@@ -699,7 +699,7 @@ const SEAT_ROWS = [
   };
   const realDatasetMaxMagnitude = datasetMaxMagnitude;
   const passed = [];
-  datasetMaxMagnitude = (entries) => { passed.push(entries); return 3; };
+  datasetMaxMagnitude = (classifiedCells) => { passed.push(classifiedCells); return 3; };
   let result;
   try {
     result = extractPreviewSamples(table);
@@ -708,7 +708,7 @@ const SEAT_ROWS = [
   }
   eq('extractPreviewSamples (table step max magnitude): one call', passed.length, 1);
   eq('extractPreviewSamples (table step max magnitude): the call reads the classified cells',
-    (passed[0] || []).filter((entry) => entry.decision.mode === 'extracted').flatMap((entry) => entry.decision.value.matches.map((m) => m.num)),
+    (passed[0] || []).filter((classifiedCell) => classifiedCell.classification.mode === 'extracted').flatMap((classifiedCell) => classifiedCell.classification.value.matches.map((m) => m.num)),
     [27000000, 4080, 312]);
   eq('extractPreviewSamples (table step max magnitude): maxMag is the table step\'s', result.maxMag, 3);
   eq('extractPreviewSamples (table step max magnitude): top band', result.samples.top.map((row) => row.num),
@@ -2913,7 +2913,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   const { cells: results } = simplifyTableCells(g.table, registryAdapter(g.table).getRows(), opts,
     { frozenMaxMag: null, writes: 'none' });
   eq('#513 first column on: the subtotal label is the first cell of the first body row',
-    !!results[2] && results[2].entry.cellObj.getText().trim().startsWith('Subtotal'), true);
+    !!results[2] && results[2].classifiedCell.cellObj.getText().trim().startsWith('Subtotal'), true);
   eq('#513 first column on: the labels take no change',
     [2, 4, 6, 8, 10].map((i) => results[i] && results[i].patches.length), [0, 0, 0, 0, 0]);
   eq('#513 first column on: the amounts still round',
@@ -3540,7 +3540,7 @@ function everyRowRead(kind, largeIn) {
 (function mergeLadderParity_datesAndTimesStillExcludedFromPreview() {
   // Deliberate, UNCHANGED scope restriction (not a divergence fix): the
   // lens preview is about numeric magnitude/offset, so mode:'date' and
-  // mode:'time' decisions from the ladder are excluded from the sample pool
+  // mode:'time' classifications from the ladder are excluded from the sample pool
   // even though the ladder classifies them and the engine would simplify
   // them.
   function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
@@ -3560,7 +3560,7 @@ function everyRowRead(kind, largeIn) {
 // The divergence tests above pin the PREVIEW path against the merged ladder.
 // They say nothing about the ENGINE path (roundTable's native-table loop),
 // which is what actually writes values into a page; classifyCell makes every
-// one of those decisions there too. A single fixture that
+// one of those classifications there too. A single fixture that
 // exercises several rules together, with the exact applied cell text pinned,
 // catches a future change to the ladder's shared logic (rule order,
 // max_mag interaction, formatting) that a per-rule unit test run in

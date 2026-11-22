@@ -694,11 +694,11 @@ function classifyPreviewCells(table, options) {
 // Extracted results alone count: the lens preview is about numeric magnitude
 // and offset, so dates and times stay out even though the ladder classifies
 // them.
-function numericPreviewCells(entries) {
+function numericPreviewCells(classifiedCells) {
   const out = [];
-  for (const { text, decision } of entries) {
-    if (decision.mode === 'extracted') {
-      for (const { num } of decision.value.matches) {
+  for (const { text, classification } of classifiedCells) {
+    if (classification.mode === 'extracted') {
+      for (const { num } of classification.value.matches) {
         if (num !== 0 && isFinite(num)) out.push({ text: text.trim(), num });
       }
     }
@@ -715,12 +715,12 @@ function extractPreviewSamples(table) {
   // preview and the table disagree the moment the sidebar's slider or
   // checkboxes diverge from DR_DEFAULTS.
   const liveSettings = DR_MODEL.getTableSettings(table);
-  const entries = classifyPreviewCells(table, liveSettings);
-  const cells = numericPreviewCells(entries);
+  const classifiedCells = classifyPreviewCells(table, liveSettings);
+  const cells = numericPreviewCells(classifiedCells);
   if (cells.length === 0) {
     return { samples: { top: [], bottom: [] }, maxMag: null };
   }
-  const maxMag = datasetMaxMagnitude(entries, DR_MODEL.getTableMaxMagnitude(table));
+  const maxMag = datasetMaxMagnitude(classifiedCells, DR_MODEL.getTableMaxMagnitude(table));
   const { offsetTop: topOffset, offsetOther: otherOffset, numTop } =
     resolveRoundingSettings(liveSettings);
 
@@ -832,7 +832,7 @@ function buildCaptureStateResponse() {
 // as fresh.
 // The pass then classifies every cell through classifyTableCell in
 // lib/dr-table: the classification ladder (lib/dr-simplify) and the
-// placement step (placeDecision).
+// placement step (placeClassification).
 // The table step (tablePatches in lib/dr-simplify/table.js) then resolves
 // ambiguous dates per column, finds the max magnitude over the dataset, and
 // builds each cell's patches. The pass drops a changed date or time that
@@ -848,10 +848,10 @@ function buildCaptureStateResponse() {
 // both kinds, so the pass sees no difference between them before it starts.
 //
 // The pass writes no log row. It counts, by reason, the cells it left as
-// written: a split number (entry.split, after classification), a changed
-// date or time whose text crosses a piece boundary, and a cell whose patch
-// landed nothing because the text it shows differs from the text its pieces
-// hold. It returns the counts and its duration; the apply writes the counts
+// written: a split number (classifiedCell.split, after classification), a
+// changed date or time whose text crosses a piece boundary, and a cell whose
+// patch landed nothing because the text it shows differs from the text its
+// pieces hold. It returns the counts and its duration; the apply writes the counts
 // in its one settings change row, and the re-apply observer writes the
 // duration when a pass runs over the pass target.
 //
@@ -875,8 +875,8 @@ function buildCaptureStateResponse() {
 // so a write to one cell leaves the patches of the cells after it unchanged.
 
 // Returns how many patches landed (see makeCellObj in lib/dr-table).
-function writeCell(entry, patches) {
-  return entry.cellObj.applyPatches(patches, { value: entry.text });
+function writeCell(classifiedCell, patches) {
+  return classifiedCell.cellObj.applyPatches(patches, { value: classifiedCell.text });
 }
 
 // The offsets and num_top, resolved once for the whole table.
@@ -937,15 +937,16 @@ function watchedElement(adapter) {
 // One cell's patches as the page takes them: the table step's patches
 // (tablePatches, lib/dr-simplify/table.js), less a changed date or time that
 // does not sit in one text piece, which stays as written.
-function cellPatches(stepCell) {
-  return isSplitDateOrTime(stepCell) ? [] : stepCell.patches;
+function cellPatches(patchedCell) {
+  return isSplitDateOrTime(patchedCell) ? [] : patchedCell.patches;
 }
 
 // A changed date or time whose one patch no single text piece holds.
-function isSplitDateOrTime({ entry, patches }) {
-  const isDateOrTime = entry.decision.mode === 'date' || entry.decision.mode === 'time';
+function isSplitDateOrTime({ classifiedCell, patches }) {
+  const { mode } = classifiedCell.classification;
+  const isDateOrTime = mode === 'date' || mode === 'time';
   return isDateOrTime && patches.length > 0 &&
-    !layoutPieceHolding(entry.layout, patches[0].index, patches[0].numStr.length);
+    !layoutPieceHolding(classifiedCell.layout, patches[0].index, patches[0].numStr.length);
 }
 
 /**
@@ -956,7 +957,7 @@ function isSplitDateOrTime({ entry, patches }) {
  * @param {object} opts - Fully-resolved rounding options.
  * @param {{frozenMaxMag?: number|null, writes: 'first'|'reapply'|'none',
  *          cellCap?: number}} pass
- * @returns {{cells: Array<{entry: object, patches: object[]}>,
+ * @returns {{cells: Array<{classifiedCell: object, patches: object[]}>,
  *            maxMag: number|null, missedCells: number,
  *            cellCount: number, overCap: boolean, ms?: number,
  *            leftAsWritten?: {splitNumber: number, splitDateOrTime: number, textMismatch: number}}}
@@ -983,14 +984,14 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
   const classified = classifyTableCells(dataCells, opts, rangeParse.ranges);
   const settings = Object.assign(resolveRoundingSettings(opts),
     { dateGranularity: opts.dateGranularity, timeGranularity: opts.timeGranularity });
-  const { maxMag, cells: stepCells } = tablePatches(classified, settings, pass.frozenMaxMag);
+  const { maxMag, patchedCells } = tablePatches(classified, settings, pass.frozenMaxMag);
   if (writes === 'first') DR_MODEL.setTableMaxMagnitude(table, maxMag);
 
-  const { cells, missedCells, splitDateOrTime } = writeTableCells(table, stepCells, writes);
+  const { cells, missedCells, splitDateOrTime } = writeTableCells(table, patchedCells, writes);
   return {
     cells, missedCells, maxMag, cellCount: dataCells.length, overCap: false,
     leftAsWritten: {
-      splitNumber: classified.filter((entry) => entry.split).length,
+      splitNumber: classified.filter((classifiedCell) => classifiedCell.split).length,
       splitDateOrTime,
       textMismatch: missedCells,
     },
@@ -1002,20 +1003,20 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
 // order. A held cell with no patch, or with no landed patch, shows its
 // original as its target, so it is released: its record, marker class, and
 // hover text go.
-function writeTableCells(table, stepCells, writes) {
+function writeTableCells(table, patchedCells, writes) {
   const cells = [];
   let missedCells = 0;
   let splitDateOrTime = 0;
-  for (const stepCell of stepCells) {
-    const { entry } = stepCell;
-    if (isSplitDateOrTime(stepCell)) splitDateOrTime++;
-    const flat = flatPatches(cellPatches(stepCell), entry.layout);
-    cells.push({ entry, patches: flat });
+  for (const patchedCell of patchedCells) {
+    const { classifiedCell } = patchedCell;
+    if (isSplitDateOrTime(patchedCell)) splitDateOrTime++;
+    const flat = flatPatches(cellPatches(patchedCell), classifiedCell.layout);
+    cells.push({ classifiedCell, patches: flat });
     if (writes === 'none') continue;
-    const held = DR_MODEL.hasTableOriginal(table, entry.cellObj.el);
-    const landed = flat.length > 0 ? writeCell(entry, flat) : 0;
+    const held = DR_MODEL.hasTableOriginal(table, classifiedCell.cellObj.el);
+    const landed = flat.length > 0 ? writeCell(classifiedCell, flat) : 0;
     if (flat.length > 0 && landed === 0) missedCells++;
-    if (landed === 0 && held) releaseCell(table, entry.cellObj.el);
+    if (landed === 0 && held) releaseCell(table, classifiedCell.cellObj.el);
   }
   return { cells, missedCells, splitDateOrTime };
 }
