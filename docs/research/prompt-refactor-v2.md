@@ -18,7 +18,7 @@ Apply this to the file named in the input. Read that file in full.
 
 Do not edit any files. Write your findings to `docs/private/asx-<YYYYMMDD>-<input file name>.md`, and create no other file.
 
-Report what you find, and leave fixes for a later step. For each finding, say where it is and what it is in one line, and mark it A or B (see Categorize below). Follow a finding into other files when it leads there.
+Report what you find, and leave fixes for a later step. For each finding, say where it is and what it is in one line, and mark it A or B (see Categorize below). Follow a finding into other files when it leads there. Read the names and group headings of the tests for the file's code as well.
 
 ### Coherent Vocabulary
 
@@ -31,8 +31,17 @@ Read every comment in the file.
 
 - Search for: comments on self-documenting code, where the behavior or logic is clear from the code alone.
 - Search for: comments that make up for unreadable code, where what the code does, or where its values come from, is hard to understand without the comment. Leave out cases where making the code readable would complicate it or go against one of the architecture principles below.
-- Search for: comments that describe behavior, names, or values the code no longer has.
+- Search for: comments, test names, test group headings, and documents that describe behavior, names, or values the code no longer has.
+- Search for: a reason written out in full in more than one place. See "Group like concepts into a single location" in `AGENTS.md`.
 - Search for: comments longer than they need to be.
+
+### Test Names
+
+- Search for: a test name or test group heading that breaks the test-name rule under "Code style" in `AGENTS.md`.
+
+### Rules Written Later
+
+- Search for: code, comments, test names, and living documents, in the file, its tests, and the documents that describe it, that no longer follow a rule in `AGENTS.md` or `docs/design.md`, or that still use a term the vocabulary has replaced. See "Docs track behavior" in `AGENTS.md`.
 
 ### Unify Code Paths for Parity by Construction
 
@@ -67,6 +76,7 @@ A cleanup needs no decision only if all of these hold:
 * Read the findings file. Address every Group A cleanup, one at a time.
 * If, mid-effort, you discover a question you had not anticipated, answer it yourself and continue when the answer is trivial or you have a strong recommendation, meaning one option is clearly better and you can say why in one sentence. Otherwise, revert that change and move on.
 * After each cleanup, run the test suites that cover the files you changed. If a suite fails, revert that cleanup and move on.
+* For every cleanup, follow the two search rules under "Docs track behavior" in `AGENTS.md`, in the same commit.
 * Commit your changes with a "refactor:" message that names the file and a summary of the change. Skip the commit if you changed nothing.
 * Return to the main agent the counts for groups A and B, and each judgement call you made, in plain language.
 
@@ -74,7 +84,7 @@ A cleanup needs no decision only if all of these hold:
 
 Use the code-reviewer agent. It has not seen the findings files or the action subagents' reports. Give it the branch, not a summary of the changes.
 
-* Review the branch's full diff against main. Test the claim that every change is a Group A cleanup, as Categorize defines it: look for behavior changes on real page paths, removed guards that a real caller still reaches, changed signatures or return values whose callers were not all updated, and comments that now state something false.
+* Review the branch's full diff against main. Test the claim that every change is a Group A cleanup, as Categorize defines it: look for behavior changes on real page paths, removed guards that a real caller still reaches, changed signatures or return values whose callers were not all updated, and comments, test names, test group headings, or documents that now state something false or that the branch's changes left out of step with a rule under "Docs track behavior" in `AGENTS.md`.
 * Run the test suites that cover the changed files.
 * Edit no files. Return APPROVE or BLOCK, and each finding with its location, its severity, and whether it is a defect in the branch's own changes.
 * A defect in the branch's own changes forces BLOCK. The main agent fixes it or reverts the cleanup that caused it, reruns the suites, and sends the branch back to the same reviewer until it returns APPROVE.
