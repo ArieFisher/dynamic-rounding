@@ -37,9 +37,9 @@ The bump workflow opens each version-bump pull request with the `BUMP_PR_TOKEN` 
 
 To set the secret:
 
-1. In GitHub, open Settings, then Developer settings, then Personal access tokens, then Fine-grained tokens, and generate a new token.
+1. In GitHub, open your account settings (not the repository's), then Developer settings, then Personal access tokens, then Fine-grained tokens, and generate a new token.
 2. Set the resource owner to the repository's owner, and under Repository access choose Only select repositories and pick this repository.
-3. Under Repository permissions, set Contents and Pull requests to Read and write. Leave every other permission at No access.
+3. Under Repository permissions, set Contents and Pull requests to Read and write. GitHub adds Metadata as Read-only on its own. Leave every other permission at No access.
 4. Choose an expiration date and generate the token.
 5. In this repository, open Settings, then Secrets and variables, then Actions, and add a repository secret named `BUMP_PR_TOKEN` holding the token.
 
