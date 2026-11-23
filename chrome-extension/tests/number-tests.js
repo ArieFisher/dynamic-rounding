@@ -108,11 +108,7 @@ eq('format: small int no commas',
   formatNumber(300, '286'),
   '300');
 
-eq('format: trailing zeros stripped when |x|<10',
-  formatNumber(1.5, '1.234'),
-  '1.5');
-
-eq('format: |x|>=10 drops decimals and groups the digits',
+eq('format: a whole result writes no decimals and groups its digits',
   formatNumber(1500, '1.234'),
   '1,500');
 
@@ -1170,29 +1166,8 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   }
 })();
 
-// --- Trailing zeros ---
+// --- Pure cell write: whole and fractional results ---
 
-// trailing zeros always stripped regardless of the original decimal count
-eq('formatNumber: trailing zeros stripped on whole number',
-  formatNumber(1, '1'), '1');
-
-eq('formatNumber: trailing zeros stripped on one-decimal result',
-  formatNumber(1.5, '1.40'), '1.5');
-
-// original has 2 decimals: result has 2 meaningful decimals, no stripping needed
-eq('formatNumber: two meaningful decimals preserved',
-  formatNumber(1.75, '1.72'), '1.75');
-
-// trailing zeros stripped even when original had 2 decimals and result is whole
-eq('formatNumber: trailing zeros stripped on whole number from "1.00"',
-  formatNumber(1, '1.00'), '1');
-
-eq('formatNumber: |rounded|>=10 writes no decimals',
-  formatNumber(12, '12'), '12');
-
-// --- Whole-number short-circuit ---
-
-// a pure cell write drops trailing zeros for whole-number results under 10
 eq('pure cell write: whole number 1 from "1.04" -> "1"',
   writePureCell(1, '1.04'), '1');
 
@@ -1205,7 +1180,7 @@ eq('pure cell write: 0 from "0.04" -> "0"',
 eq('pure cell write: negative whole number -5 from "-5.2" -> "-5"',
   writePureCell(-5, '-5.2'), '-5');
 
-// Fractional results in the <10 band still keep their decimals
+// A fractional result keeps its own decimals
 eq('pure cell write: 1.5 from "1.4" -> "1.5"',
   writePureCell(1.5, '1.4'), '1.5');
 
@@ -1221,9 +1196,6 @@ eq('pure cell write: whole number with currency -> "$2"',
 
 eq('pure cell write: whole negative in parens -> "(3)"',
   writePureCell(-3, '(2.85)'), '(3)');
-
-eq('formatNumber: whole number 1 from "1.04" -> "1"',
-  formatNumber(1, '1.04'), '1');
 
 // =============================================================================
 // Date rounding to year display tests
@@ -2731,17 +2703,6 @@ eq('bracketed: the bracket test answers for the number it is given',
   [isBracketedNegative('(1,234)', 1, '1,234'), isBracketedNegative('(see 4)', 5, '4')],
   [true, false]);
 
-// --- Writing the sign back ---
-
-eq('bracketed: the rounded number carries the sign the original text showed',
-  formatNumber(-1200, '1,234'), '1,200');
-
-eq('bracketed: a written minus sign survives rounding',
-  formatNumber(-1200, '-1,234'), '-1,200');
-
-eq('bracketed: the sign rule leaves a positive number alone',
-  formatNumber(1200, '1,234'), '1,200');
-
 // --- The whole-text match ---
 
 eq('bracketed: a bracket pair holding more than the number is not a whole-text match',
@@ -2953,6 +2914,15 @@ eq('write-back: a space-grouped original comes back with commas',
 
 eq('write-back: trailing zeros go',
   formatNumber(35, '35.0'), '35');
+
+eq('write-back: a whole result from a whole original writes no decimals',
+  formatNumber(12, '12'), '12');
+
+eq('write-back: a result writes its own decimals, not the original\'s count',
+  formatNumber(1.5, '1.234'), '1.5');
+
+eq('write-back: a result keeps every decimal it holds',
+  formatNumber(1.75, '1.72'), '1.75');
 
 eq('write-back: a negative whose original holds no minus sign writes none',
   formatNumber(-1000, '1,234'), '1,000');

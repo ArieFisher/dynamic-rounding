@@ -267,9 +267,8 @@ const PURE_TRAIL_RE = new RegExp(PURE_TRAIL_PATTERN + '$');
  * marks and sign characters and the trailing run of format marks left out.
  * The write-back patches this span alone, so a sign, a currency sign and its
  * gap, a percent sign, and a plus stay where the page put them. The span
- * never starts with a minus sign, so the write-back writes the absolute
- * value and the kept sign carries the negative. index counts into `text` as
- * given, untrimmed.
+ * never starts with a minus sign (see formatNumber for why). index counts
+ * into `text` as given, untrimmed.
  * @param {string} text
  * @returns {{numStr: string, index: number}}
  */

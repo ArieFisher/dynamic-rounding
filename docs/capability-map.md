@@ -11,7 +11,7 @@ What DynamicRounding does, grouped by kind, and how each platform does it. The [
 | | Table step | The whole table at once: the max magnitude, and the column post-pass for ambiguous dates | shared | shared | shared | own, max magnitude only ⚑ |
 | | Simplify numbers | Round a plain number against its order of magnitude | shared | shared | shared | own ⚑ |
 | | Simplify dates and times | Drop the parts of a date or time finer than the granularity, e.g. day to year | shared ⚑ | shared ⚑ | shared ⚑ | — ⚑ |
-| Output format | Write-back | Turn a rounded number back into text: US group marks, trailing zeros trimmed, the characters around the digits left as written | shared ⚑ | shared ⚑ | shared ⚑ | — (returns numbers) |
+| Output format | Write-back | Turn a rounded value back into text: US group marks, trailing zeros trimmed, the characters around the digits left as written | shared ⚑ | shared ⚑ | shared ⚑ | — (returns numbers) |
 | Adapters | Input adapter | Find the table and list its cells, each with its position, its value, and the facts its text does not show (e.g. a footnote mark, a link) | detection, then the native-table adapter or the grid adapter | markdown adapter | Sheets input step: the cell range passed to the formula | a value, a list, or a pandas series |
 | | Output writer | Apply each cell's patches at the cell's place in the source | patch writer: edits the page's text pieces | text table step: rewrites the markdown text | returns cell values | returns values or a series |
 | Application | Interaction | How the user starts, stops, and adjusts simplification | right-click, table pillbox, sidebar | toggle command, status entry | formula call | function call |

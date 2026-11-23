@@ -17,7 +17,7 @@ Four platforms run the product: the Chrome extension, the Claude Code plugin, Go
 | Group | What it holds |
 | --- | --- |
 | Core | The code that determines what each cell becomes: the settings contract, the classification ladder, the table step, and the rounding of numbers, dates, and times |
-| Output format | The write-back, which turns a rounded number back into text |
+| Output format | The write-back, which turns a rounded value back into text |
 | Adapters | The code between one source and the core: the input adapter, which finds a table and lists its cells, and the output writer, which applies each cell's patches |
 | Application | How the user starts, stops, and adjusts simplification, the state kept between actions, and how the parts exchange messages |
 | Support | Diagnostics and the build |
