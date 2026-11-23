@@ -723,7 +723,7 @@ const DATE_NOISE_CLASS = `[\\s${SUPERSCRIPT_DIGITS}${FOOTNOTE_MARKERS}]`;
 const DATE_START = '(?:^|(?<=[^\\w]))';
 const DATE_END = '(?=$|[^\\w])';
 // Any digit run in a date may carry an ordinal suffix ("21st", "2020th"). A
-// day, month, or year group holds its suffix, so a cut takes the suffix with
+// day, month, or year group holds its suffix, so a cut includes the suffix with
 // its digits, and parseInt reads the digits alone. The all-numeric shape's
 // year group holds the digits alone, because the two-digit pivot reads their
 // count.
@@ -818,9 +818,9 @@ const BARE_YEAR_RE = new RegExp(`^${DATE_NOISE_CLASS}*${YEAR}${DATE_NOISE_CLASS}
 /**
  * Find every date in a trimmed cell text, left to right: each match of a shape
  * in DATE_SHAPES, or else a bare year as the whole cell. Each date is a date
- * with a known reading (see knownDate; a bare year holds month null and no monthBeforeYear),
- * an all-numeric date (see the all-numeric shape), or an impossible date
- * ("2020-13-45"): { impossible: true, start, end }.
+ * with a known reading (see knownDate; a bare year holds month null and no
+ * monthBeforeYear), an all-numeric date (see the all-numeric shape), or an
+ * impossible date ("2020-13-45"): { impossible: true, start, end }.
  * @returns {object[]|null} the dates, or null when the text holds none.
  */
 function findDates(text) {
