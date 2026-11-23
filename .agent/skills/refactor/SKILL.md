@@ -1,3 +1,8 @@
+---
+name: refactor
+description: Run a refactor pass over a file, a list of files, or a directory. For each file, a find subagent reports cleanups in two groups, A (no decision needed) and B (decisions for the product manager), and an action subagent makes the Group A cleanups. A review subagent then checks the whole branch, and the run opens a pull request. Use this skill when the user asks for a refactor pass or names this skill.
+---
+
 ## Agent instruction
 
 * Before the first file, create a branch from main named `refactor/asx-<YYYYMMDD>`.
