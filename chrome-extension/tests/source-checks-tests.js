@@ -2180,9 +2180,9 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 // model's publish reaching the view's subscription is the wiring under test.
 
 (function toastViewShowsErrorRows() {
-  const uiToastCode = sourceByName('toast-view.js');
-  eq('toast: toast-view.js is a content script in the manifest', uiToastCode !== null, true);
-  if (uiToastCode === null) return;
+  const toastViewCode = sourceByName('toast-view.js');
+  eq('toast: toast-view.js is a content script in the manifest', toastViewCode !== null, true);
+  if (toastViewCode === null) return;
 
   const appended = [];
   const timers = [];
@@ -2214,7 +2214,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
     clearTimeout: () => { cleared++; },
   };
   const ctx = vm.createContext(sandbox);
-  vm.runInContext(constantsCode + '\n' + busCode + '\n' + modelCode + '\n' + uiToastCode +
+  vm.runInContext(constantsCode + '\n' + busCode + '\n' + modelCode + '\n' + toastViewCode +
     '\nthis.__model = DR_MODEL; this.__toast = DR_TOAST;', ctx);
   const model = sandbox.__model;
   const view = sandbox.__toast;
@@ -2250,7 +2250,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
   eq('toast: a click removes the toast', appended.some(isToast), false);
   eq('toast: the stylesheet is injected once for the page\'s life',
     appended.filter((el) => el._tag === 'style').length, 1);
-  eq('toast: the view logs nothing', /DR_LOG\./.test(uiToastCode), false);
+  eq('toast: the view logs nothing', /DR_LOG\./.test(toastViewCode), false);
 })();
 
 // --- lib/dr-log: call sites route through the buffer ---

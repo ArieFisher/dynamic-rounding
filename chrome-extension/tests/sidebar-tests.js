@@ -537,7 +537,7 @@
 // callback, which the sidebar uses to react to delivery: clear statusEl on
 // success, setTableBound(false) when nothing answers (no content script on
 // the tab).
-// This isolates DR_BUS in its own vm sandbox (messaging.js has no DOM
+// This isolates DR_BUS in its own vm sandbox (app/bus.js has no DOM
 // dependency) and pins the call shape directly, independent of sidebar.js's
 // heavier DOM requirements.
 // ---------------------------------------------------------------------------

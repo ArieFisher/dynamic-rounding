@@ -31,7 +31,7 @@ The source is what a platform reads its tables from: a web page, a reply block's
 
 No tool checks the first rule directly. The Sheets and plugin suites run the core in Node with no page, so a page call in the core fails them only where a test reaches it. The extension has no build step and no import statements: its content scripts share one scope, loaded in the order the manifest lists, so nothing stops one file from calling another. A reviewer checks the rest.
 
-The extension's folder names predate the groups. The event bus sits in a folder named adapters, though it belongs to Application, and the library folder holds core, adapter, and support code side by side.
+The extension's folder names predate the groups. The library folder holds core, adapter, and support code side by side.
 
 ## How the code is shared
 

@@ -4,8 +4,9 @@
  *
  * Loaded LAST within lib/dr-number, after every other file in it. Those
  * files declare their functions as bare top-level names on the shared global
- * scope, and their callers call those bare names. This file adds a single DR_NUMBER object that groups every
- * top-level function of those files. No file reads DR_NUMBER.x yet.
+ * scope, and their callers call those bare names. This file adds a single
+ * DR_NUMBER object that groups every top-level function of those files. No
+ * file reads DR_NUMBER.x yet.
  *
  * Do not add behavior.
  */
