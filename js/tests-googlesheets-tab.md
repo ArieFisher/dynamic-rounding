@@ -35,11 +35,11 @@
 | Section 3: Input Handling |  |  |  |  |  |  |  |
 |  | **Input Handling** |  |  |  |  | *//format B38, B40:B42, E38, and E40:E42 as plain text* |  |
 |  | **Input** | **Formula** | **Result** | **Expected** |  | **Note:** |  |
-| \=IF(D37=E37, "✓", "✗") | \-500 | `=FORMULATEXT(D37)` | `=ROUND_DYNAMIC(B37)` | \-500 |  | Note: a number in accounting format; the cell shows $ (500.00) |  |
-| \=IF(D38=E38, "✓", "✗") | (500) | `=FORMULATEXT(D38)` | `=ROUND_DYNAMIC(B38)` | (500) |  | Note: text in accounting form; the brackets stay |  |
-| \=IF(D39=E39, "✓", "✗") | \-500 | `=FORMULATEXT(D39)` | `=ROUND_DYNAMIC(B39)` | \-500 |  | Note: a number in currency format; the cell shows -$500.00 |  |
+| \=IF(D37=E37, "✓", "✗") | \-511 | `=FORMULATEXT(D37)` | `=ROUND_DYNAMIC(B37)` | \-500 |  | Note: a number in accounting format; the cell shows $ (511.00) |  |
+| \=IF(D38=E38, "✓", "✗") | (511) | `=FORMULATEXT(D38)` | `=ROUND_DYNAMIC(B38)` | (500) |  | Note: text in accounting form; the brackets stay |  |
+| \=IF(D39=E39, "✓", "✗") | \-511 | `=FORMULATEXT(D39)` | `=ROUND_DYNAMIC(B39)` | \-500 |  | Note: a number in currency format; the cell shows -$511.00 |  |
 | \=IF(D40=E40, "✓", "✗") | $1,234.56 | `=FORMULATEXT(D40)` | `=ROUND_DYNAMIC(B40)` | $1,000 |  | \="ISTEXT(B40)= " & ISTEXT(B40) |  |
-| \=IF(D41=E41, "✓", "✗") | €4,500 | `=FORMULATEXT(D41)` | `=ROUND_DYNAMIC(B41)` | €4,500 |  | \="ISTEXT(B41)= " & ISTEXT(B41) |  |
+| \=IF(D41=E41, "✓", "✗") | €4,511 | `=FORMULATEXT(D41)` | `=ROUND_DYNAMIC(B41)` | €4,500 |  | \="ISTEXT(B41)= " & ISTEXT(B41) |  |
 | \=IF(D42=E42, "✓", "✗") | 1,234,567 | `=FORMULATEXT(D42)` | `=ROUND_DYNAMIC(B42)` | 1,000,000 |  | \="ISTEXT(B42)= " & ISTEXT(B42) |  |
 | \=IF(D43=E43, "✓", "✗") | TRUE | `=FORMULATEXT(D43)` | `=ROUND_DYNAMIC(B43)` | TRUE |  | \="ISLOGICAL(B43)=" & ISLOGICAL(B43) |  |
 | \=IF(ISREF(D44), "✓", "✗") | \#REF\! | `=FORMULATEXT(D44)` | `=ROUND_DYNAMIC(B44)` | \#REF\! |  | \="ISREF(B44)= " & ISREF(B44) |  |
@@ -59,16 +59,43 @@
 | \=IF(D58=E58, "✓", "✗") | −502 | `=FORMULATEXT(D58)` | `=ROUND_DYNAMIC(B58)` | −500 |  | Note: the "long minus" sign (U+2212) reads as a minus sign and stays |  |
 | \=IF(D59=E59, "✓", "✗") | $ | `=FORMULATEXT(D59)` | `=ROUND_DYNAMIC(B59)` | $ |  | Note: symbol-only string passes through, not 0 |  |
 |  |  |  |  |  |  |  |  |
-| Section 6: Text cells |  |  |  |  |  |  |  |
-|  | **Text cells** |  |  |  |  | *//format the Input and Expected cells as plain text* |  |
-|  | **Input** | **Formula** | **Result** | **Expected** |  | **Note:** |  |
-| \=IF(D64=E64, "✓", "✗") | about 1,234 users | `=FORMULATEXT(D64)` | `=ROUND_DYNAMIC(B64)` | about 1,000 users |  | Note: a number inside text rounds in place |  |
-| \=IF(D65=E65, "✓", "✗") | 4.91tn | `=FORMULATEXT(D65)` | `=ROUND_DYNAMIC(B65)` | 5tn |  | Note: a unit number keeps its magnitude suffix |  |
-| \=IF(D66=E66, "✓", "✗") | CAD45.67 | `=FORMULATEXT(D66)` | `=ROUND_DYNAMIC(B66)` | CAD45 |  | Note: a unit number keeps its currency code |  |
-| \=IF(D67=E67, "✓", "✗") | R47 | `=FORMULATEXT(D67)` | `=ROUND_DYNAMIC(B67)` | R45 |  | Note: a currency sign written in letters |  |
-| \=IF(D68=E68, "✓", "✗") | (1,234) | `=FORMULATEXT(D68)` | `=ROUND_DYNAMIC(B68)` | (1,000) |  | Note: a bracketed number keeps its brackets |  |
-| \=IF(D69=E69, "✓", "✗") | $1,011 | `=FORMULATEXT(D69)` | `=ROUND_DYNAMIC(B69)` | $1,000 |  | \="ISTEXT(D69)= " & ISTEXT(D69) |  |
-| \=IF(D70=E70, "✓", "✗") | 416-555-1234 | `=FORMULATEXT(D70)` | `=ROUND_DYNAMIC(B70)` | 416-555-1234 |  | Note: a phone number stays |  |
-| \=IF(D71=E71, "✓", "✗") | Q3 2020 | `=FORMULATEXT(D71)` | `=ROUND_DYNAMIC(B71)` | Q3 2,000 |  | Note: a year inside text rounds |  |
-| \=IF(D72=E72, "✓", "✗") | 2020 | `=FORMULATEXT(D72)` | `=ROUND_DYNAMIC(B72)` | 2020 |  | Note: a bare year typed as text reads as a date, and dates stay |  |
-| \=IF(D73=E73, "✓", "✗") | 2024-01-15 | `=FORMULATEXT(D73)` | `=ROUND_DYNAMIC(B73)` | 2024-01-15 |  | Note: date text stays |  |
+|  |  |  |  |  |  |  |  |
+|  |  |  |  |  |  |  |  |
+| Section 6: look like numbers but should not be simplified |  |  |  |  |  | *//format E81 as plain text* |  |
+|  | **Input** | **Formula** | **Result** | **Expected** |  |  |  |
+| \=IF(D65=E65, "✓", "✗") | 416 555 1234 | `=FORMULATEXT(D65)` | `=ROUND_DYNAMIC(B65:B82)` | 416 555 1234 |  |  |  |
+| \=IF(D66=E66, "✓", "✗") | 1 416 555 1234 | *(spills)* | 1 416 555 1234 | 1 416 555 1234 |  |  |  |
+| \=IF(D67=E67, "✓", "✗") | 416-555-1234 | *(spills)* | 416-555-1234 | 416-555-1234 |  |  |  |
+| \=IF(D68=E68, "✓", "✗") | (416) 555-1234 | *(spills)* | (416) 555-1234 | (416) 555-1234 |  |  |  |
+| \=IF(D69=E69, "✓", "✗") | (416)555-1234 | *(spills)* | (416)555-1234 | (416)555-1234 |  |  |  |
+| \=IF(D70=E70, "✓", "✗") | @2020vision | *(spills)* | @2020vision | @2020vision |  |  |  |
+| \=IF(D71=E71, "✓", "✗") | 1-800-555-0199 | *(spills)* | 1-800-555-0199 | 1-800-555-0199 |  |  |  |
+| \=IF(D72=E72, "✓", "✗") | 192.168.0.1 | *(spills)* | 192.168.0.1 | 192.168.0.1 |  |  |  |
+| \=IF(D73=E73, "✓", "✗") | 2001:db8::1 | *(spills)* | 2001:db8::1 | 2001:db8::1 |  |  |  |
+| \=IF(D74=E74, "✓", "✗") | https://example.com/item/123 | *(spills)* | https://example.com/item/123 | https://example.com/item/123 |  |  |  |
+| \=IF(D75=E75, "✓", "✗") | 311@example.com | *(spills)* | 311@example.com | 311@example.com |  |  |  |
+| \=IF(D76=E76, "✓", "✗") | ISBN 978-0-306-40615-7 | *(spills)* | ISBN 978-0-306-40615-7 | ISBN 978-0-306-40615-7 |  |  |  |
+| \=IF(D77=E77, "✓", "✗") | M5V 2T6 | *(spills)* | M5V 2T6 | M5V 2T6 |  |  |  |
+| \=IF(D78=E78, "✓", "✗") | SW1A 1AA | *(spills)* | SW1A 1AA | SW1A 1AA |  |  |  |
+| \=IF(D79=E79, "✓", "✗") | 90210-1234 | *(spills)* | 90210-1234 | 90210-1234 |  |  |  |
+| \=IF(D80=E80, "✓", "✗") | Call 416-555-1234 | *(spills)* | Call 416-555-1234 | Call 416-555-1234 |  |  |  |
+| \=IF(D81=E81, "✓", "✗") | 1 234 567 | *(spills)* | 1,000,000 | 1,000,000 |  |  |  |
+| \=IF(D82=E82, "✓", "✗") | 90210 | *(spills)* | 90000 | 90000 |  |  |  |
+|  |  |  |  |  |  |  |  |
+| Section 7: simplifying numbers inside text cells |  |  |  |  |  |  |  |
+|  | **Input** |  | **Result** | **Expected** |  |  |  |
+| \=IF(D86=E86, "✓", "✗") | Call 416-555-1234 about 1,613,245 units |  | `=ROUND_DYNAMIC(B86:B100)` | Call 416-555-1234 about 1,500,000 units |  |  |  |
+| \=IF(D87=E87, "✓", "✗") | (416) 555-1234 ordered 918,554 |  | (416) 555-1234 ordered 900,000 | (416) 555-1234 ordered 900,000 |  |  |  |
+| \=IF(D88=E88, "✓", "✗") | Fax 416.555.1234, 427,808 pages |  | Fax 416.555.1234, 450,000 pages | Fax 416.555.1234, 450,000 pages |  |  |  |
+| \=IF(D89=E89, "✓", "✗") | Dial 1-800-555-0199 for 263,114 refunds |  | Dial 1-800-555-0199 for 250,000 refunds | Dial 1-800-555-0199 for 250,000 refunds |  |  |  |
+| \=IF(D90=E90, "✓", "✗") | Host 192.168.0.1 served 1,482,391 requests |  | Host 192.168.0.1 served 1,500,000 requests | Host 192.168.0.1 served 1,500,000 requests |  |  |  |
+| \=IF(D91=E91, "✓", "✗") | Host 2001:db8::1 served 947,310 requests |  | Host 2001:db8::1 served 950,000 requests | Host 2001:db8::1 served 950,000 requests |  |  |  |
+| \=IF(D92=E92, "✓", "✗") | See https://example.com/item/123 for 431,552 rows |  | See https://example.com/item/123 for 450,000 rows | See https://example.com/item/123 for 450,000 rows |  |  |  |
+| \=IF(D93=E93, "✓", "✗") | Mail 311@example.com about 270,987 orders |  | Mail 311@example.com about 250,000 orders | Mail 311@example.com about 250,000 orders |  |  |  |
+| \=IF(D94=E94, "✓", "✗") | ISBN 978-0-306-40615-7 sold 90,114 copies |  | ISBN 978-0-306-40615-7 sold 90,000 copies | ISBN 978-0-306-40615-7 sold 90,000 copies |  |  |  |
+| \=IF(D95=E95, "✓", "✗") | Ship to M5V 2T6, 1,506,220 parcels |  | Ship to M5V 2T6, 1,500,000 parcels | Ship to M5V 2T6, 1,500,000 parcels |  |  |  |
+| \=IF(D96=E96, "✓", "✗") | Ship to SW1A 1AA, 1,002,466 parcels |  | Ship to SW1A 1AA, 1,000,000 parcels | Ship to SW1A 1AA, 1,000,000 parcels |  |  |  |
+| \=IF(D97=E97, "✓", "✗") | Ship to 90210-1234, 440,193 parcels |  | Ship to 90210-1234, 450,000 parcels | Ship to 90210-1234, 450,000 parcels |  |  |  |
+| \=IF(D98=E98, "✓", "✗") | Call 416 555 1234 about 281,745 units |  | Call 400 550 1,000 about 300,000 units | Call 400 550 1,000 about 300,000 units |  |  |  |
+| \=IF(D99=E99, "✓", "✗") | In 2024 12 stores opened |  | In 2,000 10 stores opened | In 2,000 10 stores opened |  |  |  |
+| \=IF(D100=E100, "✓", "✗") | 978-0-306-40615-7 sold 90,114 copies |  | 1,000-0-300-40,000-7 sold 90,000 copies | 1,000-0-300-40,000-7 sold 90,000 copies |  |  |  |
