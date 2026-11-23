@@ -50,7 +50,7 @@ The extension's folder names predate the groups. The library folder holds core, 
 ## Reading a cell
 
 - **One classification ladder reads every text cell, on every platform that reads text.** The extension, the plugin, and Sheets run the same ladder. Why: two readers of one cell would drift apart.
-- **When a reading is in doubt, the text stays as written.** An identifier shape, a split number, an impossible date, an ambiguous date the column post-pass cannot settle, and a number the number shape test rejects, such as "13,63", all stay as written. Why: a reader loses a little time on an unrounded number, and a reader misreads a wrongly rounded one.
+- **When a reading is in doubt, the text stays as written.** An identifier shape, a split number, an impossible date, an impossible time, an ambiguous date the column post-pass cannot settle, and a number the number shape test rejects, such as "13,63", all stay as written. Why: a reader loses a little time on an unrounded number, and a reader misreads a wrongly rounded one.
 - **One number format function holds the marks.** It returns a comma and a dot, US style, and both the number shape test and the write-back read it. Why: the code that reads a number and the code that writes it then use the same marks.
 
 ## Tables in the extension

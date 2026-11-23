@@ -55,6 +55,8 @@ const DR_NUMBER = {
   getClockTimeMaskedRanges,
   parseISODateTime,
   isDateTimeLike,
+  isClockTimeInRange,
+  readTimeCell,
   roundDateText,
   roundClockTime,
   roundTimeText,

@@ -1314,6 +1314,7 @@
     // dates.js
     'knownDate', 'findDates', 'isAmbiguousDate',
     'isDateLike', 'isTimeLike', 'getClockTimeMaskedRanges', 'parseISODateTime', 'isDateTimeLike',
+    'isClockTimeInRange', 'readTimeCell',
     'roundDateText', 'roundClockTime', 'roundTimeText', 'getEraYearMaskedRanges',
     // write-back.js
     'formatNumber',

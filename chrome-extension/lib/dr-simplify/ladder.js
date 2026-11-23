@@ -92,10 +92,10 @@ function extractSimplifyMatches(text, superscriptRanges, markupRanges = []) {
  *   reason: the rule that gave the mode. For a skip: 'out-of-range', the
  *     exclusion getExclusionReason returns ('first-row', 'first-column',
  *     'percent', 'currency'), 'quoted', 'times-disabled', 'dates-disabled',
- *     'impossible-date', 'identifier', 'markup', or 'no-number'. 'superscript'
- *     marks a cell with a superscript whose text the number reader reads as one
- *     number, skipped or extracted. 'unit' marks a unit number, and
- *     'simplify' every other cell that simplifies.
+ *     'impossible-date', 'impossible-time', 'identifier', 'markup', or
+ *     'no-number'. 'superscript' marks a cell with a superscript whose text
+ *     the number reader reads as one number, skipped or extracted. 'unit'
+ *     marks a unit number, and 'simplify' every other cell that simplifies.
  *   value: mode-specific payload —
  *     'date' (resolved) → { dates }, each date with a known reading — see
  *       findDates in lib/dr-number
@@ -148,11 +148,12 @@ function classifyCell(input, options) {
   // switch. Checked before findDates, which would otherwise match the date of
   // a space-separated date-time.
   let dates = null;
-  if (isDateTimeLike(trimmed) || isTimeLike(trimmed)) {
+  const time = readTimeCell(trimmed);
+  if (time) {
     if (!overlapsMaskedRange(markupInTrimmed, 0, trimmed.length)) {
-      return options.simplifyTimes
-        ? { mode: 'time', reason: 'simplify' }
-        : { mode: 'skip', reason: 'times-disabled' };
+      if (!options.simplifyTimes) return { mode: 'skip', reason: 'times-disabled' };
+      if (time.impossible) return { mode: 'skip', reason: 'impossible-time' };
+      return { mode: 'time', reason: 'simplify' };
     }
     held = [...held, fromTrimmed({ start: 0, end: trimmed.length })];
   } else {

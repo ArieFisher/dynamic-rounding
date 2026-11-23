@@ -865,7 +865,8 @@ const WHOLE_CELL_TIME_RE = new RegExp('^' + CLOCK_TIME_SOURCE + '(?<meridiem>\\s
 const CLOCK_TIME_IN_TEXT_RE = new RegExp('(?<![\\d:])' + CLOCK_TIME_SOURCE + '(?![\\d:])', 'g');
 
 function isTimeLike(text) {
-  return WHOLE_CELL_TIME_RE.test(text);
+  const time = readTimeCell(text);
+  return Boolean(time && !time.impossible && !time.date);
 }
 
 /**
@@ -890,16 +891,44 @@ const ISO_DATE_TIME_RE = new RegExp('^(?<year>\\d{4})-(?<month>\\d{2})-(?<day>\\
  * @returns {{year:number, month:number, day:number, hour:number, minute:number, second:number}|null}
  */
 function parseISODateTime(text) {
+  const time = readTimeCell(text);
+  if (!time || time.impossible || !time.date) return null;
+  const { hour, minute, second } = time;
+  return { ...time.date, hour, minute, second };
+}
+
+// The one range check for a time's parts: an hour of 1 to 12 with an AM/PM or
+// 0 to 23 without, and minutes and seconds of 0 to 59.
+function isClockTimeInRange(hour, minute, second, hasMeridiem) {
+  const hourInRange = hasMeridiem ? hour >= 1 && hour <= 12 : hour >= 0 && hour <= 23;
+  return hourInRange && minute <= 59 && second <= 59;
+}
+
+/**
+ * Read a cell's text as one whole-cell clock time or one ISO date-time.
+ * Returns null for text in neither shape or an ISO date-time whose date
+ * cannot exist, { impossible: true } for a time with a part out of range
+ * ("24:00", "10:00:75"), and otherwise the time: its hour as written
+ * (hourText), hour, minute, second, its AM/PM as written (meridiem, '' for
+ * none), and, for an ISO date-time, its date { year, month, day }.
+ */
+function readTimeCell(text) {
   if (typeof text !== 'string') return null;
-  const m = text.trim().match(ISO_DATE_TIME_RE);
+  const trimmed = text.trim();
+  const iso = trimmed.match(ISO_DATE_TIME_RE);
+  const m = iso || trimmed.match(WHOLE_CELL_TIME_RE);
   if (!m) return null;
   const g = m.groups;
-  if (!isMonth(g.month) || !isDay(g.day)) return null;
-  const hour = parseInt(g.hour, 10);
-  const minute = parseInt(g.minute, 10);
-  if (hour > 23 || minute > 59) return null;
-  const second = g.second ? parseInt(g.second, 10) : 0;
-  return { year: parseInt(g.year, 10), month: parseInt(g.month, 10), day: parseInt(g.day, 10), hour, minute, second };
+  if (iso && (!isMonth(g.month) || !isDay(g.day))) return null;
+  const time = {
+    hourText: g.hour,
+    hour: parseInt(g.hour, 10),
+    minute: parseInt(g.minute, 10),
+    second: g.second ? parseInt(g.second, 10) : 0,
+    meridiem: g.meridiem || '',
+    date: iso ? { year: parseInt(g.year, 10), month: parseInt(g.month, 10), day: parseInt(g.day, 10) } : null,
+  };
+  return isClockTimeInRange(time.hour, time.minute, time.second, time.meridiem !== '') ? time : { impossible: true };
 }
 
 function isDateTimeLike(text) {
@@ -950,8 +979,7 @@ const TIME_STEP_SECONDS = { minute: SECONDS_PER_MINUTE, hour: SECONDS_PER_HOUR }
 function roundClockTime({ hour, minute, second, isPm, isTwentyFourHour }, granularity) {
   const step = TIME_STEP_SECONDS[granularity];
   const hasMeridiem = typeof isPm === 'boolean';
-  const hourInRange = hasMeridiem ? hour >= 1 && hour <= 12 : hour >= 0 && hour <= 23;
-  if (!step || !hourInRange || minute > 59 || second > 59) return null;
+  if (!step || !isClockTimeInRange(hour, minute, second, hasMeridiem)) return null;
   const hour24 = hasMeridiem ? (hour % 12) + (isPm ? 12 : 0) : hour;
   const isLastHour = hour24 === 23 || (!hasMeridiem && !isTwentyFourHour && hour === 11);
   const isLastStep = isLastHour && (granularity === 'hour' || minute === 59);
@@ -972,24 +1000,19 @@ function roundClockTime({ hour, minute, second, isPm, isTwentyFourHour }, granul
  * the text holds neither or the result equals the text.
  */
 function roundTimeText(text, granularity) {
-  if (typeof text !== 'string') return null;
+  const time = readTimeCell(text);
+  if (!time || time.impossible) return null;
   const trimmed = text.trim();
   const pad = (n) => String(n).padStart(2, '0');
   const changed = (result) => (result === trimmed ? null : result);
-  const dt = parseISODateTime(trimmed);
-  if (dt) {
-    const rounded = roundClockTime({ ...dt, isTwentyFourHour: true }, granularity);
-    return rounded && changed(`${dt.year}-${pad(dt.month)}-${pad(dt.day)} ${pad(rounded.hour)}:${pad(rounded.minute)}`);
+  const { hourText, hour, minute, second, meridiem, date } = time;
+  if (date) {
+    const rounded = roundClockTime({ hour, minute, second, isTwentyFourHour: true }, granularity);
+    return rounded && changed(`${date.year}-${pad(date.month)}-${pad(date.day)} ${pad(rounded.hour)}:${pad(rounded.minute)}`);
   }
-  const m = trimmed.match(WHOLE_CELL_TIME_RE);
-  if (!m) return null;
-  const { hour, minute, second, meridiem = '' } = m.groups;
-  const rounded = roundClockTime({
-    hour: parseInt(hour, 10), minute: parseInt(minute, 10), second: second ? parseInt(second, 10) : 0,
-    isPm: meridiem ? /p/i.test(meridiem) : undefined,
-  }, granularity);
+  const rounded = roundClockTime({ hour, minute, second, isPm: meridiem ? /p/i.test(meridiem) : undefined }, granularity);
   if (!rounded) return null;
-  const roundedHour = !meridiem && hour.length === 2 ? pad(rounded.hour) : String(rounded.hour);
+  const roundedHour = !meridiem && hourText.length === 2 ? pad(rounded.hour) : String(rounded.hour);
   // Swap the a/p letter alone, so the suffix keeps its case, dots, and spacing.
   const suffix = rounded.isPm ? meridiem.replace(/a/i, (c) => (c === 'A' ? 'P' : 'p'))
     : meridiem.replace(/p/i, (c) => (c === 'P' ? 'A' : 'a'));
@@ -1443,10 +1466,10 @@ function extractSimplifyMatches(text, superscriptRanges, markupRanges = []) {
  *   reason: the rule that gave the mode. For a skip: 'out-of-range', the
  *     exclusion getExclusionReason returns ('first-row', 'first-column',
  *     'percent', 'currency'), 'quoted', 'times-disabled', 'dates-disabled',
- *     'impossible-date', 'identifier', 'markup', or 'no-number'. 'superscript'
- *     marks a cell with a superscript whose text the number reader reads as one
- *     number, skipped or extracted. 'unit' marks a unit number, and
- *     'simplify' every other cell that simplifies.
+ *     'impossible-date', 'impossible-time', 'identifier', 'markup', or
+ *     'no-number'. 'superscript' marks a cell with a superscript whose text
+ *     the number reader reads as one number, skipped or extracted. 'unit'
+ *     marks a unit number, and 'simplify' every other cell that simplifies.
  *   value: mode-specific payload —
  *     'date' (resolved) → { dates }, each date with a known reading — see
  *       findDates in lib/dr-number
@@ -1499,11 +1522,12 @@ function classifyCell(input, options) {
   // switch. Checked before findDates, which would otherwise match the date of
   // a space-separated date-time.
   let dates = null;
-  if (isDateTimeLike(trimmed) || isTimeLike(trimmed)) {
+  const time = readTimeCell(trimmed);
+  if (time) {
     if (!overlapsMaskedRange(markupInTrimmed, 0, trimmed.length)) {
-      return options.simplifyTimes
-        ? { mode: 'time', reason: 'simplify' }
-        : { mode: 'skip', reason: 'times-disabled' };
+      if (!options.simplifyTimes) return { mode: 'skip', reason: 'times-disabled' };
+      if (time.impossible) return { mode: 'skip', reason: 'impossible-time' };
+      return { mode: 'time', reason: 'simplify' };
     }
     held = [...held, fromTrimmed({ start: 0, end: trimmed.length })];
   } else {

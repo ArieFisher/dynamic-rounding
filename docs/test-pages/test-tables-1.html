@@ -1359,11 +1359,14 @@
         2024-11-03T23:45:00Z          -> 2024-11-03 23:00 -> 2024-11-03 23:45
         2024-11-03T11:45:00           -> 2024-11-03 12:00 -> 2024-11-03 11:45
         2024-11-03T08:15:30.250-05:00 -> 2024-11-03 08:00 -> 2024-11-03 08:16
+      A failure in the last hour shows 2024-11-03 23:59 or 2024-11-04. A
+      failure at hour 11 shows 2024-11-03 11:00.
         2024-11-03 9:29:00            -> 2024-11-03 09:00 -> 2024-11-03 09:29
       A one-digit hour reads like a two-digit hour. A failure there leaves
       9:29:00 as written, and the date simplifies when Dates is on.
-      A failure in the last hour shows 2024-11-03 23:59 or 2024-11-04. A
-      failure at hour 11 shows 2024-11-03 11:00.
+        2024-11-03T24:00              -> 2024-11-03T24:00 -> 2024-11-03T24:00
+      Hour 24 is an impossible time, so the cell stays as written with Times
+      on or off. A failure shows the year as 2,000 or the date simplified.
     -->
     <table>
       <thead>
@@ -1543,6 +1546,11 @@
           <th scope="row">Timestamp, one-digit hour</th>
           <td>2024-11-03 9:29:00</td>
           <td>Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Timestamp, impossible time, held</th>
+          <td>2024-11-03T24:00</td>
+          <td>Nothing</td>
         </tr>
       </tbody>
     </table>
