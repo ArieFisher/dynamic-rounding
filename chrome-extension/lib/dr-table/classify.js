@@ -36,6 +36,8 @@ function pieceRanges(cell, layout, isInside) {
   return classified;
 }
 
+const SUPERSCRIPT_TAG = 'SUP';
+
 /**
  * The ranges of the classified text that sit inside a <sup> element or an
  * element whose computed vertical-align is 'super'.

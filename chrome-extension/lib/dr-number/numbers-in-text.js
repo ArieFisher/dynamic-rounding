@@ -130,6 +130,13 @@ function getExclusionReason(text, columnIndex, options, rowIndex) {
   return null;
 }
 
+// The {start, end} range of each match of a global regex in the text, or,
+// given a group name, of that named group (the regex then needs the d flag).
+const matchRanges = (text, re, group) => (typeof text !== 'string' ? [] : Array.from(text.matchAll(re), (m) => {
+  const [start, end] = group ? m.indices.groups[group] : [m.index, m.index + m[0].length];
+  return { start, end };
+}));
+
 /**
  * Returns an array of {start, end} ranges for all balanced ASCII double-quoted spans
  * in the given string. Unbalanced quotes produce no range for the unpaired quote.
@@ -137,14 +144,7 @@ function getExclusionReason(text, columnIndex, options, rowIndex) {
  * @returns {{start: number, end: number}[]}
  */
 function getQuoteMaskedRanges(text) {
-  if (typeof text !== 'string') return [];
-  const ranges = [];
-  const re = /"([^"]*)"/g;
-  let m;
-  while ((m = re.exec(text)) !== null) {
-    ranges.push({ start: m.index, end: m.index + m[0].length });
-  }
-  return ranges;
+  return matchRanges(text, /"[^"]*"/g);
 }
 
 /**
