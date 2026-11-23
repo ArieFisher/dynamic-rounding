@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 /**
- * DynamicRounding domain core (coercion + magnitude helpers).
+ * The number reader: the currency list, the format marks, the group shape,
+ * the number shape test, and toNumber, which turns a text into a value.
  *
  * Read by three scripts, each AFTER rounding.js: the content script (via
  * manifest content_scripts), the sidebar (via a script tag), and the Google
@@ -9,10 +10,7 @@
  * remain framework-free and side-effect-free: no chrome.*, no DOM access, no
  * Node module code. All symbols land on the global scope of whichever script
  * holds this file, so the extension and the Sheets library share one
- * currency list, one findMaxMagnitude, and one toNumber.
- *
- * The arithmetic primitives (roundWithOffset, roundValueSetAware) live in
- * rounding.js, which must load before this file.
+ * currency list and one toNumber.
  */
 
 // The one currency list. Each row gives a currency's written signs and its
@@ -79,14 +77,14 @@ const CURRENCY_SIGN_ALTERNATION = CURRENCY_SIGNS
 // One currency sign, anywhere in a text.
 const CURRENCY_SIGN_RE = new RegExp(CURRENCY_SIGN_ALTERNATION);
 
-// Constants of the coercion and magnitude layer.
+// Constants of the number reader.
 // The one format-mark list: a character that sits beside a number without
 // belonging to it — a currency sign, a percent sign, and whitespace. The
 // signs come from CURRENCIES above, so a new row reaches this list too.
 // Every rule that steps past a mark to reach a number reads this one source:
 // the clean-up before a text reads as a number, the test for what stands
 // between a bracket and the number, and the pure number span
-// (lib/dr-number/parsing.js).
+// (lib/dr-number/numbers-in-text.js).
 // A bracket is not a format mark: it is the number's minus sign, and adding
 // it here would strip it before PARENS_REGEX below could read it.
 const FORMAT_MARK_ALTERNATION = '(?:' + CURRENCY_SIGN_ALTERNATION + '|[\\s%])';
@@ -98,27 +96,9 @@ const CLEAN_REGEX = new RegExp('(?!(?<=\\d\\s*)\\s(?=\\s*\\d))' + FORMAT_MARK_AL
 const PARENS_REGEX = /^\((.+)\)$/;
 // The characters toNumber reads as a minus sign: every dash and minus
 // variant, each normalized to an ASCII "-" before the conversion. The pure
-// number span (lib/dr-number/parsing.js) steps past the same class.
+// number span (lib/dr-number/numbers-in-text.js) steps past the same class.
 const DASH_CLASS = '[‐-―−﹘﹣－]';
 const DASH_REGEX = new RegExp(DASH_CLASS, 'g');
-const VALIDATION_LIMIT = 20;
-
-function findMaxMagnitude(numericRange) {
-  let max_mag = null;
-  for (let row of numericRange) {
-    for (let num of row) {
-      if (num !== null && num !== 0 && isFinite(num)) {
-        const mag = Math.floor(Math.log10(Math.abs(num)));
-        if (max_mag === null || mag > max_mag) {
-          max_mag = mag;
-        }
-      }
-    }
-  }
-  return max_mag;
-}
-
-// roundValueSetAware and roundWithOffset live in rounding.js.
 
 // The marks a number uses: US style, a comma between groups of three digits
 // and a dot before the fraction. Frozen, so no caller can change the marks
@@ -149,7 +129,7 @@ const GROUP_SPACE_PATTERN = GROUP_SPACE_CLASS + '+';
  * then groups of exactly three, each after the mark. This is the one copy of
  * the shape. The number shape test reads it with the number format's group
  * mark and with whitespace; the pattern that finds a number inside text
- * (parsing.js) and the spaced-digit identifier shape (identifiers.js) read
+ * (numbers-in-text.js) and the spaced-digit identifier shape (identifiers.js) read
  * it with whitespace.
  * @param {string} markPattern - the group mark, as a regular expression source
  * @returns {string}

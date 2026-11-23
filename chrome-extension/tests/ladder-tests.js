@@ -57,7 +57,7 @@
   // its own isolated scope built from the same three source files, with a
   // stub getExclusionReason declared after the real one (last declaration
   // of a name wins in the same scope).
-  const isolatedSrc = coreCode + '\n' + parsingCode + '\n' +
+  const isolatedSrc = readerCode + '\n' + numberTextCode + '\n' +
     'function getExclusionReason() { return "someFutureReason"; }\n' +
     ladderCode + '\nreturn classifyCell;';
   const isolatedClassifyCell = isolatedFunction(isolatedSrc)();

@@ -681,12 +681,12 @@ for (const group of sharedCaseGroups) {
 }
 
 // =============================================================================
-// SHEETS INPUT STEP AND RESULT KIND (js/tests/input-step.js)
+// SHEETS INPUT STEP AND RESULT KIND (js/tests/input-step-tests.js)
 // =============================================================================
 
 console.log('=== Sheets Input Step and Result Kind ===\n');
 
-require('./tests/input-step.js')({
+require('./tests/input-step-tests.js')({
     code, sharedCaseGroups, RESULT_KIND_LINE, RESULT_KIND_FIELD, holdsText,
     testExact, testArrayExact,
     fail: (name, actual, expected) => { failed++; failures.push({ name, actual, expected }); },

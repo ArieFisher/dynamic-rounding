@@ -1,4 +1,4 @@
-// The table pillbox on each data table (ui-pillbox.js).
+// The table pillbox on each data table (table-pillbox-view.js).
 
 // --- Animation parameters and dispatch ---
 
@@ -1958,175 +1958,6 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 })();
 
 // ---------------------------------------------------------------------------
-// Sanity: isAccessibilityArtifact round-trip on the embedded-table fixtures
-// ---------------------------------------------------------------------------
-(function pass2aria_sanity_artifactEmbedded() {
-  const artifact = makeArtifactEmbeddedTable();
-  eq('pass2-aria sanity: isAccessibilityArtifact(embedded accessibility artifact) === true',
-    isAccessibilityArtifact(artifact), true);
-})();
-
-(function pass2aria_sanity_realEmbedded() {
-  const real = makeRealEmbeddedTable();
-  eq('pass2-aria sanity: isAccessibilityArtifact(real embedded table) === false',
-    isAccessibilityArtifact(real), false);
-})();
-
-// ---------------------------------------------------------------------------
-// ARIA grid with ONLY accessibility artifacts → Pass 2 registers it with a table pillbox
-// ---------------------------------------------------------------------------
-(function pass2aria_onlyArtifactTables_getsTablePillbox() {
-  const artifact1 = makeArtifactEmbeddedTable();
-  const artifact2 = makeArtifactEmbeddedTable();
-  const grid = makeAriaGrid([artifact1, artifact2]);
-
-  withTablePillboxDocumentMock(function() {
-    // Pass 1 sees no tables; Pass 2 sees our grid.
-    global.document.querySelectorAll = function(sel) {
-      if (sel === 'table') return [];
-      if (sel === '[role="grid"], [role="table"]') return [grid];
-      return [];
-    };
-
-    injectTablePillboxes();
-  });
-
-  eq('pass2-aria: grid with only accessibility artifacts registers',
-    DR_MODEL.hasTable(grid), true);
-  eq('pass2-aria: grid with only accessibility artifacts gets a table pillbox registered',
-    tablePillboxes.has(grid), true);
-})();
-
-// ---------------------------------------------------------------------------
-// ARIA grid wrapping a REAL table → Pass 2 bows out (no table pillbox, no class)
-// ---------------------------------------------------------------------------
-(function pass2aria_realTable_pass2BowsOut() {
-  const realTbl = makeRealEmbeddedTable();
-  const grid    = makeAriaGrid([realTbl]);
-
-  withTablePillboxDocumentMock(function() {
-    global.document.querySelectorAll = function(sel) {
-      if (sel === 'table') return [];
-      if (sel === '[role="grid"], [role="table"]') return [grid];
-      return [];
-    };
-
-    injectTablePillboxes();
-  });
-
-  eq('pass2-aria: grid wrapping a real table does NOT register',
-    DR_MODEL.hasTable(grid), false);
-  eq('pass2-aria: grid wrapping a real table does NOT get a table pillbox',
-    tablePillboxes.has(grid), false);
-})();
-
-// ---------------------------------------------------------------------------
-// grid with an artifact + one real table → still skipped
-// ---------------------------------------------------------------------------
-(function pass2aria_mixedArtifactAndReal_bowsOut() {
-  const artifact = makeArtifactEmbeddedTable();
-  const real    = makeRealEmbeddedTable();
-  const grid    = makeAriaGrid([artifact, real]);
-
-  withTablePillboxDocumentMock(function() {
-    global.document.querySelectorAll = function(sel) {
-      if (sel === 'table') return [];
-      if (sel === '[role="grid"], [role="table"]') return [grid];
-      return [];
-    };
-
-    injectTablePillboxes();
-  });
-
-  eq('pass2-aria: grid with accessibility artifact and real table does NOT register',
-    DR_MODEL.hasTable(grid), false);
-  eq('pass2-aria: grid with accessibility artifact and real table does NOT get a table pillbox',
-    tablePillboxes.has(grid), false);
-})();
-
-// ---------------------------------------------------------------------------
-// Adversarial: grid with NO embedded tables → Pass 2 adds class + table pillbox
-// (no embedded tables means .some(!artifact) is false — empty array)
-// ---------------------------------------------------------------------------
-(function pass2aria_noEmbeddedTables_getsTablePillbox() {
-  const grid = makeAriaGrid([]);
-
-  withTablePillboxDocumentMock(function() {
-    global.document.querySelectorAll = function(sel) {
-      if (sel === 'table') return [];
-      if (sel === '[role="grid"], [role="table"]') return [grid];
-      return [];
-    };
-
-    injectTablePillboxes();
-  });
-
-  eq('pass2-aria: grid with no embedded tables registers',
-    DR_MODEL.hasTable(grid), true);
-  eq('pass2-aria: grid with no embedded tables gets a table pillbox',
-    tablePillboxes.has(grid), true);
-})();
-
-// ---------------------------------------------------------------------------
-// Adversarial: an already registered grid is skipped (preserved guard)
-// ---------------------------------------------------------------------------
-(function pass2aria_alreadyRegistered_skipped() {
-  const grid = makeAriaGrid([]);
-  DR_MODEL.registerTable(grid); // the "already found" signal pass 2 checks
-
-  withTablePillboxDocumentMock(function() {
-    global.document.querySelectorAll = function(sel) {
-      if (sel === 'table') return [];
-      if (sel === '[role="grid"], [role="table"]') return [grid];
-      return [];
-    };
-
-    injectTablePillboxes();
-  });
-
-  // Already registered → skipped → tablePillboxes should NOT have a new entry
-  eq('pass2-aria: already registered grid gets no table pillbox again',
-    tablePillboxes.has(grid), false);
-})();
-
-// ---------------------------------------------------------------------------
-// Adversarial: element with tagName=TABLE is skipped by the tagName guard
-// (the preserved `if (el.tagName === 'TABLE') return;` fires before the new line)
-// ---------------------------------------------------------------------------
-(function pass2aria_tableTagName_skipped() {
-  const artifact = makeArtifactEmbeddedTable();
-  // Make an ARIA-grid-matching element that is itself a <TABLE>
-  const classes = new Set();
-  const gridTable = {
-    tagName: 'TABLE',    // triggers the early-return guard
-    classList: {
-      contains(c) { return classes.has(c); },
-      add(c)      { classes.add(c); },
-      remove(c)   { classes.delete(c); },
-    },
-    querySelectorAll(sel) {
-      return sel === 'table' ? [artifact] : [];
-    },
-    getBoundingClientRect() { return { top: 0, right: 0, bottom: 0, left: 0 }; },
-  };
-
-  withTablePillboxDocumentMock(function() {
-    global.document.querySelectorAll = function(sel) {
-      if (sel === 'table') return [];
-      if (sel === '[role="grid"], [role="table"]') return [gridTable];
-      return [];
-    };
-
-    injectTablePillboxes();
-  });
-
-  eq('pass2-aria: element with tagName=TABLE is skipped by tagName guard',
-    DR_MODEL.hasTable(gridTable), false);
-  eq('pass2-aria: element with tagName=TABLE does not get a table pillbox via Pass 2',
-    tablePillboxes.has(gridTable), false);
-})();
-
-// ---------------------------------------------------------------------------
 // Checked here:
 //
 // Clicking the table pillbox while the sidebar is open changes
@@ -3034,4 +2865,90 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   eq('#330: the range pulse frames the cell at the grid column, not at the read position',
     overlay && { left: overlay.style.left, width: overlay.style.width },
     { left: '100px', width: '100px' });
+})();
+
+// ---------------------------------------------------------------------------
+// flashRangePulse enumerates cells through the same TableAdapter
+// (makeAdapter) the rounding engine and preview use, so a grid's cells are
+// found the same way a native table's are. Reading table.rows/row.cells
+// directly, which only exist on native <table> elements, would throw a
+// TypeError on a div-based grid and crash this suite rather than fail an
+// assertion.
+// ---------------------------------------------------------------------------
+(function tablePillboxSplit_rangeFlashWorksOnGrids() {
+  // 2x2 div-based grid (no ARIA roles, no vendor classes — the plain
+  // fallback shape GridAdapter already supports elsewhere in this suite).
+  const grid = makeGridWrapper([
+    ['1,000,000', '500'],
+    ['2,000,000', '750'],
+  ]);
+
+  // Distinct bounding rects per cell (document order: row0/col0, row0/col1,
+  // row1/col0, row1/col1) so the union rect proves WHICH cells were matched
+  // (column 1 only) rather than the whole grid or nothing at all.
+  const rects = [
+    { top: 0,  left: 0,   right: 100, bottom: 20 },
+    { top: 0,  left: 100, right: 200, bottom: 20 },
+    { top: 20, left: 0,   right: 100, bottom: 40 },
+    { top: 20, left: 100, right: 200, bottom: 40 },
+  ];
+  grid.cellEls.forEach((cell, i) => { cell.getBoundingClientRect = () => rects[i]; });
+
+  // Intercept the overlay div flashRangePulse creates and appends.
+  const origCreateElement = global.document.createElement;
+  const origBody = global.document.body;
+  const origSetTimeout = global.setTimeout;
+  let overlay = null;
+  global.document.createElement = (tag) => {
+    const el = { style: {}, addEventListener() {} };
+    if (tag === 'div') overlay = el;
+    return el;
+  };
+  const appended = [];
+  global.document.body = { appendChild(el) { appended.push(el); } };
+  global.setTimeout = () => 0; // avoid a real pending 1.5s cleanup timer
+
+  // Range expression equivalent to selecting column B only (both rows) —
+  // a partial range, so a whole-grid fallback would be visibly wrong.
+  const ranges = [{ colMin: 1, colMax: 1, rowMin: 0, rowMax: 1 }];
+  flashRangePulse(grid.wrapperEl, ranges);
+
+  global.document.createElement = origCreateElement;
+  global.document.body = origBody;
+  global.setTimeout = origSetTimeout;
+
+  eq('range-flash grid: an overlay is appended to document.body (not silently skipped)',
+    appended.length, 1);
+  eq('range-flash grid: the overlay carries the range-pulse class',
+    overlay && overlay.className, 'dr-ext-range-pulse');
+  eq('range-flash grid: the overlay is sized/positioned to the union of the matched grid cells (col 1 only), not the whole grid or nothing',
+    overlay && { top: overlay.style.top, left: overlay.style.left, width: overlay.style.width, height: overlay.style.height },
+    { top: '0px', left: '100px', width: '100px', height: '40px' });
+})();
+
+// --- The table pillbox redraws from the model's settings notice. A sidebar
+// write reaches the table pillbox with no redraw call from the controller,
+// on a table with nothing to simplify, where the screen never changes. ---
+(function tablePillboxRedrawsFromTheSettingsNotice() {
+  runPressFixture(() => {
+    const table = makePressTable('no digits');
+    DR_BUS.publish('intent:activateTable', { table });
+    const tablePillbox = tablePillboxes.get(table);
+
+    withCreateTreeWalker(() => {
+      askContentScript({ topic: 'request:applySettings',
+        settings: Object.assign({}, DR_DEFAULTS, { enabled: true }) });
+    });
+    eq('settings notice: the table pillbox shows on after the sidebar writes on',
+      tablePillbox.getAttribute('aria-pressed'), 'true');
+
+    withCreateTreeWalker(() => {
+      askContentScript({ topic: 'request:applySettings',
+        settings: Object.assign({}, DR_DEFAULTS, { enabled: false }) });
+    });
+    eq('settings notice: the table pillbox shows off after the sidebar writes off',
+      tablePillbox.getAttribute('aria-pressed'), 'false');
+  });
+  eq('settings notice: the controller holds no direct table pillbox redraw',
+    /syncTablePillbox\(/.test(sourceByName('content.js') || 'syncTablePillbox('), false);
 })();

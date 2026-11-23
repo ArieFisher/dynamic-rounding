@@ -108,7 +108,7 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 - `"13,63"` → `"13,63"` (a comma counts only in the group shape, so a European decimal comma is not read)
 - `"1.234,56"` → `"1.234,56"` (a comma after the decimal dot is not read)
 
-**Currency signs:** Every sign and code in the currency list (`CURRENCIES` in [`lib/dr-number/core.js`](../chrome-extension/lib/dr-number/core.js)), letter signs included. A sign written in letters counts only as its own token, so the rand's "R" counts in "R47" and not in "Revenue". A currency code beside a number makes a unit number, so "CAD45.67" and "1,234 USD" round.
+**Currency signs:** Every sign and code in the currency list (`CURRENCIES` in [`lib/dr-number/reader.js`](../chrome-extension/lib/dr-number/reader.js)), letter signs included. A sign written in letters counts only as its own token, so the rand's "R" counts in "R47" and not in "Revenue". A currency code beside a number makes a unit number, so "CAD45.67" and "1,234 USD" round.
 
 **Identifier shapes:** A phone number, an IP address, a web or email address, an ISBN, a postal code, a digit run with a leading zero ("02134"), and digit groups split by spaces outside thousands grouping stay as written.
 

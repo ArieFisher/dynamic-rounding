@@ -82,3 +82,18 @@ function formatStep(step) {
 function trimNum(n) {
   return String(Math.round(n * 1000) / 1000);
 }
+
+function findMaxMagnitude(numericRange) {
+  let max_mag = null;
+  for (let row of numericRange) {
+    for (let num of row) {
+      if (num !== null && num !== 0 && isFinite(num)) {
+        const mag = Math.floor(Math.log10(Math.abs(num)));
+        if (max_mag === null || mag > max_mag) {
+          max_mag = mag;
+        }
+      }
+    }
+  }
+  return max_mag;
+}

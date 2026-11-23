@@ -1425,9 +1425,9 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   // assertions below do not disturb the live extension globals.
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
   const contentSrc = sourceByName('content.js');
-  if (roundingSrc === null || contentSrc === null || coreCode === null ||
-      parsingCode === null || detectCode === null || messagingCode === null ||
-      modelCode === null || uiPillboxCode === null) {
+  if (roundingSrc === null || contentSrc === null || readerCode === null ||
+      numberTextCode === null || detectCode === null || busCode === null ||
+      modelCode === null || tablePillboxViewCode === null) {
     eq('x-floor flip: source files present in manifest', false, true);
     return;
   }
@@ -1451,13 +1451,13 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   const vm = require('vm');
   const ctx = vm.createContext(sandbox);
   // content.js runs its observer/listener wiring at load and depends on the
-  // extracted layers (core/parsing/detect/ui-pillbox), so eval them in the
-  // same order the manifest loads them before content.js.
+  // extracted layers (reader/number text/detect/table pillbox view), so eval
+  // them in the same order the manifest loads them before content.js.
   vm.runInContext(
     constantsCode + '\n' + (sourceByName('lib/dr-log/index.js') || '') + '\n' +
-    patchedRounding + '\n' + coreCode + '\n' + parsingCode + '\n' +
-    detectCode + '\n' + messagingCode + '\n' + modelCode + '\n' +
-    uiPillboxCode + '\n' + contentSrc +
+    patchedRounding + '\n' + readerCode + '\n' + numberTextCode + '\n' +
+    detectCode + '\n' + busCode + '\n' + modelCode + '\n' +
+    tablePillboxViewCode + '\n' + contentSrc +
     '\nthis.__roundWithOffset = roundWithOffset;', ctx);
   const patchedRound = sandbox.__roundWithOffset;
 
@@ -2290,9 +2290,9 @@ const LADDER_OPTS = {
 // ---------------------------------------------------------------------------
 (function appModelSettings_pulledEnabledSurvivesReopenOnBoundTable() {
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
-  const coreSrc = sourceByName('lib/dr-number/core.js');
-  if (constantsCode === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
-    eq('reopen-bound: source files (defaults/rounding/core/messaging) present in manifest',
+  const readerSrc = sourceByName('lib/dr-number/reader.js');
+  if (constantsCode === null || roundingSrc === null || readerSrc === null || busCode === null) {
+    eq('reopen-bound: source files (defaults/rounding/reader/bus) present in manifest',
       false, true);
     return;
   }
@@ -2384,8 +2384,8 @@ const LADDER_OPTS = {
       eval(
         constantsCode + '\n' +
         roundingSrc + '\n' +
-        coreSrc + '\n' +
-        messagingCode + '\n' +
+        readerSrc + '\n' +
+        busCode + '\n' +
         fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8')
       );
     } catch (e) {
@@ -2572,7 +2572,7 @@ const LADDER_OPTS = {
 // =============================================================================
 // One currency list
 // =============================================================================
-// Every currency rule reads CURRENCIES in lib/dr-number/core.js. These
+// Every currency rule reads CURRENCIES in lib/dr-number/reader.js. These
 // assertions drive themselves from that list, so a currency added there is
 // covered here without a second list to keep in step.
 

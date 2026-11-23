@@ -16,7 +16,7 @@
  * and the application model would publish it back to this view, one level
  * deeper on every turn.
  *
- * Loaded after ui-pillbox.js and before content.js, so the subscription
+ * Loaded after table-pillbox-view.js and before content.js, so the subscription
  * exists before the controller registers the row listener that feeds it.
  */
 
