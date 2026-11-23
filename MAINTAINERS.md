@@ -31,6 +31,20 @@ Before merging a PR that touches the plugin, run `claude plugin validate --stric
 
 An installed copy takes a new version when its user runs `claude plugin update dynamic-rounding` and restarts Claude Code.
 
+### Bump workflow token
+
+The bump workflow opens each version-bump pull request with the `BUMP_PR_TOKEN` repository secret when one is set. GitHub then runs the pull request's checks at once, and the pull request appears as created by the token's owner. Without the secret, the workflow opens the pull request with its own token, and GitHub can hold the checks until someone approves them in the Actions tab.
+
+To set the secret:
+
+1. In GitHub, open Settings, then Developer settings, then Personal access tokens, then Fine-grained tokens, and generate a new token.
+2. Set the resource owner to the repository's owner, and under Repository access choose Only select repositories and pick this repository.
+3. Under Repository permissions, set Contents and Pull requests to Read and write. Leave every other permission at No access.
+4. Choose an expiration date and generate the token.
+5. In this repository, open Settings, then Secrets and variables, then Actions, and add a repository secret named `BUMP_PR_TOKEN` holding the token.
+
+When the token expires, the bump workflow fails at the pull request step. Generate a new token the same way and replace the secret's value.
+
 ### Tags
 
 The repo carries tags through `js-v0.2.4`, `py-v0.1.2`, and `v0.1.0`. Releases since the bump automation are untagged; create a tag only when cutting a GitHub Release.
