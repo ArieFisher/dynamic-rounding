@@ -173,8 +173,8 @@ globalThis.extractPreviewSamples = extractPreviewSamples;
 globalThis.CURRENCIES = CURRENCIES;
 globalThis.CURRENCY_SIGNS = CURRENCY_SIGNS;
 globalThis.CLEAN_REGEX = CLEAN_REGEX;
-globalThis.eraYearDigitRanges = eraYearDigitRanges;
-globalThis.clockTimeRanges = clockTimeRanges;
+globalThis.getEraYearMaskedRanges = getEraYearMaskedRanges;
+globalThis.getClockTimeMaskedRanges = getClockTimeMaskedRanges;
 globalThis.formatStep = formatStep;
 globalThis.stepForOffset = stepForOffset;
 // Expose the table pillbox geometry constants (all are const, so direct assignment works)

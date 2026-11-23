@@ -698,6 +698,25 @@ eq('parseISODateTime: not a datetime -> null',
 eq('parseISODateTime: out-of-range hour -> null',
   parseISODateTime('2025-11-26T25:16'), null);
 
+// The time part is the one clock-time shape, so a one-digit hour reads the
+// same as a two-digit hour.
+eq('parseISODateTime: one-digit hour, space separator', parseISODateTime('2025-11-26 9:30'),
+  { year: 2025, month: 11, day: 26, hour: 9, minute: 30, second: 0 });
+eq('parseISODateTime: one-digit hour, T separator', parseISODateTime('2025-11-26T9:30:15.5Z'),
+  { year: 2025, month: 11, day: 26, hour: 9, minute: 30, second: 15 });
+eq('parseISODateTime: a fraction with no seconds -> null',
+  parseISODateTime('2025-11-26 09:30.5'), null);
+eq('parseISODateTime: out-of-range seconds -> null',
+  parseISODateTime('2025-01-01T10:00:60'), null);
+eq('readTimeCell: a time with a part out of range is impossible',
+  ['24:00', '10:00:75', '13:00 PM', '2025-11-26T24:00'].map((t) => readTimeCell(t)),
+  [{ impossible: true }, { impossible: true }, { impossible: true }, { impossible: true }]);
+eq('readTimeCell: text in neither time shape -> null',
+  ['123:45', '2025-11-26', '2025-13-01T10:00'].map((t) => readTimeCell(t)), [null, null, null]);
+eq('roundTimeText: one-digit-hour date-time rounds like a two-digit one',
+  [roundTimeText('2025-11-26 9:30', 'hour'), roundTimeText('2025-11-26 09:30', 'hour')],
+  ['2025-11-26 10:00', '2025-11-26 10:00']);
+
 eq('isDateTimeLike: ISO timestamp -> true',
   isDateTimeLike('2025-11-26T16:16:00.000-05:00'), true);
 

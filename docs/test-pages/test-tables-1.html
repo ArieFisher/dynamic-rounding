@@ -1361,6 +1361,12 @@
         2024-11-03T08:15:30.250-05:00 -> 2024-11-03 08:00 -> 2024-11-03 08:16
       A failure in the last hour shows 2024-11-03 23:59 or 2024-11-04. A
       failure at hour 11 shows 2024-11-03 11:00.
+        2024-11-03 9:29:00            -> 2024-11-03 09:00 -> 2024-11-03 09:29
+      A one-digit hour reads like a two-digit hour. A failure there leaves
+      9:29:00 as written, and the date simplifies when Dates is on.
+        2024-11-03T24:00              -> 2024-11-03T24:00 -> 2024-11-03T24:00
+      Hour 24 is an impossible time, so the cell stays as written with Times
+      on or off. A failure shows the year as 2,000 or the date simplified.
     -->
     <table>
       <thead>
@@ -1536,6 +1542,16 @@
           <td>2024-11-03T08:15:30.250-05:00</td>
           <td>Times</td>
         </tr>
+        <tr>
+          <th scope="row">Timestamp, one-digit hour</th>
+          <td>2024-11-03 9:29:00</td>
+          <td>Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Timestamp, impossible time, held</th>
+          <td>2024-11-03T24:00</td>
+          <td>Nothing</td>
+        </tr>
       </tbody>
     </table>
   </section>
@@ -1638,6 +1654,9 @@
                                               offset-rounded; held
       AD 79 eruption displaced 11,000      -> 79 held (era year), 11,000 rounds
       Minted 500 BC, value 4,250 drachmae  -> 500 held, 4,250 rounds
+      Batch BC 12.75 kg                    -> a decimal is never an era year;
+                                              12.75 rounds. A failure leaves
+                                              12.75 as written
       Spread widened 120 bp                -> lowercase bp is basis points, not
                                               Before Present; 120 rounds
       <b>1,234</b> units shipped           -> the bold markup survives the patch
@@ -1689,6 +1708,10 @@
         <tr>
           <th scope="row">Era year, BC</th>
           <td>Minted 500 BC, value 4,250 drachmae</td>
+        </tr>
+        <tr>
+          <th scope="row">Decimal after an era marker</th>
+          <td>Batch BC 12.75 kg</td>
         </tr>
         <tr>
           <th scope="row">Lowercase unit, not an era</th>

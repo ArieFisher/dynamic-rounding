@@ -165,7 +165,8 @@ const WHOLE_CELL_TIME_RE = new RegExp('^' + CLOCK_TIME_SOURCE + '(?<meridiem>\\s
 const CLOCK_TIME_IN_TEXT_RE = new RegExp('(?<![\\d:])' + CLOCK_TIME_SOURCE + '(?![\\d:])', 'g');
 
 function isTimeLike(text) {
-  return WHOLE_CELL_TIME_RE.test(text);
+  const time = readTimeCell(text);
+  return Boolean(time && !time.impossible && !time.date);
 }
 
 /**
@@ -173,32 +174,61 @@ function isTimeLike(text) {
  * the text ("9:45 - 11:45 AM" holds two). Each range covers the digits and
  * colons alone; an AM/PM holds no digit to mask.
  */
-function clockTimeRanges(text) {
+function getClockTimeMaskedRanges(text) {
   return matchRanges(text, CLOCK_TIME_IN_TEXT_RE);
 }
 
+// The time is the one clock-time shape. A fraction of a second follows the
+// seconds only.
+const ISO_DATE_TIME_RE = new RegExp('^(?<year>\\d{4})-(?<month>\\d{2})-(?<day>\\d{2})[T ]' + CLOCK_TIME_SOURCE +
+  '(?:(?<=:\\d{2}:\\d{2})\\.\\d{1,9})?(?:Z|[+-]\\d{2}:?\\d{2})?$');
+
 /**
  * Parse an ISO 8601 date-time string into its wall-clock components.
- * Accepts "YYYY-MM-DDTHH:MM[:SS[.fff]][Z|±HH[:]MM]"; the date/time separator
- * may be "T" or a single space. The fraction of a second and the timezone
- * offset are recognised but discarded.
+ * Accepts "YYYY-MM-DDTHH:MM[:SS[.fff]][Z|±HH[:]MM]", with an hour of one or
+ * two digits; the date/time separator may be "T" or a single space. The
+ * fraction of a second and the timezone offset are recognised but discarded.
  * @returns {{year:number, month:number, day:number, hour:number, minute:number, second:number}|null}
  */
 function parseISODateTime(text) {
+  const time = readTimeCell(text);
+  if (!time || time.impossible || !time.date) return null;
+  const { hour, minute, second } = time;
+  return { ...time.date, hour, minute, second };
+}
+
+// The one range check for a time's parts: an hour of 1 to 12 with an AM/PM or
+// 0 to 23 without, and minutes and seconds of 0 to 59.
+function isClockTimeInRange(hour, minute, second, hasMeridiem) {
+  const hourInRange = hasMeridiem ? hour >= 1 && hour <= 12 : hour >= 0 && hour <= 23;
+  return hourInRange && minute <= 59 && second <= 59;
+}
+
+/**
+ * Read a cell's text as one whole-cell clock time or one ISO date-time.
+ * Returns null for text in neither shape or an ISO date-time whose date
+ * cannot exist, { impossible: true } for a time with a part out of range
+ * ("24:00", "10:00:75"), and otherwise the time: its hour as written
+ * (hourText), hour, minute, second, its AM/PM as written (meridiem, '' for
+ * none), and, for an ISO date-time, its date { year, month, day }.
+ */
+function readTimeCell(text) {
   if (typeof text !== 'string') return null;
-  const m = text.trim().match(
-    /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?$/
-  );
+  const trimmed = text.trim();
+  const iso = trimmed.match(ISO_DATE_TIME_RE);
+  const m = iso || trimmed.match(WHOLE_CELL_TIME_RE);
   if (!m) return null;
-  if (!isMonth(m[2]) || !isDay(m[3])) return null;
-  const year = parseInt(m[1], 10);
-  const month = parseInt(m[2], 10);
-  const day = parseInt(m[3], 10);
-  const hour = parseInt(m[4], 10);
-  const minute = parseInt(m[5], 10);
-  const second = m[6] ? parseInt(m[6], 10) : 0;
-  if (hour > 23 || minute > 59) return null;
-  return { year, month, day, hour, minute, second };
+  const g = m.groups;
+  if (iso && (!isMonth(g.month) || !isDay(g.day))) return null;
+  const time = {
+    hourText: g.hour,
+    hour: parseInt(g.hour, 10),
+    minute: parseInt(g.minute, 10),
+    second: g.second ? parseInt(g.second, 10) : 0,
+    meridiem: g.meridiem || '',
+    date: iso ? { year: parseInt(g.year, 10), month: parseInt(g.month, 10), day: parseInt(g.day, 10) } : null,
+  };
+  return isClockTimeInRange(time.hour, time.minute, time.second, time.meridiem !== '') ? time : { impossible: true };
 }
 
 function isDateTimeLike(text) {
@@ -249,8 +279,7 @@ const TIME_STEP_SECONDS = { minute: SECONDS_PER_MINUTE, hour: SECONDS_PER_HOUR }
 function roundClockTime({ hour, minute, second, isPm, isTwentyFourHour }, granularity) {
   const step = TIME_STEP_SECONDS[granularity];
   const hasMeridiem = typeof isPm === 'boolean';
-  const hourInRange = hasMeridiem ? hour >= 1 && hour <= 12 : hour >= 0 && hour <= 23;
-  if (!step || !hourInRange || minute > 59 || second > 59) return null;
+  if (!step || !isClockTimeInRange(hour, minute, second, hasMeridiem)) return null;
   const hour24 = hasMeridiem ? (hour % 12) + (isPm ? 12 : 0) : hour;
   const isLastHour = hour24 === 23 || (!hasMeridiem && !isTwentyFourHour && hour === 11);
   const isLastStep = isLastHour && (granularity === 'hour' || minute === 59);
@@ -271,24 +300,19 @@ function roundClockTime({ hour, minute, second, isPm, isTwentyFourHour }, granul
  * the text holds neither or the result equals the text.
  */
 function roundTimeText(text, granularity) {
-  if (typeof text !== 'string') return null;
+  const time = readTimeCell(text);
+  if (!time || time.impossible) return null;
   const trimmed = text.trim();
   const pad = (n) => String(n).padStart(2, '0');
   const changed = (result) => (result === trimmed ? null : result);
-  const dt = parseISODateTime(trimmed);
-  if (dt) {
-    const rounded = roundClockTime({ ...dt, isTwentyFourHour: true }, granularity);
-    return rounded && changed(`${dt.year}-${pad(dt.month)}-${pad(dt.day)} ${pad(rounded.hour)}:${pad(rounded.minute)}`);
+  const { hourText, hour, minute, second, meridiem, date } = time;
+  if (date) {
+    const rounded = roundClockTime({ hour, minute, second, isTwentyFourHour: true }, granularity);
+    return rounded && changed(`${date.year}-${pad(date.month)}-${pad(date.day)} ${pad(rounded.hour)}:${pad(rounded.minute)}`);
   }
-  const m = trimmed.match(WHOLE_CELL_TIME_RE);
-  if (!m) return null;
-  const { hour, minute, second, meridiem = '' } = m.groups;
-  const rounded = roundClockTime({
-    hour: parseInt(hour, 10), minute: parseInt(minute, 10), second: second ? parseInt(second, 10) : 0,
-    isPm: meridiem ? /p/i.test(meridiem) : undefined,
-  }, granularity);
+  const rounded = roundClockTime({ hour, minute, second, isPm: meridiem ? /p/i.test(meridiem) : undefined }, granularity);
   if (!rounded) return null;
-  const roundedHour = !meridiem && hour.length === 2 ? pad(rounded.hour) : String(rounded.hour);
+  const roundedHour = !meridiem && hourText.length === 2 ? pad(rounded.hour) : String(rounded.hour);
   // Swap the a/p letter alone, so the suffix keeps its case, dots, and spacing.
   const suffix = rounded.isPm ? meridiem.replace(/a/i, (c) => (c === 'A' ? 'P' : 'p'))
     : meridiem.replace(/p/i, (c) => (c === 'P' ? 'A' : 'a'));
@@ -299,7 +323,7 @@ function roundTimeText(text, granularity) {
 // A number bound to an era marker is a calendar year. Its digits form a masked
 // range, so they stay as written, the cell's other numbers round, and the year
 // stays out of the max magnitude and the lens preview samples.
-// eraYearDigitRanges locates such years.
+// getEraYearMaskedRanges locates such years.
 // A marker with no period must be uppercase: its lowercase forms are ordinary
 // words and abbreviations ("ad hoc", "120 bp" basis points, "ah"). BCE precedes
 // BC so the longer marker wins the alternation.
@@ -309,18 +333,21 @@ const ERA_MARKER_UPPER = '(?:AD|BCE|BC|CE|AH|BP)';
 // ERA_MARKER_UPPER alone.
 const ERA_MARKER_DOTTED = '(?:[Aa]\\.[Dd]\\.?|[Bb]\\.[Cc]\\.[Ee]\\.?|[Bb]\\.[Cc]\\.?|[Cc]\\.[Ee]\\.?|[Aa]\\.[Hh]\\.?|[Bb]\\.[Pp]\\.?)';
 const ERA_MARKER = '(?:' + ERA_MARKER_UPPER + '|' + ERA_MARKER_DOTTED + ')';
-// "<year> <era>": the digits are not part of a larger number (no leading digit
-// or decimal mark) and the era marker is a standalone token (no letter after
-// it, so "ADELAIDE" and "ADD" never match). No 'i' flag, for ERA_MARKER_UPPER.
+// Both orders take the same rules: the space between the year and the era
+// marker is optional, the digits are not part of a larger number (no digit or
+// decimal mark on the side away from the marker), and the era marker is a
+// standalone token (no letter on its far side, so "ADELAIDE", "ADD", and
+// "DEAD" never match). No 'i' flag, for ERA_MARKER_UPPER.
+// "<year> <era>": "2898 AD".
 const ERA_YEAR_AFTER_RE = new RegExp('(?<![\\d.])(?<year>\\d[\\d,]*)\\s*' + ERA_MARKER + '(?![A-Za-z])', 'gd');
-// "<era> <year>": e.g. "AD 79". Era marker preceded by a non-letter boundary.
-const ERA_YEAR_BEFORE_RE = new RegExp('(?<![A-Za-z])' + ERA_MARKER + '\\s+(?<year>\\d[\\d,]*)', 'gd');
+// "<era> <year>": "AD 79".
+const ERA_YEAR_BEFORE_RE = new RegExp('(?<![A-Za-z])' + ERA_MARKER + '\\s*(?<year>\\d[\\d,]*)(?![\\d,]*(?:\\d|\\.\\d))', 'gd');
 
 /**
  * Return {start, end} ranges (offsets into `text`) of every digit run that
  * forms a calendar year bound to an era marker, in either order ("2898 AD" or
  * "AD 79").
  */
-function eraYearDigitRanges(text) {
+function getEraYearMaskedRanges(text) {
   return [ERA_YEAR_AFTER_RE, ERA_YEAR_BEFORE_RE].flatMap((re) => matchRanges(text, re, 'year'));
 }
