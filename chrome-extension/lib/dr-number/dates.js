@@ -173,7 +173,7 @@ function isTimeLike(text) {
  * the text ("9:45 - 11:45 AM" holds two). Each range covers the digits and
  * colons alone; an AM/PM holds no digit to mask.
  */
-function clockTimeRanges(text) {
+function getClockTimeMaskedRanges(text) {
   return matchRanges(text, CLOCK_TIME_IN_TEXT_RE);
 }
 
@@ -299,7 +299,7 @@ function roundTimeText(text, granularity) {
 // A number bound to an era marker is a calendar year. Its digits form a masked
 // range, so they stay as written, the cell's other numbers round, and the year
 // stays out of the max magnitude and the lens preview samples.
-// eraYearDigitRanges locates such years.
+// getEraYearMaskedRanges locates such years.
 // A marker with no period must be uppercase: its lowercase forms are ordinary
 // words and abbreviations ("ad hoc", "120 bp" basis points, "ah"). BCE precedes
 // BC so the longer marker wins the alternation.
@@ -321,6 +321,6 @@ const ERA_YEAR_BEFORE_RE = new RegExp('(?<![A-Za-z])' + ERA_MARKER + '\\s+(?<yea
  * forms a calendar year bound to an era marker, in either order ("2898 AD" or
  * "AD 79").
  */
-function eraYearDigitRanges(text) {
+function getEraYearMaskedRanges(text) {
   return [ERA_YEAR_AFTER_RE, ERA_YEAR_BEFORE_RE].flatMap((re) => matchRanges(text, re, 'year'));
 }

@@ -3749,14 +3749,14 @@ function everyRowRead(kind, largeIn) {
 
 // -------------------------------------------------------------------------
 // Era-marked years are dates, not offset-rounded numbers.
-// eraYearDigitRanges locates each year token bound to an era marker;
+// getEraYearMaskedRanges locates each year token bound to an era marker;
 // collectNumericCells / extractPreviewSamples must exclude such tokens from
 // magnitude detection and the preview examples.
 // -------------------------------------------------------------------------
 (function eraYearDetection() {
   // The number at [index, index + numStr.length) sits in an era-year range.
   const isEraYear = (text, index, numStr) =>
-    overlapsMaskedRange(eraYearDigitRanges(text), index, index + numStr.length);
+    overlapsMaskedRange(getEraYearMaskedRanges(text), index, index + numStr.length);
 
   // The digit token bound to a marker (either order) is an era year.
   eq('era: "Kalki 2898 AD" → 2898 is an era year',

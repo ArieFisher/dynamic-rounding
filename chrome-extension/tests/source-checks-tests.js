@@ -1313,8 +1313,8 @@
     'bracketSignSpan', 'isBracketedNegative', 'matchBracketedNumber', 'pureNumberSpan',
     // dates.js
     'knownDate', 'findDates', 'isAmbiguousDate',
-    'isDateLike', 'isTimeLike', 'clockTimeRanges', 'parseISODateTime', 'isDateTimeLike',
-    'roundDateText', 'roundClockTime', 'roundTimeText', 'eraYearDigitRanges',
+    'isDateLike', 'isTimeLike', 'getClockTimeMaskedRanges', 'parseISODateTime', 'isDateTimeLike',
+    'roundDateText', 'roundClockTime', 'roundTimeText', 'getEraYearMaskedRanges',
     // write-back.js
     'formatNumber',
     // identifiers.js

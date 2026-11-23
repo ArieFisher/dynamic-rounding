@@ -52,13 +52,13 @@ const DR_NUMBER = {
   isAmbiguousDate,
   isDateLike,
   isTimeLike,
-  clockTimeRanges,
+  getClockTimeMaskedRanges,
   parseISODateTime,
   isDateTimeLike,
   roundDateText,
   roundClockTime,
   roundTimeText,
-  eraYearDigitRanges,
+  getEraYearMaskedRanges,
 
   // write-back.js
   formatNumber,

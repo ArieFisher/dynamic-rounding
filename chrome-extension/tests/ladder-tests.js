@@ -434,9 +434,9 @@ const CLOCK_TIME_SPAN_NEAR_MISSES = [
     extractSimplifyMatches('18:302 departs, 1,234 seats', [{ start: 5, end: 6 }]).map((m) => m.numStr),
     ['1,234']);
   eq('clock time inside text: ranges cover each time\'s digits and leave the AM/PM out',
-    clockTimeRanges('9:45 - 11:45 AM'), [{ start: 0, end: 4 }, { start: 7, end: 12 }]);
+    getClockTimeMaskedRanges('9:45 - 11:45 AM'), [{ start: 0, end: 4 }, { start: 7, end: 12 }]);
   eq('clock time inside text: a text with no clock time has no ranges',
-    clockTimeRanges('About 1,613,245 people'), []);
+    getClockTimeMaskedRanges('About 1,613,245 people'), []);
 })();
 
 // =============================================================================

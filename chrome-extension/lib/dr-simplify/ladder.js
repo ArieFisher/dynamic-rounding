@@ -77,8 +77,8 @@ function extractSimplifyMatches(text, superscriptRanges, markupRanges = []) {
     ...getQuoteMaskedRanges(text),
     ...getIdentifierMaskedRanges(shapeText),
     ...superscriptRanges,
-    ...eraYearDigitRanges(text),
-    ...clockTimeRanges(shapeText),
+    ...getEraYearMaskedRanges(text),
+    ...getClockTimeMaskedRanges(shapeText),
   ];
   return extractNumbersInText(text)
     .filter((m) => !overlapsMaskedRange(masked, m.index, m.index + m.numStr.length));
