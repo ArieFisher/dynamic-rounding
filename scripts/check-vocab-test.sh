@@ -240,6 +240,27 @@ else
   record fail "a plain rename passes --range (gate blocked a line the rename did not add)"
 fi
 
+# A file moved out of an exempt path into a living one reads as all-new prose,
+# so a retired synonym the record held blocks the move, in either mode.
+dir=$(scratch_repo)
+printf 'The table toggle turns rounding on.\n' > "$dir/docs/sprint-logs/old.md"
+git -C "$dir" add docs/sprint-logs/old.md
+git -C "$dir" commit -qm record
+base=$(git -C "$dir" rev-parse HEAD)
+git -C "$dir" mv docs/sprint-logs/old.md docs/promoted.md
+if (cd "$dir" && scripts/check-vocab.sh --staged >/dev/null 2>&1); then
+  record fail "a rename out of an exempt path is caught by --staged (gate passed it)"
+else
+  record pass "a rename out of an exempt path is caught by --staged"
+fi
+git -C "$dir" commit -qm promote
+head=$(git -C "$dir" rev-parse HEAD)
+if (cd "$dir" && scripts/check-vocab.sh --range "$base" "$head" >/dev/null 2>&1); then
+  record fail "a rename out of an exempt path is caught by --range (gate passed it)"
+else
+  record pass "a rename out of an exempt path is caught by --range"
+fi
+
 # --range mode: a committed violation between two revisions is caught.
 dir=$(scratch_repo)
 base=$(git -C "$dir" rev-parse HEAD)

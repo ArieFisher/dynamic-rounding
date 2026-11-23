@@ -162,10 +162,14 @@ check_added_lines() {
 
   if printf '%s' "$file" | grep -qE "$EXEMPT_PATHS"; then return 0; fi
 
-  local added
   # A rename's source path joins the pathspec so git pairs the two paths and
   # reports only the lines the rename changed. With the destination alone, git
-  # sees a new file and every line of it reads as added.
+  # sees a new file and every line of it reads as added. A rename out of an
+  # exempt path keeps the destination alone, so the moved file reads as all-new
+  # prose.
+  if [[ -n "$source" ]] && printf '%s' "$source" | grep -qE "$EXEMPT_PATHS"; then source=""; fi
+
+  local added
   added=$("${diff_cmd[@]}" -- "$file" ${source:+"$source"} | grep '^+' | grep -vE '^\+\+\+ (b/|/dev/null)' || true)
   [[ -n "$added" ]] || return 0
 
