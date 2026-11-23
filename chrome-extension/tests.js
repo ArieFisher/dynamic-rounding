@@ -30,6 +30,7 @@ const PIECES = [
   'sidebar-tests.js',
   'controller-tests.js',
   'bus-tests.js',
+  'table-registration-tests.js',
   'capture-log-tests.js',
   'source-checks-tests.js',
   'report.js',
