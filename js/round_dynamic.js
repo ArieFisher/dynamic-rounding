@@ -546,8 +546,8 @@ function getExclusionReason(text, columnIndex, options, rowIndex) {
   return null;
 }
 
-// The {start, end} range of each match of a global regex in the text, or of
-// the named group of each match when the regex carries the d flag.
+// The {start, end} range of each match of a global regex in the text, or,
+// given a group name, of that named group (the regex then needs the d flag).
 const matchRanges = (text, re, group) => (typeof text !== 'string' ? [] : Array.from(text.matchAll(re), (m) => {
   const [start, end] = group ? m.indices.groups[group] : [m.index, m.index + m[0].length];
   return { start, end };
@@ -723,7 +723,7 @@ const DATE_NOISE_CLASS = `[\\s${SUPERSCRIPT_DIGITS}${FOOTNOTE_MARKERS}]`;
 const DATE_START = '(?:^|(?<=[^\\w]))';
 const DATE_END = '(?=$|[^\\w])';
 // Any digit run in a date may carry an ordinal suffix ("21st", "2020th"). A
-// day, month, or year group holds its suffix, so a cut removes the suffix with
+// day, month, or year group holds its suffix, so a cut takes the suffix with
 // its digits, and parseInt reads the digits alone. The all-numeric shape's
 // year group holds the digits alone, because the two-digit pivot reads their
 // count.
@@ -817,8 +817,8 @@ const BARE_YEAR_RE = new RegExp(`^${DATE_NOISE_CLASS}*${YEAR}${DATE_NOISE_CLASS}
 
 /**
  * Find every date in a trimmed cell text, left to right: each match of a shape
- * in DATE_SHAPES, or else a bare year as the whole cell. Each date is a known
- * date (see knownDate; a bare year holds month null and no monthBeforeYear),
+ * in DATE_SHAPES, or else a bare year as the whole cell. Each date is a date
+ * with a known reading (see knownDate; a bare year holds month null and no monthBeforeYear),
  * an all-numeric date (see the all-numeric shape), or an impossible date
  * ("2020-13-45"): { impossible: true, start, end }.
  * @returns {object[]|null} the dates, or null when the text holds none.
@@ -861,7 +861,7 @@ function isDateLike(text) {
 // optional AM/PM; a time inside text is the same digits with no digit or
 // colon on either side, so "123:45" and "16:9" never read as times.
 const CLOCK_TIME_SOURCE = '(?<hour>\\d{1,2}):(?<minute>\\d{2})(?::(?<second>\\d{2}))?';
-const WHOLE_CELL_TIME_RE = new RegExp('^' + CLOCK_TIME_SOURCE + '(?<amPm>\\s*[ap]\\.?m\\.?)?$', 'i');
+const WHOLE_CELL_TIME_RE = new RegExp('^' + CLOCK_TIME_SOURCE + '(?<meridiem>\\s*[ap]\\.?m\\.?)?$', 'i');
 const CLOCK_TIME_IN_TEXT_RE = new RegExp('(?<![\\d:])' + CLOCK_TIME_SOURCE + '(?![\\d:])', 'g');
 
 function isTimeLike(text) {
@@ -948,18 +948,18 @@ const TIME_STEP_SECONDS = { minute: SECONDS_PER_MINUTE, hour: SECONDS_PER_HOUR }
  */
 function roundClockTime({ hour, minute, second, isPm, isTwentyFourHour }, granularity) {
   const step = TIME_STEP_SECONDS[granularity];
-  const hasAmPm = typeof isPm === 'boolean';
-  const hourInRange = hasAmPm ? hour >= 1 && hour <= 12 : hour >= 0 && hour <= 23;
+  const hasMeridiem = typeof isPm === 'boolean';
+  const hourInRange = hasMeridiem ? hour >= 1 && hour <= 12 : hour >= 0 && hour <= 23;
   if (!step || !hourInRange || minute > 59 || second > 59) return null;
-  const hour24 = hasAmPm ? (hour % 12) + (isPm ? 12 : 0) : hour;
-  const isLastHour = hour24 === 23 || (!hasAmPm && !isTwentyFourHour && hour === 11);
+  const hour24 = hasMeridiem ? (hour % 12) + (isPm ? 12 : 0) : hour;
+  const isLastHour = hour24 === 23 || (!hasMeridiem && !isTwentyFourHour && hour === 11);
   const isLastStep = isLastHour && (granularity === 'hour' || minute === 59);
   const total = hour24 * SECONDS_PER_HOUR + minute * SECONDS_PER_MINUTE + second;
   const down = total - (total % step);
   const rounded = !isLastStep && total - down >= step / 2 ? down + step : down;
   const roundedHour = Math.floor(rounded / SECONDS_PER_HOUR);
   const roundedMinute = (rounded % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE;
-  if (!hasAmPm) return { hour: roundedHour, minute: roundedMinute, isPm: null };
+  if (!hasMeridiem) return { hour: roundedHour, minute: roundedMinute, isPm: null };
   return { hour: roundedHour % 12 || 12, minute: roundedMinute, isPm: roundedHour >= 12 };
 }
 
@@ -982,16 +982,16 @@ function roundTimeText(text, granularity) {
   }
   const m = trimmed.match(WHOLE_CELL_TIME_RE);
   if (!m) return null;
-  const { hour, minute, second, amPm = '' } = m.groups;
+  const { hour, minute, second, meridiem = '' } = m.groups;
   const rounded = roundClockTime({
     hour: parseInt(hour, 10), minute: parseInt(minute, 10), second: second ? parseInt(second, 10) : 0,
-    isPm: amPm ? /p/i.test(amPm) : undefined,
+    isPm: meridiem ? /p/i.test(meridiem) : undefined,
   }, granularity);
   if (!rounded) return null;
-  const roundedHour = !amPm && hour.length === 2 ? pad(rounded.hour) : String(rounded.hour);
+  const roundedHour = !meridiem && hour.length === 2 ? pad(rounded.hour) : String(rounded.hour);
   // Swap the a/p letter alone, so the suffix keeps its case, dots, and spacing.
-  const suffix = rounded.isPm ? amPm.replace(/a/i, (c) => (c === 'A' ? 'P' : 'p'))
-    : amPm.replace(/p/i, (c) => (c === 'P' ? 'A' : 'a'));
+  const suffix = rounded.isPm ? meridiem.replace(/a/i, (c) => (c === 'A' ? 'P' : 'p'))
+    : meridiem.replace(/p/i, (c) => (c === 'P' ? 'A' : 'a'));
   return changed(`${roundedHour}:${pad(rounded.minute)}${suffix}`);
 }
 
@@ -1004,7 +1004,7 @@ function roundTimeText(text, granularity) {
 // words and abbreviations ("ad hoc", "120 bp" basis points, "ah"). BCE precedes
 // BC so the longer marker wins the alternation.
 const ERA_MARKER_UPPER = '(?:AD|BCE|BC|CE|AH|BP)';
-// A marker with periods reads in any case ("A.D.", "a.d.", "B.C.E."). Each
+// A marker with periods matches in any case ("A.D.", "a.d.", "B.C.E."). Each
 // form requires at least its first period, so a marker with no period matches
 // ERA_MARKER_UPPER alone.
 const ERA_MARKER_DOTTED = '(?:[Aa]\\.[Dd]\\.?|[Bb]\\.[Cc]\\.[Ee]\\.?|[Bb]\\.[Cc]\\.?|[Cc]\\.[Ee]\\.?|[Aa]\\.[Hh]\\.?|[Bb]\\.[Pp]\\.?)';

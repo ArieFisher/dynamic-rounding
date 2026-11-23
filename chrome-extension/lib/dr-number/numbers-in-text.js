@@ -130,8 +130,8 @@ function getExclusionReason(text, columnIndex, options, rowIndex) {
   return null;
 }
 
-// The {start, end} range of each match of a global regex in the text, or of
-// the named group of each match when the regex carries the d flag.
+// The {start, end} range of each match of a global regex in the text, or,
+// given a group name, of that named group (the regex then needs the d flag).
 const matchRanges = (text, re, group) => (typeof text !== 'string' ? [] : Array.from(text.matchAll(re), (m) => {
   const [start, end] = group ? m.indices.groups[group] : [m.index, m.index + m[0].length];
   return { start, end };
