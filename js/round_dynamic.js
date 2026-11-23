@@ -877,28 +877,29 @@ function getClockTimeMaskedRanges(text) {
   return matchRanges(text, CLOCK_TIME_IN_TEXT_RE);
 }
 
+// The time is the one clock-time shape. A fraction of a second follows the
+// seconds only.
+const ISO_DATE_TIME_RE = new RegExp('^(?<year>\\d{4})-(?<month>\\d{2})-(?<day>\\d{2})[T ]' + CLOCK_TIME_SOURCE +
+  '(?:(?<=:\\d{2}:\\d{2})\\.\\d{1,9})?(?:Z|[+-]\\d{2}:?\\d{2})?$');
+
 /**
  * Parse an ISO 8601 date-time string into its wall-clock components.
- * Accepts "YYYY-MM-DDTHH:MM[:SS[.fff]][Z|±HH[:]MM]"; the date/time separator
- * may be "T" or a single space. The fraction of a second and the timezone
- * offset are recognised but discarded.
+ * Accepts "YYYY-MM-DDTHH:MM[:SS[.fff]][Z|±HH[:]MM]", with an hour of one or
+ * two digits; the date/time separator may be "T" or a single space. The
+ * fraction of a second and the timezone offset are recognised but discarded.
  * @returns {{year:number, month:number, day:number, hour:number, minute:number, second:number}|null}
  */
 function parseISODateTime(text) {
   if (typeof text !== 'string') return null;
-  const m = text.trim().match(
-    /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?$/
-  );
+  const m = text.trim().match(ISO_DATE_TIME_RE);
   if (!m) return null;
-  if (!isMonth(m[2]) || !isDay(m[3])) return null;
-  const year = parseInt(m[1], 10);
-  const month = parseInt(m[2], 10);
-  const day = parseInt(m[3], 10);
-  const hour = parseInt(m[4], 10);
-  const minute = parseInt(m[5], 10);
-  const second = m[6] ? parseInt(m[6], 10) : 0;
+  const g = m.groups;
+  if (!isMonth(g.month) || !isDay(g.day)) return null;
+  const hour = parseInt(g.hour, 10);
+  const minute = parseInt(g.minute, 10);
   if (hour > 23 || minute > 59) return null;
-  return { year, month, day, hour, minute, second };
+  const second = g.second ? parseInt(g.second, 10) : 0;
+  return { year: parseInt(g.year, 10), month: parseInt(g.month, 10), day: parseInt(g.day, 10), hour, minute, second };
 }
 
 function isDateTimeLike(text) {
