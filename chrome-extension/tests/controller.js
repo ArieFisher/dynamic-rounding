@@ -1,4 +1,4 @@
-// The event bus, the application model, the controller, and the service worker.
+// The controller, the event bus and the application model it works through, and the service worker.
 
 (function failedExtractedPatchRecordsNothing() {
   // The walker's one text node does not hold the extracted number at its

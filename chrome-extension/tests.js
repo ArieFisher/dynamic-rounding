@@ -28,7 +28,7 @@ const PIECES = [
   'table-kinds.js',
   'table-step.js',
   'sidebar.js',
-  'messaging-model.js',
+  'controller.js',
   'capture-log.js',
   'source-checks.js',
   'report.js',
