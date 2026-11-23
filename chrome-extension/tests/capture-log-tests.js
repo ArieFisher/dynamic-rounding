@@ -1,4 +1,241 @@
-// The capture, the log buffer, and the toast (lib/dr-capture, lib/dr-log, ui-toast.js).
+// The capture, the log buffer, and the toast (lib/dr-capture, lib/dr-log, toast-view.js).
+
+// --- capture: the displayed-text read and the plain-original-text read ---
+//
+// The capture records what the screen shows AND what each cell held before.
+// Two reads serve it. (1) Adapter cells gain getDisplayedText(): the live
+// rendered text, never the originals port — on a rounded grid getText()
+// answers with the ORIGINAL (the engine's contract; see the port-preferring
+// read in makeCellObj), so a capture reading getText() would
+// lie about the screen. (2) The registry stores a cell's original as one
+// record shape ({ value, pieces, pageTitle }); DR_MODEL.getTableOriginalText()
+// returns its value field, or undefined when nothing is stored.
+
+(function captureDisplayedTextRead() {
+  // Native cell: the displayed text is the live text — the same read
+  // getText() uses, because the native write path never shadows it.
+  const nativeCellEl = { tagName: 'TD', innerText: '1,234', textContent: '1,234' };
+  const nativeStub = {
+    rows: [{ parentElement: { tagName: 'TBODY' }, cells: [nativeCellEl] }],
+  };
+  const nativeCell = new NativeTableAdapter(nativeStub).getRows()[0].getCells()[0];
+  eq('capture-reads: a native cell\'s displayed text is its live text',
+    typeof nativeCell.getDisplayedText === 'function'
+      ? nativeCell.getDisplayedText() : null,
+    '1,234');
+
+  const makePort = () => {
+    const m = new Map();
+    return { has: (k) => m.has(k), get: (k) => m.get(k), set: (k, v) => m.set(k, v) };
+  };
+  const makeGridCellEl = (text) => ({
+    nodeType: 1,
+    childNodes: [{ nodeType: 3, nodeValue: text }],
+    classList: { add() {}, contains() { return false; } },
+    // Like the DOM: textContent derives from the child nodes, so a
+    // patch through nodeValue shows up in the whole-cell read.
+    get textContent() { return this.childNodes[0].nodeValue; },
+  });
+  const adapter = new GridAdapter({}, { originalsPort: makePort() });
+
+  // Grid cell, unrounded: displayed text equals the engine's read.
+  const fresh = makeCellObj(makeGridCellEl('98,765'), adapter.originalsPort);
+  eq('capture-reads: an unrounded grid cell\'s displayed text equals its engine text',
+    typeof fresh.getDisplayedText === 'function'
+      ? { displayed: fresh.getDisplayedText(), engine: fresh.getText() } : null,
+    { displayed: '98,765', engine: '98,765' });
+
+  // Grid cell, rounded: the engine's read answers with the original through
+  // the port; the displayed read answers with what the screen shows now.
+  const rounded = makeCellObj(makeGridCellEl('98,765'), adapter.originalsPort);
+  rounded.applyPatches([{ index: 0, numStr: '98,765', newNum: '99,000' }], { value: rounded.getText() });
+  eq('capture-reads: a rounded grid cell keeps engine text = original, displayed text = live',
+    typeof rounded.getDisplayedText === 'function'
+      ? { engine: rounded.getText(), displayed: rounded.getDisplayedText() } : null,
+    { engine: '98,765', displayed: '99,000' });
+})();
+
+// A grid cell that builds its text from several pieces — a number and a unit
+// in separate nodes — displays all of them. findCellTextNode answers with one
+// deepest text node (the write path's patch target); the displayed-text read
+// answers with the cell's whole text, matching the native read:
+// "1,234<span>%</span>" must not record the text "%".
+(function captureDisplayedTextReadsWholeCell() {
+  const makePort = () => {
+    const m = new Map();
+    return { has: (k) => m.has(k), get: (k) => m.get(k), set: (k, v) => m.set(k, v) };
+  };
+  const adapter = new GridAdapter({}, { originalsPort: makePort() });
+  const textNode = (text) => ({ nodeType: 3, nodeValue: text });
+  const span = (text) => ({ nodeType: 1, childNodes: [textNode(text)] });
+  const makePiecedCellEl = (children, wholeText) => ({
+    nodeType: 1,
+    childNodes: children,
+    classList: { add() {}, contains() { return false; } },
+    textContent: wholeText,
+  });
+
+  const numberThenUnit = makeCellObj(
+    makePiecedCellEl([textNode('1,234'), span('%')], '1,234%'), adapter.originalsPort);
+  eq('capture-reads: a grid cell of number-then-unit pieces displays the whole text',
+    numberThenUnit.getDisplayedText(), '1,234%');
+
+  const unitThenNumber = makeCellObj(
+    makePiecedCellEl([span('$'), textNode('1,234')], '$1,234'), adapter.originalsPort);
+  eq('capture-reads: a grid cell of unit-then-number pieces displays the whole text',
+    unitThenNumber.getDisplayedText(), '$1,234');
+})();
+
+(function capturePlainOriginalTextRead() {
+  const has = typeof DR_MODEL.getTableOriginalText === 'function';
+  const table = {};
+  const gridCell = {};
+  const nativeCell = {};
+  DR_MODEL.setTableOriginal(table, gridCell,
+    { value: '98,765', pieces: [{ text: '98,765', written: '100,000' }] });
+  DR_MODEL.setTableOriginal(table, nativeCell,
+    { value: '1,234', pieces: [{ text: '1,234', written: '1,000' }] });
+  eq('capture-reads: a grid original (record) reads back as its value field',
+    has ? DR_MODEL.getTableOriginalText(table, gridCell) : null, '98,765');
+  eq('capture-reads: a native original (record) reads back as its value field',
+    has ? DR_MODEL.getTableOriginalText(table, nativeCell) : null, '1,234');
+  eq('capture-reads: a cell with no stored original reads back undefined',
+    has ? DR_MODEL.getTableOriginalText(table, {}) : null, undefined);
+  DR_MODEL.unregisterTable(table);
+})();
+
+// --- content.js: the request:captureState topic ---
+//
+// The sidebar asks for the whole page-side half of a capture in one request.
+// The answer is composed by buildCaptureStateResponse() — a named function
+// the suite drives directly, because the bus's own listener is a no-op stub
+// here (the established equivalent-path pattern). A source assertion pins
+// that the responder exists and routes through it.
+
+(function captureStatePull() {
+  eq('capture-wire: buildCaptureStateResponse loads in the content-script bundle',
+    typeof globalThis.buildCaptureStateResponse, 'function');
+  eq('capture-wire: the responder answers request:captureState through buildCaptureStateResponse',
+    /respond\('request:captureState'[\s\S]{0,200}buildCaptureStateResponse\(\)/.test(sourceByName('content.js') || ''),
+    true);
+  if (typeof globalThis.buildCaptureStateResponse !== 'function') return;
+
+  // The shared DR_MODEL still holds stub tables registered by earlier test
+  // sections (the suite never unregisters them), so these assertions are
+  // relative: no absolute table counts, and the focus assertions pin MY
+  // table through activeTableIndex.
+  const prevActive = DR_MODEL.getActiveTable();
+
+  // With no table bound: no lens preview, no seed, no focus — and the page
+  // field and log buffer copy still present.
+  DR_MODEL.setActiveTable(null);
+  let unboundResponse = null;
+  const collectRows = logRowsDuring(() => { unboundResponse = buildCaptureStateResponse(); });
+  eq('capture-wire: no table bound still answers with an honest unbound state',
+    {
+      captureFormat: unboundResponse.captureFormat,
+      activeTableIndex: unboundResponse.activeTableIndex,
+      fixtureSeed: unboundResponse.fixtureSeed,
+      lensPreview: unboundResponse.lensPreview,
+      tablesIsArray: Array.isArray(unboundResponse.tables),
+    },
+    { captureFormat: 11, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
+  eq('capture-wire: the response carries this context\'s log buffer copy',
+    Array.isArray(unboundResponse.log.rows) && unboundResponse.log.limit, 50);
+  eq('capture-wire: collecting the capture state writes no row', collectRows, []);
+  eq('capture-wire: the page field exists even where location does not',
+    'url' in unboundResponse.page && 'title' in unboundResponse.page, true);
+
+  // With a real stub table registered and selected.
+  const table = makeTablePillboxTestTable([
+    [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+  ]);
+  table.outerHTML = '<table><tr><td>8,584,629</td><td>286</td></tr></table>';
+  DR_MODEL.registerTable(table);
+  DR_MODEL.setActiveTable(table);
+  try {
+    const response = buildCaptureStateResponse();
+    const mine = response.tables[response.activeTableIndex];
+    eq('capture-wire: the bound table serializes in full and is the focus',
+      {
+        bound: response.activeTableIndex !== null,
+        kind: mine.kind,
+        cellTexts: mine.cells.map((c) => c.text),
+      },
+      { bound: true, kind: 'native', cellTexts: ['8,584,629', '286'] });
+    eq('capture-wire: the fixture seed is the bound table\'s markup',
+      response.fixtureSeed, '<table><tr><td>8,584,629</td><td>286</td></tr></table>');
+    eq('capture-wire: the capture carries the lens preview',
+      !!response.lensPreview && Array.isArray(response.lensPreview.samples.top), true);
+  } finally {
+    DR_MODEL.setActiveTable(prevActive);
+    DR_MODEL.unregisterTable(table);
+  }
+})();
+
+// --- capture follow-ups: the pull guard, the glyph pin, the header line ---
+
+// The serializer guards per table; the response composer's
+// lens-preview step is the one step after it that walks the bound table.
+// Unguarded, a throw there discards the whole page-side half — the
+// serialized registry, the fixture seed, and the log rows.
+(function capturePullSurvivesThrowingPreview() {
+  if (typeof globalThis.buildCaptureStateResponse !== 'function') return;
+  const prevActive = DR_MODEL.getActiveTable();
+  const throwing = {
+    get rows() { throw new TypeError('hostile preview walk'); },
+  };
+  DR_MODEL.registerTable(throwing);
+  DR_MODEL.setActiveTable(throwing);
+  let response = null;
+  let threw = false;
+  let rows = [];
+  try {
+    rows = logRowsDuring(() => { response = buildCaptureStateResponse(); });
+  } catch (e) {
+    threw = true;
+  } finally {
+    DR_MODEL.setActiveTable(prevActive);
+    DR_MODEL.unregisterTable(throwing);
+  }
+  eq('capture-wire: a throwing lens preview keeps the page-side half',
+    {
+      threw,
+      tablesIsArray: !!response && Array.isArray(response.tables),
+      lensPreview: response ? response.lensPreview : 'response lost',
+      hasLog: !!(response && response.log),
+    },
+    { threw: false, tablesIsArray: true, lensPreview: null, hasLog: true });
+  const lensRow = 'Dynamic Rounding: error · step: lens preview · error: TypeError';
+  eq('capture-wire: the discarded lens preview writes one row naming the step and the error type',
+    rows, [lensRow]);
+  eq('capture-wire: the lens preview row is a warn row, the error state\'s newest, which the toast shows',
+    [DR_LOG.copyBuffer().rows.slice(-1)[0].level, DR_MODEL.getErrorState().rows.slice(-1)[0].text],
+    ['warn', lensRow]);
+})();
+
+// --- The capture state records the grid width ---
+
+(function theCaptureStateRecordsTheGridWidth() {
+  // Every row holds a merge, so no row's cell count reaches the table's
+  // width: counting the widest row answers 2 where the table is 3 columns.
+  const table = makeMockTable([
+    [{ tag: 'th', text: 'Quarters', colSpan: 2 }, { tag: 'th', text: 'Year' }],
+    [{ tag: 'td', text: 'West', rowSpan: 2 }, { tag: 'td', text: '1,234', colSpan: 2 }],
+    [{ tag: 'td', text: '3,210', colSpan: 2 }],
+  ]);
+  DR_MODEL.registerTable(table);
+  try {
+    const state = collectCaptureState({ model: DR_MODEL, adapterFor: (t) => makeAdapter(t) });
+    const record = state.tables[DR_MODEL.getRegisteredTables().indexOf(table)];
+    eq('#330: the capture state counts the grid width, not the widest row read',
+      record.columnCount, 3);
+    eq('#330: the capture state records each cell at its grid column',
+      record.cells.filter((cell) => cell.row === 0).map((cell) => cell.col), [0, 2]);
+  } finally {
+    DR_MODEL.unregisterTable(table);
+  }
+})();
 
 (function gridPatch_captureCarriesTheRecordValue() {
   const { grid } = makePatchGrid();
@@ -1112,8 +1349,8 @@
   eq('capture-trace: a named frame renders as path:line:col (name)',
     f('    at roundTable (' + origin + 'content.js:1523:18)'), 'content.js:1523:18 (roundTable)');
   eq('capture-trace: an unnamed frame renders as an anonymous function',
-    f('    at ' + origin + 'adapters/messaging.js:399:9'),
-    'adapters/messaging.js:399:9 (anonymous function)');
+    f('    at ' + origin + 'app/bus.js:399:9'),
+    'app/bus.js:399:9 (anonymous function)');
   eq('capture-trace: an Object.<anonymous> frame keeps its function part',
     f('    at Object.<anonymous> (' + origin + 'x.js:1:2)'), 'x.js:1:2 (Object.<anonymous>)');
   eq('capture-trace: an async frame keeps the async prefix',

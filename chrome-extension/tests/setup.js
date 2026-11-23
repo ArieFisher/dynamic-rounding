@@ -90,8 +90,15 @@ function sourceByName(name) {
 const contentScriptBundle = contentScriptFiles
   .map((file) => contentScriptSources.get(file))
   .join('\n');
-const coreCode = sourceByName('lib/dr-number/core.js');
-const parsingCode = sourceByName('lib/dr-number/parsing.js');
+const readerCode = sourceByName('lib/dr-number/reader.js');
+// The lib/dr-number files the content script loads and the sidebar does not,
+// in manifest order; null when the manifest lacks one of them.
+const numberTextFiles = [
+  'lib/dr-number/settings.js', 'lib/dr-number/numbers-in-text.js',
+  'lib/dr-number/dates.js', 'lib/dr-number/write-back.js',
+];
+const numberTextCode = numberTextFiles.some((file) => sourceByName(file) === null)
+  ? null : numberTextFiles.map(sourceByName).join('\n');
 // The detection layer's source: the four lib/dr-table files and the placement
 // step, in manifest order; null when the manifest lacks one of them.
 const detectionFiles = [
@@ -106,9 +113,9 @@ const constantsCode = sourceByName('constants.js');
 // equivalent for, and several sections below eval a whole context file on its
 // own. Stub the loader so those sites load.
 global.importScripts = () => {};
-const messagingCode = sourceByName('adapters/messaging.js');
+const busCode = sourceByName('app/bus.js');
 const modelCode = sourceByName('app/model.js');
-const uiPillboxCode = sourceByName('ui-pillbox.js');
+const tablePillboxViewCode = sourceByName('table-pillbox-view.js');
 // Combined source for "source-includes" assertions that do not care which
 // content-script file holds a symbol.
 const allContentSrc = contentScriptBundle;

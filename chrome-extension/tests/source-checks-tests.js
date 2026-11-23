@@ -102,20 +102,22 @@
     /constants\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
   eq('sidebar-defaults: sidebar.js fills every control unset by the settings from DR_DEFAULTS',
     /function applySettingsToUI\(settings\)\s*\{\s*const s = Object\.assign\(\{\}, DR_DEFAULTS, settings \|\| \{\}\)/.test(sidebarJsSource), true);
-  eq('sidebar-defaults: manifest content_scripts load order is defaults, log buffer, dr-number package, dr-table package, dr-simplify package, messaging bus, application model, table pillbox view, content',
+  eq('sidebar-defaults: manifest content_scripts load order is defaults, log buffer, dr-number package, dr-table package, dr-simplify package, event bus, application model, table pillbox view, content',
     JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify([
       'constants.js',
       'lib/dr-log/index.js',
-      'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
-      'lib/dr-number/parsing.js', 'lib/dr-number/identifiers.js',
+      'lib/dr-number/rounding.js', 'lib/dr-number/reader.js',
+      'lib/dr-number/settings.js', 'lib/dr-number/numbers-in-text.js',
+      'lib/dr-number/dates.js', 'lib/dr-number/write-back.js',
+      'lib/dr-number/identifiers.js',
       'lib/dr-number/index.js',
       'lib/dr-table/cells.js', 'lib/dr-table/adapters.js',
       'lib/dr-table/classify.js', 'lib/dr-table/detect.js', 'lib/dr-table/index.js',
       'lib/dr-simplify/placement.js', 'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js',
       'lib/dr-capture/state.js', 'lib/dr-capture/render.js',
       'lib/dr-capture/index.js',
-      'adapters/messaging.js', 'app/model.js',
-      'ui-pillbox.js', 'ui-toast.js', 'content.js',
+      'app/bus.js', 'app/model.js',
+      'table-pillbox-view.js', 'toast-view.js', 'content.js',
     ]), true);
 
   // rangeSection div has "hidden" attribute.
@@ -127,7 +129,7 @@
   eq('sidebar-defaults: rangeSection markup still present in HTML',
     sidebarHtml.includes('id="rangeSection"'), true);
 
-  // parseRangeExpr is defined (in parsing.js).
+  // parseRangeExpr is defined (in settings.js).
   eq('sidebar-defaults: content scripts still define parseRangeExpr',
     /function parseRangeExpr\b/.test(allContentSrc), true);
 
@@ -162,7 +164,7 @@
 // --- Regression guard: content.js declares the new infrastructure ---
 
 (function tablePillbox_contentJsDeclarations() {
-  // Table pillbox infrastructure lives in ui-pillbox.js;
+  // Table pillbox infrastructure lives in table-pillbox-view.js;
   // scan the combined content-script source so the contract is location-agnostic.
   const src = allContentSrc;
   eq('table-pillbox: declares tablePillboxViews WeakMap',
@@ -187,7 +189,7 @@
 //       :focus-visible rule with `outline` and `!important`.
 
 (function accessibilityAC2_focusVisibleCSS() {
-  const src = allContentSrc; // table pillbox CSS lives in ui-pillbox.js
+  const src = allContentSrc; // table pillbox CSS lives in table-pillbox-view.js
 
   eq('accessibility: content.js CSS contains :focus-visible selector',
     src.includes(':focus-visible'), true);
@@ -214,7 +216,7 @@
 // Soft check: the constant names TABLE_PILLBOX_DOT_PX etc. appear in the CSS template block.
 
 (function tablePillboxAC_constantsUsedInCSS() {
-  const src = allContentSrc; // table pillbox geometry lives in ui-pillbox.js
+  const src = allContentSrc; // table pillbox geometry lives in table-pillbox-view.js
 
   // The CSS function body should contain interpolations of the constants, not bare literals.
   // We extract the ensureTablePillboxStyleInjected function body as a rough string.
@@ -252,17 +254,19 @@
 
 (function layerLoadOrderAcrossEntryPoints() {
   // The sidebar deliberately does NOT load the content-only layers — it only
-  // needs the pure domain (defaults, rounding, core).
+  // needs the pure domain (defaults, rounding, the number reader).
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
-  eq('sidebar.html loads lib/dr-number/core.js after lib/dr-number/rounding.js and before sidebar.js',
-    /lib\/dr-number\/rounding\.js[\s\S]*lib\/dr-number\/core\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
-  eq('sidebar.html does not load content-only lib/dr-number/parsing.js', sidebarHtml.includes('lib/dr-number/parsing.js'), false);
+  eq('sidebar.html loads lib/dr-number/reader.js after lib/dr-number/rounding.js and before sidebar.js',
+    /lib\/dr-number\/rounding\.js[\s\S]*lib\/dr-number\/reader\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
+  for (const file of numberTextFiles) {
+    eq('sidebar.html does not load content-only ' + file, sidebarHtml.includes(file), false);
+  }
   eq('sidebar.html does not load content-only lib/dr-number/index.js', sidebarHtml.includes('lib/dr-number/index.js'), false);
   eq('sidebar.html does not load content-only lib/dr-table/detect.js', sidebarHtml.includes('lib/dr-table/detect.js'), false);
   eq('sidebar.html does not load content-only lib/dr-table/index.js', sidebarHtml.includes('lib/dr-table/index.js'), false);
   eq('sidebar.html does not load content-only lib/dr-simplify/ladder.js', sidebarHtml.includes('lib/dr-simplify/ladder.js'), false);
-  eq('sidebar.html does not load content-only ui-pillbox.js', sidebarHtml.includes('ui-pillbox.js'), false);
-  eq('sidebar.html does not load content-only ui-toast.js', sidebarHtml.includes('ui-toast.js'), false);
+  eq('sidebar.html does not load content-only table-pillbox-view.js', sidebarHtml.includes('table-pillbox-view.js'), false);
+  eq('sidebar.html does not load content-only toast-view.js', sidebarHtml.includes('toast-view.js'), false);
 })();
 
 (function lensPreview_sidebarHtmlHasTopAndBottom() {
@@ -763,9 +767,9 @@
   let capturedOnMessageHandler = null;
   global.chrome.runtime.onMessage.addListener = (fn) => { capturedOnMessageHandler = fn; };
   const roundingSrcForFlash = sourceByName('lib/dr-number/rounding.js');
-  const coreSrcForFlash = sourceByName('lib/dr-number/core.js');
-  if (constantsCode === null || roundingSrcForFlash === null || coreSrcForFlash === null) {
-    eq('active table live: source files (defaults/rounding/core) present in manifest',
+  const readerSrcForFlash = sourceByName('lib/dr-number/reader.js');
+  if (constantsCode === null || roundingSrcForFlash === null || readerSrcForFlash === null) {
+    eq('active table live: source files (defaults/rounding/reader) present in manifest',
       false, true);
     global.document = savedDoc;
     global.chrome   = savedChrome;
@@ -783,8 +787,8 @@
     eval(
       constantsCode + '\n' +
       roundingSrcForFlash + '\n' +
-      coreSrcForFlash     + '\n' +
-      messagingCode + '\n' +
+      readerSrcForFlash     + '\n' +
+      busCode + '\n' +
       fs.readFileSync(path.join(dir, 'sidebar.js'), 'utf8')
     );
   } catch(e) {
@@ -849,7 +853,7 @@
   };
 
   const PANEL_TAB = 99;
-  isolatedFunction('chrome', 'importScripts', messagingCode + '\n' +
+  isolatedFunction('chrome', 'importScripts', busCode + '\n' +
     fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'))(captureChromeBg, importScripts);
   eq('active table runtime: the bus listener is the worker\'s only message listener',
     typeof capturedBgHandler, 'function');
@@ -1079,7 +1083,7 @@
         onActivated: { addListener: (fn) => { listeners.activated = fn; } },
       },
     };
-    isolatedFunction('chrome', 'console', 'importScripts', messagingCode + '\n' + bgSrc)(
+    isolatedFunction('chrome', 'console', 'importScripts', busCode + '\n' + bgSrc)(
       chromeStub,
       { warn: () => {}, debug: () => {}, log: () => {} },
       importScripts
@@ -1114,7 +1118,7 @@
         sendMessage: (tabId, msg, cb) => { if (cb) cb(undefined); },
       },
     };
-    isolatedFunction('chrome', 'console', 'importScripts', messagingCode + '\n' + bgSrc)(
+    isolatedFunction('chrome', 'console', 'importScripts', busCode + '\n' + bgSrc)(
       chromeStub, { warn: () => {}, debug: () => {}, log: () => {} }, importScripts);
     if (installed) installed();
     eq('menu items: the menu toggle and the menu toggle with sidebar carry fixed labels',
@@ -1203,13 +1207,15 @@
 (function manifestDrivenSourceLoading() {
   const CONTENT_SCRIPT_FILES = [
     'constants.js',
-    'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
-    'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
+    'lib/dr-number/rounding.js', 'lib/dr-number/reader.js',
+    'lib/dr-number/settings.js', 'lib/dr-number/numbers-in-text.js',
+    'lib/dr-number/dates.js', 'lib/dr-number/write-back.js',
+    'lib/dr-number/index.js',
     'lib/dr-table/cells.js', 'lib/dr-table/adapters.js',
     'lib/dr-table/classify.js', 'lib/dr-table/detect.js', 'lib/dr-table/index.js',
     'lib/dr-simplify/placement.js', 'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js',
-    'adapters/messaging.js', 'app/model.js',
-    'ui-pillbox.js', 'ui-toast.js', 'content.js',
+    'app/bus.js', 'app/model.js',
+    'table-pillbox-view.js', 'toast-view.js', 'content.js',
   ];
 
   // no content-script filename literal reaches readFileSync/path.join
@@ -1286,8 +1292,8 @@
 
 // ---------------------------------------------------------------------------
 // The pure number-logic package lives under
-// lib/dr-number/ (rounding.js, core.js, parsing.js, identifiers.js,
-// index.js). This test is the package discipline check: index.js's only
+// lib/dr-number/ (rounding.js, reader.js, settings.js, numbers-in-text.js,
+// dates.js, write-back.js, identifiers.js, index.js). This test is the package discipline check: index.js's only
 // job — assigning every public function onto one DR_NUMBER bundle — actually
 // happened.
 // ---------------------------------------------------------------------------
@@ -1295,17 +1301,22 @@
   const EXPECTED_DR_NUMBER_NAMES = [
     // rounding.js
     'roundWithOffset', 'roundValueSetAware', 'stepForOffset', 'formatStep', 'trimNum',
-    // core.js
-    'findMaxMagnitude', 'numberFormat', 'groupShapePattern', 'isNumberShape', 'toNumber',
-    // parsing.js
+    'findMaxMagnitude',
+    // reader.js
+    'numberFormat', 'groupShapePattern', 'isNumberShape', 'toNumber',
+    // settings.js
     'lettersToColIndex', 'parseRangeEndpoint', 'parseRangeToken', 'parseRangeExpr',
-    'isInRanges', 'resolveOffset', 'resolveNumTop', 'matchUnitNumber', 'getExclusionReason',
+    'isInRanges', 'resolveOffset', 'resolveNumTop',
+    // numbers-in-text.js
+    'matchUnitNumber', 'getExclusionReason',
+    'getQuoteMaskedRanges', 'overlapsMaskedRange', 'extractNumbersInText',
+    'bracketSignSpan', 'isBracketedNegative', 'matchBracketedNumber', 'pureNumberSpan',
+    // dates.js
     'knownDate', 'findDates', 'isAmbiguousDate',
     'isDateLike', 'isTimeLike', 'clockTimeRanges', 'parseISODateTime', 'isDateTimeLike',
-    'roundDateText', 'roundClockTime', 'roundTimeText',
-    'getQuoteMaskedRanges', 'overlapsMaskedRange', 'extractNumbersInText',
-    'bracketSignSpan', 'isBracketedNegative', 'matchBracketedNumber',
-    'eraYearDigitRanges', 'formatNumber', 'pureNumberSpan',
+    'roundDateText', 'roundClockTime', 'roundTimeText', 'eraYearDigitRanges',
+    // write-back.js
+    'formatNumber',
     // identifiers.js
     'insideNumberRun', 'findIdentifiers', 'matchIdentifierShape', 'getIdentifierMaskedRanges',
   ].sort();
@@ -1325,15 +1336,15 @@
 // them. These typeof checks read the
 // bare names the main eval's function declarations leave in this module's
 // scope (the same sloppy-mode leak DR_NUMBER's helpers rely on before their
-// explicit globalThis bridge) — so a reintroduced declaration in core.js
+// explicit globalThis bridge) — so a reintroduced declaration in lib/dr-number
 // flips a result from 'undefined' to 'function' even if nobody re-adds a
 // globalThis bridge or a DR_NUMBER entry for it.
 // ---------------------------------------------------------------------------
 (function deletedRoundingEntryPointsStayDeleted() {
-  eq('core.js: ROUND_DYNAMIC stays deleted', typeof ROUND_DYNAMIC, 'undefined');
-  eq('core.js: singleValueMode stays deleted', typeof singleValueMode, 'undefined');
-  eq('core.js: datasetMode stays deleted', typeof datasetMode, 'undefined');
-  eq('core.js: validateOffset stays deleted', typeof validateOffset, 'undefined');
+  eq('lib/dr-number: ROUND_DYNAMIC stays deleted', typeof ROUND_DYNAMIC, 'undefined');
+  eq('lib/dr-number: singleValueMode stays deleted', typeof singleValueMode, 'undefined');
+  eq('lib/dr-number: datasetMode stays deleted', typeof datasetMode, 'undefined');
+  eq('lib/dr-number: validateOffset stays deleted', typeof validateOffset, 'undefined');
 })();
 
 checkIndexDeclaresOnlyPackageObject('dr-number', 'DR_NUMBER');
@@ -1341,7 +1352,8 @@ checkIndexDeclaresOnlyPackageObject('dr-number', 'DR_NUMBER');
 // drNumberBundleIsPublished above checks a hand-copied list, kept explicit
 // on purpose. This check derives the list from the source files instead.
 checkPackageObjectMatchesDeclarations('dr-number', 'DR_NUMBER',
-  ['rounding.js', 'core.js', 'parsing.js', 'identifiers.js']);
+  ['rounding.js', 'reader.js', 'settings.js', 'numbers-in-text.js', 'dates.js', 'write-back.js',
+    'identifiers.js']);
 
 // ---------------------------------------------------------------------------
 // Table detection lives under lib/dr-table/
@@ -1398,7 +1410,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 // lists have one home, the detection settings (DR_DETECTION_SETTINGS, in
 // the configuration file constants.js). The
 // table pillbox auto-collapse delay lives in the table pillbox view
-// (ui-pillbox.js) as its own constant: the view alone reads it. Four groups
+// (table-pillbox-view.js) as its own constant: the view alone reads it. Four groups
 // of tests:
 //   1. Source scan: none of the eight retired names carries a second
 //      const/let/var definition anywhere the manifest loads, and the two
@@ -1482,10 +1494,10 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 // delay is its own constant, so the view reads the detection settings
 // nowhere and the settings carry no delay the view alone reads.
 (function detectionSettings_pillboxViewHoldsItsOwnDelay() {
-  const src = uiPillboxCode || '';
-  eq('detection settings: ui-pillbox.js defines TABLE_PILLBOX_AUTO_COLLAPSE_MS as its own constant',
+  const src = tablePillboxViewCode || '';
+  eq('detection settings: table-pillbox-view.js defines TABLE_PILLBOX_AUTO_COLLAPSE_MS as its own constant',
     /^const TABLE_PILLBOX_AUTO_COLLAPSE_MS = 3000;/m.test(src), true);
-  eq('detection settings: ui-pillbox.js reads DR_DETECTION_SETTINGS nowhere',
+  eq('detection settings: table-pillbox-view.js reads DR_DETECTION_SETTINGS nowhere',
     /DR_DETECTION_SETTINGS/.test(src), false);
   eq('detection settings: the auto-collapse timer takes the view\'s own constant',
     /},\s*TABLE_PILLBOX_AUTO_COLLAPSE_MS\);/.test(src), true);
@@ -1830,7 +1842,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 })();
 
 // ---------------------------------------------------------------------------
-// ui-pillbox.js splits into drawing (render from state,
+// table-pillbox-view.js splits into drawing (render from state,
 // hold only view-transient state) and publishing (intents on DR_BUS in place
 // of calls into the controller).
 //
@@ -1839,9 +1851,9 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 // past the intent and around the one press path.
 // ---------------------------------------------------------------------------
 (function tablePillboxSplit_viewCallsNoControllerFunctionDirectly() {
-  const uiPillboxSrc = sourceByName('ui-pillbox.js');
-  if (uiPillboxSrc === null) {
-    eq('table-pillbox-split: ui-pillbox.js is present in the manifest', false, true);
+  const tablePillboxViewSrc = sourceByName('table-pillbox-view.js');
+  if (tablePillboxViewSrc === null) {
+    eq('table-pillbox-split: table-pillbox-view.js is present in the manifest', false, true);
     return;
   }
   const FORBIDDEN_CONTROLLER_CALLS = ['applySidebarRounding', 'resetTable', 'roundTable',
@@ -1855,19 +1867,19 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 
   const foundCalls = FORBIDDEN_CONTROLLER_CALLS.filter((name) => {
     const callRe = new RegExp('\\b' + name + '\\s*\\(');
-    return callRe.test(uiPillboxSrc);
+    return callRe.test(tablePillboxViewSrc);
   });
-  eq('table-pillbox-split: ui-pillbox.js calls no controller function directly',
+  eq('table-pillbox-split: table-pillbox-view.js calls no controller function directly',
     foundCalls, []);
 
   // The controller is the model's one writer; the view reads the model and
   // writes nothing to it.
-  eq('table-pillbox-split: ui-pillbox.js writes nothing to the model',
-    uiPillboxSrc.match(/DR_MODEL\.(register|unregister|set)[A-Za-z]*\s*\(/g) || [], []);
+  eq('table-pillbox-split: table-pillbox-view.js writes nothing to the model',
+    tablePillboxViewSrc.match(/DR_MODEL\.(register|unregister|set)[A-Za-z]*\s*\(/g) || [], []);
 
   // The click handler publishes the press as an intent instead.
-  eq('table-pillbox-split: ui-pillbox.js publishes intent:toggleTable from the click handler',
-    /DR_BUS\.publish\(\s*'intent:toggleTable'/.test(uiPillboxSrc), true);
+  eq('table-pillbox-split: table-pillbox-view.js publishes intent:toggleTable from the click handler',
+    /DR_BUS\.publish\(\s*'intent:toggleTable'/.test(tablePillboxViewSrc), true);
 })();
 
 // --- sidebar: the screenshot take never blocks the save ---
@@ -2168,9 +2180,9 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 // model's publish reaching the view's subscription is the wiring under test.
 
 (function toastViewShowsErrorRows() {
-  const uiToastCode = sourceByName('ui-toast.js');
-  eq('toast: ui-toast.js is a content script in the manifest', uiToastCode !== null, true);
-  if (uiToastCode === null) return;
+  const toastViewCode = sourceByName('toast-view.js');
+  eq('toast: toast-view.js is a content script in the manifest', toastViewCode !== null, true);
+  if (toastViewCode === null) return;
 
   const appended = [];
   const timers = [];
@@ -2202,7 +2214,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
     clearTimeout: () => { cleared++; },
   };
   const ctx = vm.createContext(sandbox);
-  vm.runInContext(constantsCode + '\n' + messagingCode + '\n' + modelCode + '\n' + uiToastCode +
+  vm.runInContext(constantsCode + '\n' + busCode + '\n' + modelCode + '\n' + toastViewCode +
     '\nthis.__model = DR_MODEL; this.__toast = DR_TOAST;', ctx);
   const model = sandbox.__model;
   const view = sandbox.__toast;
@@ -2238,7 +2250,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
   eq('toast: a click removes the toast', appended.some(isToast), false);
   eq('toast: the stylesheet is injected once for the page\'s life',
     appended.filter((el) => el._tag === 'style').length, 1);
-  eq('toast: the view logs nothing', /DR_LOG\./.test(uiToastCode), false);
+  eq('toast: the view logs nothing', /DR_LOG\./.test(toastViewCode), false);
 })();
 
 // --- lib/dr-log: call sites route through the buffer ---
@@ -2260,8 +2272,8 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 // --- The service worker runs on the bus ---
 (function workerRunsOnBus() {
   const bgSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
-  eq('worker on bus: importScripts loads the messaging adapter',
-    /importScripts\([^)]*adapters\/messaging\.js/.test(bgSrc), true);
+  eq('worker on bus: importScripts loads the event bus',
+    /importScripts\([^)]*app\/bus\.js/.test(bgSrc), true);
   eq('worker log row: importScripts loads the log module',
     /importScripts\([^)]*lib\/dr-log\/index\.js/.test(bgSrc), true);
   eq('worker log row: the open-sidebar failure records the one row format in the log buffer',
@@ -2319,8 +2331,8 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 // drives a report and a tab switch through the real path.
 (function boundTabWiringSection() {
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
-  const coreSrc = sourceByName('lib/dr-number/core.js');
-  if (constantsCode === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
+  const readerSrc = sourceByName('lib/dr-number/reader.js');
+  if (constantsCode === null || roundingSrc === null || readerSrc === null || busCode === null) {
     eq('bound tab wiring: source files present in manifest', false, true);
     return;
   }
@@ -2424,8 +2436,8 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
     eval(
       constantsCode + '\n' +
       roundingSrc + '\n' +
-      coreSrc + '\n' +
-      messagingCode + '\n' +
+      readerSrc + '\n' +
+      busCode + '\n' +
       fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8')
     );
   } catch (e) {
@@ -2493,14 +2505,14 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 
 (function currencies_noSecondList() {
   // Fail closed on a restated list. A second copy of the signs necessarily
-  // carries several currency pictures, so no content script outside core.js
+  // carries several currency pictures, so no content script outside reader.js
   // may hold more than one distinct picture. The dollar sign stays out of the
   // scan: it is ordinary regular-expression and template syntax. A file that
   // legitimately needs several pictures reads CURRENCY_SIGNS instead.
   const pictures = /[€£¥₹₽₺₣]/g;
   const offenders = [];
   for (const [file, src] of contentScriptSources) {
-    if (file === 'lib/dr-number/core.js') continue; // the one list lives here
+    if (file === 'lib/dr-number/reader.js') continue; // the one list lives here
     const distinct = new Set(src.match(pictures) || []);
     if (distinct.size > 1) offenders.push(file);
   }

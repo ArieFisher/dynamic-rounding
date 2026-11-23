@@ -39,8 +39,11 @@ const SETTINGS_CONTRACT = 'chrome-extension/constants.js';
 // it declare.
 const LIBRARY_FILES = [
   'chrome-extension/lib/dr-number/rounding.js',
-  'chrome-extension/lib/dr-number/core.js',
-  'chrome-extension/lib/dr-number/parsing.js',
+  'chrome-extension/lib/dr-number/reader.js',
+  'chrome-extension/lib/dr-number/settings.js',
+  'chrome-extension/lib/dr-number/numbers-in-text.js',
+  'chrome-extension/lib/dr-number/dates.js',
+  'chrome-extension/lib/dr-number/write-back.js',
   'chrome-extension/lib/dr-number/identifiers.js',
   'chrome-extension/lib/dr-simplify/ladder.js',
   'chrome-extension/lib/dr-simplify/table.js',

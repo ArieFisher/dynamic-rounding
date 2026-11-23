@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
-// roundWithOffset and roundValueSetAware live in rounding.js, loaded by
-// manifest content_scripts ahead of this file. The sidebar loads rounding.js
-// separately via a script tag in sidebar.html.
+// roundWithOffset, roundValueSetAware, and findMaxMagnitude live in
+// rounding.js, loaded by manifest content_scripts ahead of this file. The
+// sidebar loads rounding.js separately via a script tag in sidebar.html.
 
 // DR_DEFAULTS is loaded from constants.js (declared first in manifest content_scripts).
 
@@ -43,7 +43,7 @@ function writeTableSettings(table, patch, source) {
 
 // Every row at one of the log module's error levels (warn and error) is an
 // extension error: it lands in the model's error state, whose state change
-// the toast view (ui-toast.js) draws and the capture carries. Debug and info
+// the toast view (toast-view.js) draws and the capture carries. Debug and info
 // rows stay out. The level list lives in the log module, which uses the same
 // list to determine which rows carry a stack trace. The listener lives here and
 // not in the log module because the log module loads before the model and
@@ -65,7 +65,7 @@ DR_BUS.respond('request:applySettings', ({ settings }) => {
   return { ok: true };
 });
 
-// ui-pillbox.js's click handler publishes every committed toggle activation
+// table-pillbox-view.js's click handler publishes every committed toggle activation
 // (an immediate mouse/keyboard click, or the second tap of a touch/pen
 // two-tap) as this one intent. The menu toggle publishes the same intent from
 // its intent:menuClicked subscriber below. This is where that intent turns
@@ -1151,6 +1151,3 @@ function roundTable(table, options) {
   return { applied: true, rangeStatus: 'ok', leftAsWritten };
 }
 
-// findMaxMagnitude lives in core.js, loaded by manifest content_scripts ahead
-// of this file. The sidebar loads core.js separately via a script tag in
-// sidebar.html.

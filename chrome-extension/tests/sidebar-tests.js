@@ -8,9 +8,9 @@
 // ---------------------------------------------------------------------------
 
 (function sidebarRebind_sourceLevel() {
-  // Click-handler rebind logic spans content.js + ui-pillbox.js; scan the
+  // Click-handler rebind logic spans content.js + table-pillbox-view.js; scan the
   // combined content-script source. The active-table reference lives in
-  // DR_MODEL (app/model.js): ui-pillbox.js publishes an intent, and content.js's
+  // DR_MODEL (app/model.js): table-pillbox-view.js publishes an intent, and content.js's
   // own writes go through DR_MODEL's setters.
   const contentSrc = allContentSrc;
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
@@ -93,7 +93,7 @@
 //
 // Strategy: extract the real implementation from sidebar.js source via regex
 // and eval it in this scope (where toNumber is already available from the
-// evaled core.js / content.js block above).
+// evaled reader.js / content.js block above).
 // This exercises the REAL implementation, not a reimplementation.
 // ---------------------------------------------------------------------------
 (function sidebarHelperTests() {
@@ -537,13 +537,13 @@
 // callback, which the sidebar uses to react to delivery: clear statusEl on
 // success, setTableBound(false) when nothing answers (no content script on
 // the tab).
-// This isolates DR_BUS in its own vm sandbox (messaging.js has no DOM
+// This isolates DR_BUS in its own vm sandbox (app/bus.js has no DOM
 // dependency) and pins the call shape directly, independent of sidebar.js's
 // heavier DOM requirements.
 // ---------------------------------------------------------------------------
 (function appModelSettings_wirePayload_parityWithParentSendToActiveTab() {
-  if (messagingCode === null) {
-    eq('wire payload: adapters/messaging.js present in manifest', false, true);
+  if (busCode === null) {
+    eq('wire payload: app/bus.js present in manifest', false, true);
     return;
   }
   const vm = require('vm');
@@ -558,7 +558,7 @@
     },
   };
   vm.createContext(sandbox);
-  vm.runInContext(constantsCode + '\n' + messagingCode + '\nthis.__DR_BUS = DR_BUS;', sandbox);
+  vm.runInContext(constantsCode + '\n' + busCode + '\nthis.__DR_BUS = DR_BUS;', sandbox);
 
   // The settings apply is a request, so the ask is what puts it on the
   // wire. Both verbs build the same envelope through the same tab carrier.
@@ -598,9 +598,9 @@
 // ---------------------------------------------------------------------------
 (function appModelSettings_settingsPublish_deliveryFeedback_behavioral() {
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
-  const coreSrc = sourceByName('lib/dr-number/core.js');
-  if (constantsCode === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
-    eq('settings publish delivery: source files (defaults/rounding/core/messaging) present in manifest',
+  const readerSrc = sourceByName('lib/dr-number/reader.js');
+  if (constantsCode === null || roundingSrc === null || readerSrc === null || busCode === null) {
+    eq('settings publish delivery: source files (defaults/rounding/reader/bus) present in manifest',
       false, true);
     return;
   }
@@ -699,8 +699,8 @@
       eval(
         constantsCode + '\n' +
         roundingSrc + '\n' +
-        coreSrc + '\n' +
-        messagingCode + '\n' +
+        readerSrc + '\n' +
+        busCode + '\n' +
         fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8')
       );
     } catch (e) {
@@ -749,7 +749,7 @@
 (function issue251_tableSwitchMirrorsModelSettings() {
   const h = makeIssue251SidebarHarness();
   if (!h) {
-    eq('switch-pull: source files (defaults/rounding/core/messaging) present in manifest',
+    eq('switch-pull: source files (defaults/rounding/reader/bus) present in manifest',
       false, true);
     return;
   }
@@ -786,7 +786,7 @@
 (function issue251_previewRefreshMirrorsModelSettings() {
   const h = makeIssue251SidebarHarness();
   if (!h) {
-    eq('refresh-pull: source files (defaults/rounding/core/messaging) present in manifest',
+    eq('refresh-pull: source files (defaults/rounding/reader/bus) present in manifest',
       false, true);
     return;
   }
@@ -936,7 +936,7 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
 (function issue328_aPageNoticeForTheActiveTableRedrawsTheSidebar() {
   const h = makeIssue251SidebarHarness();
   if (!h) {
-    eq('settings notice: source files (defaults/rounding/core/messaging) present in manifest', false, true);
+    eq('settings notice: source files (defaults/rounding/reader/bus) present in manifest', false, true);
     return;
   }
   try {
@@ -967,7 +967,7 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
 (function issue328_theSidebarSkipsItsOwnNotices() {
   const h = makeIssue251SidebarHarness();
   if (!h) {
-    eq('settings notice skip: source files (defaults/rounding/core/messaging) present in manifest', false, true);
+    eq('settings notice skip: source files (defaults/rounding/reader/bus) present in manifest', false, true);
     return;
   }
   try {
@@ -991,7 +991,7 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
 (function issue328_rightClickActivationPullsTheSettings() {
   const h = makeIssue251SidebarHarness();
   if (!h) {
-    eq('activation pull: source files (defaults/rounding/core/messaging) present in manifest', false, true);
+    eq('activation pull: source files (defaults/rounding/reader/bus) present in manifest', false, true);
     return;
   }
   try {
@@ -1023,7 +1023,7 @@ const SINGLE_READ_SAMPLES = {
 (function singleRead_aRedrawSendsOneRequestAndDrawsFromItsAnswer() {
   const h = makeIssue251SidebarHarness();
   if (!h) {
-    eq('single read: source files (defaults/rounding/core/messaging) present in manifest', false, true);
+    eq('single read: source files (defaults/rounding/reader/bus) present in manifest', false, true);
     return;
   }
   try {
@@ -1060,7 +1060,7 @@ const SINGLE_READ_SAMPLES = {
 (function singleRead_anEchoKeepsANewerControlAndRefreshesTheLensPreview() {
   const h = makeIssue251SidebarHarness();
   if (!h) {
-    eq('echo keeps control: source files (defaults/rounding/core/messaging) present in manifest', false, true);
+    eq('echo keeps control: source files (defaults/rounding/reader/bus) present in manifest', false, true);
     return;
   }
   try {
@@ -1652,7 +1652,7 @@ const SIDEBAR_UNBOUND_PROMPT = 'Right-click a table to connect it here.';
 (function sidebarBodyClickSendsNoSettingsWrite() {
   const h = makeIssue251SidebarHarness();
   if (!h) {
-    eq('body click: source files (defaults/rounding/core/messaging) present in manifest', false, true);
+    eq('body click: source files (defaults/rounding/reader/bus) present in manifest', false, true);
     return;
   }
   try {
@@ -1671,7 +1671,7 @@ const SIDEBAR_UNBOUND_PROMPT = 'Right-click a table to connect it here.';
 (function sidebarSwitchLabelClickSendsOneSettingsWrite() {
   const h = makeIssue251SidebarHarness();
   if (!h) {
-    eq('label click: source files (defaults/rounding/core/messaging) present in manifest', false, true);
+    eq('label click: source files (defaults/rounding/reader/bus) present in manifest', false, true);
     return;
   }
   try {
@@ -1694,7 +1694,7 @@ const SIDEBAR_UNBOUND_PROMPT = 'Right-click a table to connect it here.';
 (function sidebarBodyClickKeepsTheUnboundPrompt() {
   const h = makeIssue251SidebarHarness();
   if (!h) {
-    eq('unbound body click: source files (defaults/rounding/core/messaging) present in manifest', false, true);
+    eq('unbound body click: source files (defaults/rounding/reader/bus) present in manifest', false, true);
     return;
   }
   try {

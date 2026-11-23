@@ -2339,8 +2339,8 @@ function recordAppendedChildren(el) {
  */
 function makeIssue251SidebarHarness(opts) {
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
-  const coreSrc = sourceByName('lib/dr-number/core.js');
-  if (constantsCode === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
+  const readerSrc = sourceByName('lib/dr-number/reader.js');
+  if (constantsCode === null || roundingSrc === null || readerSrc === null || busCode === null) {
     return null;
   }
 
@@ -2449,8 +2449,8 @@ function makeIssue251SidebarHarness(opts) {
     eval(
       constantsCode + '\n' +
       roundingSrc + '\n' +
-      coreSrc + '\n' +
-      messagingCode + '\n' +
+      readerSrc + '\n' +
+      busCode + '\n' +
       fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8')
     );
   } catch (e) {
@@ -2609,7 +2609,7 @@ function makeIsolatedModel() {
   const vm = require('vm');
   const sandbox = { chrome: global.chrome, console };
   const ctx = vm.createContext(sandbox);
-  vm.runInContext(constantsCode + '\n' + messagingCode + '\n' + modelCode +
+  vm.runInContext(constantsCode + '\n' + busCode + '\n' + modelCode +
     '\nthis.__model = DR_MODEL; this.__bus = DR_BUS;', ctx);
   return { model: sandbox.__model, bus: sandbox.__bus };
 }
@@ -2617,7 +2617,7 @@ function makeIsolatedModel() {
 // ---------------------------------------------------------------------------
 // Every cross-context topic on the event bus.
 //
-// A shared sandbox harness for the bus tests below. adapters/messaging.js has
+// A shared sandbox harness for the bus tests below. app/bus.js has
 // no DOM dependency, so it runs in its own vm context with only the Chrome
 // interfaces stubbed. Each call builds a fresh bus, which matters: a responder
 // registration and a subscription both outlive the test that made them, and
@@ -2654,7 +2654,7 @@ function makeBusSandbox(opts) {
   };
   if (!options.noTabs) sandbox.chrome.tabs = tabs;
   vm.createContext(sandbox);
-  vm.runInContext(constantsCode + '\n' + messagingCode + '\nthis.__DR_BUS = DR_BUS;', sandbox);
+  vm.runInContext(constantsCode + '\n' + busCode + '\nthis.__DR_BUS = DR_BUS;', sandbox);
   return {
     bus: sandbox.__DR_BUS,
     sent,
