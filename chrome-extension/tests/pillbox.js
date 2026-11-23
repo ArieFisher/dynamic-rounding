@@ -1,4 +1,4 @@
-// The table pillbox on each data table (ui-pillbox.js).
+// The table pillbox on each data table (table-pillbox-view.js).
 
 // --- Animation parameters and dispatch ---
 

@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
-importScripts('lib/dr-log/index.js', 'adapters/messaging.js');
+importScripts('lib/dr-log/index.js', 'app/bus.js');
 
 // Every right-click place but the toolbar icon's own menu, where no table
 // sits under the pointer.

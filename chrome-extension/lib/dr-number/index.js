@@ -2,10 +2,9 @@
 /**
  * DynamicRounding lib/dr-number package bundle.
  *
- * Loaded LAST within lib/dr-number, after rounding.js, core.js, parsing.js,
- * and identifiers.js. Those four files declare their functions as bare
- * top-level names on the shared global scope, and their callers call those
- * bare names. This file adds a single DR_NUMBER object that groups every
+ * Loaded LAST within lib/dr-number, after every other file in it. Those
+ * files declare their functions as bare top-level names on the shared global
+ * scope, and their callers call those bare names. This file adds a single DR_NUMBER object that groups every
  * top-level function of those files. No file reads DR_NUMBER.x yet.
  *
  * Do not add behavior.
@@ -18,15 +17,15 @@ const DR_NUMBER = {
   stepForOffset,
   formatStep,
   trimNum,
-
-  // core.js
   findMaxMagnitude,
+
+  // reader.js
   numberFormat,
   groupShapePattern,
   isNumberShape,
   toNumber,
 
-  // parsing.js
+  // settings.js
   lettersToColIndex,
   parseRangeEndpoint,
   parseRangeToken,
@@ -34,8 +33,19 @@ const DR_NUMBER = {
   isInRanges,
   resolveOffset,
   resolveNumTop,
+
+  // numbers-in-text.js
   matchUnitNumber,
   getExclusionReason,
+  getQuoteMaskedRanges,
+  overlapsMaskedRange,
+  extractNumbersInText,
+  bracketSignSpan,
+  isBracketedNegative,
+  matchBracketedNumber,
+  pureNumberSpan,
+
+  // dates.js
   knownDate,
   findDates,
   isAmbiguousDate,
@@ -47,15 +57,10 @@ const DR_NUMBER = {
   roundDateText,
   roundClockTime,
   roundTimeText,
-  getQuoteMaskedRanges,
-  overlapsMaskedRange,
-  extractNumbersInText,
-  bracketSignSpan,
-  isBracketedNegative,
-  matchBracketedNumber,
   eraYearDigitRanges,
+
+  // write-back.js
   formatNumber,
-  pureNumberSpan,
 
   // identifiers.js
   insideNumberRun,

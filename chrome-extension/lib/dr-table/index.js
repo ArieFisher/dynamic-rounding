@@ -3,7 +3,7 @@
  * DynamicRounding lib/dr-table package bundle.
  *
  * Loaded LAST within lib/dr-table. The other files declare their functions as
- * bare top-level names, which ui-pillbox.js and content.js read. This file
+ * bare top-level names, which table-pillbox-view.js and content.js read. This file
  * adds a single DR_TABLE object that groups every public function and class,
  * so a consumer can depend on DR_TABLE.x instead. No file reads DR_TABLE.x yet.
  *

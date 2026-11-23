@@ -1494,25 +1494,25 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
 
 // ---------------------------------------------------------------------------
 // The application model (app/model.js, DR_MODEL)
-// and the typed event bus (adapters/messaging.js, DR_BUS). The selected
+// and the typed event bus (app/bus.js, DR_BUS). The selected
 // table and the sidebar-open flag moved out of content.js's file-level lets
-// into DR_MODEL; ui-pillbox.js reports an intent through DR_BUS instead of
+// into DR_MODEL; table-pillbox-view.js reports an intent through DR_BUS instead of
 // writing content.js's variables directly.
 // ---------------------------------------------------------------------------
 (function appModelSelection_storeAndBus() {
-  const busSrc = sourceByName('adapters/messaging.js');
+  const busSrc = sourceByName('app/bus.js');
   const modelSrc = sourceByName('app/model.js');
   if (busSrc === null || modelSrc === null) {
-    eq('app-model-selection: adapters/messaging.js and app/model.js are present in the manifest', false, true);
+    eq('app-model-selection: app/bus.js and app/model.js are present in the manifest', false, true);
     return;
   }
 
   // --- (a) discipline: one top-level declaration per file, like the lib
   // packages' index.js bundles. ---
   const topLevelDecls = (src) => src.match(/^(const|let|var|function\b|class\b)/gm) || [];
-  eq('adapters/messaging.js: exactly one top-level declaration in the file',
+  eq('app/bus.js: exactly one top-level declaration in the file',
     topLevelDecls(busSrc).length, 1);
-  eq('adapters/messaging.js: the sole top-level declaration is DR_BUS',
+  eq('app/bus.js: the sole top-level declaration is DR_BUS',
     /^const DR_BUS\b/m.test(busSrc), true);
   eq('app/model.js: exactly one top-level declaration in the file',
     topLevelDecls(modelSrc).length, 1);
@@ -1626,9 +1626,9 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
 
   // --- (d) no file writes another file's variables: build the list of
   // identifiers content.js declares at its top level, then confirm
-  // ui-pillbox.js contains no assignment to any of them. ---
+  // table-pillbox-view.js contains no assignment to any of them. ---
   const contentSrcForScan = sourceByName('content.js');
-  const uiPillboxSrcForScan = sourceByName('ui-pillbox.js');
+  const tablePillboxViewSrcForScan = sourceByName('table-pillbox-view.js');
   const topLevelBindingNames = (src) => {
     const names = [];
     const re = /^(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm;
@@ -1642,9 +1642,9 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
     true);
   const crossFileWrites = contentTopLevelNames.filter((name) => {
     const assignRe = new RegExp('\\b' + name + '\\s*=[^=]');
-    return assignRe.test(uiPillboxSrcForScan);
+    return assignRe.test(tablePillboxViewSrcForScan);
   });
-  eq("static scan: ui-pillbox.js assigns none of content.js's top-level bindings",
+  eq("static scan: table-pillbox-view.js assigns none of content.js's top-level bindings",
     crossFileWrites, []);
 
   // --- (e) hardening: the scan above only catches writes to content.js's
@@ -1669,9 +1669,9 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
      'activeTable', 'tableRegistry'].sort());
   const modelFieldWrites = modelFieldNames.filter((name) => {
     const assignRe = new RegExp('\\b' + name + '\\s*=[^=]');
-    return assignRe.test(uiPillboxSrcForScan) || assignRe.test(contentSrcForScan);
+    return assignRe.test(tablePillboxViewSrcForScan) || assignRe.test(contentSrcForScan);
   });
-  eq("static scan (hardened): neither ui-pillbox.js nor content.js assigns DR_MODEL's private field names directly",
+  eq("static scan (hardened): neither table-pillbox-view.js nor content.js assigns DR_MODEL's private field names directly",
     modelFieldWrites, []);
 })();
 
@@ -1780,7 +1780,7 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
 
 // ---------------------------------------------------------------------------
 // CLICK-HANDLER PARENT-EQUIVALENCE
-// PIN across the full guard matrix. ui-pillbox.js's two click branches
+// PIN across the full guard matrix. table-pillbox-view.js's two click branches
 // (mouse/keyboard, touch second-tap) each publish one
 // `DR_BUS.publish('intent:toggleTable', { table })`, and content.js's
 // intent:toggleTable subscriber runs the press. This pin checks
@@ -1872,7 +1872,7 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
 
 // ---------------------------------------------------------------------------
 // Statelessness. The bus
-// keeps no last-value cache and no delivery history (see adapters/messaging.js
+// keeps no last-value cache and no delivery history (see app/bus.js
 // header) — a subscriber that attaches AFTER a publish must never see that
 // publish, unlike an EventEmitter with replay or a BehaviorSubject.
 // ---------------------------------------------------------------------------
@@ -1894,7 +1894,7 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
 
 // ---------------------------------------------------------------------------
 // Reentrancy. Same-context
-// delivery is synchronous (see adapters/messaging.js header), so a subscribed
+// delivery is synchronous (see app/bus.js header), so a subscribed
 // handler may itself call DR_BUS.publish() for a different topic before
 // returning. A two-topic cycle — A's handler publishes B; B's handler
 // increments a counter and, guarded to do so only once, publishes A back —
@@ -4209,8 +4209,8 @@ function issue328SettingsOf(table) {
 (function theBusHoldsEveryTopicName() {
   const contextFiles = {
     'content.js': sourceByName('content.js') || '',
-    'ui-pillbox.js': uiPillboxCode || '',
-    'ui-toast.js': sourceByName('ui-toast.js') || '',
+    'table-pillbox-view.js': tablePillboxViewCode || '',
+    'toast-view.js': sourceByName('toast-view.js') || '',
     'app/model.js': modelCode || '',
     'sidebar.js': fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8'),
     'background.js': fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'),
@@ -4725,10 +4725,10 @@ function issue328SettingsOf(table) {
 // model's own context, such as the table pillbox.
 (function noContextPublishesWhatItSubscribes() {
   // Keyed by context, not by file: the content script's context loads
-  // ui-pillbox.js and app/model.js into the same scope as content.js, so a
+  // table-pillbox-view.js and app/model.js into the same scope as content.js, so a
   // publish in one and a subscription in another is the same loopback.
   const SOURCES = {
-    'the content script': [sourceByName('content.js'), sourceByName('ui-pillbox.js'),
+    'the content script': [sourceByName('content.js'), sourceByName('table-pillbox-view.js'),
       sourceByName('app/model.js')].map((src) => src || '').join('\n'),
     'the sidebar': fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8'),
     'the service worker': fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'),

@@ -1,4 +1,4 @@
-// The capture, the log buffer, and the toast (lib/dr-capture, lib/dr-log, ui-toast.js).
+// The capture, the log buffer, and the toast (lib/dr-capture, lib/dr-log, toast-view.js).
 
 (function gridPatch_captureCarriesTheRecordValue() {
   const { grid } = makePatchGrid();
@@ -1112,8 +1112,8 @@
   eq('capture-trace: a named frame renders as path:line:col (name)',
     f('    at roundTable (' + origin + 'content.js:1523:18)'), 'content.js:1523:18 (roundTable)');
   eq('capture-trace: an unnamed frame renders as an anonymous function',
-    f('    at ' + origin + 'adapters/messaging.js:399:9'),
-    'adapters/messaging.js:399:9 (anonymous function)');
+    f('    at ' + origin + 'app/bus.js:399:9'),
+    'app/bus.js:399:9 (anonymous function)');
   eq('capture-trace: an Object.<anonymous> frame keeps its function part',
     f('    at Object.<anonymous> (' + origin + 'x.js:1:2)'), 'x.js:1:2 (Object.<anonymous>)');
   eq('capture-trace: an async frame keeps the async prefix',

@@ -2581,7 +2581,7 @@ const supTestOpts = {
 // read (classifyTableCell) and the column post-pass. Each is framework-free,
 // so the sandboxes below carry no browser dependency.
 const detectionSandboxCode = [
-  constantsCode, coreCode, parsingCode, sourceByName('lib/dr-number/identifiers.js'),
+  constantsCode, readerCode, numberTextCode, sourceByName('lib/dr-number/identifiers.js'),
   detectCode, ladderCode, sourceByName('lib/dr-simplify/table.js'),
 ].join('\n');
 
