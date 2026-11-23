@@ -1004,12 +1004,15 @@ const ERA_MARKER_UPPER = '(?:AD|BCE|BC|CE|AH|BP)';
 // ERA_MARKER_UPPER alone.
 const ERA_MARKER_DOTTED = '(?:[Aa]\\.[Dd]\\.?|[Bb]\\.[Cc]\\.[Ee]\\.?|[Bb]\\.[Cc]\\.?|[Cc]\\.[Ee]\\.?|[Aa]\\.[Hh]\\.?|[Bb]\\.[Pp]\\.?)';
 const ERA_MARKER = '(?:' + ERA_MARKER_UPPER + '|' + ERA_MARKER_DOTTED + ')';
-// "<year> <era>": the digits are not part of a larger number (no leading digit
-// or decimal mark) and the era marker is a standalone token (no letter after
-// it, so "ADELAIDE" and "ADD" never match). No 'i' flag, for ERA_MARKER_UPPER.
+// Both orders take the same rules: the space between the year and the era
+// marker is optional, the digits are not part of a larger number (no digit or
+// decimal mark on the side away from the marker), and the era marker is a
+// standalone token (no letter on its far side, so "ADELAIDE", "ADD", and
+// "DEAD" never match). No 'i' flag, for ERA_MARKER_UPPER.
+// "<year> <era>": "2898 AD".
 const ERA_YEAR_AFTER_RE = new RegExp('(?<![\\d.])(?<year>\\d[\\d,]*)\\s*' + ERA_MARKER + '(?![A-Za-z])', 'gd');
-// "<era> <year>": e.g. "AD 79". Era marker preceded by a non-letter boundary.
-const ERA_YEAR_BEFORE_RE = new RegExp('(?<![A-Za-z])' + ERA_MARKER + '\\s+(?<year>\\d[\\d,]*)', 'gd');
+// "<era> <year>": "AD 79".
+const ERA_YEAR_BEFORE_RE = new RegExp('(?<![A-Za-z])' + ERA_MARKER + '\\s*(?<year>\\d[\\d,]*)(?![\\d,]*(?:\\d|\\.\\d))', 'gd');
 
 /**
  * Return {start, end} ranges (offsets into `text`) of every digit run that

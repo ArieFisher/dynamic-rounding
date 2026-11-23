@@ -3765,6 +3765,13 @@ function everyRowRead(kind, largeIn) {
     isEraYear('500 BC', 0, '500'), true);
   eq('era: "AD 79" → 79 is an era year',
     isEraYear('AD 79', 'AD '.length, '79'), true);
+  // Both orders take the same spacing and the same larger-number guard.
+  eq('era: "AD79" (no space) → 79 is an era year, like "2898AD"',
+    [isEraYear('AD79', 'AD'.length, '79'), isEraYear('2898AD', 0, '2898')], [true, true]);
+  eq('era: "AD 79.5" and "1.2898 AD" → a decimal is NOT an era year',
+    [isEraYear('AD 79.5', 'AD '.length, '79.5'), isEraYear('1.2898 AD', 0, '1.2898')], [false, false]);
+  eq('era: "Founded AD 79." → a sentence-ending period keeps 79 an era year',
+    isEraYear('Founded AD 79.', 'Founded AD '.length, '79'), true);
   eq('era: "1200 CE" → 1200 is an era year',
     isEraYear('1200 CE', 0, '1200'), true);
   eq('era: "2,898 BCE" → comma year is an era year',
