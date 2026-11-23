@@ -3035,3 +3035,89 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     overlay && { left: overlay.style.left, width: overlay.style.width },
     { left: '100px', width: '100px' });
 })();
+
+// ---------------------------------------------------------------------------
+// flashRangePulse enumerates cells through the same TableAdapter
+// (makeAdapter) the rounding engine and preview use, so a grid's cells are
+// found the same way a native table's are. Reading table.rows/row.cells
+// directly, which only exist on native <table> elements, would throw a
+// TypeError on a div-based grid and crash this suite rather than fail an
+// assertion.
+// ---------------------------------------------------------------------------
+(function tablePillboxSplit_rangeFlashWorksOnGrids() {
+  // 2x2 div-based grid (no ARIA roles, no vendor classes — the plain
+  // fallback shape GridAdapter already supports elsewhere in this suite).
+  const grid = makeGridWrapper([
+    ['1,000,000', '500'],
+    ['2,000,000', '750'],
+  ]);
+
+  // Distinct bounding rects per cell (document order: row0/col0, row0/col1,
+  // row1/col0, row1/col1) so the union rect proves WHICH cells were matched
+  // (column 1 only) rather than the whole grid or nothing at all.
+  const rects = [
+    { top: 0,  left: 0,   right: 100, bottom: 20 },
+    { top: 0,  left: 100, right: 200, bottom: 20 },
+    { top: 20, left: 0,   right: 100, bottom: 40 },
+    { top: 20, left: 100, right: 200, bottom: 40 },
+  ];
+  grid.cellEls.forEach((cell, i) => { cell.getBoundingClientRect = () => rects[i]; });
+
+  // Intercept the overlay div flashRangePulse creates and appends.
+  const origCreateElement = global.document.createElement;
+  const origBody = global.document.body;
+  const origSetTimeout = global.setTimeout;
+  let overlay = null;
+  global.document.createElement = (tag) => {
+    const el = { style: {}, addEventListener() {} };
+    if (tag === 'div') overlay = el;
+    return el;
+  };
+  const appended = [];
+  global.document.body = { appendChild(el) { appended.push(el); } };
+  global.setTimeout = () => 0; // avoid a real pending 1.5s cleanup timer
+
+  // Range expression equivalent to selecting column B only (both rows) —
+  // a partial range, so a whole-grid fallback would be visibly wrong.
+  const ranges = [{ colMin: 1, colMax: 1, rowMin: 0, rowMax: 1 }];
+  flashRangePulse(grid.wrapperEl, ranges);
+
+  global.document.createElement = origCreateElement;
+  global.document.body = origBody;
+  global.setTimeout = origSetTimeout;
+
+  eq('range-flash grid: an overlay is appended to document.body (not silently skipped)',
+    appended.length, 1);
+  eq('range-flash grid: the overlay carries the range-pulse class',
+    overlay && overlay.className, 'dr-ext-range-pulse');
+  eq('range-flash grid: the overlay is sized/positioned to the union of the matched grid cells (col 1 only), not the whole grid or nothing',
+    overlay && { top: overlay.style.top, left: overlay.style.left, width: overlay.style.width, height: overlay.style.height },
+    { top: '0px', left: '100px', width: '100px', height: '40px' });
+})();
+
+// --- The table pillbox redraws from the model's settings notice. A sidebar
+// write reaches the table pillbox with no redraw call from the controller,
+// on a table with nothing to simplify, where the screen never changes. ---
+(function tablePillboxRedrawsFromTheSettingsNotice() {
+  runPressFixture(() => {
+    const table = makePressTable('no digits');
+    DR_BUS.publish('intent:activateTable', { table });
+    const tablePillbox = tablePillboxes.get(table);
+
+    withCreateTreeWalker(() => {
+      askContentScript({ topic: 'request:applySettings',
+        settings: Object.assign({}, DR_DEFAULTS, { enabled: true }) });
+    });
+    eq('settings notice: the table pillbox shows on after the sidebar writes on',
+      tablePillbox.getAttribute('aria-pressed'), 'true');
+
+    withCreateTreeWalker(() => {
+      askContentScript({ topic: 'request:applySettings',
+        settings: Object.assign({}, DR_DEFAULTS, { enabled: false }) });
+    });
+    eq('settings notice: the table pillbox shows off after the sidebar writes off',
+      tablePillbox.getAttribute('aria-pressed'), 'false');
+  });
+  eq('settings notice: the controller holds no direct table pillbox redraw',
+    /syncTablePillbox\(/.test(sourceByName('content.js') || 'syncTablePillbox('), false);
+})();

@@ -29,6 +29,7 @@ const PIECES = [
   'table-step-tests.js',
   'sidebar-tests.js',
   'controller-tests.js',
+  'bus-tests.js',
   'capture-log-tests.js',
   'source-checks-tests.js',
   'report.js',
