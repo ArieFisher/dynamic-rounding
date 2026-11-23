@@ -56,7 +56,7 @@
 |  | **Parsing edge cases** |  |  |  |  | *//format the Input and Expected cells as plain text* |  |
 |  | **Input** | **Formula** | **Result** | **Expected** |  | **Note:** |  |
 | \=IF(D57=E57, "✓", "✗") | 50% | `=FORMULATEXT(D57)` | `=ROUND_DYNAMIC(B57)` | 50% |  | Note: the percent sign stays, and the number is not scaled |  |
-| \=IF(D58=E58, "✓", "✗") | −502 | `=FORMULATEXT(D58)` | `=ROUND_DYNAMIC(B58)` | −500 |  | Note: the "long minus" sign (U+2212) reads as a minus sign and stays |  |
+| \=IF(D58=E58, "✓", "✗") | −502 | `=FORMULATEXT(D58)` | `=ROUND_DYNAMIC(B58)` | −500 |  | Note: the "long minus" sign (U+2212) reads as a minus sign, and the result keeps it as typed |  |
 | \=IF(D59=E59, "✓", "✗") | $ | `=FORMULATEXT(D59)` | `=ROUND_DYNAMIC(B59)` | $ |  | Note: symbol-only string passes through, not 0 |  |
 |  |  |  |  |  |  |  |  |
 |  |  |  |  |  |  |  |  |
