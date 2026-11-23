@@ -197,8 +197,16 @@ function extractSheetsTab(doc, text) {
       continue;
     }
 
-    if ((c[4] || '').includes(':') || datasetBlock) {  // dataset block: first row names the range
-      if ((c[4] || '').includes(':')) {
+    // An input in a plain-text section, or with a format mark or a space, is
+    // text, and a text input returns text, so its expected value is read as
+    // written.
+    const isText = plainTextInputs || parseNumber(c[2]) === null || /[$€£¥,%()\s−]/.test(c[2]);
+
+    // A dataset block's first row holds the range formula. A later row's
+    // result is a value, and a text value may hold a colon ("2001:db8::1").
+    const startsDataset = /^=ROUND_DYNAMIC\(\$?[A-Z]+\$?\d+:/.test(c[4] || '');
+    if (startsDataset || datasetBlock) {
+      if (startsDataset) {
         flushDataset();
         // Trailing blanks truncate; an interior blank stays undefined so the
         // library applies its own default in that position rather than the
@@ -210,8 +218,8 @@ function extractSheetsTab(doc, text) {
         datasetBlock = { inputs: [], offsets, expecteds: [] };
       }
       if (datasetBlock) {
-        datasetBlock.inputs.push(parseNumber(c[2]));
-        datasetBlock.expecteds.push(parseNumber(c[5]));
+        datasetBlock.inputs.push(isText ? c[2] : parseNumber(c[2]));
+        datasetBlock.expecteds.push(isText ? c[5] : parseNumber(c[5]));
       }
       continue;
     }
@@ -222,9 +230,6 @@ function extractSheetsTab(doc, text) {
       checkPair(doc, input, parseOffset(c[3]), expected);
       found++;
     } else if ((c[4] || '').startsWith('=ROUND_DYNAMIC')) { // input-handling layout: input, expected
-      // An input in a plain-text section, or with a format mark, is text, and
-      // a text input returns text, so its expected value is read as written.
-      const isText = plainTextInputs || parseNumber(c[2]) === null || /[$€£¥,%()\s−]/.test(c[2]);
       const input = isText ? c[2] : parseNumber(c[2]);
       const expected = typeof input === 'string' || parseNumber(c[5]) === null ? c[5] : parseNumber(c[5]);
       checkPair(doc, input, undefined, expected);
