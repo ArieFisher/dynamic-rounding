@@ -98,6 +98,16 @@
     classifyCell({ text: '3:45 PM', rowIndex: 1, columnIndex: 1, ranges: null },
       Object.assign({}, LADDER_OPTS, { simplifyTimes: true })),
     { mode: 'time', reason: 'simplify' });
+  // A cell holding an impossible time stays as written, like a cell holding an
+  // impossible date, so a timestamp's date digits never round as plain numbers.
+  const timesOn = Object.assign({}, LADDER_OPTS, { simplifyTimes: true });
+  eq('classifyCell: a cell holding an impossible time stays as written',
+    ['24:00', '10:00:75', '0:30 AM', '2025-01-01T10:00:60', '2025-11-26T24:00'].map((text) =>
+      classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, timesOn).reason),
+    ['impossible-time', 'impossible-time', 'impossible-time', 'impossible-time', 'impossible-time']);
+  eq('classifyCell: a time that cannot exist follows the times switch first',
+    classifyCell({ text: '2025-11-26T24:00', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
+    { mode: 'skip', reason: 'times-disabled' });
 })();
 
 (function classifyCell_markup() {
@@ -434,9 +444,9 @@ const CLOCK_TIME_SPAN_NEAR_MISSES = [
     extractSimplifyMatches('18:302 departs, 1,234 seats', [{ start: 5, end: 6 }]).map((m) => m.numStr),
     ['1,234']);
   eq('clock time inside text: ranges cover each time\'s digits and leave the AM/PM out',
-    clockTimeRanges('9:45 - 11:45 AM'), [{ start: 0, end: 4 }, { start: 7, end: 12 }]);
+    getClockTimeMaskedRanges('9:45 - 11:45 AM'), [{ start: 0, end: 4 }, { start: 7, end: 12 }]);
   eq('clock time inside text: a text with no clock time has no ranges',
-    clockTimeRanges('About 1,613,245 people'), []);
+    getClockTimeMaskedRanges('About 1,613,245 people'), []);
 })();
 
 // =============================================================================
