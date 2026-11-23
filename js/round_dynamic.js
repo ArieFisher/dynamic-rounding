@@ -683,9 +683,8 @@ const PURE_TRAIL_RE = new RegExp(PURE_TRAIL_PATTERN + '$');
  * marks and sign characters and the trailing run of format marks left out.
  * The write-back patches this span alone, so a sign, a currency sign and its
  * gap, a percent sign, and a plus stay where the page put them. The span
- * never starts with a minus sign, so the write-back writes the absolute
- * value and the kept sign carries the negative. index counts into `text` as
- * given, untrimmed.
+ * never starts with a minus sign (see formatNumber for why). index counts
+ * into `text` as given, untrimmed.
  * @param {string} text
  * @returns {{numStr: string, index: number}}
  */
@@ -1061,35 +1060,26 @@ function getEraYearMaskedRanges(text) {
  */
 
 /**
- * The number format every rounded value is written in: en-US, grouped,
- * trailing zeros stripped. It is built once. A toLocaleString call with
- * options builds a new format on every call, which took most of a pass's
- * time: about 15 microseconds a number against well under one for a format
- * built once. formatNumber maps its marks onto the marks the number format
- * function returns.
+ * The Intl formatter every rounded value is written with. It is built once,
+ * because a toLocaleString call with options builds a new formatter on every
+ * call, which took most of a pass's time. useGrouping stays explicit because
+ * its default, "auto", groups by the locale's own rule.
  */
 const GROUPED_NUMBER_FORMAT = new Intl.NumberFormat('en-US', {
-  minimumFractionDigits: 0,
   maximumFractionDigits: 10,
   useGrouping: true,
 });
 
 /**
- * The one write-back: turn a rounded value into the characters that replace
- * a number's digits in place, on every cell kind. The digits are grouped and
- * written with the marks the number format function (reader.js) returns.
- * Trailing zeros are always stripped, at every magnitude.
+ * The result replaces a number's digits in place, for every cell. Its marks
+ * are the ones the number format function (reader.js) returns.
  *
- * The characters around the number stay where the page put them, so a minus
+ * The characters around the number stay where the source put them, so a minus
  * sign is written only when originalNumStr itself starts with one. A negative
  * whose number holds no minus sign carries its sign outside the patched
  * characters: in the brackets around it (see isBracketedNegative), or in a
  * pure cell's own leading sign (see pureNumberSpan). A minus written here
  * would double that sign ("(-1,200)").
- *
- * @param {number} rounded - The rounded value.
- * @param {string} originalNumStr - The characters the result replaces.
- * @returns {string}
  */
 function formatNumber(rounded, originalNumStr) {
   const marks = numberFormat();
