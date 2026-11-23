@@ -27,8 +27,9 @@ A list belongs in exactly one place. Two copies drift apart and nothing reports 
 - Put the machine form beside the human form — a column, a fenced block, a front-matter key — and parse it.
 - Never add a "keep in step with X" comment: it marks a duplicate that will drift. Remove the duplicate.
 - Fail closed when the parse returns nothing. On a missing file, a renamed heading, or a reshaped row, the check must exit with an error, because "found nothing" and "nothing to enforce" look identical from outside.
+- An explanation follows the same rule. Write a reason in full once, in the comment beside the code it governs. Every other place that needs the reason holds a pointer to that comment.
 
-Applies to allowlists, error codes, supported-version tables, feature flags, and these conventions.
+Applies to allowlists, error codes, supported-version tables, feature flags, the reasons in code comments, and these conventions.
 
 ### Collapse a path before opening a second one
 
@@ -81,6 +82,7 @@ This repository is public. Before staging a new file, answer this: does it serve
 - Keep code simple and readable.
 - Give every new Python parameter and return value a type hint. In JavaScript, write no per-parameter doc comments; a parameter's name states its meaning. The exception is `ROUND_DYNAMIC`, whose JSDoc Google Sheets reads to build the help card.
 - A comment holds only what the code cannot show: a reason, a constraint, or a fact about the page or a caller outside the file. No comment restates what the code does, because the restatement becomes false when the code changes. Before writing a comment, check whether a clearer name or a smaller function would make it unnecessary; that is a judgement, not a rule.
+- A test name holds the input and the result the test expects, never the rule or code path that produces the result. A test group's heading holds the behavior its tests check. A name that holds the mechanism becomes false when the mechanism changes, and the test still passes.
 
 ### Regression fixtures
 
@@ -102,6 +104,7 @@ A capture from the extension holds real page content, and this repository is pub
 Living documents: `README.md`, `CONTRIBUTING.md`, `MAINTAINERS.md`, `chrome-extension/README.md`, `claude-code-plugin/README.md`, `docs/capability-map.md`, `docs/design.md`, `docs/table-kind-pairs.md`, `docs/test-pages/test-tables-1.html`, `docs/vocabulary.md`, `js/README.md`, `js/tests-googlesheets-tab.md`, `python/README.md`, the `.agent/` instruction files, and this file. Sprint plans and logs, research notes, and released `js/CHANGELOG.md` entries are historical records. Mark them, never rewrite them.
 
 - A pull request that changes behavior updates every living document its change invalidates, in the same branch. If none apply, write "No doc impact" in the body.
+- Whoever changes what a function does, or renames it, searches the repository in the same commit for comments, test names, and test group headings that name the function or describe its old behavior, and corrects each one the change made false.
 
 ### Public repository, security disclosure
 
