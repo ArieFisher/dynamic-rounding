@@ -104,7 +104,8 @@ A capture from the extension holds real page content, and this repository is pub
 Living documents: `README.md`, `CONTRIBUTING.md`, `MAINTAINERS.md`, `chrome-extension/README.md`, `claude-code-plugin/README.md`, `docs/capability-map.md`, `docs/design.md`, `docs/table-kind-pairs.md`, `docs/test-pages/test-tables-1.html`, `docs/vocabulary.md`, `js/README.md`, `js/tests-googlesheets-tab.md`, `python/README.md`, the `.agent/` instruction files, and this file. Sprint plans and logs, research notes, and released `js/CHANGELOG.md` entries are historical records. Mark them, never rewrite them.
 
 - A pull request that changes behavior updates every living document its change invalidates, in the same branch. If none apply, write "No doc impact" in the body.
-- Whoever changes what a function does, or renames it, searches the repository in the same commit for comments, test names, and test group headings that name the function or describe its old behavior, and corrects each one the change made false.
+- Whoever changes code (a name, a value, a condition, or what it does) searches the repository in the same commit for the old name and for text that describes the old code: comments, test names, test group headings, and documents. Correct each one the change made false.
+- Whoever changes a rule in this file, a rule in the design document, or a term in the vocabulary searches the repository in the same branch for text written under the old rule or term: code, comments, test names, and living documents. Correct each one that no longer follows the rule or still uses the old term. Historical records stay as written.
 
 ### Public repository, security disclosure
 
