@@ -738,9 +738,9 @@ function extractPreviewSamples(table) {
     byMag.get(mag).push(c);
   }
 
-  // Top band: cells whose magnitude is within numTop of maxMag (i.e. cells
-  // that roundValueSetAware will route to offset_top). Pick up to 2; prefer
-  // distinct magnitudes.
+  // Top band: cells in the numTop largest orders of magnitude, counting down
+  // from maxMag (the cells roundValueSetAware routes to offset_top). Pick up
+  // to 2; prefer distinct magnitudes.
   const topMags = Array.from(byMag.keys())
     .filter(m => (maxMag - m) < numTop)
     .sort((a, b) => b - a);
