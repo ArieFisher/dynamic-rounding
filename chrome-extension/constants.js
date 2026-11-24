@@ -11,7 +11,7 @@
  *
  * DR_DEFAULTS is the settings contract: every option's name and its default.
  * Every key that starts with "simplify" is a switch: the data test turns each
- * one on (lib/dr-table/detect.js), and the sidebar draws one control for each.
+ * one on (lib/dr-table/detect.js), and sidebar.html holds one control for each.
  */
 const DR_DEFAULTS = {
   // Off: a table no one has turned on shows the original.
