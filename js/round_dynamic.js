@@ -1130,8 +1130,8 @@ function formatNumber(rounded, originalNumStr) {
  *
  * Loaded by manifest content_scripts AFTER lib/dr-number/numbers-in-text.js,
  * whose two patterns build the fill tests here at load time, and BEFORE
- * lib/dr-number/index.js, which reads every function here into DR_NUMBER as
- * it loads. The Sheets build joins the files in the same order. All symbols
+ * lib/dr-number/index.js; see its header. The Sheets build joins the files in
+ * the same order. All symbols
  * land on the shared global scope, the same convention every other
  * lib/dr-number file uses.
  */

@@ -1291,11 +1291,8 @@
 })();
 
 // ---------------------------------------------------------------------------
-// The pure number-logic package lives under
-// lib/dr-number/ (rounding.js, reader.js, settings.js, numbers-in-text.js,
-// dates.js, write-back.js, identifiers.js, index.js). This test is the package discipline check: index.js's only
-// job — assigning every public function onto one DR_NUMBER bundle — actually
-// happened.
+// lib/dr-number/index.js has one job: to put every top-level function
+// declaration in lib/dr-number onto DR_NUMBER. This test checks that it did.
 // ---------------------------------------------------------------------------
 (function drNumberBundleIsPublished() {
   const EXPECTED_DR_NUMBER_NAMES = [
@@ -1322,8 +1319,6 @@
     'insideNumberRun', 'findIdentifiers', 'matchIdentifierShape', 'getIdentifierMaskedRanges',
   ].sort();
 
-  eq('lib/dr-number/index.js: DR_NUMBER exists on the global scope after the main eval',
-    typeof globalThis.DR_NUMBER, 'object');
   eq('lib/dr-number/index.js: DR_NUMBER exposes exactly the expected public function names',
     Object.keys(globalThis.DR_NUMBER || {}).sort(), EXPECTED_DR_NUMBER_NAMES);
   eq('lib/dr-number/index.js: every DR_NUMBER entry is itself a function',
@@ -1334,12 +1329,10 @@
 // ---------------------------------------------------------------------------
 // ROUND_DYNAMIC, singleValueMode, datasetMode, and validateOffset belong to
 // the Sheets library, not the extension: nothing in the extension calls
-// them. These typeof checks read the
-// bare names the main eval's function declarations leave in this module's
-// scope (the same sloppy-mode leak DR_NUMBER's helpers rely on before their
-// explicit globalThis bridge) — so a reintroduced declaration in lib/dr-number
-// flips a result from 'undefined' to 'function' even if nobody re-adds a
-// globalThis bridge or a DR_NUMBER entry for it.
+// them. These typeof checks read the top-level function declarations the
+// content scripts leave on the global scope, so a reintroduced declaration in
+// lib/dr-number flips a result from 'undefined' to 'function' even if nobody
+// re-adds a globalThis bridge or a DR_NUMBER entry for it.
 // ---------------------------------------------------------------------------
 (function deletedRoundingEntryPointsStayDeleted() {
   eq('lib/dr-number: ROUND_DYNAMIC stays deleted', typeof ROUND_DYNAMIC, 'undefined');
@@ -1394,7 +1387,7 @@ checkPackageObjectMatchesDeclarations('dr-number', 'DR_NUMBER',
     'sameTableFingerprint',
   ].sort();
 
-  eq('lib/dr-table/index.js: DR_TABLE exists on the global scope after the main eval',
+  eq('lib/dr-table/index.js: DR_TABLE exists on the global scope',
     typeof globalThis.DR_TABLE, 'object');
   eq('lib/dr-table/index.js: DR_TABLE exposes exactly the expected public names',
     Object.keys(globalThis.DR_TABLE || {}).sort(), EXPECTED_DR_TABLE_NAMES);
