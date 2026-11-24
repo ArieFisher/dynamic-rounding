@@ -291,19 +291,7 @@ const STEP_HEADER_CLASS = 'step-header';
  * Examples: mag=5 → "100k+", mag=3 → "1k+", mag=0 → "1+", mag=-1 → "0.1+"
  */
 function formatOomLabel(mag) {
-  const val = Math.pow(10, mag);
-  let str;
-  if (val >= 1e9) {
-    str = trimNum(val / 1e9) + 'B';
-  } else if (val >= 1e6) {
-    str = trimNum(val / 1e6) + 'M';
-  } else if (val >= 1e3) {
-    str = trimNum(val / 1e3) + 'k';
-  } else {
-    // Includes sub-integer magnitudes: mag=-1 → 0.1, mag=-2 → 0.01
-    str = trimNum(val);
-  }
-  return str + '+';
+  return formatStep(Math.pow(10, mag)) + '+';
 }
 
 /**

@@ -529,7 +529,7 @@ const SEAT_ROWS = [
 })();
 
 // =============================================================================
-// FormatStep, collectNumericCells, extractPreviewSamples
+// The lens preview's step labels, steps, sample pool, and sample choice
 // =============================================================================
 
 (function lensPreview_formatStep() {

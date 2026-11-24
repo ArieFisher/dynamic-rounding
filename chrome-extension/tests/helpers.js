@@ -3597,7 +3597,7 @@ function checkPackageObjectMatchesDeclarations(packageDir, objectName, sourceFil
   const packageObject = globalThis[objectName] || {};
   eq(`lib/${packageDir} bundle: source files declared at least one top-level function`,
     declaredNames.length > 0, true);
-  eq(`lib/${packageDir}/index.js: ${objectName} exists on the global scope after the main eval`,
+  eq(`lib/${packageDir}/index.js: ${objectName} exists on the global scope`,
     typeof globalThis[objectName], 'object');
   eq(`lib/${packageDir} bundle: ${objectName} keys are exactly the top-level functions declared in ${sourceFiles.join(', ')}`,
     Object.keys(packageObject).sort(), declaredNames);

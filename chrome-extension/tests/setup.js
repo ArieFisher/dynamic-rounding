@@ -1,10 +1,9 @@
 /**
- * Test suite for chrome-extension content.js pure helpers.
+ * Setup for the chrome-extension test suite.
  * Run: node tests.js
  *
- * Stubs out browser globals so the content scripts run in Node and exercise
- * the pure functions (extractNumbersInText, formatNumber, toNumber,
- * roundValueSetAware, findMaxMagnitude, pureNumberSpan).
+ * Stubs out browser globals and loads the content scripts in manifest order,
+ * so the test pieces run them in Node.
  */
 
 const fs = require('fs');
@@ -131,8 +130,8 @@ globalThis.DR_DETECTION_SETTINGS = DR_DETECTION_SETTINGS;
 globalThis.DR_NUMBER = DR_NUMBER;
 // Expose the log buffer (lib/dr-log) for the dr-log test suite.
 globalThis.DR_LOG = DR_LOG;
-// Expose the capture state serializer (lib/dr-capture) and its content.js
-// wire-response composer for the capture test suites.
+// Expose the capture state serializer (lib/dr-capture) and content.js's
+// answer to request:captureState for the capture test suites.
 globalThis.collectCaptureState = collectCaptureState;
 globalThis.buildCaptureStateResponse = buildCaptureStateResponse;
 // Expose the capture format version so the capture-settings tests can pin the
@@ -175,8 +174,6 @@ globalThis.CURRENCY_SIGNS = CURRENCY_SIGNS;
 globalThis.CLEAN_REGEX = CLEAN_REGEX;
 globalThis.getEraYearMaskedRanges = getEraYearMaskedRanges;
 globalThis.getClockTimeMaskedRanges = getClockTimeMaskedRanges;
-globalThis.formatStep = formatStep;
-globalThis.stepForOffset = stepForOffset;
 // Expose the table pillbox geometry constants (all are const, so direct assignment works)
 globalThis.TABLE_PILLBOX_DOT_PX = TABLE_PILLBOX_DOT_PX;
 globalThis.TABLE_PILLBOX_PILL_HEIGHT_PX = TABLE_PILLBOX_PILL_HEIGHT_PX;
@@ -222,7 +219,7 @@ globalThis.makeAdapter = makeAdapter;
 globalThis.NativeTableAdapter = NativeTableAdapter;
 globalThis.GridAdapter = GridAdapter;
 globalThis.GRID_CELL_SELECTOR = GRID_CELL_SELECTOR;
-// Expose the lib/dr-table package bundle, mirroring DR_NUMBER below.
+// Expose the lib/dr-table package bundle, mirroring DR_NUMBER above.
 globalThis.DR_TABLE = DR_TABLE;
 globalThis.classifyCell = classifyCell;
 globalThis.pickDateFormatHint = pickDateFormatHint;

@@ -102,7 +102,7 @@
     /constants\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
   eq('sidebar-defaults: sidebar.js fills every control unset by the settings from DR_DEFAULTS',
     /function applySettingsToUI\(settings\)\s*\{\s*const s = Object\.assign\(\{\}, DR_DEFAULTS, settings \|\| \{\}\)/.test(sidebarJsSource), true);
-  eq('sidebar-defaults: manifest content_scripts load order is defaults, log buffer, dr-number package, dr-table package, dr-simplify package, event bus, application model, table pillbox view, content',
+  eq('sidebar-defaults: manifest content_scripts load order is defaults, log buffer, dr-number package, dr-table package, dr-simplify package, dr-capture package, event bus, application model, table pillbox view, toast view, content',
     JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify([
       'constants.js',
       'lib/dr-log/index.js',
@@ -1291,11 +1291,8 @@
 })();
 
 // ---------------------------------------------------------------------------
-// The pure number-logic package lives under
-// lib/dr-number/ (rounding.js, reader.js, settings.js, numbers-in-text.js,
-// dates.js, write-back.js, identifiers.js, index.js). This test is the package discipline check: index.js's only
-// job — assigning every public function onto one DR_NUMBER bundle — actually
-// happened.
+// lib/dr-number/index.js has one job: to put every top-level function
+// declaration in lib/dr-number onto DR_NUMBER. This test checks that it did.
 // ---------------------------------------------------------------------------
 (function drNumberBundleIsPublished() {
   const EXPECTED_DR_NUMBER_NAMES = [
@@ -1322,8 +1319,6 @@
     'insideNumberRun', 'findIdentifiers', 'matchIdentifierShape', 'getIdentifierMaskedRanges',
   ].sort();
 
-  eq('lib/dr-number/index.js: DR_NUMBER exists on the global scope after the main eval',
-    typeof globalThis.DR_NUMBER, 'object');
   eq('lib/dr-number/index.js: DR_NUMBER exposes exactly the expected public function names',
     Object.keys(globalThis.DR_NUMBER || {}).sort(), EXPECTED_DR_NUMBER_NAMES);
   eq('lib/dr-number/index.js: every DR_NUMBER entry is itself a function',
@@ -1334,12 +1329,10 @@
 // ---------------------------------------------------------------------------
 // ROUND_DYNAMIC, singleValueMode, datasetMode, and validateOffset belong to
 // the Sheets library, not the extension: nothing in the extension calls
-// them. These typeof checks read the
-// bare names the main eval's function declarations leave in this module's
-// scope (the same sloppy-mode leak DR_NUMBER's helpers rely on before their
-// explicit globalThis bridge) — so a reintroduced declaration in lib/dr-number
-// flips a result from 'undefined' to 'function' even if nobody re-adds a
-// globalThis bridge or a DR_NUMBER entry for it.
+// them. These typeof checks read the top-level function declarations the
+// content scripts leave on the global scope, so a reintroduced declaration in
+// lib/dr-number flips a result from 'undefined' to 'function' even if nobody
+// re-adds a globalThis bridge or a DR_NUMBER entry for it.
 // ---------------------------------------------------------------------------
 (function deletedRoundingEntryPointsStayDeleted() {
   eq('lib/dr-number: ROUND_DYNAMIC stays deleted', typeof ROUND_DYNAMIC, 'undefined');
@@ -1357,19 +1350,16 @@ checkPackageObjectMatchesDeclarations('dr-number', 'DR_NUMBER',
     'identifiers.js']);
 
 // ---------------------------------------------------------------------------
-// Table detection lives under lib/dr-table/
-// (cells.js, adapters.js, classify.js, detect.js, index.js), mirroring the
-// lib/dr-number package structure and discipline checks above. Four groups of tests:
-//   1. DR_TABLE bundle discipline (mirrors drNumberBundleIsPublished /
-//      checkIndexDeclaresOnlyPackageObject, but against an explicit
-//      hand-written list, not a source-derived one — the package also
-//      carries write-engine helpers alongside detection, so "every top-level
-//      function" is not the right criterion here the way it is for the pure
-//      lib/dr-number files).
+// The lib/dr-table package (cells.js, adapters.js, classify.js, detect.js,
+// index.js) follows the lib/dr-number package structure and checks above.
+// Four groups of tests:
+//   1. DR_TABLE is compared against a hand-written list, not against every
+//      top-level function, because the package's files declare private
+//      helpers that DR_TABLE leaves out.
 //   2. The jsdom-less criterion: detection runs with no Chrome globals at all.
 //   3. VendorProfiles: a custom list replaces (not merges with) the default.
 //   4. findTables' isArtifact: the default drops accessibility artifacts; a
-//      pass-through filter keeps it.
+//      filter that drops nothing keeps it.
 // ---------------------------------------------------------------------------
 (function drTableBundleIsPublished() {
   const EXPECTED_DR_TABLE_NAMES = [
@@ -1379,6 +1369,7 @@ checkPackageObjectMatchesDeclarations('dr-number', 'DR_NUMBER',
     'getSuperscriptRanges',
     'getMarkupRanges',
     'classifyTableCell',
+    'makeCellObj',
     'collectTextPieces',
     'mapRenderedToFlat',
     'writePatches',
@@ -1389,17 +1380,18 @@ checkPackageObjectMatchesDeclarations('dr-number', 'DR_NUMBER',
     'findTables',
     'scanTables',
     'chainRootOf',
+    'nominateNest',
     'isAccessibilityArtifact',
     'isDataTable',
     'readTableFingerprint',
     'sameTableFingerprint',
   ].sort();
 
-  eq('lib/dr-table/index.js: DR_TABLE exists on the global scope after the main eval',
+  eq('lib/dr-table/index.js: DR_TABLE exists on the global scope',
     typeof globalThis.DR_TABLE, 'object');
   eq('lib/dr-table/index.js: DR_TABLE exposes exactly the expected public names',
     Object.keys(globalThis.DR_TABLE || {}).sort(), EXPECTED_DR_TABLE_NAMES);
-  eq('lib/dr-table/index.js: every DR_TABLE entry is itself a function (classes included — typeof a class is "function")',
+  eq('lib/dr-table/index.js: every DR_TABLE entry is itself a function',
     EXPECTED_DR_TABLE_NAMES.every((n) => typeof (globalThis.DR_TABLE || {})[n] === 'function'),
     true);
 })();
@@ -2169,12 +2161,6 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 
 // --- toast view: an error row shows on the page ---
 //
-// The toast view subscribes to the model's error state change and draws the
-// newest row's text in one fixed element at the page's bottom right, removed
-// by a click or after the hide delay. A second row replaces the text and
-// restarts the delay, so a repeating warning shows one toast. The view never
-// logs: a row it recorded would publish back to it.
-//
 // The live view has drawn against earlier tests' page stubs by the time this
 // section runs, so these build the settings contract, the bus, the model,
 // and the view together in a fresh context with their own page stub. The
@@ -2187,7 +2173,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 
   const appended = [];
   const timers = [];
-  let cleared = 0;
+  const cleared = [];
   const makeEl = (tag) => {
     const listeners = {};
     const attrs = {};
@@ -2196,6 +2182,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
       setAttribute(name, value) { attrs[name] = value; },
       getAttribute(name) { return attrs[name] === undefined ? null : attrs[name]; },
       addEventListener(evt, fn) { (listeners[evt] = listeners[evt] || []).push(fn); },
+      remove() { if (this.parentNode) this.parentNode.removeChild(this); },
     };
   };
   const container = () => ({
@@ -2212,7 +2199,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
     console,
     document: { createElement: makeEl, body: container(), head: container() },
     setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
-    clearTimeout: () => { cleared++; },
+    clearTimeout: (id) => { cleared.push(id); },
   };
   const ctx = vm.createContext(sandbox);
   vm.runInContext(constantsCode + '\n' + busCode + '\n' + modelCode + '\n' + toastViewCode +
@@ -2223,32 +2210,33 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 
   model.recordError({ at: 'x', level: 'warn', text: 'Dynamic Rounding: toast probe one', stack: null });
   const toast = appended.find(isToast);
-  eq('toast: an error row appends one toast to the page', !!toast, true);
+  eq('toast: after one error row, the page holds one toast', !!toast, true);
   eq('toast: the toast shows the row\'s text',
     toast ? toast.textContent : null, 'Dynamic Rounding: toast probe one');
   eq('toast: the toast is a status region for assistive technology',
     toast ? toast.getAttribute('role') : null, 'status');
   eq('toast: the view injects its stylesheet once',
     appended.filter((el) => el._tag === 'style' && el.textContent.includes(view.TOAST_CLASS)).length, 1);
-  eq('toast: the toast hides itself after the hide delay',
+  eq('toast: after one error row, the view sets one timer for the hide delay',
     timers.length === 1 && timers[0].ms === view.TOAST_HIDE_MS, true);
 
   model.recordError({ at: 'x', level: 'warn', text: 'toast probe two', stack: null });
-  eq('toast: a second row replaces the text of the one toast',
+  eq('toast: after a second error row, the page holds one toast with the second row\'s text',
     { count: appended.filter(isToast).length, text: toast ? toast.textContent : null },
     { count: 1, text: 'toast probe two' });
-  eq('toast: a second row restarts the hide delay',
-    { cleared, timers: timers.length }, { cleared: 1, timers: 2 });
+  eq('toast: after a second error row, the view clears the first timer and sets a second',
+    { firstTimerCleared: cleared.includes(1), timers: timers.length },
+    { firstTimerCleared: true, timers: 2 });
 
   if (timers[1]) timers[1].fn();
-  eq('toast: the hide delay removes the toast', appended.some(isToast), false);
+  eq('toast: when the hide delay ends, the page holds no toast', appended.some(isToast), false);
 
   model.recordError({ at: 'x', level: 'error', text: 'toast probe three', stack: null });
   const second = appended.find(isToast);
-  eq('toast: a row after the hide draws a fresh toast',
+  eq('toast: after an error row that follows the hide, the page holds a new toast with that row\'s text',
     !!second && second !== toast && second.textContent === 'toast probe three', true);
   if (second) second._listeners.click[0]();
-  eq('toast: a click removes the toast', appended.some(isToast), false);
+  eq('toast: after a click on the toast, the page holds no toast', appended.some(isToast), false);
   eq('toast: the stylesheet is injected once for the page\'s life',
     appended.filter((el) => el._tag === 'style').length, 1);
   eq('toast: the view logs nothing', /DR_LOG\./.test(toastViewCode), false);

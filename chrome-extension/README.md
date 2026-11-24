@@ -83,7 +83,7 @@ A number inside a link (`<a>`) or a code element (`<code>`) stays as written, an
 
 ## Extension errors
 
-Every warning or error the extension records on a page shows as a toast at the page's bottom right: the row's text, for five seconds or until a click. A second row replaces the first, so a warning that repeats on every scroll shows one toast. The tab keeps its error state for the life of the page: whether an error was recorded, how many, and the last 50 rows with their stack traces. A reload starts clean. The capture carries that state, and each log row's stack trace sits under the row in the capture file, folded.
+Every warning or error the extension records on a page shows as a toast at the page's bottom right: the row's text, for five seconds or until a click. For a second row, the toast view replaces the text, so the page holds one toast while a warning repeats on every scroll. The tab keeps its error state for the life of the page: whether an error was recorded, how many, and the last 50 rows with their stack traces. A reload starts clean. The capture carries that state, and each log row's stack trace sits under the row in the capture file, folded.
 
 ## Capture
 

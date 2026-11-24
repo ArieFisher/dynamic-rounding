@@ -1,14 +1,10 @@
 // Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 /**
- * DynamicRounding shared rounding helpers
- *
- * The one copy of the rounding arithmetic, read by three scripts: the
- * content script (via manifest content_scripts), the sidebar (via a script
- * tag), and the Google Sheets library, which scripts/build-sheets.js writes
- * by joining this file with the rest of the shared library and the Sheets
- * entry source. Must remain framework-free and side-effect-free: no
- * chrome.*, no DOM access, no Node module code. All symbols land on the
- * global scope of whichever script holds this file.
+ * DynamicRounding shared rounding helpers: the one copy of the rounding
+ * arithmetic. docs/design.md "How the code is shared" lists where it loads.
+ * Must remain side-effect-free: no chrome.*, no DOM access, no Node module
+ * code. All symbols land on the global scope of whichever script holds this
+ * file.
  */
 
 const EPSILON = 1e-9;
@@ -34,7 +30,7 @@ function roundWithOffset(num, offset) {
     result = Math.max(result, floor_x);
   }
 
-  if (result >= 10 || result % 1 === 0) {
+  if (result >= 10) {
     result = Math.round(result);
   }
 
@@ -70,7 +66,7 @@ function stepForOffset(num, offset) {
 
 // The step as the lens preview shows it.
 function formatStep(step) {
-  if (!isFinite(step) || step === 0) return "0";
+  if (!isFinite(step)) return "0";
   const abs = Math.abs(step);
   if (abs >= 1e9) return trimNum(step / 1e9) + "B";
   if (abs >= 1e6) return trimNum(step / 1e6) + "M";
@@ -78,15 +74,15 @@ function formatStep(step) {
   return trimNum(step);
 }
 
-// Up to 3 decimal places.
+// Rounds to at most 3 decimal places.
 function trimNum(n) {
   return String(Math.round(n * 1000) / 1000);
 }
 
-function findMaxMagnitude(numericRange) {
+function findMaxMagnitude(dataset) {
   let max_mag = null;
-  for (let row of numericRange) {
-    for (let num of row) {
+  for (const row of dataset) {
+    for (const num of row) {
       if (num !== null && num !== 0 && isFinite(num)) {
         const mag = Math.floor(Math.log10(Math.abs(num)));
         if (max_mag === null || mag > max_mag) {

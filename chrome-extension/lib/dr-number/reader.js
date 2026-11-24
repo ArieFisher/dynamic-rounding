@@ -3,14 +3,11 @@
  * The number reader: the currency list, the format marks, the group shape,
  * the number shape test, and toNumber, which turns a text into a value.
  *
- * Read by three scripts, each AFTER rounding.js: the content script (via
- * manifest content_scripts), the sidebar (via a script tag), and the Google
- * Sheets library, which scripts/build-sheets.js writes by joining this file
- * with the rest of the shared library and the Sheets entry source. Must
- * remain framework-free and side-effect-free: no chrome.*, no DOM access, no
- * Node module code. All symbols land on the global scope of whichever script
- * holds this file, so the extension and the Sheets library share one
- * currency list and one toNumber.
+ * docs/design.md "How the code is shared" lists where this file loads. Must
+ * remain side-effect-free: no chrome.*, no DOM access, no Node module code.
+ * All symbols land on the global scope of whichever script holds this file,
+ * so the extension and the Sheets library share one currency list and one
+ * toNumber.
  */
 
 // The one currency list. Each row gives a currency's written signs and its

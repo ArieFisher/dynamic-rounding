@@ -143,8 +143,8 @@ eq('toNumber: pure text -> null', toNumber('N/A'), null);
     return { mode: 'skip', num: null, text };
   });
 
-  const numericRange = [infos.map(i => i.num)];
-  const maxMag = findMaxMagnitude(numericRange);
+  const dataset = [infos.map(i => i.num)];
+  const maxMag = findMaxMagnitude(dataset);
   eq('e2e: max magnitude across mixed cells', maxMag, 6);
 
   const out = infos.map(info => {
@@ -189,8 +189,8 @@ eq('toNumber: pure text -> null', toNumber('N/A'), null);
     return { mode: 'skip', num: null, text };
   });
 
-  const numericRange = [infos.map(i => i.num)];
-  const maxMag = findMaxMagnitude(numericRange);
+  const dataset = [infos.map(i => i.num)];
+  const maxMag = findMaxMagnitude(dataset);
 
   const out = infos.map(info => {
     if (info.mode === 'skip') return info.text;
@@ -256,7 +256,7 @@ eq('extractAll: a list of grouped numbers keeps each number\'s own separators',
   }
 
   // maxMag = 3 (from 5000). 50 is magnitude 1, far from top -> uses offset_other (=top, both -0.5),
-  // so 50 rounds toward base = 10^1 * 0.5 = 5 -> 50.
+  // so 50 rounds toward step = 10^1 * 0.5 = 5 -> 50.
   // 5000 stays as 5,000.
   eq('range cell: low end keeps its precision when far below top magnitude',
     out, '50–5,000 range');
@@ -280,7 +280,7 @@ eq('extractAll: a list of grouped numbers keeps each number\'s own separators',
     out = out.substring(0, m.index) + newNum + out.substring(m.index + m.numStr.length);
   }
 
-  // Both magnitude 3. base = 500. 9876/500=19.75->20*500=10,000. 1234/500=2.47->2*500=1,000.
+  // Both magnitude 3. step = 500. 9876/500=19.75->20*500=10,000. 1234/500=2.47->2*500=1,000.
   eq('splice safety: right-to-left replacement handles length-changing rounds',
     out, '10,000 then 1,000');
 })();
@@ -1343,8 +1343,8 @@ eq('pure cell write: whole negative in parens -> "(3)"',
 })();
 
 // ---------------------------------------------------------------------------
-// Sign-aware half-step, value-OoM floor, and the X_FLOOR_THRESHOLD-gated
-// x-floor
+// Sign-aware half-step, value-OoM floor, and a fractional offset above 1 in
+// size never returning less than the integer offset nearer zero
 // ---------------------------------------------------------------------------
 (function halfStepFloorGrid() {
   // 27-cell grid: {87M, 47M, 17M} x {+2, +1.5, +1, +0.5, 0, -0.5, -1, -1.5, -2}
@@ -1363,15 +1363,14 @@ eq('pure cell write: whole negative in parens -> "(3)"',
   for (const row of grid) {
     for (const off of offsets) {
       const key = String(off);
-      eq(`half-step grid: roundWithOffset(${row.v}, ${off})`,
+      eq(`half-step grid: roundWithOffset(${row.v}, ${off}) returns ${row.expected[key]}`,
         roundWithOffset(row.v, off), row.expected[key]);
     }
   }
 
-  // Negative-value sign preservation (spot check)
-  eq('half-step grid: sign preserved for negative input',
+  eq('half-step grid: -87054321 at -0.5 returns -85000000',
     roundWithOffset(-87054321, -0.5), -85000000);
-  eq('half-step grid: zero short-circuits',
+  eq('half-step grid: 0 at 1.5 returns 0',
     roundWithOffset(0, 1.5), 0);
 })();
 
@@ -1391,7 +1390,7 @@ eq('pure cell write: whole negative in parens -> "(3)"',
     [87054321, -1.25,  87000000],  // very fine step, x-floor at rd(87M, -1) = 87M
   ];
   for (const [v, off, expected] of cases) {
-    eq(`quarter-step grid: roundWithOffset(${v}, ${off})`,
+    eq(`quarter-step grid: roundWithOffset(${v}, ${off}) returns ${expected}`,
       roundWithOffset(v, off), expected);
   }
 })();
@@ -1411,14 +1410,11 @@ eq('pure cell write: whole negative in parens -> "(3)"',
 })();
 
 (function xFloorThresholdFlip() {
-  // Re-eval content.js with X_FLOOR_THRESHOLD = 0 to confirm the x-floor
-  // gates on the constant. We sandbox the patched source so the eq()
-  // assertions below do not disturb the live extension globals.
+  // Eval rounding.js with X_FLOOR_THRESHOLD = 0 to confirm the x-floor gates
+  // on the constant. We sandbox the patched source so the eq() assertions
+  // below do not disturb the live extension globals.
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
-  const contentSrc = sourceByName('content.js');
-  if (roundingSrc === null || contentSrc === null || readerCode === null ||
-      numberTextCode === null || detectCode === null || busCode === null ||
-      modelCode === null || tablePillboxViewCode === null) {
+  if (roundingSrc === null) {
     eq('x-floor flip: source files present in manifest', false, true);
     return;
   }
@@ -1429,27 +1425,10 @@ eq('pure cell write: whole negative in parens -> "(3)"',
   eq('x-floor flip: source contains X_FLOOR_THRESHOLD declaration',
     patchedRounding.includes('const X_FLOOR_THRESHOLD = 0;'), true);
 
-  const sandbox = {
-    chrome: global.chrome,
-    document: global.document,
-    window: global.window,
-    NodeFilter: global.NodeFilter,
-    MutationObserver: global.MutationObserver,
-    ResizeObserver: global.ResizeObserver,
-    Node: global.Node,
-    DR_DEFAULTS: globalThis.DR_DEFAULTS,
-  };
+  const sandbox = {};
   const vm = require('vm');
   const ctx = vm.createContext(sandbox);
-  // content.js runs its observer/listener wiring at load and depends on the
-  // extracted layers (reader/number text/detect/table pillbox view), so eval
-  // them in the same order the manifest loads them before content.js.
-  vm.runInContext(
-    constantsCode + '\n' + (sourceByName('lib/dr-log/index.js') || '') + '\n' +
-    patchedRounding + '\n' + readerCode + '\n' + numberTextCode + '\n' +
-    detectCode + '\n' + busCode + '\n' + modelCode + '\n' +
-    tablePillboxViewCode + '\n' + contentSrc +
-    '\nthis.__roundWithOffset = roundWithOffset;', ctx);
+  vm.runInContext(patchedRounding + '\nthis.__roundWithOffset = roundWithOffset;', ctx);
   const patchedRound = sandbox.__roundWithOffset;
 
   eq('x-floor flip: rd(17054321, 0.5) === 20000000 with X_FLOOR_THRESHOLD=0',
@@ -1607,7 +1586,7 @@ eq('pure cell write: whole negative in parens -> "(3)"',
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
   // -------------------------------------------------------------------------
-  // Extract formatOomLabel from sidebar.js source. It depends on trimNum
+  // Extract formatOomLabel from sidebar.js source. It depends on formatStep
   // (from rounding.js), which we pass as a parameter to isolatedFunction.
   // -------------------------------------------------------------------------
   const constBlock = sidebarSrc.match(
@@ -1623,19 +1602,19 @@ eq('pure cell write: whole negative in parens -> "(3)"',
   }
 
   // Build a helper bundle: rounding helpers + sidebar functions.
-  // stepForOffset, formatStep, trimNum come from rounding.js (already evaled
-  // into the test scope's globalThis; we pass them in to avoid scope issues).
-  const apHelperSrc = '(function(trimNum, stepForOffset, formatStep) {\n' +
+  // formatStep comes from rounding.js (already evaled into the test scope's
+  // globalThis; we pass it in to avoid scope issues).
+  const apHelperSrc = '(function(formatStep) {\n' +
     constBlock[0] + '\n' +
     formatOomLabelFn[0] + '\n' +
     'return { formatOomLabel: formatOomLabel };\n' +
-    '})(trimNum, stepForOffset, formatStep)';
+    '})(formatStep)';
 
   let apHelpers;
   try {
-    apHelpers = (isolatedFunction('trimNum', 'stepForOffset', 'formatStep',
+    apHelpers = (isolatedFunction('formatStep',
       'return ' + apHelperSrc + ';'
-    ))(trimNum, stepForOffset, formatStep);
+    ))(formatStep);
   } catch (e) {
     eq('sidebar-ap-extract: isolatedFunction eval succeeded', false, true);
     return;
@@ -1663,13 +1642,10 @@ eq('pure cell write: whole negative in parens -> "(3)"',
   eq('oom: mag=-2 → "0.01+" (sub-unit, 1e-2=0.01)', fmtOom(-2), '0.01+');
 
   // -------------------------------------------------------------------------
-  // STRATEGY-MONOTONIC: the slider stops must be ordered so the resulting
-  // rounding STEP changes in a single direction across the track. This is the
-  // whole point of the stop ordering: stepForOffset is non-monotonic in the
-  // offset value (half-steps interleave with integer steps), so the array order
-  // — not numeric sort — is what guarantees a one-directional strategy sweep.
-  // Read STOPS straight from sidebar.js and assert step() is strictly
-  // increasing across it for several magnitudes.
+  // STRATEGY-MONOTONIC: the comment beside STOPS in sidebar.js holds why the
+  // stops follow the step, not the offset. Read STOPS straight from sidebar.js
+  // and assert stepForOffset strictly increases across it for several
+  // magnitudes.
   // -------------------------------------------------------------------------
   (function strategyMonotonic() {
     const src = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
@@ -1694,7 +1670,7 @@ eq('pure cell write: whole negative in parens -> "(3)"',
           break;
         }
       }
-      eq('mono mag=' + mag + ': step() strictly increases across STOPS' +
+      eq('mono mag=' + mag + ': steps at 10^mag strictly increase across the lens control\'s stops' +
         (firstBreak ? ' [break at ' + firstBreak + ']' : ''), monotonic, true);
     }
 
@@ -1764,7 +1740,7 @@ eq('pure cell write: whole negative in parens -> "(3)"',
   //          appendSampleRow, appendLabel, renderTopPreview, renderOtherPreview.
   // External deps we pass in: formatOriginal, roundWithOffset, stepForOffset,
   //                            formatStep, cachedMaxMag (null = no step header).
-  const renderSrc = '(function(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, cachedMaxMag) {\n' +
+  const renderSrc = '(function(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, cachedMaxMag) {\n' +
     constBlock[0] + '\n' +
     formatOomLabelFn[0] + '\n' +
     renderHelperFns.map((m) => m[0]).join('\n') + '\n' +
@@ -1793,9 +1769,9 @@ eq('pure cell write: whole negative in parens -> "(3)"',
 
     renderHelpers = (isolatedFunction(
       'document', 'formatOriginal', 'roundWithOffset', 'stepForOffset',
-      'formatStep', 'trimNum', 'cachedMaxMag',
-      'return ' + renderSrc + '(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, cachedMaxMag);'
-    ))(stubDocument, realFormatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, null);
+      'formatStep', 'cachedMaxMag',
+      'return ' + renderSrc + '(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, cachedMaxMag);'
+    ))(stubDocument, realFormatOriginal, roundWithOffset, stepForOffset, formatStep, null);
   } catch (e) {
     eq('sidebar-ap-extract: renderOtherPreview eval succeeded', String(e), '');
     return;
@@ -1934,9 +1910,9 @@ eq('pure cell write: whole negative in parens -> "(3)"',
   try {
     renderHelpersWithMag = (isolatedFunction(
       'document', 'formatOriginal', 'roundWithOffset', 'stepForOffset',
-      'formatStep', 'trimNum', 'cachedMaxMag',
-      'return ' + renderSrc + '(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, cachedMaxMag);'
-    ))(stubDocument, realFormatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, 6);
+      'formatStep', 'cachedMaxMag',
+      'return ' + renderSrc + '(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, cachedMaxMag);'
+    ))(stubDocument, realFormatOriginal, roundWithOffset, stepForOffset, formatStep, 6);
   } catch (e) {
     eq('renderTopPreview (cachedMaxMag=6) eval succeeded', String(e), '');
   }
@@ -2107,7 +2083,7 @@ const LADDER_OPTS = {
       } else {
         const offset = params.offset_top === undefined ? SHARED_DEFAULT_OFFSET : params.offset_top;
         const num = toNumber(input);
-        const actual = num === null ? input : (num === 0 ? 0 : roundWithOffset(num, offset));
+        const actual = num === null ? input : roundWithOffset(num, offset);
         eq(name, actual, expected);
       }
     }

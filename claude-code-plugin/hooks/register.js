@@ -1,9 +1,5 @@
 // Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
-// The hooks module: the toggle command, the status entry, and the drawing
-// hook. The engine keeps each reply block's originals and, in its session
-// state, the on/off value, so the plugin stores nothing.
-
 import { atom, read, update } from 'claude-code';
 
 import { DR_DEFAULTS } from './library.js';
@@ -33,10 +29,10 @@ export const register = (on) => {
     return { text: valueText };
   });
 
-  // The hook reads the on/off value while drawing, so the engine draws every
-  // reply block again when the value changes. No failure handler: the engine
-  // skips this hook when it throws or runs past its time limit, and draws the
-  // reply block as written.
+  // The hook reads the on/off value while the engine draws a reply block, so
+  // the engine draws every reply block again when the value changes. No
+  // failure handler: the engine skips this hook when it throws or runs past
+  // its time limit, and draws the reply block as written.
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     if (!(await read($, isOn))) return next(e);
     const text = simplifyTables(e.props.text, markdownTables(e.props.text), DR_DEFAULTS);

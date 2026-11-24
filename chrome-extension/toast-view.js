@@ -5,19 +5,16 @@
  *
  * Draws the newest extension error on the page. It subscribes to the error
  * state's state-change topic (state:errorRecorded, which the application
- * model publishes after every log row the controller records) and holds no
- * application state of its own. The element and its timer are drawing state,
- * like the table pillbox view's own map of buttons.
+ * model publishes after every log row the controller records). Its variables
+ * hold drawing state only: the element, its timer, and the stylesheet flag.
  *
- * One element at a time, so a warning that repeats on every scroll shows one
- * toast.
+ * The view never logs. If it logged, the controller would record the row in
+ * the error state, the application model would publish that row to this view,
+ * the view would log again, and the calls would repeat without end.
  *
- * The view never logs. A log row it recorded would land in the error state,
- * and the application model would publish it back to this view, one level
- * deeper on every turn.
- *
- * Loaded after table-pillbox-view.js and before content.js, so the subscription
- * exists before the controller registers the row listener that feeds it.
+ * Loaded after app/bus.js, because it subscribes at load, and before
+ * content.js, so the subscription exists before content.js registers the row
+ * listener that writes rows into the error state.
  */
 
 const DR_TOAST = (function () {
@@ -52,33 +49,34 @@ const DR_TOAST = (function () {
   }
 
   function hide() {
-    if (hideTimer !== null) {
-      clearTimeout(hideTimer);
-      hideTimer = null;
-    }
-    if (toastEl && toastEl.parentNode) toastEl.parentNode.removeChild(toastEl);
+    clearTimeout(hideTimer);
+    hideTimer = null;
+    if (toastEl) toastEl.remove();
     toastEl = null;
   }
 
   function show(text) {
     ensureStyleInjected();
+    // show reuses the one element, so the page holds one toast while a warning
+    // repeats on every scroll.
     if (!toastEl) {
       toastEl = document.createElement('div');
       toastEl.className = TOAST_CLASS;
       // A status region: assistive technology announces the text without
-      // moving focus. The text goes in through textContent, so the page never
-      // parses a log row's text as markup.
+      // moving focus.
       toastEl.setAttribute('role', 'status');
       toastEl.addEventListener('click', hide);
       (document.body || document.documentElement).appendChild(toastEl);
     }
+    // The text goes in through textContent, so the page never parses a log
+    // row's text as markup.
     toastEl.textContent = text;
-    if (hideTimer !== null) clearTimeout(hideTimer);
+    clearTimeout(hideTimer);
     hideTimer = setTimeout(hide, TOAST_HIDE_MS);
   }
 
   DR_BUS.subscribe('state:errorRecorded', ({ errorState }) => {
-    show(errorState.rows[errorState.rows.length - 1].text);
+    show(errorState.rows.at(-1).text);
   });
 
   return { TOAST_CLASS, TOAST_HIDE_MS };
