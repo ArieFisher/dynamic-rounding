@@ -40,7 +40,7 @@ const engineDrawing = ($, e) => {
 
 const drawnText = async (ui) => (await ui.find({ type: 'Text' }))?.text
 
-test('the toggle command simplifies a reply block, then draws it as written again, on every surface', async ($, on) => {
+test('a reply block shows simplified after one run of the toggle command and as written after a second, on every surface', async ($, on) => {
   const statusEntries: (string | undefined)[] = []
   on('command.register', () => ({ value: { command: 'simplify-data' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -72,7 +72,7 @@ test('the toggle command simplifies a reply block, then draws it as written agai
   expect(statusEntries).toEqual(SURFACES.flatMap(() => ['simplify-data: on', undefined]))
 })
 
-test('the plugin starts off, so a reply block draws as written', async ($, on) => {
+test('a reply block mounted with no run of the toggle command shows as written, on every surface', async ($, on) => {
   on('ui.render', engineDrawing)
 
   for (const surface of SURFACES) {
