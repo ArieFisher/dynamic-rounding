@@ -2876,9 +2876,9 @@ const PRE_MOVE_DETECTION_SETTINGS = {
 })();
 
 // findTables' isArtifact: default (isAccessibilityArtifact) drops an accessibility
-// artifact; a pass-through filter keeps it. reuses makePass1DataTable / the
+// artifact; a filter that drops nothing keeps it. Reuses makePass1DataTable / the
 // aria-hidden artifact shape from the pass1-filter suite above.
-(function findTables_tableFilterDefaultVsPassThrough() {
+(function findTables_isArtifactDefaultVsDropsNothing() {
   const artifactTable = makePass1DataTable();
   const hiddenParent = {
     tagName: 'DIV',
@@ -2901,7 +2901,7 @@ const PRE_MOVE_DETECTION_SETTINGS = {
     isDataTable(artifactTable) && isAccessibilityArtifact(artifactTable), true);
   eq('findTables: default isArtifact (isAccessibilityArtifact) drops an accessibility artifact',
     findTables(root).length, 0);
-  eq('findTables: a pass-through isArtifact keeps the accessibility artifact',
+  eq('findTables: an isArtifact that drops nothing keeps the accessibility artifact',
     findTables(root, { isArtifact: () => false }).length, 1);
 })();
 

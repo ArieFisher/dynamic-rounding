@@ -1357,19 +1357,16 @@ checkPackageObjectMatchesDeclarations('dr-number', 'DR_NUMBER',
     'identifiers.js']);
 
 // ---------------------------------------------------------------------------
-// Table detection lives under lib/dr-table/
-// (cells.js, adapters.js, classify.js, detect.js, index.js), mirroring the
-// lib/dr-number package structure and discipline checks above. Four groups of tests:
-//   1. DR_TABLE bundle discipline (mirrors drNumberBundleIsPublished /
-//      checkIndexDeclaresOnlyPackageObject, but against an explicit
-//      hand-written list, not a source-derived one — the package also
-//      carries write-engine helpers alongside detection, so "every top-level
-//      function" is not the right criterion here the way it is for the pure
-//      lib/dr-number files).
+// The lib/dr-table package (cells.js, adapters.js, classify.js, detect.js,
+// index.js) follows the lib/dr-number package structure and checks above.
+// Four groups of tests:
+//   1. DR_TABLE is compared against a hand-written list, not against every
+//      top-level function, because the package's files declare private
+//      helpers that DR_TABLE leaves out.
 //   2. The jsdom-less criterion: detection runs with no Chrome globals at all.
 //   3. VendorProfiles: a custom list replaces (not merges with) the default.
 //   4. findTables' isArtifact: the default drops accessibility artifacts; a
-//      pass-through filter keeps it.
+//      filter that drops nothing keeps it.
 // ---------------------------------------------------------------------------
 (function drTableBundleIsPublished() {
   const EXPECTED_DR_TABLE_NAMES = [
@@ -1379,6 +1376,7 @@ checkPackageObjectMatchesDeclarations('dr-number', 'DR_NUMBER',
     'getSuperscriptRanges',
     'getMarkupRanges',
     'classifyTableCell',
+    'makeCellObj',
     'collectTextPieces',
     'mapRenderedToFlat',
     'writePatches',
@@ -1389,6 +1387,7 @@ checkPackageObjectMatchesDeclarations('dr-number', 'DR_NUMBER',
     'findTables',
     'scanTables',
     'chainRootOf',
+    'nominateNest',
     'isAccessibilityArtifact',
     'isDataTable',
     'readTableFingerprint',
@@ -1399,7 +1398,7 @@ checkPackageObjectMatchesDeclarations('dr-number', 'DR_NUMBER',
     typeof globalThis.DR_TABLE, 'object');
   eq('lib/dr-table/index.js: DR_TABLE exposes exactly the expected public names',
     Object.keys(globalThis.DR_TABLE || {}).sort(), EXPECTED_DR_TABLE_NAMES);
-  eq('lib/dr-table/index.js: every DR_TABLE entry is itself a function (classes included — typeof a class is "function")',
+  eq('lib/dr-table/index.js: every DR_TABLE entry is itself a function',
     EXPECTED_DR_TABLE_NAMES.every((n) => typeof (globalThis.DR_TABLE || {})[n] === 'function'),
     true);
 })();

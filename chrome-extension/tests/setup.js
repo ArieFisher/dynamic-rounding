@@ -222,7 +222,7 @@ globalThis.makeAdapter = makeAdapter;
 globalThis.NativeTableAdapter = NativeTableAdapter;
 globalThis.GridAdapter = GridAdapter;
 globalThis.GRID_CELL_SELECTOR = GRID_CELL_SELECTOR;
-// Expose the lib/dr-table package bundle, mirroring DR_NUMBER below.
+// Expose the lib/dr-table package bundle, mirroring DR_NUMBER above.
 globalThis.DR_TABLE = DR_TABLE;
 globalThis.classifyCell = classifyCell;
 globalThis.pickDateFormatHint = pickDateFormatHint;
