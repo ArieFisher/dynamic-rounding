@@ -131,8 +131,8 @@ globalThis.DR_DETECTION_SETTINGS = DR_DETECTION_SETTINGS;
 globalThis.DR_NUMBER = DR_NUMBER;
 // Expose the log buffer (lib/dr-log) for the dr-log test suite.
 globalThis.DR_LOG = DR_LOG;
-// Expose the capture state serializer (lib/dr-capture) and its content.js
-// wire-response composer for the capture test suites.
+// Expose the capture state serializer (lib/dr-capture) and content.js's
+// answer to request:captureState for the capture test suites.
 globalThis.collectCaptureState = collectCaptureState;
 globalThis.buildCaptureStateResponse = buildCaptureStateResponse;
 // Expose the capture format version so the capture-settings tests can pin the

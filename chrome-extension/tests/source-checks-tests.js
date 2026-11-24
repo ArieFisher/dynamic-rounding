@@ -102,7 +102,7 @@
     /constants\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
   eq('sidebar-defaults: sidebar.js fills every control unset by the settings from DR_DEFAULTS',
     /function applySettingsToUI\(settings\)\s*\{\s*const s = Object\.assign\(\{\}, DR_DEFAULTS, settings \|\| \{\}\)/.test(sidebarJsSource), true);
-  eq('sidebar-defaults: manifest content_scripts load order is defaults, log buffer, dr-number package, dr-table package, dr-simplify package, event bus, application model, table pillbox view, content',
+  eq('sidebar-defaults: manifest content_scripts load order is defaults, log buffer, dr-number package, dr-table package, dr-simplify package, dr-capture package, event bus, application model, table pillbox view, toast view, content',
     JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify([
       'constants.js',
       'lib/dr-log/index.js',
