@@ -381,9 +381,9 @@ function flashRangePulse(table, ranges) {
   for (let r = 0; r < adapterRows.length; r++) {
     const cells = adapterRows[r].getCells();
     for (let c = 0; c < cells.length; c++) {
-      // The cell's grid column, the same number the engine gates on, so the
-      // pulse frames the cells the range actually rounds even where a merge
-      // moves a cell away from its position in the row read.
+      // The cell's grid column, the same number the rounding pass gates on,
+      // so the pulse frames the cells the range actually rounds even where a
+      // merge moves a cell away from its position in the row read.
       if (isInRanges(r, cells[c].columnIndex, ranges)) {
         matchedCells.push(cells[c].el);
       }

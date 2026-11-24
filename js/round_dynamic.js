@@ -304,8 +304,9 @@ function toNumber(value) {
 
 // Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 /**
- * Reading the setting values a user writes: the range expression, the
- * offsets, and num_top. Reads no page and calls no Chrome.
+ * Reading the setting values a user writes (the range expression, the
+ * offsets, and num_top) and testing whether a cell lies inside the range
+ * expression. Reads no page and calls no Chrome.
  */
 
 // The largest offset, either way, that a setting value may hold.
@@ -326,64 +327,50 @@ function parseRangeEndpoint(token) {
   const m = token.trim().match(/^([A-Za-z]+)?(\d+)?$/);
   if (!m || (!m[1] && !m[2])) return null;
   const col = m[1] ? lettersToColIndex(m[1]) : null;
-  if (m[1] && col === null) return null;
   const row = m[2] ? parseInt(m[2], 10) - 1 : null;
   if (m[2] && (row < 0 || !isFinite(row))) return null;
   return { col, row };
 }
 
 function parseRangeToken(token) {
-  const t = token.trim();
-  if (!t) return null;
-  if (t.includes(':')) {
-    const parts = t.split(':');
-    if (parts.length !== 2) return null;
-    const l = parseRangeEndpoint(parts[0]);
-    const r = parseRangeEndpoint(parts[1]);
-    if (!l || !r) return null;
-    // Open-ended semantics: left-null = unbounded below (0), right-null = unbounded above (Infinity).
-    const lcol = l.col === null ? 0 : l.col;
-    const rcol = r.col === null ? Infinity : r.col;
-    const lrow = l.row === null ? 0 : l.row;
-    const rrow = r.row === null ? Infinity : r.row;
-    return {
-      colMin: Math.min(lcol, rcol),
-      colMax: Math.max(lcol, rcol),
-      rowMin: Math.min(lrow, rrow),
-      rowMax: Math.max(lrow, rrow)
-    };
-  }
-  const e = parseRangeEndpoint(t);
-  if (!e) return null;
+  const parts = token.split(':');
+  if (parts.length > 2) return null;
+  const left = parseRangeEndpoint(parts[0]);
+  const right = parseRangeEndpoint(parts[parts.length - 1]);
+  if (!left || !right) return null;
+  // An endpoint with no column or no row leaves that side open: the left side
+  // from the first column or row, the right side to the last.
+  const leftCol = left.col ?? 0;
+  const rightCol = right.col ?? Infinity;
+  const leftRow = left.row ?? 0;
+  const rightRow = right.row ?? Infinity;
   return {
-    colMin: e.col ?? 0,
-    colMax: e.col ?? Infinity,
-    rowMin: e.row ?? 0,
-    rowMax: e.row ?? Infinity
+    colMin: Math.min(leftCol, rightCol),
+    colMax: Math.max(leftCol, rightCol),
+    rowMin: Math.min(leftRow, rightRow),
+    rowMax: Math.max(leftRow, rightRow)
   };
 }
 
 function parseRangeExpr(expr) {
   if (typeof expr !== 'string') return { ranges: null };
-  const trimmed = expr.trim();
-  if (!trimmed) return { ranges: null }; // null = whole table
-  const stripped = trimmed.replace(/^\{/, '').replace(/\}$/, '');
+  const stripped = expr.trim().replace(/^\{/, '').replace(/\}$/, '');
   const tokens = stripped.split(/[,;]/).map(t => t.trim()).filter(Boolean);
-  if (tokens.length === 0) return { ranges: null };
+  if (tokens.length === 0) return { ranges: null }; // null = whole table
   const ranges = [];
-  for (const tok of tokens) {
-    const r = parseRangeToken(tok);
-    if (!r) return { error: `Invalid range: "${tok}"` };
-    ranges.push(r);
+  for (const token of tokens) {
+    const range = parseRangeToken(token);
+    if (!range) return { error: `Invalid range: "${token}"` };
+    ranges.push(range);
   }
   return { ranges };
 }
 
-function isInRanges(r, c, ranges) {
+function isInRanges(rowIndex, columnIndex, ranges) {
   if (!ranges) return true;
   for (const range of ranges) {
-    if (r >= range.rowMin && r <= range.rowMax &&
-        c >= range.colMin && c <= range.colMax) {
+    if (rowIndex >= range.rowMin && rowIndex <= range.rowMax &&
+        columnIndex >= range.colMin && columnIndex <= range.colMax) {
       return true;
     }
   }
