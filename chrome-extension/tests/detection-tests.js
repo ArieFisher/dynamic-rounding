@@ -532,12 +532,6 @@ const consistentCellCountStepPasses = (children) =>
 //
 // Helpers for building mock cells that contain <sup> children.
 //
-// The developer's getSuperscriptRanges(cell) walks document.createTreeWalker
-// text nodes and checks parentNode/parentElement upward for tagName === 'SUP'
-// or a computed vertical-align of 'super'. classifyTableCell treats a cell as
-// holding a superscript when those ranges are non-empty or
-// cell.querySelector('sup') finds one.
-//
 // makeSuperscriptCell(segments) builds a mock cell where each segment is
 //   { text: string, inSup: boolean, styledSup?: boolean }.
 // The resulting cell:
@@ -548,8 +542,8 @@ const consistentCellCountStepPasses = (children) =>
 //     parentNode === cell
 //   - cell.querySelector('sup'): returns a truthy object when any inSup:true
 //     segment exists; null otherwise
-//   - cell.querySelectorAll('a'): returns [] (no anchors, so getMarkupRanges
-//     holds nothing)
+//   - cell.querySelectorAll(...): returns [] (no <a> or <code>, so
+//     getMarkupRanges holds nothing)
 // ---------------------------------------------------------------------------
 
 // Standard opts for the exponent tests.
@@ -559,8 +553,6 @@ const supTestOpts = {
   simplifyMixedPercent: true,
   simplifyFirstRow: true,
   simplifyFirstColumn: true,
-  excludeDates: true,
-  excludeTimes: false,
   offsetTop: -0.5,
   offsetOther: -0.5,
   numTop: 1,
@@ -629,14 +621,14 @@ const supTestOpts = {
 })();
 
 // ---------------------------------------------------------------------------
-// Extra: getSuperscriptRanges returns [] when document.createTreeWalker is absent
+// Extra: a cell with no child nodes and no tree walker gives no superscript range
 // ---------------------------------------------------------------------------
 (function supExtra_noTreeWalker() {
   const savedWalker = global.document.createTreeWalker;
   delete global.document.createTreeWalker;
   const cell = makeSuperscriptCell([{ text: '10', inSup: false }, { text: '12', inSup: true }]);
   const ranges = getSuperscriptRanges(cell);
-  eq('sup extra: getSuperscriptRanges returns [] when createTreeWalker is unavailable',
+  eq('sup extra: a cell with no child nodes and no tree walker gives no superscript range',
     ranges, []);
   if (savedWalker !== undefined) global.document.createTreeWalker = savedWalker;
 })();

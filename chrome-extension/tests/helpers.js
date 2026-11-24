@@ -173,8 +173,8 @@ function makeLinkCell(anchors, outsideText) {
     tagName: 'TD',
   };
 
-  // Build text nodes list for getMarkupRanges's createTreeWalker.
-  // We model the DOM structure: anchor text is inside anchor nodes, outside text is bare.
+  // The text nodes in page order: anchor text sits inside its anchor, outside
+  // text is bare.
   const textNodes = [];
   if (outsideText) {
     textNodes.push(makeMockTextNode(outsideText, null, cell));
@@ -183,7 +183,7 @@ function makeLinkCell(anchors, outsideText) {
     textNodes.push(makeMockTextNode(a.innerText, a, cell));
   }
 
-  // Attach a createTreeWalker stub that returns these text nodes in order.
+  // withLinkCreateTreeWalker's stub returns these text nodes in order.
   cell._textNodes = textNodes;
   return cell;
 }
@@ -574,8 +574,8 @@ function makeSuperscriptCell(segments) {
     dataset: {},
     title: '',
     tagName: 'TD',
-    // querySelectorAll('a') → no anchors so getMarkupRanges holds nothing
-    querySelectorAll: (sel) => sel === 'a' ? [] : [],
+    // querySelectorAll → no <a> or <code>, so getMarkupRanges holds nothing
+    querySelectorAll: () => [],
     // querySelector('sup') → truthy iff any segment is inside <sup>
     querySelector: (sel) => sel === 'sup' && hasSup ? { tagName: 'SUP' } : null,
   };
@@ -583,7 +583,7 @@ function makeSuperscriptCell(segments) {
   // Build mock text nodes in document order.
   // Each node has parentNode whose ancestor chain reaches 'cell'.
   // For inSup nodes: parentNode is a fake <sup> element whose parentNode is cell.
-  // For plain nodes: parentNode is cell itself (so the while-loop terminates).
+  // For plain nodes: parentNode is cell itself (so the ancestor walk stops at the cell).
   const textNodes = segments.map(seg => {
     let parentNode;
     if (seg.inSup) {
@@ -640,7 +640,7 @@ function makeExtractedCell(segments) {
     dataset: {},
     title: '',
     tagName: 'TD',
-    querySelectorAll: (sel) => sel === 'a' ? [] : [],
+    querySelectorAll: () => [],
     querySelector: (sel) => sel === 'sup' && segments.some(s => s.inSup) ? { tagName: 'SUP' } : null,
   };
   const textNodes = segments.map(seg => {

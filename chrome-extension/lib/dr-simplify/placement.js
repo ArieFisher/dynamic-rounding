@@ -58,12 +58,9 @@ function flatPatches(patches, layout) {
  * holds. A date or time passes through: the pass checks its text piece after
  * the table step builds its patch, because only a changed value needs the
  * check.
- * A null layout means the cell's piece count no longer matches its record
- * (see getPieceLayout in lib/dr-table/cells.js).
  * @returns {object} the placed classification
  */
 function placeClassification(classification, layout) {
-  if (!layout) return { mode: 'skip', reason: 'pieces-changed' };
   if (classification.mode !== 'extracted') return classification;
   const inOnePiece = classification.value.matches.filter((m) => layoutPieceHolding(layout, m.index, m.numStr.length));
   if (inOnePiece.length === classification.value.matches.length) return classification;

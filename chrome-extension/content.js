@@ -666,8 +666,8 @@ function resetTable(table) {
 // The lens preview's classified cells: every cell of the table's dataset,
 // classified through the classification step the one simplification pass
 // runs (classifyTableCells below). The step reads each simplified cell's
-// stored original (see classifyTableCell in lib/dr-table) and writes
-// nothing. Every row counts, header, body, and total alike.
+// stored original (see getText in makeCellObj, lib/dr-table/cells.js) and
+// writes nothing. Every row counts, header, body, and total alike.
 //
 // options defaults to DR_DEFAULTS when the caller passes none (tests exercise
 // the ladder's option-gated rules directly this way); the real call site,
@@ -844,7 +844,7 @@ function buildCaptureStateResponse() {
 // both kinds, so the pass sees no difference between them before it starts.
 //
 // The pass writes no log row. It counts, by reason, the cells it left as
-// written: a split number (classifiedCell.split, after classification), a
+// written: a split number (classification.split, after classification), a
 // changed date or time whose text crosses a piece boundary, and a cell whose
 // patch landed nothing because the text it shows differs from the text its
 // pieces hold. It returns the counts and its duration; the apply writes the counts
@@ -987,7 +987,7 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
   return {
     cells, missedCells, maxMag, cellCount: dataCells.length, overCap: false,
     leftAsWritten: {
-      splitNumber: classified.filter((classifiedCell) => classifiedCell.split).length,
+      splitNumber: classified.filter((classifiedCell) => classifiedCell.classification.split).length,
       splitDateOrTime,
       textMismatch: missedCells,
     },
