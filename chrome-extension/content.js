@@ -1034,11 +1034,10 @@ function registryAdapter(table) {
 // The observer is off during the extension's own writes, the restore
 // included: a pass disconnects it before it writes and reconnects it after,
 // and a reset stops it before the restore writes. A burst of page edits
-// collapses into one pass: each change restarts the settle delay, and a
-// burst that never goes quiet runs its pass once it has lasted the longest
-// wait (reapplyMaxWaitMs in the detection settings). A table above the cell
-// cap (reapplyCellCap) takes no observer, and a pass that finds its table
-// above the cap stops the observer.
+// collapses into one pass under the settle delay and the longest wait
+// (settleDelayMs and reapplyMaxWaitMs in the detection settings). A table
+// above the cell cap (reapplyCellCap) takes no observer, and a pass that finds
+// its table above the cap stops the observer.
 
 // Start watching a table after its first simplification. The first
 // simplification's own writes are done by then, so they run no pass.

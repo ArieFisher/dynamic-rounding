@@ -172,14 +172,7 @@ function setTableBound(isBound) {
 
 // Each switch's element id is its setting's name. The order is the order of
 // the switch keys in the settings payload.
-const SWITCH_NAMES = [
-  'simplifyMixedCurrency',
-  'simplifyMixedPercent',
-  'simplifyFirstRow',
-  'simplifyFirstColumn',
-  'simplifyDates',
-  'simplifyTimes',
-];
+const SWITCH_NAMES = Object.keys(DR_DEFAULTS).filter((key) => key.startsWith('simplify'));
 
 /**
  * Run a function on each switch.
