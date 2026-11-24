@@ -1,8 +1,5 @@
 // Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
-// The engine keeps each reply block's originals and, in its session state,
-// the on/off value, so the plugin stores nothing.
-
 import { atom, read, update } from 'claude-code';
 
 import { DR_DEFAULTS } from './library.js';

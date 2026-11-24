@@ -91,8 +91,6 @@ The extension's folder names predate the groups. The library folder holds core, 
 ## The Claude Code plugin
 
 - **The plugin adds no rounding code.** Its markdown adapter lists each markdown table's cells. Its text table step runs them through the classification ladder and the table step under the settings contract's defaults. Its hooks module holds the toggle command, the status entry, and the drawing hook.
-- **The plugin stores nothing.** The engine keeps each reply block's originals and the on/off value, and the drawing hook returns the simplified text while the value is on. Why: the engine already holds both, so a second copy could only drift.
-
 ## Google Sheets
 
 - **The Sheets input step sorts each value by type.** The function returns a number for a number cell and text for a text cell, and text goes through the classification ladder. Why: a custom function receives a cell's value and nothing about its format, so a currency-formatted 1,234 arrives as the number 1234. Other formulas can read a number result.
