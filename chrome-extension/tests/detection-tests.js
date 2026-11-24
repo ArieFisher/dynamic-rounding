@@ -522,7 +522,7 @@ const consistentCellCountStepPasses = (children) =>
     Object.assign(extracted(match('45', 4)), { split: true }));
   eq('placeClassification: a number in one piece stands',
     placeClassification(extracted(match('123', 0)), layout(['123'], null)), extracted(match('123', 0)));
-  eq('placeClassification: a rendered position converts through toFlat before the piece check',
+  eq('placeClassification: a number in its own piece between whitespace pieces stands',
     placeClassification(extracted(match('123', 0)), layout(['\n  ', '123', '\n'], [3, 4, 5])), extracted(match('123', 0)));
 })();
 
@@ -4332,15 +4332,12 @@ function cnAdapterCellEls(tableEl) {
 
 // --- Placement: a bracket may hold its own text piece ---
 
-(function bracketInItsOwnPiecePlaces() {
+(function bracketInItsOwnPieceKeepsModeExtracted() {
   const pieces = ['(', '1,234', ')'];
   const text = pieces.join('');
-  const liveStarts = [];
-  let at = 0;
-  for (const piece of pieces) { liveStarts.push(at); at += piece.length; }
-  const layout = { original: pieces, liveStarts, toFlat: null };
+  const layout = { original: pieces, toFlat: null };
   const classification = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, bracketOpts);
-  eq('bracketed: a bracket in its own text piece still places',
+  eq('bracketed: "(1,234)" with each bracket in its own text piece keeps mode extracted',
     placeClassification(classification, layout).mode, 'extracted');
 })();
 
