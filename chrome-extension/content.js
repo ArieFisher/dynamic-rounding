@@ -1,9 +1,5 @@
 // Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
-// roundWithOffset, roundValueSetAware, and findMaxMagnitude live in
-// rounding.js, loaded by manifest content_scripts ahead of this file. The
-// sidebar loads rounding.js separately via a script tag in sidebar.html.
-
 // DR_DEFAULTS is loaded from constants.js (declared first in manifest content_scripts).
 
 // The capture marker: a saved capture (lib/dr-capture/render.js) stamps

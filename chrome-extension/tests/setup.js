@@ -1,10 +1,9 @@
 /**
- * Test suite for chrome-extension content.js pure helpers.
+ * Setup for the chrome-extension test suite.
  * Run: node tests.js
  *
- * Stubs out browser globals so the content scripts run in Node and exercise
- * the pure functions (extractNumbersInText, formatNumber, toNumber,
- * roundValueSetAware, findMaxMagnitude, pureNumberSpan).
+ * Stubs out browser globals and loads the content scripts in manifest order,
+ * so the test pieces run them in Node.
  */
 
 const fs = require('fs');
@@ -175,8 +174,6 @@ globalThis.CURRENCY_SIGNS = CURRENCY_SIGNS;
 globalThis.CLEAN_REGEX = CLEAN_REGEX;
 globalThis.getEraYearMaskedRanges = getEraYearMaskedRanges;
 globalThis.getClockTimeMaskedRanges = getClockTimeMaskedRanges;
-globalThis.formatStep = formatStep;
-globalThis.stepForOffset = stepForOffset;
 // Expose the table pillbox geometry constants (all are const, so direct assignment works)
 globalThis.TABLE_PILLBOX_DOT_PX = TABLE_PILLBOX_DOT_PX;
 globalThis.TABLE_PILLBOX_PILL_HEIGHT_PX = TABLE_PILLBOX_PILL_HEIGHT_PX;
