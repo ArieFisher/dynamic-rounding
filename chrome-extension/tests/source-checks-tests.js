@@ -2161,12 +2161,6 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 
 // --- toast view: an error row shows on the page ---
 //
-// The toast view subscribes to the model's error state change and draws the
-// newest row's text in one fixed element at the page's bottom right, removed
-// by a click or after the hide delay. A second row replaces the text and
-// restarts the delay, so a repeating warning shows one toast. The view never
-// logs: a row it recorded would publish back to it.
-//
 // The live view has drawn against earlier tests' page stubs by the time this
 // section runs, so these build the settings contract, the bus, the model,
 // and the view together in a fresh context with their own page stub. The
@@ -2179,7 +2173,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 
   const appended = [];
   const timers = [];
-  let cleared = 0;
+  const cleared = [];
   const makeEl = (tag) => {
     const listeners = {};
     const attrs = {};
@@ -2188,6 +2182,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
       setAttribute(name, value) { attrs[name] = value; },
       getAttribute(name) { return attrs[name] === undefined ? null : attrs[name]; },
       addEventListener(evt, fn) { (listeners[evt] = listeners[evt] || []).push(fn); },
+      remove() { if (this.parentNode) this.parentNode.removeChild(this); },
     };
   };
   const container = () => ({
@@ -2204,7 +2199,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
     console,
     document: { createElement: makeEl, body: container(), head: container() },
     setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
-    clearTimeout: () => { cleared++; },
+    clearTimeout: (id) => { cleared.push(id); },
   };
   const ctx = vm.createContext(sandbox);
   vm.runInContext(constantsCode + '\n' + busCode + '\n' + modelCode + '\n' + toastViewCode +
@@ -2215,32 +2210,33 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 
   model.recordError({ at: 'x', level: 'warn', text: 'Dynamic Rounding: toast probe one', stack: null });
   const toast = appended.find(isToast);
-  eq('toast: an error row appends one toast to the page', !!toast, true);
+  eq('toast: after one error row, the page holds one toast', !!toast, true);
   eq('toast: the toast shows the row\'s text',
     toast ? toast.textContent : null, 'Dynamic Rounding: toast probe one');
   eq('toast: the toast is a status region for assistive technology',
     toast ? toast.getAttribute('role') : null, 'status');
   eq('toast: the view injects its stylesheet once',
     appended.filter((el) => el._tag === 'style' && el.textContent.includes(view.TOAST_CLASS)).length, 1);
-  eq('toast: the toast hides itself after the hide delay',
+  eq('toast: after one error row, the view sets one timer for the hide delay',
     timers.length === 1 && timers[0].ms === view.TOAST_HIDE_MS, true);
 
   model.recordError({ at: 'x', level: 'warn', text: 'toast probe two', stack: null });
-  eq('toast: a second row replaces the text of the one toast',
+  eq('toast: after a second error row, the page holds one toast with the second row\'s text',
     { count: appended.filter(isToast).length, text: toast ? toast.textContent : null },
     { count: 1, text: 'toast probe two' });
-  eq('toast: a second row restarts the hide delay',
-    { cleared, timers: timers.length }, { cleared: 1, timers: 2 });
+  eq('toast: after a second error row, the view clears the first timer and sets a second',
+    { firstTimerCleared: cleared.includes(1), timers: timers.length },
+    { firstTimerCleared: true, timers: 2 });
 
   if (timers[1]) timers[1].fn();
-  eq('toast: the hide delay removes the toast', appended.some(isToast), false);
+  eq('toast: when the hide delay ends, the page holds no toast', appended.some(isToast), false);
 
   model.recordError({ at: 'x', level: 'error', text: 'toast probe three', stack: null });
   const second = appended.find(isToast);
-  eq('toast: a row after the hide draws a fresh toast',
+  eq('toast: after an error row that follows the hide, the page holds a new toast with that row\'s text',
     !!second && second !== toast && second.textContent === 'toast probe three', true);
   if (second) second._listeners.click[0]();
-  eq('toast: a click removes the toast', appended.some(isToast), false);
+  eq('toast: after a click on the toast, the page holds no toast', appended.some(isToast), false);
   eq('toast: the stylesheet is injected once for the page\'s life',
     appended.filter((el) => el._tag === 'style').length, 1);
   eq('toast: the view logs nothing', /DR_LOG\./.test(toastViewCode), false);
