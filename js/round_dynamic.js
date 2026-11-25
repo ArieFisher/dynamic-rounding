@@ -304,8 +304,9 @@ function toNumber(value) {
 
 // Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 /**
- * Reading the setting values a user writes: the range expression, the
- * offsets, and num_top. Reads no page and calls no Chrome.
+ * Reading the setting values a user writes (the range expression, the
+ * offsets, and num_top) and testing whether a cell lies inside the range
+ * expression. Reads no page and calls no Chrome.
  */
 
 // The largest offset, either way, that a setting value may hold.
@@ -326,64 +327,50 @@ function parseRangeEndpoint(token) {
   const m = token.trim().match(/^([A-Za-z]+)?(\d+)?$/);
   if (!m || (!m[1] && !m[2])) return null;
   const col = m[1] ? lettersToColIndex(m[1]) : null;
-  if (m[1] && col === null) return null;
   const row = m[2] ? parseInt(m[2], 10) - 1 : null;
   if (m[2] && (row < 0 || !isFinite(row))) return null;
   return { col, row };
 }
 
 function parseRangeToken(token) {
-  const t = token.trim();
-  if (!t) return null;
-  if (t.includes(':')) {
-    const parts = t.split(':');
-    if (parts.length !== 2) return null;
-    const l = parseRangeEndpoint(parts[0]);
-    const r = parseRangeEndpoint(parts[1]);
-    if (!l || !r) return null;
-    // Open-ended semantics: left-null = unbounded below (0), right-null = unbounded above (Infinity).
-    const lcol = l.col === null ? 0 : l.col;
-    const rcol = r.col === null ? Infinity : r.col;
-    const lrow = l.row === null ? 0 : l.row;
-    const rrow = r.row === null ? Infinity : r.row;
-    return {
-      colMin: Math.min(lcol, rcol),
-      colMax: Math.max(lcol, rcol),
-      rowMin: Math.min(lrow, rrow),
-      rowMax: Math.max(lrow, rrow)
-    };
-  }
-  const e = parseRangeEndpoint(t);
-  if (!e) return null;
+  const parts = token.split(':');
+  if (parts.length > 2) return null;
+  const left = parseRangeEndpoint(parts[0]);
+  const right = parseRangeEndpoint(parts[parts.length - 1]);
+  if (!left || !right) return null;
+  // An endpoint with no column or no row leaves that side open: the left side
+  // from the first column or row, the right side to the last.
+  const leftCol = left.col ?? 0;
+  const rightCol = right.col ?? Infinity;
+  const leftRow = left.row ?? 0;
+  const rightRow = right.row ?? Infinity;
   return {
-    colMin: e.col ?? 0,
-    colMax: e.col ?? Infinity,
-    rowMin: e.row ?? 0,
-    rowMax: e.row ?? Infinity
+    colMin: Math.min(leftCol, rightCol),
+    colMax: Math.max(leftCol, rightCol),
+    rowMin: Math.min(leftRow, rightRow),
+    rowMax: Math.max(leftRow, rightRow)
   };
 }
 
 function parseRangeExpr(expr) {
   if (typeof expr !== 'string') return { ranges: null };
-  const trimmed = expr.trim();
-  if (!trimmed) return { ranges: null }; // null = whole table
-  const stripped = trimmed.replace(/^\{/, '').replace(/\}$/, '');
+  const stripped = expr.trim().replace(/^\{/, '').replace(/\}$/, '');
   const tokens = stripped.split(/[,;]/).map(t => t.trim()).filter(Boolean);
-  if (tokens.length === 0) return { ranges: null };
+  if (tokens.length === 0) return { ranges: null }; // null = whole table
   const ranges = [];
-  for (const tok of tokens) {
-    const r = parseRangeToken(tok);
-    if (!r) return { error: `Invalid range: "${tok}"` };
-    ranges.push(r);
+  for (const token of tokens) {
+    const range = parseRangeToken(token);
+    if (!range) return { error: `Invalid range: "${token}"` };
+    ranges.push(range);
   }
   return { ranges };
 }
 
-function isInRanges(r, c, ranges) {
+function isInRanges(rowIndex, columnIndex, ranges) {
   if (!ranges) return true;
   for (const range of ranges) {
-    if (r >= range.rowMin && r <= range.rowMax &&
-        c >= range.colMin && c <= range.colMax) {
+    if (rowIndex >= range.rowMin && rowIndex <= range.rowMax &&
+        columnIndex >= range.colMin && columnIndex <= range.colMax) {
       return true;
     }
   }
@@ -1374,9 +1361,8 @@ function getIdentifierMaskedRanges(text) {
  * markdown adapter in the plugin); whether the cell holds a superscript; the
  * superscript spans in the text classifyCell reads (getSuperscriptRanges);
  * and whether the cell's digits sit in more than one text piece (from the
- * piece layout), so the join of numbers in separate pieces never reads as one
- * spaced identifier. The bare names the ladder calls come from the
- * lib/dr-number files, loaded ahead of this file.
+ * piece layout). The bare names the ladder calls come from the lib/dr-number
+ * files, loaded ahead of this file.
  */
 
 /**
@@ -1609,9 +1595,9 @@ function resolveAmbiguousDateClassification(classification, hint) {
  *
  *   1. The column post-pass settles each ambiguous date against its
  *      column's format hint.
- *   2. The max magnitude comes from the numbers of the extracted cells
- *      passed in, since a date or time adds none, unless the caller passes
- *      one.
+ *   2. The max magnitude is the one the caller passes, or else the largest
+ *      order of magnitude among the extracted cells' numbers; the step
+ *      counts no date or time.
  *   3. Each cell's numbers, dates, and times round and become patches.
  *
  * Core layer: reads no page and calls no Chrome. It depends only on
@@ -1620,10 +1606,9 @@ function resolveAmbiguousDateClassification(classification, hint) {
  *
  * The step reads one classified cell per cell. A classified cell is any
  * object carrying:
- *   text            the classified text (a simplified cell's stored original)
+ *   text            the text the ladder classified
  *   classification  the ladder's classification (classifyCell)
- *   columnIndex     the cell's grid column, by which the column post-pass
- *                   groups cells
+ *   columnIndex     the cell's grid column
  * The step copies every other field through untouched, so a caller can carry
  * its own per-cell data beside them.
  */
@@ -1632,10 +1617,9 @@ function isAmbiguousDateClassification(classification) {
   return classification.pending === 'ambiguous-date';
 }
 
-// The column post-pass: resolve each ambiguous date against its column's
-// format hint. It groups cells by grid column, so a merged cell cannot split
-// one column into two groups that read 7/4/99 as July in one row and April in
-// another.
+// The column post-pass. It groups cells by grid column, so a merged cell
+// cannot split one column into two groups that read 7/4/99 as July in one row
+// and April in another.
 function resolveAmbiguousDates(classifiedCells) {
   const ambiguousDatesByCol = new Map();
   for (const { classification, columnIndex } of classifiedCells) {
@@ -1653,9 +1637,6 @@ function resolveAmbiguousDates(classifiedCells) {
   });
 }
 
-// passedMaxMag when the caller passes one, else the max magnitude over each
-// number of every extracted cell in classifiedCells; a date or time cell adds
-// none.
 function datasetMaxMagnitude(classifiedCells, passedMaxMag) {
   if (passedMaxMag != null) return passedMaxMag;
   const allNums = [];
@@ -1698,22 +1679,17 @@ function classifiedCellPatches(classifiedCell, maxMag, settings) {
 }
 
 /**
- * The table step (see the file header).
+ * The table step (see the file header). settings holds the resolved
+ * offsetTop, offsetOther, and numTop, and the dateGranularity and
+ * timeGranularity. When passedMaxMag is neither null nor undefined, the step
+ * rounds against it and computes none: the extension passes the table's
+ * magnitude freeze, and Sheets the max magnitude over the dataset, number
+ * cells included.
  *
- * @param {object[]} classifiedCells - One classified cell per cell, in page
- *   order, each carrying text, classification, and columnIndex.
- * @param {{offsetTop: number, offsetOther: number, numTop: number,
- *          dateGranularity: string, timeGranularity: string}} settings -
- *   Resolved offsets and num_top, and the date and time granularity.
- * @param {number|null} [passedMaxMag] - A max magnitude the caller holds:
- *   the table's magnitude freeze in the extension, or the max magnitude over
- *   the dataset in Sheets, number cells included. When given, the step
- *   rounds against it and computes none of its own.
  * @returns {{maxMag: number|null,
  *            patchedCells: Array<{classifiedCell: object, patches: object[]}>}}
- *   patchedCells holds one patched cell per classified cell, in input order:
- *   the classified cell after the column post-pass, and its patches in the
- *   classified text.
+ *   One patched cell per classified cell, in input order: the classified
+ *   cell after the column post-pass, and its patches in the classified text.
  */
 function tablePatches(classifiedCells, settings, passedMaxMag) {
   const resolved = resolveAmbiguousDates(classifiedCells);
@@ -1723,9 +1699,9 @@ function tablePatches(classifiedCells, settings, passedMaxMag) {
   return { maxMag, patchedCells };
 }
 
-// Apply patches to a text, last patch first, so each earlier patch's position
-// still counts into the text as passed in. For a caller with no page: the
-// extension writes through the patch writer, one text piece at a time.
+// Apply patches to a text, last patch first, so the positions of the earlier
+// patches stay valid. For a caller with no page: the extension writes through
+// the patch writer, one text piece at a time.
 function applyPatches(text, patches) {
   return patches
     .slice()
@@ -1771,7 +1747,7 @@ const SHEETS_LADDER_OPTIONS = Object.freeze({
  * [MODE 1] single value: =ROUND_DYNAMIC(value, [offset])
  * [MODE 2] dataset: =ROUND_DYNAMIC(range, [offset_top], [offset_other], [num_top])
  * [INSTRUCTIONS] HTTPS://github.com/ArieFisher/dynamic-rounding
- * [VERSION] 0.5.17
+ * [VERSION] 0.5.18
  *
  * @param {number|Array} values The value or range of values to round.
  * @param {number} offset_top The OoM offset for the single value, or, the numbers in the largest order of magnitude of a dataset (default -0.5).

@@ -8,7 +8,7 @@ description: Run a refactor pass over a file, a list of files, or a directory. F
 * Before the first file, create a branch from main named `refactor/asx-<YYYYMMDD>`.
 * If given a list of files, a directory, or a repository, run the two subagents below on the first file, one after the other. When the second one has finished, repeat for the next file on the list.
 * Skip `js/round_dynamic.js`.
-* Run the subagents on Opus high.
+* Run the find and action subagents with the `refactor` agent type. Put the name of the subagent's section, the input file, and the findings file's path in its task message. Run the review subagent on Opus high.
 * After each file, reply in chat with one line giving that file's counts for groups A and B. After the last file, add one line with the totals across all files. No preamble and no summary of groups A and B.
 * The only exception is where the action subagents made judgement calls: describe those simply, in plain language for a product manager audience.
 * After the last file, run the review subagent below on the whole branch.
@@ -23,7 +23,7 @@ Apply this to the file named in the input. Read that file in full.
 
 Do not edit any files. Write your findings to `docs/private/asx-<YYYYMMDD>-<input file name>.md`, and create no other file.
 
-Report what you find, and leave fixes for a later step. For each finding, say where it is and what it is in one line, and mark it A or B (see Categorize below). Follow a finding into other files when it leads there. Read the names and group headings of the tests for the file's code as well.
+Report what you find, and leave fixes for a later step. For each finding, say where it is and what it is in one line, and mark it A or B (see Categorize below). When a finding leads into another file, search that file and read only the part the finding needs. To find the tests for the file's code, search the test files for the names the file defines. Read the names and group headings of the tests that match, and read a test's body only when a finding depends on it. Do not read a test file in full.
 
 ### Coherent Vocabulary
 

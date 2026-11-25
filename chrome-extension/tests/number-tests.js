@@ -749,7 +749,7 @@ for (const [input, granularity, expected, covers] of ISO_DATE_TIME_CASES) {
 eq('roundTimeText: an ISO date-time already in the result form is unchanged',
   roundTimeText('2025-11-26 16:16', 'minute'), null);
 
-// --- Advanced parameter resolvers ---
+// --- Offsets and num_top read from a setting value ---
 
 eq('resolveOffset: null -> fallback', resolveOffset(null, -0.5), -0.5);
 
@@ -757,21 +757,21 @@ eq('resolveOffset: undefined -> fallback', resolveOffset(undefined, -0.5), -0.5)
 
 eq('resolveOffset: "" -> fallback', resolveOffset('', -0.5), -0.5);
 
-eq('resolveOffset: numeric string', resolveOffset('-1.5', -0.5), -1.5);
+eq('resolveOffset: "-1.5" -> -1.5', resolveOffset('-1.5', -0.5), -1.5);
 
-eq('resolveOffset: number passes through', resolveOffset(-2, -0.5), -2);
+eq('resolveOffset: -2 -> -2', resolveOffset(-2, -0.5), -2);
 
-eq('resolveOffset: NaN -> fallback', resolveOffset('abc', -0.5), -0.5);
+eq('resolveOffset: "abc" -> fallback', resolveOffset('abc', -0.5), -0.5);
 
-eq('resolveOffset: out-of-range -> fallback (too low)',
+eq('resolveOffset: "-99" -> fallback',
   resolveOffset('-99', -0.5), -0.5);
 
-eq('resolveOffset: out-of-range -> fallback (too high)',
+eq('resolveOffset: "99" -> fallback',
   resolveOffset('99', -0.5), -0.5);
 
-eq('resolveOffset: boundary -20 ok', resolveOffset('-20', -0.5), -20);
+eq('resolveOffset: "-20" -> -20', resolveOffset('-20', -0.5), -20);
 
-eq('resolveOffset: boundary +20 ok', resolveOffset('20', -0.5), 20);
+eq('resolveOffset: "20" -> 20', resolveOffset('20', -0.5), 20);
 
 eq('resolveNumTop: null -> fallback', resolveNumTop(null, 1), 1);
 
@@ -779,13 +779,13 @@ eq('resolveNumTop: "" -> fallback', resolveNumTop('', 1), 1);
 
 eq('resolveNumTop: "3" -> 3', resolveNumTop('3', 1), 3);
 
-eq('resolveNumTop: 0 -> fallback (must be >= 1)',
+eq('resolveNumTop: 0 -> fallback',
   resolveNumTop(0, 1), 1);
 
-eq('resolveNumTop: negative -> fallback',
+eq('resolveNumTop: "-2" -> fallback',
   resolveNumTop('-2', 1), 1);
 
-eq('resolveNumTop: 2.7 floored to 2',
+eq('resolveNumTop: "2.7" -> 2',
   resolveNumTop('2.7', 1), 2);
 
 // A blank offset or top-band count falls back to DR_DEFAULTS, the one
@@ -802,7 +802,7 @@ eq('resolveNumTop: 2.7 floored to 2',
   }
 })();
 
-// --- Range selector ---
+// --- Range expressions ---
 
 // lettersToColIndex
 eq('lettersToColIndex: A -> 0', lettersToColIndex('A'), 0);
@@ -815,9 +815,9 @@ eq('lettersToColIndex: AA -> 26', lettersToColIndex('AA'), 26);
 
 eq('lettersToColIndex: AB -> 27', lettersToColIndex('AB'), 27);
 
-eq('lettersToColIndex: lowercase ok', lettersToColIndex('a'), 0);
+eq('lettersToColIndex: a -> 0', lettersToColIndex('a'), 0);
 
-eq('lettersToColIndex: non-letter -> null', lettersToColIndex('A1'), null);
+eq('lettersToColIndex: A1 -> null', lettersToColIndex('A1'), null);
 
 // parseRangeExpr
 eq('parseRangeExpr: empty -> null ranges (whole table)',
@@ -864,34 +864,34 @@ eq('parseRangeExpr: whitespace -> null ranges',
 
 (function expr_union() {
   const r = parseRangeExpr('{A1:E8, G3:G, I4:K5}');
-  eq('parseRangeExpr: brace union of three ranges',
+  eq('parseRangeExpr: "{A1:E8, G3:G, I4:K5}" -> 3 ranges',
     r.ranges.length, 3);
 })();
 
 (function expr_unionNoBraces() {
   const r = parseRangeExpr('A1:B2, D:D');
-  eq('parseRangeExpr: comma-separated without braces',
+  eq('parseRangeExpr: "A1:B2, D:D" -> 2 ranges',
     r.ranges.length, 2);
 })();
 
 (function expr_semicolons() {
   const r = parseRangeExpr('A; B; C');
-  eq('parseRangeExpr: semicolon separator',
+  eq('parseRangeExpr: "A; B; C" -> 3 ranges',
     r.ranges.length, 3);
 })();
 
 (function expr_invalid() {
   const r = parseRangeExpr('A:B:C');
-  eq('parseRangeExpr: triple colon -> error',
+  eq('parseRangeExpr: "A:B:C" -> error',
     typeof r.error, 'string');
 })();
 
 (function expr_invalidGarbage() {
   const r = parseRangeExpr('1A');
-  eq('parseRangeExpr: digits-then-letters -> error',
+  eq('parseRangeExpr: "1A" -> error',
     typeof r.error, 'string');
   const r2 = parseRangeExpr('@#$');
-  eq('parseRangeExpr: punctuation -> error',
+  eq('parseRangeExpr: "@#$" -> error',
     typeof r2.error, 'string');
 })();
 
@@ -901,22 +901,22 @@ eq('parseRangeExpr: "G:G3" -> column G up to row 3',
   { ranges: [{ colMin: 6, colMax: 6, rowMin: 0, rowMax: 2 }] });
 
 // Swapped endpoints normalize
-eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
+eq('parseRangeExpr: "A5:A2" -> rows 1-4 of column A',
   parseRangeExpr('A5:A2'),
   { ranges: [{ colMin: 0, colMax: 0, rowMin: 1, rowMax: 4 }] });
 
 // isInRanges
 (function isIn_null() {
-  eq('isInRanges: null ranges -> always true (whole table)',
+  eq('isInRanges: null ranges -> true',
     isInRanges(5, 5, null), true);
 })();
 
 (function isIn_inside() {
   const ranges = [{ colMin: 1, colMax: 3, rowMin: 1, rowMax: 5 }];
-  eq('isInRanges: inside rect', isInRanges(2, 2, ranges), true);
-  eq('isInRanges: on boundary',  isInRanges(1, 1, ranges), true);
-  eq('isInRanges: outside col',  isInRanges(2, 0, ranges), false);
-  eq('isInRanges: outside row',  isInRanges(0, 2, ranges), false);
+  eq('isInRanges: (2,2) in B2:D6 -> true', isInRanges(2, 2, ranges), true);
+  eq('isInRanges: (1,1) in B2:D6 -> true',  isInRanges(1, 1, ranges), true);
+  eq('isInRanges: (2,0) in B2:D6 -> false',  isInRanges(2, 0, ranges), false);
+  eq('isInRanges: (0,2) in B2:D6 -> false',  isInRanges(0, 2, ranges), false);
 })();
 
 (function isIn_unionMembership() {
@@ -924,14 +924,14 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
     { colMin: 0, colMax: 1, rowMin: 0, rowMax: 1 },
     { colMin: 5, colMax: 5, rowMin: 2, rowMax: Infinity }
   ];
-  eq('isInRanges: in first rect', isInRanges(0, 0, ranges), true);
-  eq('isInRanges: in second open rect', isInRanges(100, 5, ranges), true);
-  eq('isInRanges: between rects', isInRanges(2, 2, ranges), false);
+  eq('isInRanges: (0,0) in A1:B2 or F3:F -> true', isInRanges(0, 0, ranges), true);
+  eq('isInRanges: (100,5) in A1:B2 or F3:F -> true', isInRanges(100, 5, ranges), true);
+  eq('isInRanges: (2,2) in A1:B2 or F3:F -> false', isInRanges(2, 2, ranges), false);
 })();
 
-// --- Adversarial range parser tests ---
+// --- Range expressions with a partial endpoint ---
 
-// Primary bug report: f4:g8 (lowercase partial-range)
+// Lowercase letters read as uppercase
 (function f4g8_lowercase() {
   const r = parseRangeExpr('f4:g8');
   eq('partial range: "f4:g8" -> no error',
@@ -985,10 +985,10 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   eq('partial range: "B:D5" rowMax=4', rng && rng.rowMax, 4);
 })();
 
-// Regression guard: the basic shapes still pass
+// A brace union of a rectangle and an open column
 (function regression_union() {
   const r = parseRangeExpr('{A1:E8, G3:G}');
-  eq('regression: "{A1:E8, G3:G}" -> 2 ranges', r.ranges && r.ranges.length, 2);
+  eq('parseRangeExpr: "{A1:E8, G3:G}" -> 2 ranges', r.ranges && r.ranges.length, 2);
 })();
 
 // --- Hidden-sortkey regression guard ---

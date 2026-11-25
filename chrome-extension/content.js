@@ -666,8 +666,8 @@ function resetTable(table) {
 // The lens preview's classified cells: every cell of the table's dataset,
 // classified through the classification step the one simplification pass
 // runs (classifyTableCells below). The step reads each simplified cell's
-// stored original (see classifyTableCell in lib/dr-table) and writes
-// nothing. Every row counts, header, body, and total alike.
+// stored original (see getText in makeCellObj, lib/dr-table/cells.js) and
+// writes nothing. Every row counts, header, body, and total alike.
 //
 // options defaults to DR_DEFAULTS when the caller passes none (tests exercise
 // the ladder's option-gated rules directly this way); the real call site,
@@ -738,9 +738,9 @@ function extractPreviewSamples(table) {
     byMag.get(mag).push(c);
   }
 
-  // Top band: cells whose magnitude is within numTop of maxMag (i.e. cells
-  // that roundValueSetAware will route to offset_top). Pick up to 2; prefer
-  // distinct magnitudes.
+  // Top band: cells in the numTop largest orders of magnitude, counting down
+  // from maxMag (the cells roundValueSetAware routes to offset_top). Pick up
+  // to 2; prefer distinct magnitudes.
   const topMags = Array.from(byMag.keys())
     .filter(m => (maxMag - m) < numTop)
     .sort((a, b) => b - a);
@@ -844,7 +844,7 @@ function buildCaptureStateResponse() {
 // both kinds, so the pass sees no difference between them before it starts.
 //
 // The pass writes no log row. It counts, by reason, the cells it left as
-// written: a split number (classifiedCell.split, after classification), a
+// written: a split number (classification.split, after classification), a
 // changed date or time whose text crosses a piece boundary, and a cell whose
 // patch landed nothing because the text it shows differs from the text its
 // pieces hold. It returns the counts and its duration; the apply writes the counts
@@ -987,7 +987,7 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
   return {
     cells, missedCells, maxMag, cellCount: dataCells.length, overCap: false,
     leftAsWritten: {
-      splitNumber: classified.filter((classifiedCell) => classifiedCell.split).length,
+      splitNumber: classified.filter((classifiedCell) => classifiedCell.classification.split).length,
       splitDateOrTime,
       textMismatch: missedCells,
     },
@@ -1034,11 +1034,10 @@ function registryAdapter(table) {
 // The observer is off during the extension's own writes, the restore
 // included: a pass disconnects it before it writes and reconnects it after,
 // and a reset stops it before the restore writes. A burst of page edits
-// collapses into one pass: each change restarts the settle delay, and a
-// burst that never goes quiet runs its pass once it has lasted the longest
-// wait (reapplyMaxWaitMs in the detection settings). A table above the cell
-// cap (reapplyCellCap) takes no observer, and a pass that finds its table
-// above the cap stops the observer.
+// collapses into one pass under the settle delay and the longest wait
+// (settleDelayMs and reapplyMaxWaitMs in the detection settings). A table
+// above the cell cap (reapplyCellCap) takes no observer, and a pass that finds
+// its table above the cap stops the observer.
 
 // Start watching a table after its first simplification. The first
 // simplification's own writes are done by then, so they run no pass.

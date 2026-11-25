@@ -1277,8 +1277,8 @@ const SEAT_ROWS = [
       supNode.nodeValue, '−32');
 
     // The non-exponent part must have been processed — assert the cell was
-    // marked as rounded (dr-ext-rounded), which only happens when formattedValue
-    // differs from originalValue (i.e. "1234" was simplified).
+    // marked as rounded (dr-ext-rounded), which applyPatches adds only when a
+    // patch lands (i.e. "1234" was simplified).
     eq('sup: mixed cell is marked dr-ext-rounded (non-exponent 1234 was simplified)',
       cell.classList.contains('dr-ext-rounded'), true);
   });

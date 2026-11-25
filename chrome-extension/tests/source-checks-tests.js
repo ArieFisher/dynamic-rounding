@@ -521,13 +521,13 @@
 })();
 
 // --- The keys simplifyDates/simplifyTimes reach every file that reads them ---
-(function dateTimeSwitches_oldKeysAbsent() {
+(function dateTimeSwitches_keysReachEveryReader() {
   // The simplifyDates/simplifyTimes option reads (and every other
   // classification-ladder rule) live in lib/dr-simplify/ladder.js; content.js
   // only calls classifyCell.
   const ladderSrc = sourceByName('lib/dr-simplify/ladder.js');
   if (constantsCode === null || ladderSrc === null) {
-    eq('invert-pills regression: source files present in manifest', false, true);
+    eq('date and time switches: source files present in manifest', false, true);
     return;
   }
   const sidebarSrc  = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
@@ -535,17 +535,17 @@
   // simplifyDates and simplifyTimes must appear in each file.
   // content.js references them only transitively (via opts passed to
   // classifyCell) — the ladder is the actual point of use.
-  eq('invert-pills regression: lib/dr-simplify/ladder.js references simplifyDates',
+  eq('date and time switches: lib/dr-simplify/ladder.js references simplifyDates',
     /\bsimplifyDates\b/.test(ladderSrc), true);
-  eq('invert-pills regression: lib/dr-simplify/ladder.js references simplifyTimes',
+  eq('date and time switches: lib/dr-simplify/ladder.js references simplifyTimes',
     /\bsimplifyTimes\b/.test(ladderSrc), true);
-  eq('invert-pills regression: constants.js references simplifyDates',
+  eq('date and time switches: constants.js references simplifyDates',
     /\bsimplifyDates\b/.test(constantsCode), true);
-  eq('invert-pills regression: constants.js references simplifyTimes',
+  eq('date and time switches: constants.js references simplifyTimes',
     /\bsimplifyTimes\b/.test(constantsCode), true);
-  eq('invert-pills regression: sidebar.js references simplifyDates',
+  eq('date and time switches: sidebar.js references simplifyDates',
     /\bsimplifyDates\b/.test(sidebarSrc), true);
-  eq('invert-pills regression: sidebar.js references simplifyTimes',
+  eq('date and time switches: sidebar.js references simplifyTimes',
     /\bsimplifyTimes\b/.test(sidebarSrc), true);
 })();
 
@@ -1414,10 +1414,9 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 //      read DR_DETECTION_SETTINGS as a bare global — no typeof guard, no
 //      OR-fallback, no reassignment — and the table pillbox view reads none of it.
 //   3. Behavior: a sandbox that evaluates the configuration file and then
-//      the detection layer carries the nine pre-move values unchanged, and
-//      looksLikeGrid, findTargetTable, isAccessibilityArtifact, and isDataTable
-//      behave exactly as the pre-move source did, on fixtures whose outcome
-//      the pre-move values determine.
+//      the detection layer holds the expected values, and looksLikeGrid,
+//      findTargetTable, isAccessibilityArtifact, and isDataTable give the
+//      outcomes those values determine.
 //   4. Behavior: a sandbox that evaluates the detection layer alone, with
 //      no configuration file, fails at load with a ReferenceError naming
 //      DR_DETECTION_SETTINGS — before any function in the file runs.
@@ -1450,11 +1449,11 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 
 (function detectionSettings_retiredLiteralFormsAreGoneFromDetection() {
   const src = detectCode || '';
-  eq('detection settings: the detection layer no longer computes the repetition floor as children.length / 2',
+  eq('detection settings: the detection layer does not compute the repetition floor as children.length / 2',
     /children\.length\s*\/\s*2/.test(src), false);
-  eq('detection settings: the detection layer no longer compares column-width agreement to a bare 0.8 literal',
+  eq('detection settings: the detection layer does not compare column-width agreement to a bare 0.8 literal',
     />=\s*0\.8\b/.test(src), false);
-  eq('detection settings: the detection layer no longer builds a Set of the four display values',
+  eq('detection settings: the detection layer does not build a Set of the four display values',
     /new Set\(\s*\[\s*['"]grid['"]/.test(src), false);
   eq('detection settings: the detection layer reads the display-value list through DR_DETECTION_SETTINGS.gridDisplayValues.includes(display)',
     /DR_DETECTION_SETTINGS\.gridDisplayValues\.includes\(display\)/.test(src), true);

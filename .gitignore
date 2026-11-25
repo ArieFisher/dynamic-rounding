@@ -15,7 +15,9 @@ docs/private/
 
 # Claude Code local config / instructions
 # CLAUDE.md is tracked (shared repo conventions for Claude sessions).
-.claude/
+# Agent types are tracked: the refactor skill's subagents run with the refactor agent type.
+.claude/*
+!.claude/agents/
 
 # Antigravity Agent
 .agent/*
