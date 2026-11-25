@@ -91,13 +91,13 @@ module.exports = function runSheetsLadder(h) {
         [[1000, 'about 1,000 users', -1000]]);
 
     // --- values that are not text -----------------------------
-    // A plain number rounds as today and returns a number. A date object, a
+    // A plain number rounds and returns a number. A date object, a
     // boolean, and an empty cell return unchanged.
     const date = new Date(2020, 0, 15);
     for (const kind of RESULT_KINDS) {
         const RD = kinds[kind].ROUND_DYNAMIC;
-        bothModes(kind, 'a plain number rounds as today', 4308910, 4500000);
-        bothModes(kind, 'a plain negative number rounds as today', -42.66, -45);
+        bothModes(kind, 'a plain number 4308910 returns 4500000', 4308910, 4500000);
+        bothModes(kind, 'a plain negative number -42.66 returns -45', -42.66, -45);
         bothModes(kind, 'a plain number 2020 rounds as a number', 2020, 2000);
         bothModes(kind, 'zero returns zero', 0, 0);
         typeOf(kind, 'single mode: a plain number returns a number', RD(1234), 'number');

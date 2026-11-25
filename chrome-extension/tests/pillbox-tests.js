@@ -2187,7 +2187,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // Right-click activation
 // ---------------------------------------------------------------------------
 // Right-clicking a table causes flashActiveTable to run on that table.
-// state:tableActivated onMessage in sidebar.js calls flashSidebarContainer.
+// The sidebar's state:tableActivated subscriber calls flashSidebarContainer.
 // Right-clicking a non-table element produces NO flash and NO state:tableActivated send.
 // background.js does NOT relay state:tableActivated.
 // ---------------------------------------------------------------------------

@@ -112,17 +112,17 @@ eq('format: a whole result writes no decimals and groups its digits',
   formatNumber(1500, '1.234'),
   '1,500');
 
-// --- toNumber sanity (covered indirectly but pin behavior) ---
+// --- The number reader: plain, grouped, signed and bracketed text ---
 
-eq('toNumber: plain integer string', toNumber('286'), 286);
+eq('toNumber: "286" reads as 286', toNumber('286'), 286);
 
-eq('toNumber: comma number', toNumber('8,584,629'), 8584629);
+eq('toNumber: "8,584,629" reads as 8584629', toNumber('8,584,629'), 8584629);
 
-eq('toNumber: currency stripped', toNumber('$1,234.56'), 1234.56);
+eq('toNumber: "$1,234.56" reads as 1234.56', toNumber('$1,234.56'), 1234.56);
 
-eq('toNumber: parens treated as negative', toNumber('(500)'), -500);
+eq('toNumber: "(500)" reads as -500', toNumber('(500)'), -500);
 
-eq('toNumber: trailing word -> null', toNumber('286k'), null);
+eq('toNumber: "286k" reads as no number', toNumber('286k'), null);
 
 eq('toNumber: pure text -> null', toNumber('N/A'), null);
 
@@ -285,7 +285,7 @@ eq('extractAll: a list of grouped numbers keeps each number\'s own separators',
     out, '10,000 then 1,000');
 })();
 
-// --- Parens-negative survives toNumber ---
+// --- The number reader: brackets, and texts with no digits ---
 eq('toNumber: parens with comma', toNumber('(1,234)'), -1234);
 
 eq('toNumber: empty string returns null', toNumber(''), null);
@@ -296,7 +296,7 @@ eq('toNumber: dollar sign only returns null', toNumber('$'), null);
 
 eq('toNumber: euro sign only returns null', toNumber('€'), null);
 
-eq('toNumber: currency symbol with spaces returns null', toNumber(' $ '), null);
+eq('toNumber: " $ " reads as no number', toNumber(' $ '), null);
 
 // --- Pure cell writes for common shapes ---
 eq('pure cell write: pure integer keeps commas',
@@ -995,7 +995,7 @@ eq('parseRangeExpr: "A5:A2" -> rows 1-4 of column A',
 // A cell like <td><span style="display:none">700023000</span>+2.3%</td>
 // The implementation reads cell.innerText (which browsers exclude hidden text from).
 // We model this by making cell.innerText = '+2.3%' only (hidden span excluded).
-// toNumber('+2.3%') -> null (percent), and with simplifyMixedPercent unset it is excluded entirely.
+// toNumber('+2.3%') -> 2.3, and with simplifyMixedPercent unset the cell is excluded entirely.
 (function ac4_hiddenSortkeyNotExtracted() {
   // Simulate: innerText is what the browser returns (no hidden text).
   // Browsers exclude hidden (display:none) content from innerText, so the cell's
@@ -2611,10 +2611,10 @@ const LADDER_OPTS = {
     eq('currencies: "' + text + '" does not read as a number',
       toNumber(text), null);
   }
-  eq('currencies: a letter sign against the digits still reads ("R45")', toNumber('R45'), 45);
-  eq('currencies: a letter sign and a space still read ("kr 45")', toNumber('kr 45'), 45);
-  eq('currencies: a two-letter sign against the digits still reads ("Fr45")', toNumber('Fr45'), 45);
-  eq('currencies: the longest sign wins ("EC$45")', toNumber('EC$45'), 45);
+  eq('currencies: "R45" reads as 45', toNumber('R45'), 45);
+  eq('currencies: "kr 45" reads as 45', toNumber('kr 45'), 45);
+  eq('currencies: "Fr45" reads as 45', toNumber('Fr45'), 45);
+  eq('currencies: "EC$45" reads as 45', toNumber('EC$45'), 45);
   eq('currencies: a picture sign after the digits reads ("45€")', toNumber('45€'), 45);
   eq('currencies: a picture sign with a letter left beside it does not read ("a€45")',
     toNumber('a€45'), null);
@@ -2690,10 +2690,10 @@ eq('bracketed: a bracket pair holding more than the number is not a whole-text m
   [null, null, null]);
 
 // --- Decimal comma: strict US reading ---
-// The number format function returns the marks a number uses, US style for
-// now. The number shape test accepts a group mark only in the group shape
-// and only before the decimal mark. A run with no group mark goes to the
-// conversion, so a second dot still fails there.
+// The number format function returns the marks a number uses, US style.
+// The number shape test accepts a group mark only in the group shape and
+// only before the decimal mark. A run with no group mark goes to the
+// conversion, and a run with a second dot gives no number there.
 
 eq('number format function: returns the US marks',
   numberFormat(), { group: ',', decimal: '.' });
@@ -2732,7 +2732,7 @@ eq('number reader: the capture values in European style read as no number',
   ['13,63€', '5,16€', '2,37€', '1.234,56 €', '1 234,56'].map(toNumber),
   [null, null, null, null, null]);
 
-eq('number reader: US-style values read as before',
+eq('number reader: "1,234", "€1,234.56" and "0.125" read as 1234, 1234.56 and 0.125',
   ['1,234', '€1,234.56', '0.125'].map(toNumber),
   [1234, 1234.56, 0.125]);
 
@@ -2751,7 +2751,7 @@ eq('decimal comma in text: a dotted date "on 12.03.2024 we" holds no number',
 eq('decimal comma in text: a dotted version "1.2.3" holds no number',
   extractNumbersInText('version 1.2.3 ships'), []);
 
-eq('decimal comma in text: "up 1,234.56 units" reads as before',
+eq('decimal comma in text: "up 1,234.56 units" holds the number 1,234.56',
   extractNumbersInText('up 1,234.56 units'),
   [{ numStr: '1,234.56', num: 1234.56, index: 3 }]);
 
@@ -2761,7 +2761,7 @@ eq('decimal comma in text: a sentence\'s final period stays outside the run',
 eq('decimal comma: "1.234,56 EUR" is not a unit number',
   matchUnitNumber('1.234,56 EUR'), null);
 
-eq('decimal comma: "1,234.56 EUR" is a unit number, as before',
+eq('decimal comma: "1,234.56 EUR" is a unit number',
   matchUnitNumber('1,234.56 EUR'), { numStr: '1,234.56', num: 1234.56, index: 0 });
 
 (function decimalComma_ladderLeavesTheCellAsWritten() {
@@ -2771,7 +2771,7 @@ eq('decimal comma: "1,234.56 EUR" is a unit number, as before',
     ['13,63€', '5,16 €', '1.234,56 €', '0,75', '987,5',
       '14,37€ (includes 2,49€ VAT)'].map((text) => decide(text).mode),
     ['skip', 'skip', 'skip', 'skip', 'skip', 'skip']);
-  eq('decimal comma: the ladder still rounds a US-style cell',
+  eq('decimal comma: the ladder gives "1,234.56" and "0.125" the mode extracted',
     ['1,234.56', '0.125'].map((text) => decide(text).mode), ['extracted', 'extracted']);
 })();
 
@@ -2807,6 +2807,9 @@ eq('decimal comma: "1,234.56 EUR" is a unit number, as before',
       toNumber(text), expected);
   }
 })();
+
+eq('number reader: "125" above "126", and "1" above "234", read as no number',
+  ['125\n126', '1\n234'].map(toNumber), [null, null]);
 
 eq('group space in text: a space-grouped number is one run',
   extractNumbersInText('Revenue 1 034 567 units'),

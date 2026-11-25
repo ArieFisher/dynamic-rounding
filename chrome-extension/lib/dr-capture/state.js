@@ -4,32 +4,28 @@
  * DynamicRounding lib/dr-capture package: the capture state serializer.
  *
  * collectCaptureState() turns the application model's registry into the
- * plain-value capture state: for every registered table, its kind,
- * settings, frozen magnitude, row and column counts, and every present cell's position, role, displayed text,
- * and original. The bound table also contributes its markup as it stood at
+ * plain-value capture state: each registered table's kind, settings, and
+ * cells. The bound table also contributes its markup as it stood at
  * capture time, verbatim — the fixture seed, the one piece of markup a
  * capture carries.
  *
  * Dependencies arrive as parameters with working defaults, the same pattern
- * as GridAdapter's originals port: deps.model is the application model,
- * deps.adapterFor builds the row/cell adapter for one table. Tests hand in
- * stand-ins; the production call site (content.js) passes nothing. Cell
- * reads go only through the adapter's displayed-text read and the model's
- * plain-original-text read, so this file holds no adapter-kind and no
- * storage-shape knowledge.
+ * as the table adapters' originals port: deps.model is the application
+ * model, deps.adapterFor builds the table adapter for one table. Tests hand
+ * in stand-ins; the production call site (content.js) passes nothing. Cell
+ * reads go only through the adapter's displayed-text read, the model's
+ * plain-original-text read, and a check for the marker class, so this file
+ * holds no adapter-kind and no storage-shape knowledge.
  *
- * The state records absence honestly: a cell wearing the rounded marker with
- * no stored original serializes as original: null, and the serializer
+ * The state records an absence as null: a cell carrying the marker class
+ * with no stored original serializes as original: null, and the serializer
  * never reconstructs a value. A virtualized grid contributes only the rows
  * present in the DOM at capture time; the state carries each table's frozen
- * magnitude as part of the evidence.
+ * max magnitude as part of the evidence.
  *
- * The state also carries detectionSettings, a plain copy of
- * DR_DETECTION_SETTINGS (constants.js) taken at capture time — the
- * detection settings in force, so a looks-wrong capture shows the values
- * detection ran under. The copy is a JSON round-trip: a later change to the
- * settings cannot reach a saved state, and the state shares no live object
- * with it.
+ * The state also carries detectionSettings, a copy of the detection
+ * settings in force at capture time, so a looks-wrong capture shows the
+ * values detection ran under.
  *
  * The state also carries errorState, the model's error state at capture
  * time: whether an extension error was recorded on this page, how many, and
@@ -58,11 +54,12 @@ const CAPTURE_FORMAT = 11;
 
 function collectCaptureState(deps) {
   const model = (deps && deps.model) || DR_MODEL;
-  const adapterFor = (deps && deps.adapterFor) || function (table) { return makeAdapter(table); };
+  const adapterFor = (deps && deps.adapterFor) || makeAdapter;
 
   const registered = model.getRegisteredTables();
   const active = model.getActiveTable();
-  let activeTableIndex = null;
+  const activeIndex = registered.indexOf(active);
+  const activeTableIndex = activeIndex === -1 ? null : activeIndex;
 
   function serializeTable(table) {
     const adapter = adapterFor(table);
@@ -105,8 +102,7 @@ function collectCaptureState(deps) {
     };
   }
 
-  const tables = registered.map(function (table, index) {
-    if (active !== null && table === active) activeTableIndex = index;
+  const tables = registered.map(function (table) {
     try {
       return serializeTable(table);
     } catch (e) {
@@ -128,9 +124,8 @@ function collectCaptureState(deps) {
     captureFormat: CAPTURE_FORMAT,
     // A plain copy, not the live object: a later edit to
     // DR_DETECTION_SETTINGS must not reach a state already captured. Read
-    // as a bare global, the same rule the detection layer and the controller
-    // follow, so a missing object fails at load rather than serializing a
-    // silent gap.
+    // as a bare global (constants.js), so a missing object fails at the call
+    // rather than serializing a silent gap.
     detectionSettings: JSON.parse(JSON.stringify(DR_DETECTION_SETTINGS)),
     activeTableIndex,
     tables,

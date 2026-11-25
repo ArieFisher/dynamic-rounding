@@ -45,12 +45,12 @@ global.window = {
 };
 global.NodeFilter = { SHOW_TEXT: 4 };
 
-// DR_LOG (lib/dr-log) forwards every row to the real console so devtools
-// output is unchanged; in this suite that forwarding would print a row for
-// every instrumented call site straight into the test report. Mute the two
-// forwarded levels the content scripts use. The dr-log forwarding test
-// installs its own console.debug spy and puts this mute back. The report at
-// the bottom prints through console.log, which stays untouched.
+// DR_LOG (lib/dr-log) forwards every row to the real console; in this suite
+// that forwarding would print a row for every instrumented call site straight
+// into the test report. Mute the two forwarded levels the content scripts use.
+// The dr-log forwarding test installs its own console.debug spy and puts this
+// mute back. The report at the bottom prints through console.log, which stays
+// untouched.
 console.debug = () => {};
 console.warn = () => {};
 

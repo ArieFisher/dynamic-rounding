@@ -19,9 +19,8 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-// Chrome gives the activeTab grant the screenshot needs, and accepts the
-// open, only as a direct response to the user's click, so a caller runs this
-// before any await of its own.
+// Chrome accepts the open only as a direct response to the user's click, so a
+// caller runs this before any await of its own.
 async function openSidebarOnTab(tabId) {
   try {
     await chrome.sidePanel.open({ tabId });

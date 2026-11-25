@@ -115,26 +115,24 @@ function findMaxMagnitude(dataset) {
  *
  * docs/design.md "How the code is shared" lists where this file loads. Must
  * remain side-effect-free: no chrome.*, no DOM access, no Node module code.
- * All symbols land on the global scope of whichever script holds this file,
- * so the extension and the Sheets library share one currency list and one
- * toNumber.
+ * All symbols land on the top level of whichever script holds this file, so
+ * the extension, the Sheets library, and the plugin share one currency list
+ * and one toNumber.
  */
 
 // The one currency list. Each row gives a currency's written signs and its
-// ISO code, and every currency rule in the extension reads this list: the
-// signs stripped before a text reads as a number, the signs a unit number
-// may carry, the placement step's sign-only piece test, and the currency
-// exclusion. Nothing restates it.
+// ISO code, and the code for every currency rule reads this list: the signs
+// stripped before a text reads as a number, the signs and codes a unit
+// number may carry, the currency exclusion, and, through the format-mark
+// list below, the bracketed-number test and the number span. Nothing
+// restates it.
 //
-// A sign counts exactly as written, and the longest sign wins, so "EC$"
-// reads as one sign rather than a letter pair beside a dollar sign. A code
-// counts only in upper case and only as its own token, so "CADENCE" and
-// "usd" do not. A sign written in letters takes that same token rule on
-// whichever end carries the letter, so the rand's "R" counts in "R45" and
-// not in "Revenue", and the krone's "kr" counts in "kr45" and not in
-// "krona". A sign written as a picture counts anywhere.
-// Several currencies share a sign, and one currency may carry several;
-// both collapse to one entry in the derived lists below.
+// A sign counts exactly as written. A code counts only in upper case and
+// only as its own token, so "CADENCE" and "usd" do not. A sign written in
+// letters takes that same token rule on whichever end carries the letter,
+// so the rand's "R" counts in "R45" and not in "Revenue", and the krone's
+// "kr" counts in "kr45" and not in "krona". A sign written as a picture
+// counts anywhere.
 const CURRENCIES = [
   { name: 'Euro',                       signs: ['€'],             code: 'EUR' },
   { name: 'United States dollar',       signs: ['$'],             code: 'USD' },
@@ -168,8 +166,9 @@ const CURRENCIES = [
 ];
 
 // Derived from CURRENCIES, in one place, so a new row reaches every rule.
-// Signs sort longest first: an alternation takes the first branch that
-// matches, so "EC$" must be offered before "$".
+// A sign that several currencies share is one entry; a currency's several
+// signs stay separate entries. Signs sort longest first: an alternation
+// takes the first branch that matches, so "EC$" must be offered before "$".
 const CURRENCY_CODES = Array.from(new Set(CURRENCIES.map((c) => c.code)));
 const CURRENCY_SIGNS = Array.from(new Set(CURRENCIES.flatMap((c) => c.signs)))
   .sort((a, b) => b.length - a.length);
@@ -184,14 +183,13 @@ const CURRENCY_SIGN_ALTERNATION = CURRENCY_SIGNS
 // One currency sign, anywhere in a text.
 const CURRENCY_SIGN_RE = new RegExp(CURRENCY_SIGN_ALTERNATION);
 
-// Constants of the number reader.
 // The one format-mark list: a character that sits beside a number without
 // belonging to it — a currency sign, a percent sign, and whitespace. The
 // signs come from CURRENCIES above, so a new row reaches this list too.
-// Every rule that steps past a mark to reach a number reads this one source:
-// the clean-up before a text reads as a number, the test for what stands
-// between a bracket and the number, and the pure number span
-// (lib/dr-number/numbers-in-text.js).
+// The code for every rule that steps past a mark to reach a number reads
+// it: the clean-up before a text reads as a number, the test for what
+// stands between a bracket and the number, and the code that finds a pure
+// cell's number span (lib/dr-number/numbers-in-text.js).
 // A bracket is not a format mark: it is the number's minus sign, and adding
 // it here would strip it before PARENS_REGEX below could read it.
 const FORMAT_MARK_ALTERNATION = '(?:' + CURRENCY_SIGN_ALTERNATION + '|[\\s%])';
@@ -202,8 +200,9 @@ const FORMAT_MARK_ALTERNATION = '(?:' + CURRENCY_SIGN_ALTERNATION + '|[\\s%])';
 const CLEAN_REGEX = new RegExp('(?!(?<=\\d\\s*)\\s(?=\\s*\\d))' + FORMAT_MARK_ALTERNATION, 'g');
 const PARENS_REGEX = /^\((.+)\)$/;
 // The characters toNumber reads as a minus sign: every dash and minus
-// variant, each normalized to an ASCII "-" before the conversion. The pure
-// number span (lib/dr-number/numbers-in-text.js) steps past the same class.
+// variant, each normalized to an ASCII "-" before the conversion. The code
+// that finds a pure cell's number span (lib/dr-number/numbers-in-text.js)
+// steps past the same class.
 const DASH_CLASS = '[‐-―−﹘﹣－]';
 const DASH_REGEX = new RegExp(DASH_CLASS, 'g');
 
@@ -214,10 +213,8 @@ const US_NUMBER_FORMAT = Object.freeze({ group: ',', decimal: '.' });
 
 /**
  * The number format function: the one place that states which marks a
- * number uses. The number shape test reads it to know which shape to accept,
- * and the write-back reads it to know which marks to write. It returns US
- * style for now.
- * @returns {{group: string, decimal: string}}
+ * number uses. The number shape test reads it for the shape to accept, and
+ * the write-back reads it for the marks to write. It returns US style.
  */
 function numberFormat() {
   return US_NUMBER_FORMAT;
@@ -238,8 +235,6 @@ const GROUP_SPACE_PATTERN = GROUP_SPACE_CLASS + '+';
  * mark and with whitespace; the pattern that finds a number inside text
  * (numbers-in-text.js) and the spaced-digit identifier shape (identifiers.js) read
  * it with whitespace.
- * @param {string} markPattern - the group mark, as a regular expression source
- * @returns {string}
  */
 function groupShapePattern(markPattern) {
   return '\\d{1,3}(?:' + markPattern + '\\d{3})+';
@@ -250,19 +245,19 @@ function groupShapePattern(markPattern) {
 // format's mark and one for whitespace; it grows by one entry for each
 // distinct group mark a later format returns, never with page content.
 const GROUP_SHAPE_CACHE = new Map();
+// Every whitespace character, line breaks included, unlike GROUP_SPACE_CLASS.
+// A line break between digits must fail the shape test here, because toNumber
+// strips all whitespace after the test and would join "125\n126" into 125126.
 const GROUP_SPACE_RE = /\s/;
 
 /**
  * The number shape test. A group mark, the number format's mark or
  * whitespace, may appear only in the group shape and only before the decimal
  * mark, and a run holds one kind of group mark. A run with no group mark
- * passes, and the conversion judges it as before, so ".300", "5." and
- * "1.2E+05" still read as numbers and a second dot still fails there. `run`
- * is a text with its format marks stripped, its dashes normalized, and its
- * brackets turned into a minus sign.
- * @param {string} run
- * @param {{group: string, decimal: string}} marks
- * @returns {boolean}
+ * passes, and toNumber converts it, so ".300", "5." and "1.2E+05" read as
+ * numbers and a run with a second dot gives no number. `run` is a text with
+ * its format marks stripped, its dashes normalized, and its brackets turned
+ * into a minus sign.
  */
 function isNumberShape(run, marks) {
   const at = run.indexOf(marks.decimal);
@@ -284,16 +279,16 @@ function toNumber(value) {
   if (typeof value === "number") {
     return isFinite(value) ? value : null;
   }
-  if (typeof value === "string" && value.trim() !== "") {
+  if (typeof value === "string") {
     const marks = numberFormat();
-    const cleaned = value.trim()
+    const cleaned = value
       .replace(DASH_REGEX, "-")
       .replace(CLEAN_REGEX, "")
       .replace(PARENS_REGEX, "-$1");
     if (cleaned === "") return null;
     if (!isNumberShape(cleaned, marks)) return null;
     const ungrouped = cleaned.split(marks.group).join("").replace(/\s+/g, "");
-    const plain = marks.decimal === "." ? ungrouped : ungrouped.split(marks.decimal).join(".");
+    const plain = ungrouped.split(marks.decimal).join(".");
     const parsed = Number(plain);
     return isFinite(parsed) ? parsed : null;
   }
@@ -1716,11 +1711,9 @@ function applyPatches(text, patches) {
 // so every other name here (the number reader, the classification ladder,
 // the table step, the rounding) comes from chrome-extension/lib.
 
-// parameters' default values
-const DEFAULT_OFFSET_TOP = -0.5; // in all modes, by default, round to the nearest half order of magnitude
-const DEFAULT_NUM_TOP = 1; // in dataset-aware modes, by default, round numbers that are in the top 1 order of magnitude to DEFAULT_OFFSET_TOP
+const DEFAULT_OFFSET_TOP = -0.5;
+const DEFAULT_NUM_TOP = 1;
 
-// Settings
 // The result kind: what a text cell that holds one number returns, a pure
 // cell ("$1,011", "12.5%") or a bracketed number ("(1,234)").
 //   'text'   returns the write-back's text, "$1,000": the typed sign stays.
@@ -1757,45 +1750,41 @@ const SHEETS_LADDER_OPTIONS = Object.freeze({
  * @customfunction
  */
 function ROUND_DYNAMIC(values, offset_top, offset_other, num_top) {
-  const firstIsArray = Array.isArray(values);
+  return Array.isArray(values)
+    ? datasetMode(values, offset_top, offset_other, num_top)
+    : singleValueMode(values, offset_top);
+}
 
-  if (firstIsArray) {
-    // Dataset mode: ROUND_DYNAMIC(range, [offset_top], [offset_other], [num_top])
-    return datasetMode(values, offset_top, offset_other, num_top);
-  } else {
-    // Single mode: ROUND_DYNAMIC(value, [offset])
-    return singleValueMode(values, offset_top);
-  }
+function orDefault(value, fallback) {
+  return value === undefined || value === "" ? fallback : value;
 }
 
 /**
- * Single mode: rounds one value based on its own magnitude. A text value
- * takes the same path as a one-cell dataset, rounded at the one offset.
+ * Single mode: rounds one value against its own order of magnitude. A text
+ * value takes the same path as a one-cell dataset, rounded at the one offset.
  */
 function singleValueMode(value, offset) {
-  offset = (offset === undefined || offset === "") ? DEFAULT_OFFSET_TOP : offset;
+  offset = orDefault(offset, DEFAULT_OFFSET_TOP);
   validateOffset(offset, "offset");
   const settings = { offsetTop: offset, offsetOther: offset, numTop: DEFAULT_NUM_TOP };
   return roundValues([[value]], settings)[0][0];
 }
 
 /**
- * Dataset mode: rounds an array of values using a set-aware heuristic.
- * Values near the dataset's maximum magnitude are rounded using offset_top,
- * while smaller values are rounded using offset_other.
+ * Dataset mode: rounds a dataset set-aware. Values in the top band round at
+ * offset_top, and values in the other band at offset_other.
  */
-function datasetMode(range, offset_top, offset_other, num_top) {
-  offset_top = (offset_top === undefined || offset_top === "") ? DEFAULT_OFFSET_TOP : offset_top;
-  offset_other = (offset_other === undefined || offset_other === "") ? offset_top : offset_other;
-  num_top = (num_top === undefined || num_top === "") ? DEFAULT_NUM_TOP : num_top;
+function datasetMode(dataset, offset_top, offset_other, num_top) {
+  offset_top = orDefault(offset_top, DEFAULT_OFFSET_TOP);
+  offset_other = orDefault(offset_other, offset_top);
+  num_top = orDefault(num_top, DEFAULT_NUM_TOP);
   validateOffset(offset_top, "offset_top");
   validateOffset(offset_other, "offset_other");
 
-  // Normalize to 2D array
-  if (!Array.isArray(range[0])) {
-    range = [range];
+  if (!Array.isArray(dataset[0])) {
+    dataset = [dataset];
   }
-  return roundValues(range, { offsetTop: offset_top, offsetOther: offset_other, numTop: num_top });
+  return roundValues(dataset, { offsetTop: offset_top, offsetOther: offset_other, numTop: num_top });
 }
 
 /**
@@ -1804,16 +1793,17 @@ function datasetMode(range, offset_top, offset_other, num_top) {
  *   number      a finite one rounds and returns a number; one that is not
  *               finite returns unchanged
  *   text        the classification ladder reads it, the table step rounds
- *               it, and the text returns with its patches applied
+ *               it, and the text returns with its patches applied, or as
+ *               a number under the result kind 'number' (see RESULT_KIND)
  *   "" or null  returns ""
  *   anything else (a date, a boolean) returns unchanged
- * The max magnitude spans every number in the range: the number cells and
+ * The max magnitude spans every number in the dataset: the number cells and
  * every number the ladder reads in a text cell.
  */
-function roundValues(range, settings) {
+function roundValues(dataset, settings) {
   const numberCells = [];
   const textCells = [];
-  range.forEach((row, r) => row.forEach((value, c) => {
+  dataset.forEach((row, r) => row.forEach((value, c) => {
     if (typeof value === "number" && isFinite(value)) {
       numberCells.push({ r, c, num: value, classification: { mode: "extracted", value: { matches: [{ num: value }] } } });
     } else if (typeof value === "string" && value !== "") {
@@ -1826,27 +1816,18 @@ function roundValues(range, settings) {
   const roundNumber = (num) => roundValueSetAware(num, maxMag,
     settings.offsetTop, settings.offsetOther, settings.numTop);
 
-  const results = new Map();
+  const results = dataset.map((row) => row.map((value) => (value === null ? "" : value)));
   for (const { r, c, num } of numberCells) {
-    results.set(r + "," + c, roundNumber(num));
+    results[r][c] = roundNumber(num);
   }
   const { patchedCells } = tablePatches(textCells, settings, maxMag);
   for (const { classifiedCell, patches } of patchedCells) {
-    const key = classifiedCell.r + "," + classifiedCell.columnIndex;
-    results.set(key, textResult(classifiedCell, patches, roundNumber));
+    results[classifiedCell.r][classifiedCell.columnIndex] = textResult(classifiedCell, patches, roundNumber);
   }
-  return range.map((row, r) => row.map((value, c) => {
-    const key = r + "," + c;
-    if (results.has(key)) return results.get(key);
-    return value === "" || value === null ? "" : value;
-  }));
+  return results;
 }
 
-/**
- * A text cell's result under the result kind. Under 'number', a pure cell or
- * a bracketed number returns its rounded value; every other text cell
- * returns its text with the patches applied.
- */
+// A text cell's result under the result kind (see RESULT_KIND).
 function textResult(classifiedCell, patches, roundNumber) {
   if (RESULT_KIND === "number" && classifiedCell.classification.mode === "extracted") {
     const bracketed = matchBracketedNumber(classifiedCell.text);
@@ -1856,10 +1837,6 @@ function textResult(classifiedCell, patches, roundNumber) {
   return applyPatches(classifiedCell.text, patches);
 }
 
-/**
- * Validates that offset is within acceptable range.
- * Throws an error if offset is outside -20 to 20.
- */
 function validateOffset(offset, paramName) {
   if (offset < -VALIDATION_LIMIT || offset > VALIDATION_LIMIT) {
     throw new Error(paramName + " must be between -" + VALIDATION_LIMIT + " and " + VALIDATION_LIMIT + ", got " + offset);

@@ -4,22 +4,17 @@
  * DynamicRounding lib/dr-log package: the log buffer.
  *
  * DR_LOG holds the most recent rows the extension records in this context.
- * Each context evaluates this file separately — the content script loads it
- * from the manifest (directly after constants.js, so every later file can
- * log), the sidebar loads it from a script tag, the service worker imports it
- * — so each holds its own buffer, and a capture carries the content script's
- * and the sidebar's buffer copies, each labeled by its context.
+ * Each context evaluates this file separately, so each holds its own buffer.
+ * The content script loads it from the manifest, directly after constants.js,
+ * so every later file can log. The sidebar loads it from a script tag, and the
+ * service worker imports it. A capture carries the content script's and the
+ * sidebar's buffer copies, each labeled by its context.
  *
- * record() also writes each row's full text to the console, so devtools
- * output is unchanged. The buffer exists because a capture cannot read the
- * console: the rows it carries are exactly the ones recorded here.
+ * record() also writes each row's full, uncut text to the console. The buffer
+ * exists because nothing in a capture comes from the console: the rows a
+ * capture carries are exactly the ones recorded here.
  *
- * A buffer copy shows both the rows that remain and how many are gone. Row text
- * is cut to bound the capture's size.
- *
- * A warn or error row also carries the stack trace at the moment it was
- * recorded. Debug and info rows carry null: they are frequent, and a trace
- * costs a stack walk per row.
+ * Row text and stack traces are cut to bound the capture's size.
  *
  * A row listener receives a copy of each row after it is recorded. The
  * application model and the event bus load after this module, so the
@@ -31,26 +26,27 @@ const DR_LOG = (function () {
   const ROW_LIMIT = 50;
   const TEXT_LIMIT = 2000;
   // The levels whose rows are extension errors. A row at one of these levels
-  // carries a stack trace here and enters the application model's error state
-  // in the controller, which reads this list rather than holding its own.
+  // carries a stack trace, and the controller records it in the application
+  // model's error state. The controller reads this list rather than holding
+  // its own. Debug and info rows carry no stack trace: they are frequent, and
+  // a trace costs a stack walk per row.
   const ERROR_LEVELS = ['warn', 'error'];
   const rows = [];
   const listeners = new Set();
   let dropped = 0;
 
+  function cutToLimit(text) {
+    return text.length > TEXT_LIMIT ? text.slice(0, TEXT_LIMIT) : text;
+  }
+
   // V8's captureStackTrace leaves out every frame above the function it is
   // handed, so a trace taken against the log call starts at that call's
-  // caller. The slice below drops the trace's header line ("Error") on both
-  // branches, so only frames stay.
+  // caller. The slice below drops the trace's header line ("Error"), so only
+  // frames stay.
   function stackTraceFrom(logCall) {
     const holder = {};
-    if (typeof Error.captureStackTrace === 'function') {
-      Error.captureStackTrace(holder, logCall);
-    } else {
-      holder.stack = new Error().stack;
-    }
-    const frames = String(holder.stack || '').split('\n').slice(1).join('\n');
-    return frames.length > TEXT_LIMIT ? frames.slice(0, TEXT_LIMIT) : frames;
+    Error.captureStackTrace(holder, logCall);
+    return cutToLimit(String(holder.stack).split('\n').slice(1).join('\n'));
   }
 
   function copyRow(row) {
@@ -58,11 +54,11 @@ const DR_LOG = (function () {
   }
 
   function record(level, text, logCall) {
-    const asString = typeof text === 'string' ? text : String(text);
+    const asString = String(text);
     const row = {
       at: new Date().toISOString(),
       level,
-      text: asString.length > TEXT_LIMIT ? asString.slice(0, TEXT_LIMIT) : asString,
+      text: cutToLimit(asString),
       stack: ERROR_LEVELS.includes(level) ? stackTraceFrom(logCall) : null,
     };
     rows.push(row);
@@ -72,21 +68,19 @@ const DR_LOG = (function () {
     }
     // Dynamic lookup, not a captured reference, so a console replaced later
     // (the test suite installs spies) still receives the full text.
-    (console[level] || console.log).call(console, asString);
+    console[level](asString);
     for (const listener of Array.from(listeners)) {
       try {
         listener(copyRow(row));
       } catch (e) {
         // Straight to the console, never through record(): a listener that
         // throws on every row would otherwise recurse.
-        console.error.call(console, 'Dynamic Rounding: a log row listener failed (' +
+        console.error('Dynamic Rounding: a log row listener failed (' +
           String(e && e.message ? e.message : e) + ').');
       }
     }
   }
 
-  // copyBuffer() returns fresh copies, so no caller can reach the buffer's own
-  // rows through the result.
   function copyBuffer() {
     return {
       rows: rows.map(copyRow),
@@ -102,8 +96,8 @@ const DR_LOG = (function () {
     };
   }
 
-  // Named functions, because each hands itself to stackTraceFrom as the
-  // frame the trace starts below.
+  // warn and error pass themselves to record() as the frame the stack trace
+  // starts below. debug and info pass themselves only so the four calls match.
   function debug(text) { record('debug', text, debug); }
   function info(text) { record('info', text, info); }
   function warn(text) { record('warn', text, warn); }
