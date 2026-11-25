@@ -84,7 +84,7 @@
 |  |  |  |  |  |  |  |  |
 | Section 7: simplifying numbers inside text cells |  |  |  |  |  |  |  |
 |  | **Input** |  | **Result** | **Expected** |  |  |  |
-| \=IF(D86=E86, "✓", "✗") | Call 416-555-1234 about 1,613,245 units |  | `=ROUND_DYNAMIC(B86:B100)` | Call 416-555-1234 about 1,500,000 units |  |  |  |
+| \=IF(D86=E86, "✓", "✗") | Call 416-555-1234 about 1,613,245 units |  | `=ROUND_DYNAMIC(B86:B101)` | Call 416-555-1234 about 1,500,000 units |  |  |  |
 | \=IF(D87=E87, "✓", "✗") | (416) 555-1234 ordered 918,554 |  | (416) 555-1234 ordered 900,000 | (416) 555-1234 ordered 900,000 |  |  |  |
 | \=IF(D88=E88, "✓", "✗") | Fax 416.555.1234, 427,808 pages |  | Fax 416.555.1234, 450,000 pages | Fax 416.555.1234, 450,000 pages |  |  |  |
 | \=IF(D89=E89, "✓", "✗") | Dial 1-800-555-0199 for 263,114 refunds |  | Dial 1-800-555-0199 for 250,000 refunds | Dial 1-800-555-0199 for 250,000 refunds |  |  |  |
@@ -99,3 +99,4 @@
 | \=IF(D98=E98, "✓", "✗") | Call 416 555 1234 about 281,745 units |  | Call 400 550 1,000 about 300,000 units | Call 400 550 1,000 about 300,000 units |  |  |  |
 | \=IF(D99=E99, "✓", "✗") | In 2024 12 stores opened |  | In 2,000 10 stores opened | In 2,000 10 stores opened |  |  |  |
 | \=IF(D100=E100, "✓", "✗") | 978-0-306-40615-7 sold 90,114 copies |  | 1,000-0-300-40,000-7 sold 90,000 copies | 1,000-0-300-40,000-7 sold 90,000 copies |  |  |  |
+| \=IF(D101=E101, "✓", "✗") | Paid $12,345 on November 09 2026 |  | Paid $10,000 on November 09 2026 | Paid $10,000 on November 09 2026 |  |  |  |
