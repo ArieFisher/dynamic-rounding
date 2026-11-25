@@ -224,7 +224,7 @@ globalThis.GRID_CELL_SELECTOR = GRID_CELL_SELECTOR;
 globalThis.DR_TABLE = DR_TABLE;
 globalThis.classifyCell = classifyCell;
 globalThis.pickDateFormatHint = pickDateFormatHint;
-globalThis.resolveAmbiguousDateClassification = resolveAmbiguousDateClassification;
+globalThis.resolveAmbiguousDates = resolveAmbiguousDates;
 // Expose grid-virtualization internals for the grid-virtualization test suite.
 globalThis.reapplyRounding = reapplyRounding;
 globalThis.simplifyTableCells = simplifyTableCells;

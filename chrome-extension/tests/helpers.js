@@ -13,6 +13,22 @@ function isolatedFunction(...paramsAndBody) {
   return vm.compileFunction(body, paramsAndBody, { parsingContext: vm.createContext({}) });
 }
 
+// The number stretch over numStr where it starts at start in a cell's text.
+function expectedNumberStretch(start, numStr, num) {
+  return { kind: 'number', start, end: start + numStr.length, num };
+}
+
+// The written text of each stretch of a classification of text, in order.
+function stretchTexts(text, classification) {
+  return classification.stretches.map((stretch) => text.slice(stretch.start, stretch.end));
+}
+
+// One cell at row 1, column 1 with no range expression, through the
+// classification ladder.
+function classifyAt(text, opts, extra) {
+  return classifyCell(Object.assign({ text, rowIndex: 1, columnIndex: 1, ranges: null }, extra || {}), opts);
+}
+
 // A mock cell's one text piece, the way a page element holds its text: a
 // text node child whose value reads and writes the cell's text. The placement
 // step reads a native cell's text pieces, so a mock cell with no text node

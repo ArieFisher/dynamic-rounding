@@ -94,7 +94,7 @@
 
     const classification = classifyCell({ text: original.join(''), rowIndex: 1, columnIndex: 1, ranges: null, markupRanges },
       { simplifyFirstColumn: true, simplifyFirstRow: true, simplifyDates: true, simplifyTimes: true });
-    const nums = classification.value.matches.map(m => m.num);
+    const nums = classification.stretches.map(s => s.num);
     eq('linked number 5 is absent from the matches', nums.includes(5), false);
     eq('non-linked 3000 stays in the matches', nums.includes(3000), true);
   });
@@ -528,20 +528,34 @@ const consistentCellCountStepPasses = (children) =>
 })();
 
 (function placeClassification_keepsTheNumbersThatSitInOnePiece() {
-  const match = (numStr, index) => ({ numStr, num: Number(numStr), index });
-  const extracted = (...matches) => ({ mode: 'extracted', reason: 'simplify', value: { matches } });
+  const match = (numStr, index) => expectedNumberStretch(index, numStr, Number(numStr));
+  const extracted = (...stretches) => ({ stretches });
   const layout = (original, toFlat) => ({ original, toFlat });
   eq('placeClassification: pieces on separate lines keep both numbers',
     placeClassification(extracted(match('1', 0), match('23', 2)), layout(['1', '23'], [0, 1, 1, 2])), extracted(match('1', 0), match('23', 2)));
-  eq('placeClassification: a number across two pieces skips with reason split',
-    placeClassification(extracted(match('123', 0)), layout(['1', '23'], [0, 1, 2])), { mode: 'skip', reason: 'split', split: true });
+  eq('placeClassification: "123" drawn as "1" and "23" holds no stretch and is split',
+    placeClassification(extracted(match('123', 0)), layout(['1', '23'], [0, 1, 2])), { stretches: [], split: true });
   eq('placeClassification: a split number leaves the cell\'s other numbers',
     placeClassification(extracted(match('123', 0), match('45', 4)), layout(['1', '23 ', '45'], [0, 1, 2, 3, 4, 5])),
-    Object.assign(extracted(match('45', 4)), { split: true }));
+    { stretches: [match('45', 4)], split: true });
   eq('placeClassification: a number in one piece stands',
     placeClassification(extracted(match('123', 0)), layout(['123'], null)), extracted(match('123', 0)));
   eq('placeClassification: a number in its own piece between whitespace pieces stands',
     placeClassification(extracted(match('123', 0)), layout(['\n  ', '123', '\n'], [3, 4, 5])), extracted(match('123', 0)));
+})();
+
+(function placeClassification_keepsTheDatesAndTimesThatSitInOnePiece() {
+  const opts = Object.assign({}, LADDER_OPTS, { simplifyTimes: true });
+  const place = (pieces) => placeClassification(classifyAt(pieces.join(''), opts), { original: pieces, toFlat: null });
+  eq('placeClassification: " 14:29" drawn as " 14" and ":29" holds no stretch and is split',
+    place([' 14', ':29']), { stretches: [], split: true });
+  eq('placeClassification: " 14:29" drawn as " " and "14:29" keeps its time stretch',
+    place([' ', '14:29']).stretches.map((s) => [s.kind, s.start, s.end]), [['time', 1, 6]]);
+  const twoDates = place(['2024-', '03-15 and 2024-04-20']);
+  eq('placeClassification: "2024-03-15 and 2024-04-20" with the first date across two pieces keeps the second date and is split',
+    [twoDates.stretches.map((s) => [s.kind, s.start, s.end]), twoDates.split], [[['date', 15, 25]], true]);
+  eq('placeClassification: "2024-03-15" drawn as "2024-" and "03-15" holds no stretch and is split',
+    place(['2024-', '03-15']), { stretches: [], split: true });
 })();
 
 // ---------------------------------------------------------------------------
@@ -4332,13 +4346,13 @@ function cnAdapterCellEls(tableEl) {
 
 // --- Placement: a bracket may hold its own text piece ---
 
-(function bracketInItsOwnPieceKeepsModeExtracted() {
+(function bracketInItsOwnPieceKeepsItsNumber() {
   const pieces = ['(', '1,234', ')'];
   const text = pieces.join('');
   const layout = { original: pieces, toFlat: null };
   const classification = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, bracketOpts);
-  eq('bracketed: "(1,234)" with each bracket in its own text piece keeps mode extracted',
-    placeClassification(classification, layout).mode, 'extracted');
+  eq('bracketed: "(1,234)" with each bracket in its own text piece keeps its number stretch',
+    placeClassification(classification, layout), { stretches: [expectedNumberStretch(1, '1,234', -1234)] });
 })();
 
 // ---------------------------------------------------------------------------

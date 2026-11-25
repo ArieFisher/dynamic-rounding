@@ -765,7 +765,8 @@ const SEAT_ROWS = [
   }
   eq('lens preview of 27M, 4,080, and 312 under a max magnitude of 3: the max magnitude is read once', passed.length, 1);
   eq('lens preview of 27M, 4,080, and 312 under a max magnitude of 3: the max magnitude reads 27M, 4,080, and 312',
-    (passed[0] || []).filter((classifiedCell) => classifiedCell.classification.mode === 'extracted').flatMap((classifiedCell) => classifiedCell.classification.value.matches.map((m) => m.num)),
+    (passed[0] || []).flatMap((classifiedCell) => classifiedCell.classification.stretches
+      .filter((stretch) => stretch.kind === 'number').map((stretch) => stretch.num)),
     [27000000, 4080, 312]);
   eq('lens preview of 27M, 4,080, and 312 under a max magnitude of 3: maxMag is 3', result.maxMag, 3);
   eq('lens preview of 27M, 4,080, and 312 under a max magnitude of 3: the top band holds 27M and 4,080', result.samples.top.map((row) => row.num),
