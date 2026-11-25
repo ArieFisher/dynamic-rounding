@@ -36,3 +36,16 @@ Before the sprint, sprint 2's line references and reader list were checked again
 ### Waiting (after-merge only)
 - **mixed-cell-stretches** — waits on **stretch-list**, PR #793 open
   - To continue: merge the PR, then re-run `/sprint-stack docs/sprint-plans/stretch-rules.json`
+
+## Run 3 — 2026-11-25 15:12 to 2026-11-25 17:45 (wave 3)
+
+Before the sprint, the developer re-checked the line references and every "Today" cell of sprint 3's acceptance table against `main` at 3f75857, through the generated plugin library. Every "Today" cell held. `roundClockTime` had moved to `dates.js:273`, and sprint 2 had already reworded the design document lines the plan named. None needed a product decision.
+
+### Completed
+- **mixed-cell-stretches** — feature/mixed-cell-stretches → PR #795 (https://github.com/ArieFisher/dynamic-rounding/pull/795), label `minor`
+  - Developer and test-writer on Opus (complexity L); reviewer on Fable.
+  - Reviewer: APPROVE after three BLOCK rounds. Round 1: a sign set apart from its digits by a minus sign, a bracket, or a space stopped holding its number; a value beside a value in a link lost the rule that tied the two. Round 2: a range end with a magnitude suffix or sign, and a sign followed by a period. Round 3: the widened range pattern took time that grows with the cube of a whitespace run. Each fix carries a test that fails without it. The orchestrator applied the round 3 fix, which the reviewer supplied, as the repository's review rules direct.
+  - Product answers given during review: a sign at one end of a range holds both ends; a cell that is a web or email address holds as written; a bare year beside a date rounds as a number (accepted); a letter sign set apart from its number rounds with the currency switch off (accepted); "John 3:16" becomes "John 3:00" with Times on (accepted).
+  - Tests: pass. Extension 4,665, Sheets 848, doc examples 80, plugin 58; build check clean. `claude plugin validate --strict` passed; `claude plugin test` and the Python suite were not run.
+  - Follow-ups: #796, #797, #798. The pull request closes #738.
+  - Library sources grew by 87 lines net, against the plan's estimate of a decrease.
