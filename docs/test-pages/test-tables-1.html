@@ -1149,14 +1149,19 @@
       <p>The <span class="col">Mixed</span> row holds signs beside words: a
         percent beside a plain number, a currency code that does not touch its
         number, a currency amount beside a date, and a number with a currency
-        code after it.</p>
+        code after it. The <span class="col">Range</span> row holds ranges of
+        two numbers with a sign on one end.</p>
       <p class="expect">Expect: table pillbox at load. Each number rounds and keeps its
         currency or percent sign. The first column stays as written. With the
         currency switch off, the numbers a currency sign or code touches stay
         as written ("$1000", "$1,234", "1,234 USD"), and "Revenue (USD) 1,234"
         still shows 1,000. With the percent switch off, the numbers a percent
         sign touches stay as written, and the 1,234 beside "53%" still shows
-        1,000. The date shows 2020 with either switch off.</p>
+        1,000. The date shows 2020 with either switch off. In the Range row,
+        both ends of a range stay as written when the switch for its sign is
+        off: "12–18%" with the percent switch off, the other three with the
+        currency switch off. With both switches on, the row shows "10–20%",
+        "$1,000–2,000", "₹600–600 crore", and "1,000 to 1,500 USD".</p>
     </details>
     <table>
       <thead>
@@ -1189,6 +1194,13 @@
           <td>Revenue (USD) 1,234</td>
           <td>$1,234 on Jun 2020</td>
           <td>1,234 USD</td>
+        </tr>
+        <tr>
+          <th scope="row">Range</th>
+          <td>12–18%</td>
+          <td>$1,230–1,870</td>
+          <td>₹615.71–623.33 crore</td>
+          <td>1,100 to 1,450 USD</td>
         </tr>
       </tbody>
     </table>
@@ -3229,7 +3241,9 @@ TSLA,75,"248.09","18,606.75"
         hover text, and the <span class="col">Count</span> column rounds. The last two <span class="col">Value</span> cells round:
         "1 234 567" is thousands grouping and is read as one number, and "90210"
         alone is read as a count. The lens preview holds samples from the <span class="col">Count</span>
-        column and none from the identifiers.</p>
+        column and none from the identifiers. The web address with a date and
+        a time stays whole whatever the date and time switches hold; a failure
+        shows 2025 in place of its date.</p>
     </details>
 
     <!--
@@ -3344,6 +3358,7 @@ TSLA,75,"248.09","18,606.75"
           ['IP address', '192.168.0.1', '1,482,391'],
           ['IP address, v6', '2001:db8::1', '947,310'],
           ['Web address', 'https://example.com/item/123', '431,552'],
+          ['Web address with a date and a time', 'https://example.com/log?at=2025-03-14T16:38:00Z', '318,406'],
           ['Email address', '311@example.com', '270,987'],
           ['ISBN', 'ISBN 978-0-306-40615-7', '90,114'],
           ['Canadian postal code', 'M5V 2T6', '1,506,220'],
