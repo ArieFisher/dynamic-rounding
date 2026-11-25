@@ -1,4 +1,241 @@
-// The capture, the log buffer, and the toast (lib/dr-capture, lib/dr-log, ui-toast.js).
+// The capture, the log buffer, and the toast (lib/dr-capture, lib/dr-log, toast-view.js).
+
+// --- capture: the displayed-text read and the plain-original-text read ---
+//
+// The capture records what the screen shows AND what each cell held before.
+// Two reads serve it. (1) Adapter cells gain getDisplayedText(): the live
+// rendered text, never the originals port — on a rounded grid getText()
+// answers with the ORIGINAL (the engine's contract; see the port-preferring
+// read in makeCellObj), so a capture reading getText() would
+// lie about the screen. (2) The registry stores a cell's original as one
+// record shape ({ value, pieces, pageTitle }); DR_MODEL.getTableOriginalText()
+// returns its value field, or undefined when nothing is stored.
+
+(function captureDisplayedTextRead() {
+  // Native cell: the displayed text is the live text — the same read
+  // getText() uses, because the native write path never shadows it.
+  const nativeCellEl = { tagName: 'TD', innerText: '1,234', textContent: '1,234' };
+  const nativeStub = {
+    rows: [{ parentElement: { tagName: 'TBODY' }, cells: [nativeCellEl] }],
+  };
+  const nativeCell = new NativeTableAdapter(nativeStub).getRows()[0].getCells()[0];
+  eq('capture-reads: a native cell\'s displayed text is its live text',
+    typeof nativeCell.getDisplayedText === 'function'
+      ? nativeCell.getDisplayedText() : null,
+    '1,234');
+
+  const makePort = () => {
+    const m = new Map();
+    return { has: (k) => m.has(k), get: (k) => m.get(k), set: (k, v) => m.set(k, v) };
+  };
+  const makeGridCellEl = (text) => ({
+    nodeType: 1,
+    childNodes: [{ nodeType: 3, nodeValue: text }],
+    classList: { add() {}, contains() { return false; } },
+    // Like the DOM: textContent derives from the child nodes, so a
+    // patch through nodeValue shows up in the whole-cell read.
+    get textContent() { return this.childNodes[0].nodeValue; },
+  });
+  const adapter = new GridAdapter({}, { originalsPort: makePort() });
+
+  // Grid cell, unrounded: displayed text equals the engine's read.
+  const fresh = makeCellObj(makeGridCellEl('98,765'), adapter.originalsPort);
+  eq('capture-reads: an unrounded grid cell\'s displayed text equals its engine text',
+    typeof fresh.getDisplayedText === 'function'
+      ? { displayed: fresh.getDisplayedText(), engine: fresh.getText() } : null,
+    { displayed: '98,765', engine: '98,765' });
+
+  // Grid cell, rounded: the engine's read answers with the original through
+  // the port; the displayed read answers with what the screen shows now.
+  const rounded = makeCellObj(makeGridCellEl('98,765'), adapter.originalsPort);
+  rounded.applyPatches([{ index: 0, numStr: '98,765', newNum: '99,000' }], { value: rounded.getText() });
+  eq('capture-reads: a rounded grid cell keeps engine text = original, displayed text = live',
+    typeof rounded.getDisplayedText === 'function'
+      ? { engine: rounded.getText(), displayed: rounded.getDisplayedText() } : null,
+    { engine: '98,765', displayed: '99,000' });
+})();
+
+// A grid cell that builds its text from several pieces — a number and a unit
+// in separate nodes — displays all of them. findCellTextNode answers with one
+// deepest text node (the write path's patch target); the displayed-text read
+// answers with the cell's whole text, matching the native read:
+// "1,234<span>%</span>" must not record the text "%".
+(function captureDisplayedTextReadsWholeCell() {
+  const makePort = () => {
+    const m = new Map();
+    return { has: (k) => m.has(k), get: (k) => m.get(k), set: (k, v) => m.set(k, v) };
+  };
+  const adapter = new GridAdapter({}, { originalsPort: makePort() });
+  const textNode = (text) => ({ nodeType: 3, nodeValue: text });
+  const span = (text) => ({ nodeType: 1, childNodes: [textNode(text)] });
+  const makePiecedCellEl = (children, wholeText) => ({
+    nodeType: 1,
+    childNodes: children,
+    classList: { add() {}, contains() { return false; } },
+    textContent: wholeText,
+  });
+
+  const numberThenUnit = makeCellObj(
+    makePiecedCellEl([textNode('1,234'), span('%')], '1,234%'), adapter.originalsPort);
+  eq('capture-reads: a grid cell of number-then-unit pieces displays the whole text',
+    numberThenUnit.getDisplayedText(), '1,234%');
+
+  const unitThenNumber = makeCellObj(
+    makePiecedCellEl([span('$'), textNode('1,234')], '$1,234'), adapter.originalsPort);
+  eq('capture-reads: a grid cell of unit-then-number pieces displays the whole text',
+    unitThenNumber.getDisplayedText(), '$1,234');
+})();
+
+(function capturePlainOriginalTextRead() {
+  const has = typeof DR_MODEL.getTableOriginalText === 'function';
+  const table = {};
+  const gridCell = {};
+  const nativeCell = {};
+  DR_MODEL.setTableOriginal(table, gridCell,
+    { value: '98,765', pieces: [{ text: '98,765', written: '100,000' }] });
+  DR_MODEL.setTableOriginal(table, nativeCell,
+    { value: '1,234', pieces: [{ text: '1,234', written: '1,000' }] });
+  eq('capture-reads: a grid original (record) reads back as its value field',
+    has ? DR_MODEL.getTableOriginalText(table, gridCell) : null, '98,765');
+  eq('capture-reads: a native original (record) reads back as its value field',
+    has ? DR_MODEL.getTableOriginalText(table, nativeCell) : null, '1,234');
+  eq('capture-reads: a cell with no stored original reads back undefined',
+    has ? DR_MODEL.getTableOriginalText(table, {}) : null, undefined);
+  DR_MODEL.unregisterTable(table);
+})();
+
+// --- content.js: the request:captureState topic ---
+//
+// The sidebar asks for the whole page-side half of a capture in one request.
+// The answer is composed by buildCaptureStateResponse() — a named function
+// the suite drives directly, because the bus's own listener is a no-op stub
+// here (the established equivalent-path pattern). A source assertion pins
+// that the responder exists and routes through it.
+
+(function captureStatePull() {
+  eq('capture-wire: buildCaptureStateResponse loads in the content-script bundle',
+    typeof globalThis.buildCaptureStateResponse, 'function');
+  eq('capture-wire: the responder answers request:captureState through buildCaptureStateResponse',
+    /respond\('request:captureState'[\s\S]{0,200}buildCaptureStateResponse\(\)/.test(sourceByName('content.js') || ''),
+    true);
+  if (typeof globalThis.buildCaptureStateResponse !== 'function') return;
+
+  // The shared DR_MODEL still holds stub tables registered by earlier test
+  // sections (the suite never unregisters them), so these assertions are
+  // relative: no absolute table counts, and the focus assertions pin MY
+  // table through activeTableIndex.
+  const prevActive = DR_MODEL.getActiveTable();
+
+  // With no table bound: no lens preview, no seed, no focus — and the page
+  // field and log buffer copy still present.
+  DR_MODEL.setActiveTable(null);
+  let unboundResponse = null;
+  const collectRows = logRowsDuring(() => { unboundResponse = buildCaptureStateResponse(); });
+  eq('capture-wire: no table bound still answers with an honest unbound state',
+    {
+      captureFormat: unboundResponse.captureFormat,
+      activeTableIndex: unboundResponse.activeTableIndex,
+      fixtureSeed: unboundResponse.fixtureSeed,
+      lensPreview: unboundResponse.lensPreview,
+      tablesIsArray: Array.isArray(unboundResponse.tables),
+    },
+    { captureFormat: 11, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
+  eq('capture-wire: the response carries this context\'s log buffer copy',
+    Array.isArray(unboundResponse.log.rows) && unboundResponse.log.limit, 50);
+  eq('capture-wire: collecting the capture state writes no row', collectRows, []);
+  eq('capture-wire: the page field exists even where location does not',
+    'url' in unboundResponse.page && 'title' in unboundResponse.page, true);
+
+  // With a real stub table registered and selected.
+  const table = makeTablePillboxTestTable([
+    [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+  ]);
+  table.outerHTML = '<table><tr><td>8,584,629</td><td>286</td></tr></table>';
+  DR_MODEL.registerTable(table);
+  DR_MODEL.setActiveTable(table);
+  try {
+    const response = buildCaptureStateResponse();
+    const mine = response.tables[response.activeTableIndex];
+    eq('capture-wire: the bound table serializes in full and is the focus',
+      {
+        bound: response.activeTableIndex !== null,
+        kind: mine.kind,
+        cellTexts: mine.cells.map((c) => c.text),
+      },
+      { bound: true, kind: 'native', cellTexts: ['8,584,629', '286'] });
+    eq('capture-wire: the fixture seed is the bound table\'s markup',
+      response.fixtureSeed, '<table><tr><td>8,584,629</td><td>286</td></tr></table>');
+    eq('capture-wire: the capture carries the lens preview',
+      !!response.lensPreview && Array.isArray(response.lensPreview.samples.top), true);
+  } finally {
+    DR_MODEL.setActiveTable(prevActive);
+    DR_MODEL.unregisterTable(table);
+  }
+})();
+
+// --- capture follow-ups: the pull guard, the glyph pin, the header line ---
+
+// The serializer guards per table; the response composer's
+// lens-preview step is the one step after it that walks the bound table.
+// Unguarded, a throw there discards the whole page-side half — the
+// serialized registry, the fixture seed, and the log rows.
+(function capturePullSurvivesThrowingPreview() {
+  if (typeof globalThis.buildCaptureStateResponse !== 'function') return;
+  const prevActive = DR_MODEL.getActiveTable();
+  const throwing = {
+    get rows() { throw new TypeError('hostile preview walk'); },
+  };
+  DR_MODEL.registerTable(throwing);
+  DR_MODEL.setActiveTable(throwing);
+  let response = null;
+  let threw = false;
+  let rows = [];
+  try {
+    rows = logRowsDuring(() => { response = buildCaptureStateResponse(); });
+  } catch (e) {
+    threw = true;
+  } finally {
+    DR_MODEL.setActiveTable(prevActive);
+    DR_MODEL.unregisterTable(throwing);
+  }
+  eq('capture-wire: a throwing lens preview keeps the page-side half',
+    {
+      threw,
+      tablesIsArray: !!response && Array.isArray(response.tables),
+      lensPreview: response ? response.lensPreview : 'response lost',
+      hasLog: !!(response && response.log),
+    },
+    { threw: false, tablesIsArray: true, lensPreview: null, hasLog: true });
+  const lensRow = 'Dynamic Rounding: error · step: lens preview · error: TypeError';
+  eq('capture-wire: the discarded lens preview writes one row naming the step and the error type',
+    rows, [lensRow]);
+  eq('capture-wire: the lens preview row is a warn row, the error state\'s newest, which the toast shows',
+    [DR_LOG.copyBuffer().rows.slice(-1)[0].level, DR_MODEL.getErrorState().rows.slice(-1)[0].text],
+    ['warn', lensRow]);
+})();
+
+// --- The capture state records the grid width ---
+
+(function theCaptureStateRecordsTheGridWidth() {
+  // Every row holds a merge, so no row's cell count reaches the table's
+  // width: counting the widest row answers 2 where the table is 3 columns.
+  const table = makeMockTable([
+    [{ tag: 'th', text: 'Quarters', colSpan: 2 }, { tag: 'th', text: 'Year' }],
+    [{ tag: 'td', text: 'West', rowSpan: 2 }, { tag: 'td', text: '1,234', colSpan: 2 }],
+    [{ tag: 'td', text: '3,210', colSpan: 2 }],
+  ]);
+  DR_MODEL.registerTable(table);
+  try {
+    const state = collectCaptureState({ model: DR_MODEL, adapterFor: (t) => makeAdapter(t) });
+    const record = state.tables[DR_MODEL.getRegisteredTables().indexOf(table)];
+    eq('#330: the capture state counts the grid width, not the widest row read',
+      record.columnCount, 3);
+    eq('#330: the capture state records each cell at its grid column',
+      record.cells.filter((cell) => cell.row === 0).map((cell) => cell.col), [0, 2]);
+  } finally {
+    DR_MODEL.unregisterTable(table);
+  }
+})();
 
 (function gridPatch_captureCarriesTheRecordValue() {
   const { grid } = makePatchGrid();
@@ -18,7 +255,7 @@
         mark: 'looks-right', remarks: '', detectionSettings: null,
         activeTableIndex: 0, tables: [tableRec], lensPreview: null, fixtureSeed: null,
         sidebarSnapshot: null, errorState: { hasError: false, count: 0, rows: [] },
-        log: { content: { entries: [], dropped: 0, limit: 50 }, sidebar: { entries: [], dropped: 0, limit: 50 } },
+        log: { content: { rows: [], dropped: 0, limit: 50 }, sidebar: { rows: [], dropped: 0, limit: 50 } },
       },
     });
     const originalsTable = (html.split('with the originals')[1] || '').split('</table>')[0];
@@ -71,13 +308,9 @@
 
 // --- lib/dr-capture: the capture state serializer ---
 //
-// collectCaptureState() turns the registry into the plain-value capture
-// state: every registered table in full detail, plus the bound table's raw
-// markup as the fixture seed. Dependencies arrive as parameters with working
-// defaults (deps.model, deps.adapterFor), so these tests drive the function
-// with stand-ins and no DOM. Absence honesty is pinned here: a cell wearing
-// the rounded marker with no stored original serializes as original: null,
-// never a reconstructed value.
+// These tests drive collectCaptureState() with stand-in dependencies and no
+// DOM. A cell carrying the marker class with no stored original serializes
+// as original: null; the header of lib/dr-capture/state.js holds the rule.
 
 (function captureStateSerializer() {
   eq('capture-state: collectCaptureState loads in the content-script bundle',
@@ -153,12 +386,12 @@
   eq('capture-state: a table with no settings of its own carries the shipped defaults',
     state.tables[1].settings, Object.assign({}, DR_DEFAULTS));
   eq('capture-state: every registered table is serialized', state.tables.length, 2);
-  eq('capture-state: the bound table is found by index', state.activeTableIndex, 0);
+  eq('capture-state: with the first table active, activeTableIndex is 0', state.activeTableIndex, 0);
   eq('capture-state: the fixture seed is the bound table\'s markup at capture time, verbatim',
     state.fixtureSeed, '<table><tr><td>99,000</td></tr></table>');
 
   const recA = state.tables[0];
-  eq('capture-state: per-table detail (kind, settings, maxMagnitude, counts)',
+  eq('capture-state: a simplified native table of three rows and two columns serializes as kind native with its own settings and counts 3 and 2',
     {
       kind: recA.kind,
       settings: recA.settings, maxMagnitude: recA.maxMagnitude,
@@ -188,7 +421,7 @@
     recA.cells.filter((cell) => Object.prototype.hasOwnProperty.call(cell, 'isOutside')).length, 0);
 
   const recB = state.tables[1];
-  eq('capture-state: a virtualized grid serializes as kind grid with its frozen magnitude',
+  eq('capture-state: a virtualized grid serializes as kind grid with its frozen max magnitude',
     { kind: recB.kind, maxMagnitude: recB.maxMagnitude }, { kind: 'grid', maxMagnitude: 4 });
 
   // Empty registry: an honest nothing.
@@ -196,12 +429,10 @@
     model: makeFakeModel([], {}),
     adapterFor: fakeAdapterFor,
   });
-  eq('capture-state: an empty registry serializes as no tables, no focus, no seed',
+  eq('capture-state: an empty registry serializes as no tables, no active table index, no seed',
     { tables: emptyState.tables, activeTableIndex: emptyState.activeTableIndex, fixtureSeed: emptyState.fixtureSeed },
     { tables: [], activeTableIndex: null, fixtureSeed: null });
 
-  // A capture is a bug report: one table whose walk throws must not take
-  // the whole capture down. It serializes as an error record instead.
   const throwingAdapterFor = () => ({
     isGrid: () => false,
     getRows: () => { throw new Error('hostile walk'); },
@@ -221,10 +452,8 @@
     errState.tables[1].cells.length, 1);
 })();
 
-// The per-cell marker flag reaches the cell record. The serializer
-// reads the rounded marker per cell; the
-// renderer needs it per cell to tell a lost original (marker, original: null)
-// from a cell that was never rounded (no marker, original: null).
+// Each cell record carries its marker class flag. The comment beside the
+// wearsMarker field in lib/dr-capture/state.js holds the reason.
 (function captureStateCarriesMarkerFlag() {
   if (typeof globalThis.collectCaptureState !== 'function') return;
 
@@ -273,14 +502,9 @@
 // --- lib/dr-capture: the capture file renderer ---
 //
 // buildCaptureDocument() is a pure string renderer: the whole capture state
-// in, one self-contained HTML document out. The safety doctrine (after the
-// model extension's, adapted for string assembly): every dynamic value
-// passes through one escape on its way in; the file declares a CSP that
-// forbids scripts and remote fetches; a hidden pre holds the full state as
-// escaped JSON (a script-typed island would let an end-tag in a payload
-// break out); and the capture carries the fixture seed twice — visible
-// escaped text for reading, JSON for byte-exact trust. These tests attack
-// the escaping with hostile payloads and round-trip the island.
+// in, one self-contained HTML document out. The safety doctrine sits in the
+// header of lib/dr-capture/render.js. These tests attack the escaping with
+// hostile payloads and round-trip the island.
 
 (function captureRenderer() {
   eq('capture-render: the DR_CAPTURE package loads in the content-script bundle',
@@ -325,10 +549,10 @@
     },
     log: {
       content: {
-        entries: [{ at: '2026-09-09T18:00:00.000Z', level: 'debug', text: 'apply ran' }],
+        rows: [{ at: '2026-09-09T18:00:00.000Z', level: 'debug', text: 'apply ran' }],
         dropped: 0, limit: 50,
       },
-      sidebar: { entries: [], dropped: 0, limit: 50 },
+      sidebar: { rows: [], dropped: 0, limit: 50 },
     },
     page: { url: 'https://www.example.com/prices', title: 'Prices' },
     fixtureSeed: '<table><tr><td>98,765</td></tr></table>',
@@ -453,7 +677,7 @@
   eq('capture-render: the registry section lists every table with the bound one marked',
     /<h2>Registry<\/h2>/.test(html) &&
       /native[\s\S]{0,120}bound/.test(html), true);
-  eq('capture-render: the retired word for the bound table never renders',
+  eq('capture-render: the bound table renders as bound, never as focused',
     /<b>focused<\/b>/.test(html) || /focused table/.test(html), false);
   eq('capture-render: the seed intro names the bound table and capture time',
     html.includes('bound table’s markup as it stood at capture time'), true);
@@ -550,9 +774,9 @@
 // mark and the remarks share the first section under it. The sidebar
 // likeness comes before the bound table, so the file reads in the order a
 // reader reconstructs the scene: what the controls said, then what the page
-// showed. A thin line separates every top-level section. A reader hint (a
-// note) is one size below the table text, italic, and opens with "Note: ",
-// so it never reads as content; the lens preview lines are content.
+// showed. A thin line separates every top-level section. A reader hint
+// renders as a note (see renderNote in lib/dr-capture/render.js); the lens
+// preview lines are content.
 (function captureLayout() {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
@@ -579,8 +803,8 @@
       lensPreview: { top: ['98,765'], bottom: [] },
     },
     log: {
-      content: { entries: [], dropped: 0, limit: 50 },
-      sidebar: { entries: [], dropped: 0, limit: 50 },
+      content: { rows: [], dropped: 0, limit: 50 },
+      sidebar: { rows: [], dropped: 0, limit: 50 },
     },
     page: { url: 'https://www.example.com/prices', title: 'Prices' },
     fixtureSeed: '<table><tr><td>98,765</td></tr></table>',
@@ -614,7 +838,7 @@
   const unbound = buildCaptureDocument({
     state: makeState({ activeTableIndex: null, tables: [], fixtureSeed: null }),
   });
-  eq('capture-render: an unbound capture carries the one note that always applies',
+  eq('capture-render: an unbound capture carries one note: service worker rows are not captured',
     (unbound.match(/<p class="cap-note">Note: /g) || []).length === 1 &&
       unbound.includes('Note: Service worker rows are not captured.'), true);
   eq('capture-render: lens preview lines are content, not notes',
@@ -627,7 +851,7 @@
 //
 // The sidebar takes a screenshot of the bound tab at finish and hands the
 // image to the renderer beside the state, never inside it: the state holds
-// a small record (taken, format, size) and the JSON island stays small. The
+// a small record (taken, format, chars) and the JSON island stays small. The
 // image reaches the file only as an image data URL; anything else, a failed
 // take, or no record at all renders as an absence with its reason.
 (function captureScreenshotSection() {
@@ -640,7 +864,7 @@
     mark: 'looks-wrong', remarks: '', detectionSettings: null,
     activeTableIndex: null, tables: [], lensPreview: null, fixtureSeed: null,
     sidebarSnapshot: null, errorState: null,
-    log: { content: null, sidebar: { entries: [], dropped: 0, limit: 50 } },
+    log: { content: null, sidebar: { rows: [], dropped: 0, limit: 50 } },
     page: { url: 'https://www.example.com/prices', title: 'Prices' },
   }, over || {});
   const islandOf = (docHtml) => {
@@ -705,7 +929,7 @@
 // The state records three kinds of absence honestly; the page a human reads
 // must present each as an absence, never as something it is not: a lost
 // original never becomes a substituted value, an error record never becomes
-// an empty table, a missing log snapshot never becomes an empty buffer. The
+// an empty table, a missing log buffer copy never becomes an empty buffer. The
 // glyph lookup resolves only the three mark words, so a hostile mark cannot
 // pull a prototype property into the document.
 (function captureRendererAbsenceHonesty() {
@@ -723,8 +947,8 @@
     lensPreview: null,
     sidebarSnapshot: null,
     log: {
-      content: { entries: [], dropped: 0, limit: 50 },
-      sidebar: { entries: [], dropped: 0, limit: 50 },
+      content: { rows: [], dropped: 0, limit: 50 },
+      sidebar: { rows: [], dropped: 0, limit: 50 },
     },
     page: { url: 'https://www.example.com/prices', title: 'Prices' },
     fixtureSeed: null,
@@ -771,14 +995,14 @@
   eq('capture-render: an error record on the bound table renders no table and no null counts',
     failed.includes('<table class="cap-table">') || failed.includes('null row(s)'), false);
 
-  // A missing log snapshot (the state pull failed) is distinct from an empty
+  // A missing log buffer copy (the state pull failed) is distinct from an empty
   // buffer: the sidebar half here IS an empty buffer and keeps its sentence.
   const pullFailed = buildCaptureDocument({
     state: makeState({
-      log: { content: null, sidebar: { entries: [], dropped: 0, limit: 50 } },
+      log: { content: null, sidebar: { rows: [], dropped: 0, limit: 50 } },
     }),
   });
-  eq('capture-render: a missing log snapshot renders as a failed state pull',
+  eq('capture-render: a missing log buffer copy renders as a failed state pull',
     pullFailed.includes('state pull failed'), true);
   eq('capture-render: an empty buffer keeps its own sentence beside a failed pull',
     pullFailed.includes('Nothing was logged.'), true);
@@ -796,11 +1020,9 @@
 
 // --- lib/dr-capture: the size warning ---
 //
-// A capture has no size bound — the full-detail default is deliberate — so
-// the form shows an estimate before the save when the pulled state is
-// large. The estimate reads the serialized state's length; the file runs
-// about four times that, because it carries the same content about four
-// times (two table renderings, the JSON island, the visible seed).
+// The form shows an estimate before the save when the pulled state is
+// large. The estimate's reasons sit beside CAPTURE_FILE_CHARS_PER_STATE_CHAR
+// and CAPTURE_SIZE_WARN_CHARS in lib/dr-capture/render.js.
 
 (function captureSizeWarningHelper() {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
@@ -828,9 +1050,9 @@
 // The capture state gains a detectionSettings field: a plain copy of DR_DETECTION_SETTINGS taken at
 // capture time, so a capture shows the detection values that were in force.
 
-// collectCaptureState carries every key of the detection settings,
-// the format version moves to 2, and the copy is plain and detached — a
-// mutation on the returned copy must never reach DR_DETECTION_SETTINGS itself.
+// collectCaptureState carries every key of the detection settings, and the
+// copy is plain and detached — a mutation on the returned copy must never
+// reach DR_DETECTION_SETTINGS itself.
 (function captureStateCarriesDetectionSettings() {
   eq('capture-settings: collectCaptureState loads in the content-script bundle',
     typeof globalThis.collectCaptureState, 'function');
@@ -1020,9 +1242,9 @@
 //
 // The capture state carries the model's error state, and each log row's
 // stack trace renders under the row, folded, so a reader opens the trace
-// only for the row in question. Format 3 marks both additions. The sidebar's
-// fallback state, used when the page half never arrives, carries the new
-// field as an absence, like every other page-side field.
+// only for the row in question. The sidebar's fallback state, used when the
+// page half never arrives, carries the error state as an absence, like every
+// other page-side field.
 
 (function captureCarriesErrorState() {
   if (typeof globalThis.collectCaptureState !== 'function' ||
@@ -1051,7 +1273,7 @@
     errorState: errorState,
     log: {
       content: {
-        entries: [
+        rows: [
           { at: '2026-09-17T16:00:00.000Z', level: 'warn', text: 'traced row',
             stack: '    at roundTable (chrome-extension://' + 'a'.repeat(32) +
               '/content.js:1523:18)\n    at <script>alert(1)</script>' },
@@ -1059,7 +1281,7 @@
         ],
         dropped: 0, limit: 50,
       },
-      sidebar: { entries: [], dropped: 0, limit: 50 },
+      sidebar: { rows: [], dropped: 0, limit: 50 },
     },
   };
   const html = DR_CAPTURE.buildCaptureDocument({ state: renderState });
@@ -1079,8 +1301,8 @@
     .replace(/&quot;/g, '"').replace(/&#39;/g, '\'')
     .replace(/&amp;/g, '&')) : null;
   eq('capture-render: the island carries the stack trace byte-exact',
-    islandState && islandState.log.content.entries[0].stack,
-    renderState.log.content.entries[0].stack);
+    islandState && islandState.log.content.rows[0].stack,
+    renderState.log.content.rows[0].stack);
   eq('capture-render: the island carries the error state',
     islandState && islandState.errorState, errorState);
 
@@ -1112,8 +1334,8 @@
   eq('capture-trace: a named frame renders as path:line:col (name)',
     f('    at roundTable (' + origin + 'content.js:1523:18)'), 'content.js:1523:18 (roundTable)');
   eq('capture-trace: an unnamed frame renders as an anonymous function',
-    f('    at ' + origin + 'adapters/messaging.js:399:9'),
-    'adapters/messaging.js:399:9 (anonymous function)');
+    f('    at ' + origin + 'app/bus.js:399:9'),
+    'app/bus.js:399:9 (anonymous function)');
   eq('capture-trace: an Object.<anonymous> frame keeps its function part',
     f('    at Object.<anonymous> (' + origin + 'x.js:1:2)'), 'x.js:1:2 (Object.<anonymous>)');
   eq('capture-trace: an async frame keeps the async prefix',

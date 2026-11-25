@@ -36,7 +36,7 @@ No other flags. Resume behavior is automatic: re-invoking with the same slug che
 
 4. **Working tree check.** The session's active repo must be on `main` and clean. If not → abort.
 
-5. **Push and PR auth.** `origin` may be a proxy that authenticates through a connected GitHub App and ignores pasted tokens. Push with plain `git push origin <branch>`, then verify arrival by reading real GitHub (`curl --noproxy '*' https://api.github.com/repos/<owner>/<repo>/branches`). For PR creation, try `gh pr create`; if it returns `403 Resource not accessible by integration`, ask the user for a PAT and call the real API directly with `curl --noproxy '*' -H "Authorization: Bearer <PAT>" https://api.github.com/repos/<owner>/<repo>/pulls`. Never put a token in a git URL — it lands in `.git/config` and the proxy ignores it anyway. Hold a PAT in session memory only; after any push involving one, `grep -c x-access-token .git/config` must return `0`.
+5. **Push and PR auth.** Push branches and open pull requests as "GitHub access model" in `AGENTS.md` describes, including its token hygiene.
 
 6. **Check prior progress** by listing branches and open/merged PRs matching each sprint's `branch` field. Any sprint whose PR is already merged → skip. Any with an open PR → skip (already submitted for review).
 

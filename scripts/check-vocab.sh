@@ -157,13 +157,20 @@ preflight() {
 failures=0
 
 check_added_lines() {
-  local file="$1"
-  local diff_cmd=("${@:2}")
+  local file="$1" source="$2"
+  local diff_cmd=("${@:3}")
 
   if printf '%s' "$file" | grep -qE "$EXEMPT_PATHS"; then return 0; fi
 
+  # A rename's source path joins the pathspec so git pairs the two paths and
+  # reports only the lines the rename changed. With the destination alone, git
+  # sees a new file and every line of it reads as added. A rename out of an
+  # exempt path keeps the destination alone, so the moved file reads as all-new
+  # prose.
+  if [[ -n "$source" ]] && printf '%s' "$source" | grep -qE "$EXEMPT_PATHS"; then source=""; fi
+
   local added
-  added=$("${diff_cmd[@]}" -- "$file" | grep '^+' | grep -vE '^\+\+\+ (b/|/dev/null)' || true)
+  added=$("${diff_cmd[@]}" -- "$file" ${source:+"$source"} | grep '^+' | grep -vE '^\+\+\+ (b/|/dev/null)' || true)
   [[ -n "$added" ]] || return 0
 
   for pattern in "${RETIRED_PATTERNS[@]}"; do
@@ -187,7 +194,8 @@ preflight
 # The file list is captured in the main shell so a git failure is observable:
 # a gate that cannot diff must not report success. Renames count (R): a
 # renamed-and-edited living document is the edit most likely to reintroduce old
-# vocabulary; git prints a rename's destination path, which is the one to scan.
+# vocabulary; the destination path is the one to scan, and the source path
+# stays beside it so only the edited lines count as added.
 # A binary file's diff holds no added lines, so every path goes to the sweep.
 mode="${1:-}"
 case "$mode" in
@@ -208,16 +216,21 @@ case "$mode" in
     ;;
 esac
 
-changed=$(git diff --name-only --diff-filter=ACMR "${diff_args[@]}") || {
+changed=$(git diff --name-status -M --diff-filter=ACMR "${diff_args[@]}") || {
   echo "check-vocab: git diff failed for '${diff_args[*]}' — refusing to pass without inspecting" >&2
   exit 2
 }
 
 # Prefixes pinned so the '+++ b/…' header filter holds under any local git
 # config (diff.noprefix, diff.mnemonicPrefix).
-while IFS= read -r file; do
-  [[ -n "$file" ]] || continue
-  check_added_lines "$file" git diff --unified=0 --src-prefix=a/ --dst-prefix=b/ "${diff_args[@]}"
+while IFS=$'\t' read -r status path destination; do
+  [[ -n "$status" ]] || continue
+  if [[ "$status" == R* ]]; then
+    file="$destination" source="$path"
+  else
+    file="$path" source=""
+  fi
+  check_added_lines "$file" "$source" git diff -M --unified=0 --src-prefix=a/ --dst-prefix=b/ "${diff_args[@]}"
 done <<< "$changed"
 
 if (( failures > 0 )); then

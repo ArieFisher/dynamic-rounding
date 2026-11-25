@@ -48,7 +48,7 @@
 })();
 
 (function classifyCell_unknownExclusionFailsClosed() {
-  // getExclusionReason today only ever returns 'firstRow' | 'firstColumn' |
+  // getExclusionReason today only ever returns 'first-row' | 'first-column' |
   // 'percent' | 'currency' | null, but classifyCell's ladder must fail
   // closed (skip) on any other non-null value a future exclusion rule
   // returns, instead of silently falling through and simplifying the cell.
@@ -57,13 +57,13 @@
   // its own isolated scope built from the same three source files, with a
   // stub getExclusionReason declared after the real one (last declaration
   // of a name wins in the same scope).
-  const isolatedSrc = coreCode + '\n' + parsingCode + '\n' +
+  const isolatedSrc = readerCode + '\n' + numberTextCode + '\n' +
     'function getExclusionReason() { return "someFutureReason"; }\n' +
     ladderCode + '\nreturn classifyCell;';
   const isolatedClassifyCell = isolatedFunction(isolatedSrc)();
   eq('classifyCell: unrecognized non-null exclusion reason still skips the cell',
     isolatedClassifyCell({ text: '100', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-    { mode: 'skip', reason: 'excluded' });
+    { mode: 'skip', reason: 'someFutureReason' });
 })();
 
 (function classifyCell_quoted() {
@@ -80,8 +80,8 @@
   eq('classifyCell: unambiguous date-like cell resolves when simplifyDates is true',
     classifyCell({ text: '2020-01-01', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
     { mode: 'date', reason: 'simplify', value: { dates: [{
-      year: 2020, month: 1, monthFirst: false, start: 0, end: 10, dayCut: { start: 7, end: 10 } }] } });
-  eq('classifyCell: ambiguous numeric date returns a pending decision',
+      year: 2020, month: 1, monthBeforeYear: false, start: 0, end: 10, dayCut: { start: 7, end: 10 } }] } });
+  eq('classifyCell: ambiguous numeric date returns a pending classification',
     classifyCell({ text: '03/04/2020', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
     { mode: 'date', reason: 'simplify', pending: 'ambiguous-date', value: { dates: [{
       year: 2020, n1: 3, n2: 4, start: 0, end: 10, n1Cut: { start: 0, end: 3 }, n2Cut: { start: 3, end: 6 } }] } });
@@ -98,15 +98,55 @@
     classifyCell({ text: '3:45 PM', rowIndex: 1, columnIndex: 1, ranges: null },
       Object.assign({}, LADDER_OPTS, { simplifyTimes: true })),
     { mode: 'time', reason: 'simplify' });
+  // A cell holding an impossible time stays as written, like a cell holding an
+  // impossible date, so a timestamp's date digits never round as plain numbers.
+  const timesOn = Object.assign({}, LADDER_OPTS, { simplifyTimes: true });
+  eq('classifyCell: a cell holding an impossible time stays as written',
+    ['24:00', '10:00:75', '0:30 AM', '2025-01-01T10:00:60', '2025-11-26T24:00'].map((text) =>
+      classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, timesOn).reason),
+    ['impossible-time', 'impossible-time', 'impossible-time', 'impossible-time', 'impossible-time']);
+  eq('classifyCell: a time that cannot exist follows the times switch first',
+    classifyCell({ text: '2025-11-26T24:00', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
+    { mode: 'skip', reason: 'times-disabled' });
 })();
 
-(function classifyCell_link() {
-  eq('classifyCell: whole-cell link cell is skipped',
-    classifyCell({ text: '42', rowIndex: 1, columnIndex: 1, ranges: null, isWholeLink: true }, LADDER_OPTS),
-    { mode: 'skip', reason: 'link' });
+(function classifyCell_markup() {
+  const whole = [{ start: 0, end: 2 }];
+  eq('classifyCell: a cell whose number is a markup range is skipped',
+    classifyCell({ text: '42', rowIndex: 1, columnIndex: 1, ranges: null, markupRanges: whole }, LADDER_OPTS),
+    { mode: 'skip', reason: 'markup' });
+  eq('classifyCell: a number inside a markup range keeps its digits while the others round',
+    classifyCell({ text: 'see 9,876,543 and 4,236,000', rowIndex: 1, columnIndex: 1, ranges: null,
+      markupRanges: [{ start: 4, end: 13 }] }, LADDER_OPTS).value.matches.map((m) => m.numStr),
+    ['4,236,000']);
+  eq('classifyCell: a cell whose every number sits in markup ranges is skipped',
+    classifyCell({ text: '[1,234,567](https://x.test)', rowIndex: 1, columnIndex: 1, ranges: null,
+      markupRanges: [{ start: 0, end: 27 }] }, LADDER_OPTS),
+    { mode: 'skip', reason: 'no-number' });
+  const dateOpts = Object.assign({}, LADDER_OPTS, { simplifyDates: true, simplifyTimes: true });
+  eq('classifyCell: a date inside a markup range is no date',
+    classifyCell({ text: '2024-01-15', rowIndex: 1, columnIndex: 1, ranges: null,
+      markupRanges: [{ start: 0, end: 10 }] }, dateOpts).mode, 'skip');
+  eq('classifyCell: a time inside a markup range is no time',
+    classifyCell({ text: ' 14:30 ', rowIndex: 1, columnIndex: 1, ranges: null,
+      markupRanges: [{ start: 1, end: 6 }] }, dateOpts).mode, 'skip');
+  eq('classifyCell: a date outside the markup ranges keeps its trimmed position',
+    classifyCell({ text: ' x 2023-01-01 then 2024-03-15', rowIndex: 1, columnIndex: 1, ranges: null,
+      markupRanges: [{ start: 3, end: 13 }] }, dateOpts).value.dates.map((d) => [d.start, d.end]),
+    [[18, 28]]);
+  eq('classifyCell: a date partly inside a markup range stays as written whole',
+    classifyCell({ text: 'Jan 15, 2024', rowIndex: 1, columnIndex: 1, ranges: null,
+      markupRanges: [{ start: 0, end: 6 }] }, dateOpts), { mode: 'skip', reason: 'no-number' });
+  eq('classifyCell: a bare year beside a date inside a markup range still reads as a date',
+    classifyCell({ text: '2023-01-01 2024', rowIndex: 1, columnIndex: 1, ranges: null,
+      markupRanges: [{ start: 0, end: 10 }] }, dateOpts).value.dates.map((d) => [d.year, d.start]), [[2024, 11]]);
+  eq('classifyCell: a superscript cell inside a markup range keeps its digits',
+    classifyCell({ text: '1012', rowIndex: 1, columnIndex: 1, ranges: null, hasSuperscript: true,
+      superscriptRanges: [{ start: 2, end: 4 }], markupRanges: [{ start: 0, end: 4 }] }, LADDER_OPTS),
+    { mode: 'skip', reason: 'superscript' });
 })();
 
-(function classifyCell_footnoteSuperscript() {
+(function classifyCell_superscript() {
   // "10<sup>12</sup>" flattens to "1012"; the sole match spans the whole
   // string and overlaps the superscript mask, so nothing survives.
   eq('classifyCell: whole-cell exponent with no surviving match after masking is skipped',
@@ -114,12 +154,12 @@
       text: '1012', rowIndex: 1, columnIndex: 1, ranges: null,
       hasSuperscript: true, superscriptRanges: [{ start: 2, end: 4 }],
     }, LADDER_OPTS),
-    { mode: 'skip', reason: 'footnote' });
+    { mode: 'skip', reason: 'superscript' });
 
   // "20 <sup>15</sup>" flattens to "20 1015": the standalone "20" survives
   // masking even though the sup-adjacent "1015" match does not. "20 1015" is
   // not one number, since its spaced groups are outside the group shape, so
-  // the cell takes the words path, not the footnote path.
+  // the cell takes the words path, not the superscript path.
   eq('classifyCell: a superscript-flagged cell keeps non-overlapping matches',
     classifyCell({
       text: '20 1015', rowIndex: 1, columnIndex: 1, ranges: null,
@@ -128,14 +168,14 @@
     { mode: 'extracted', reason: 'simplify', value: { matches: [{ numStr: '20', num: 20, index: 0 }] } });
 
   // "5 %<sup>1</sup>" flattens to "5 %1", which the number reader reads as
-  // one number, so the cell takes the footnote path; the "5" survives the
+  // one number, so the cell takes the superscript path; the "5" survives the
   // mask over the footnote marker.
-  eq('classifyCell: a cell that reads as a number with a <sup> rounds its surviving match on the footnote path',
+  eq('classifyCell: a cell that reads as a number with a <sup> rounds its surviving match on the superscript path',
     classifyCell({
       text: '5 %1', rowIndex: 1, columnIndex: 1, ranges: null,
       hasSuperscript: true, superscriptRanges: [{ start: 3, end: 4 }],
     }, LADDER_OPTS),
-    { mode: 'extracted', reason: 'footnote', value: { matches: [{ numStr: '5', num: 5, index: 0 }] } });
+    { mode: 'extracted', reason: 'superscript', value: { matches: [{ numStr: '5', num: 5, index: 0 }] } });
 })();
 
 (function classifyCell_mixedText() {
@@ -168,8 +208,8 @@
     classifyCell(at('CAD45.67'), currencyOff), { mode: 'skip', reason: 'currency' });
   eq('classifyCell: a code after the number excludes the cell with the currency setting off',
     classifyCell(at('45.67 USD'), currencyOff), { mode: 'skip', reason: 'currency' });
-  eq('classifyCell: a unit number that is a whole link is skipped',
-    classifyCell(at('7.5m', { isWholeLink: true }), LADDER_OPTS), { mode: 'skip', reason: 'link' });
+  eq('classifyCell: a unit number inside a markup range is skipped',
+    classifyCell(at('7.5m', { markupRanges: [{ start: 0, end: 4 }] }), LADDER_OPTS), { mode: 'skip', reason: 'markup' });
   eq('classifyCell: an identifier is not a unit number',
     classifyCell(at('DT1234'), LADDER_OPTS), { mode: 'skip', reason: 'no-number' });
   eq('classifyCell: a plain currency number holds its digits as one match',
@@ -181,27 +221,27 @@
     { mode: 'skip', reason: 'no-number' });
 })();
 
-(function pickDateFormatHint_and_resolveAmbiguousDateDecision() {
-  eq('pickDateFormatHint: n1 > 12 only -> DMY', pickDateFormatHint([{ n1: 25, n2: 4 }]), 'DMY');
-  eq('pickDateFormatHint: n2 > 12 only -> MDY', pickDateFormatHint([{ n1: 3, n2: 25 }]), 'MDY');
-  eq('pickDateFormatHint: both > 12 across the column -> MIXED',
-    pickDateFormatHint([{ n1: 25, n2: 4 }, { n1: 3, n2: 25 }]), 'MIXED');
-  eq('pickDateFormatHint: neither > 12 -> AMBIGUOUS', pickDateFormatHint([{ n1: 3, n2: 4 }]), 'AMBIGUOUS');
+(function pickDateFormatHint_and_resolveAmbiguousDateClassification() {
+  eq('pickDateFormatHint: n1 > 12 only -> day-first', pickDateFormatHint([{ n1: 25, n2: 4 }]), 'day-first');
+  eq('pickDateFormatHint: n2 > 12 only -> month-first', pickDateFormatHint([{ n1: 3, n2: 25 }]), 'month-first');
+  eq('pickDateFormatHint: both > 12 across the column -> mixed',
+    pickDateFormatHint([{ n1: 25, n2: 4 }, { n1: 3, n2: 25 }]), 'mixed');
+  eq('pickDateFormatHint: neither > 12 -> ambiguous', pickDateFormatHint([{ n1: 3, n2: 4 }]), 'ambiguous');
 
   const dates0304 = findDates('03/04/2020');
-  eq('resolveAmbiguousDateDecision: MDY resolves n1 as month, n2 as day',
-    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'MDY'),
+  eq('resolveAmbiguousDateClassification: month-first resolves n1 as month, n2 as day',
+    resolveAmbiguousDateClassification({ value: { dates: dates0304 } }, 'month-first'),
     { mode: 'date', reason: 'simplify', value: { dates: [{
-      year: 2020, month: 3, monthFirst: true, start: 0, end: 10, dayCut: { start: 3, end: 6 } }] } });
-  eq('resolveAmbiguousDateDecision: DMY resolves n2 as month, n1 as day',
-    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'DMY'),
+      year: 2020, month: 3, monthBeforeYear: true, start: 0, end: 10, dayCut: { start: 3, end: 6 } }] } });
+  eq('resolveAmbiguousDateClassification: day-first resolves n2 as month, n1 as day',
+    resolveAmbiguousDateClassification({ value: { dates: dates0304 } }, 'day-first'),
     { mode: 'date', reason: 'simplify', value: { dates: [{
-      year: 2020, month: 4, monthFirst: true, start: 0, end: 10, dayCut: { start: 0, end: 3 } }] } });
-  eq('resolveAmbiguousDateDecision: MIXED downgrades to skip',
-    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'MIXED'),
+      year: 2020, month: 4, monthBeforeYear: true, start: 0, end: 10, dayCut: { start: 0, end: 3 } }] } });
+  eq('resolveAmbiguousDateClassification: mixed downgrades to skip',
+    resolveAmbiguousDateClassification({ value: { dates: dates0304 } }, 'mixed'),
     { mode: 'skip', reason: 'ambiguous-date' });
-  eq('resolveAmbiguousDateDecision: AMBIGUOUS downgrades to skip',
-    resolveAmbiguousDateDecision({ value: { dates: dates0304 } }, 'AMBIGUOUS'),
+  eq('resolveAmbiguousDateClassification: ambiguous downgrades to skip',
+    resolveAmbiguousDateClassification({ value: { dates: dates0304 } }, 'ambiguous'),
     { mode: 'skip', reason: 'ambiguous-date' });
 })();
 
@@ -331,8 +371,8 @@ const IDENTIFIER_SPAN_NEAR_MISSES = [
 
 (function identifierShapes_holdTheirDigitsInsideText() {
   const extractedNumbers = (text) => {
-    const decision = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS);
-    return decision.mode === 'extracted' ? decision.value.matches.map((m) => m.numStr) : decision;
+    const classification = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS);
+    return classification.mode === 'extracted' ? classification.value.matches.map((m) => m.numStr) : classification;
   };
   for (const [text, expected] of IDENTIFIER_SPAN_CELLS) {
     eq(`identifier shape inside text: "${text}" rounds only its quantity`, extractedNumbers(text), expected);
@@ -388,9 +428,9 @@ const CLOCK_TIME_SPAN_NEAR_MISSES = [
 
 (function clockTimes_holdTheirDigitsInsideText() {
   const extractedNumbers = (text, opts) => {
-    const decision = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, opts);
-    if (decision.mode === 'extracted') return decision.value.matches.map((m) => m.numStr);
-    return decision.reason === 'no-number' ? [] : decision;
+    const classification = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, opts);
+    if (classification.mode === 'extracted') return classification.value.matches.map((m) => m.numStr);
+    return classification.reason === 'no-number' ? [] : classification;
   };
   const timesOn = Object.assign({}, LADDER_OPTS, { simplifyTimes: true });
   for (const [text, expected] of CLOCK_TIME_SPAN_CELLS) {
@@ -404,9 +444,9 @@ const CLOCK_TIME_SPAN_NEAR_MISSES = [
     extractSimplifyMatches('18:302 departs, 1,234 seats', [{ start: 5, end: 6 }]).map((m) => m.numStr),
     ['1,234']);
   eq('clock time inside text: ranges cover each time\'s digits and leave the AM/PM out',
-    clockTimeRanges('9:45 - 11:45 AM'), [{ start: 0, end: 4 }, { start: 7, end: 12 }]);
+    getClockTimeMaskedRanges('9:45 - 11:45 AM'), [{ start: 0, end: 4 }, { start: 7, end: 12 }]);
   eq('clock time inside text: a text with no clock time has no ranges',
-    clockTimeRanges('About 1,613,245 people'), []);
+    getClockTimeMaskedRanges('About 1,613,245 people'), []);
 })();
 
 // =============================================================================
@@ -438,9 +478,9 @@ const bracketOpts = Object.assign({}, DR_DEFAULTS, {
 })();
 
 (function bracketedWholeLinkStaysUnchanged() {
-  eq('bracketed: a bracketed cell that is one whole link stays unchanged',
-    classifyCell({ text: '(1,234)', rowIndex: 1, columnIndex: 1, ranges: null, isWholeLink: true }, bracketOpts),
-    { mode: 'skip', reason: 'link' });
+  eq('bracketed: a bracketed cell that is one markup range stays unchanged',
+    classifyCell({ text: '(1,234)', rowIndex: 1, columnIndex: 1, ranges: null, markupRanges: [{ start: 0, end: 7 }] }, bracketOpts),
+    { mode: 'skip', reason: 'markup' });
 })();
 
 (function bracketedQuotedCellStaysUnchanged() {

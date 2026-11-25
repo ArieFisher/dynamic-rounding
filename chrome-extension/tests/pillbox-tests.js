@@ -1,4 +1,4 @@
-// The table pillbox on each data table (ui-pillbox.js).
+// The table pillbox on each data table (table-pillbox-view.js).
 
 // --- Animation parameters and dispatch ---
 
@@ -128,14 +128,14 @@
     offsetWidth: 0,
     rows: [],
   };
-  eq('flash style: flashActiveTable adds the highlight stylesheet on a page with no apply',
+  eq('flash style: a whole-table outline on a page with no apply adds the highlight stylesheet',
     stylesAddedBy(() => flashActiveTable(wholeTable)), 1);
 
   const table = makeMergedSpanTable();
   const shifted = table.rows[2].cells;
   shifted[0].getBoundingClientRect = () => ({ top: 40, left: 100, right: 200, bottom: 60 });
   shifted[1].getBoundingClientRect = () => ({ top: 40, left: 200, right: 300, bottom: 60 });
-  eq('flash style: flashRangePulse adds the highlight stylesheet on a page with no apply',
+  eq('flash style: a pulse over a range on a page with no apply adds the highlight stylesheet',
     stylesAddedBy(() => flashRangePulse(table, [{ rowMin: 2, rowMax: 2, colMin: 1, colMax: 1 }])), 1);
 })();
 
@@ -193,7 +193,7 @@
     DR_MODEL.hasTableOriginal(table, cell), false);
 })();
 
-// --- syncTablePillbox sets aria-pressed on the button to match DR_MODEL.isTableOn ---
+// --- A table pillbox redraw sets aria-pressed to the table's on/off value ---
 
 (function tablePillbox_syncTablePillbox_ariaFalseWhenNotRounded() {
   const table = makeTablePillboxTestTable([{ tag: 'td', text: '1,000' }]);
@@ -201,7 +201,7 @@
   button.setAttribute('aria-pressed', 'true'); // pre-set to true to confirm it gets corrected
 
   syncTablePillbox(table);
-  eq('table-pillbox: syncTablePillbox sets aria-pressed="false" on fresh table',
+  eq('table-pillbox: a redraw on a fresh table sets aria-pressed="false"',
     button.getAttribute('aria-pressed'), 'false');
 })();
 
@@ -220,7 +220,7 @@
   DR_MODEL.setTableSettings(table, { enabled: true }, 'page');
 
   syncTablePillbox(table);
-  eq('table-pillbox: syncTablePillbox sets aria-pressed="true" on rounded table',
+  eq('table-pillbox: a redraw on a table that is on sets aria-pressed="true"',
     button.getAttribute('aria-pressed'), 'true');
 })();
 
@@ -233,11 +233,11 @@
   button.setAttribute('aria-pressed', 'true');
 
   syncTablePillbox(table);
-  eq('table-pillbox: syncTablePillbox sets aria-pressed="false" on a marked table that is off',
+  eq('table-pillbox: a redraw on a marked table that is off sets aria-pressed="false"',
     button.getAttribute('aria-pressed'), 'false');
 })();
 
-// --- syncTablePillbox is a no-op when no table pillbox is registered ---
+// --- A redraw of a table with no table pillbox ---
 
 (function tablePillbox_syncTablePillbox_noEntryIsNoop() {
   const table = makeTablePillboxTestTable([{ tag: 'td', text: '1,000' }]);
@@ -245,11 +245,11 @@
   // Should not throw.
   let threw = false;
   try { syncTablePillbox(table); } catch (e) { threw = true; }
-  eq('table-pillbox: syncTablePillbox does not throw when no table pillbox is registered',
+  eq('table-pillbox: a redraw of a table with no table pillbox throws nothing',
     threw, false);
 })();
 
-// --- DOM shape: createTablePillbox creates the table pillbox button structure ---
+// --- DOM shape: a registered data table gets the table pillbox button structure ---
 // button.dr-ext-table-pillbox > span.dr-ext-table-pillbox-dot > span.dr-ext-table-pillbox-knob
 // The button must have type="button", aria-pressed="false", and an aria-label.
 
@@ -342,28 +342,28 @@
 
   // The button element should have been created and appended to body
   const buttonEl = appendedChildren.find(e => e._tag === 'button');
-  eq('table-pillbox: createTablePillbox appends a <button> to document.body',
+  eq('table-pillbox: a registered data table gets a <button> appended to document.body',
     buttonEl !== undefined, true);
 
   // Must have class dr-ext-table-pillbox
-  eq('table-pillbox: createTablePillbox creates a <button class="dr-ext-table-pillbox">',
+  eq('table-pillbox: a registered data table gets a <button class="dr-ext-table-pillbox">',
     buttonEl ? buttonEl.className === 'dr-ext-table-pillbox' : false, true);
 
   // Must have type="button"
-  eq('table-pillbox: createTablePillbox button has type="button"',
+  eq('table-pillbox: a new table pillbox button has type="button"',
     buttonEl ? buttonEl.type === 'button' : false, true);
 
   // aria-pressed initially "false"
-  eq('table-pillbox: createTablePillbox button has aria-pressed="false" initially',
+  eq('table-pillbox: a new table pillbox button has aria-pressed="false"',
     buttonEl ? buttonEl.getAttribute('aria-pressed') : null, 'false');
 
   // Must have aria-label (accessible name)
   const ariaLabel = buttonEl ? buttonEl.getAttribute('aria-label') : null;
-  eq('table-pillbox: createTablePillbox button has non-empty aria-label',
+  eq('table-pillbox: a new table pillbox button has a non-empty aria-label',
     typeof ariaLabel === 'string' && ariaLabel.length > 0, true);
 
   // The accessible label names the action the press takes.
-  eq('table-pillbox: createTablePillbox aria-label reads "Simplify table"',
+  eq('table-pillbox: a new table pillbox button has the aria-label "Simplify table"',
     ariaLabel, 'Simplify table');
 
   // First child of button must be span.dr-ext-table-pillbox-dot
@@ -377,11 +377,11 @@
     knobEl ? (knobEl._tag === 'span' && knobEl.className === 'dr-ext-table-pillbox-knob') : false, true);
 
   // tablePillboxes must now contain this table
-  eq('table-pillbox: createTablePillbox registers table in tablePillboxes',
+  eq('table-pillbox: a registered data table has a table pillbox entry',
     tablePillboxes.has(table), true);
 })();
 
-// --- Anchor geometry (rest state, scroll=0) ---
+// --- Table pillbox position at rest, window scroll 0 ---
 // button left/top place the dot's bottom-right at
 //   dot.bottom = rect.top  + scrollY + TABLE_PILLBOX_DOT_OVERLAP_PX
 //   dot.right  = rect.right + scrollX + TABLE_PILLBOX_DOT_OVERHANG_PX
@@ -414,9 +414,9 @@
   const expectedLeft = (tableRect.right + 0 + TABLE_PILLBOX_DOT_OVERHANG_PX) - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX;
   const expectedTop  = (tableRect.top   + 0 + TABLE_PILLBOX_DOT_OVERLAP_PX)  - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX;
 
-  eq('positionTablePillbox: button left matches anchor formula (scroll=0)',
+  eq('table pillbox position (scroll 0): button left = table right + overhang - dot - padding',
     left, expectedLeft);
-  eq('positionTablePillbox: button top matches anchor formula (scroll=0)',
+  eq('table pillbox position (scroll 0): button top = table top + overlap - dot - padding',
     top, expectedTop);
 
   // Cross-check: derive the dot's bottom-right edges from the button offset
@@ -425,13 +425,13 @@
   // dot.bottom (document) = button.top + padding-top + DOT.
   const dotRight  = left + TABLE_PILLBOX_DOT_PX + TABLE_PILLBOX_HIT_PAD_PX;
   const dotBottom = top  + TABLE_PILLBOX_HIT_PAD_PX + TABLE_PILLBOX_DOT_PX;
-  eq('positionTablePillbox: dot.right sits TABLE_PILLBOX_DOT_OVERHANG_PX past table right edge',
+  eq('table pillbox position (scroll 0): the dot\'s right edge sits the overhang past the table\'s right edge',
     dotRight, tableRect.right + TABLE_PILLBOX_DOT_OVERHANG_PX);
-  eq('positionTablePillbox: dot.bottom sits TABLE_PILLBOX_DOT_OVERLAP_PX below table top edge',
+  eq('table pillbox position (scroll 0): the dot\'s bottom edge sits the overlap below the table\'s top edge',
     dotBottom, tableRect.top + TABLE_PILLBOX_DOT_OVERLAP_PX);
 })();
 
-// --- Anchor geometry with non-zero scroll ---
+// --- Table pillbox position with window scroll 200, 300 ---
 // scrollX=200, scrollY=300 should shift both axes accordingly.
 
 (function tablePillbox_positionTablePillbox_anchorGeometry_withScroll() {
@@ -455,9 +455,9 @@
   const expectedLeft = (tableRect.right + 200 + TABLE_PILLBOX_DOT_OVERHANG_PX) - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX;
   const expectedTop  = (tableRect.top   + 300 + TABLE_PILLBOX_DOT_OVERLAP_PX)  - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX;
 
-  eq('positionTablePillbox: button left includes scrollX offset',
+  eq('table pillbox position (scroll 200, 300): button left includes the 200 px scroll',
     left, expectedLeft);
-  eq('positionTablePillbox: button top includes scrollY offset',
+  eq('table pillbox position (scroll 200, 300): button top includes the 300 px scroll',
     top, expectedTop);
 })();
 
@@ -475,7 +475,7 @@
       [{ tag: 'td', text: 'Header' }],
       [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
     ]);
-    // Must have querySelectorAll on individual cells (used by roundTable → filterLinkMatches)
+    // Must have querySelectorAll on individual cells (used by roundTable → getMarkupRanges)
     table._cells.forEach(c => { c.querySelectorAll = () => []; });
     const input = injectTablePillboxEntry(table);
 
@@ -772,35 +772,16 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Visibility gate in positionTablePillbox
+// A hidden table hides its table pillbox
 // ---------------------------------------------------------------------------
 //
-// positionTablePillbox hides the table pillbox label (labelEl.style.display = 'none')
-// when the table is offscreen or invisible, and shows it (labelEl.style.display = '')
-// when the table is normally visible.
+// positionTablePillbox sets the button's display to 'none' when the table has
+// no box or is invisible, and to '' when the table is visible.
 //
-// All four tests stub window.getComputedStyle (and/or the rect) then restore
+// All three tests stub window.getComputedStyle (and/or the rect) then restore
 // the original before returning, so surrounding tests are unaffected.
 
-// display:none (computed style) → labelEl.style.display === 'none'
-(function visGate_displayNone() {
-  const origGetComputedStyle = global.window.getComputedStyle;
-  global.window.getComputedStyle = () => ({ display: 'none', visibility: 'visible' });
-
-  const table = {
-    getBoundingClientRect() { return { width: 400, height: 200, top: 100, right: 500, bottom: 300, left: 100 }; },
-  };
-  const labelEl = { style: {} };
-
-  positionTablePillbox(table, labelEl);
-
-  global.window.getComputedStyle = origGetComputedStyle;
-
-  eq('visGate: display:none table → labelEl.style.display is "none"',
-    labelEl.style.display, 'none');
-})();
-
-// visibility:hidden (computed style) → labelEl.style.display === 'none'
+// visibility:hidden (computed style) → buttonEl.style.display === 'none'
 (function visGate_visibilityHidden() {
   const origGetComputedStyle = global.window.getComputedStyle;
   global.window.getComputedStyle = () => ({ display: 'block', visibility: 'hidden' });
@@ -808,31 +789,31 @@
   const table = {
     getBoundingClientRect() { return { width: 400, height: 200, top: 100, right: 500, bottom: 300, left: 100 }; },
   };
-  const labelEl = { style: {} };
+  const buttonEl = { style: {} };
 
-  positionTablePillbox(table, labelEl);
+  positionTablePillbox(table, buttonEl);
 
   global.window.getComputedStyle = origGetComputedStyle;
 
-  eq('visGate: visibility:hidden table → labelEl.style.display is "none"',
-    labelEl.style.display, 'none');
+  eq('visGate: visibility:hidden table → buttonEl.style.display is "none"',
+    buttonEl.style.display, 'none');
 })();
 
-// zero-area bounding rect → labelEl.style.display === 'none'
+// zero-area bounding rect → buttonEl.style.display === 'none'
 (function visGate_zeroAreaRect() {
   // No need to override getComputedStyle — default stub returns visible style.
   const table = {
     getBoundingClientRect() { return { width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0 }; },
   };
-  const labelEl = { style: {} };
+  const buttonEl = { style: {} };
 
-  positionTablePillbox(table, labelEl);
+  positionTablePillbox(table, buttonEl);
 
-  eq('visGate: zero-area rect table → labelEl.style.display is "none"',
-    labelEl.style.display, 'none');
+  eq('visGate: zero-area rect table → buttonEl.style.display is "none"',
+    buttonEl.style.display, 'none');
 })();
 
-// normal rect + no hiding → labelEl.style.display === '' (visible)
+// normal rect + no hiding → buttonEl.style.display === '' (visible)
 (function visGate_normalVisible() {
   // Default getComputedStyle stub returns display:block / visibility:visible.
   const origScrollX = global.window.scrollX;
@@ -843,19 +824,19 @@
   const table = {
     getBoundingClientRect() { return { width: 400, height: 200, top: 100, right: 500, bottom: 300, left: 100 }; },
   };
-  const labelEl = { style: {} };
+  const buttonEl = { style: {} };
 
-  positionTablePillbox(table, labelEl);
+  positionTablePillbox(table, buttonEl);
 
   global.window.scrollX = origScrollX;
   global.window.scrollY = origScrollY;
 
-  eq('visGate: normal visible table → labelEl.style.display is "" (shown)',
-    labelEl.style.display, '');
+  eq('visGate: normal visible table → buttonEl.style.display is "" (shown)',
+    buttonEl.style.display, '');
 })();
 
 // ---------------------------------------------------------------------------
-// Clip gate in positionTablePillbox: a table inside a scrolling page area
+// A table inside a scrolling page area: the table pillbox hides while its spot is cut off
 // ---------------------------------------------------------------------------
 //
 // A web application such as a chat page scrolls a page area, not the window.
@@ -1077,11 +1058,11 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // New AC tests
 // =============================================================================
 
-// --- Knob travel derivation ---
+// --- Knob travel with the default geometry ---
 // TABLE_PILLBOX_KNOB_TRAVEL_PX === TABLE_PILLBOX_PILL_WIDTH_PX - TABLE_PILLBOX_KNOB_PX - 2*TABLE_PILLBOX_KNOB_INSET_PX === 12
 
 (function tablePillboxAC_knobTravelDerivation() {
-  eq('expanding-table-pillbox: TABLE_PILLBOX_KNOB_TRAVEL_PX equals 12 (default geometry)',
+  eq('expanding-table-pillbox: a 28 px expanded width, a 12 px knob, and 2 px insets give a 12 px knob travel',
     TABLE_PILLBOX_KNOB_TRAVEL_PX, 12);
 })();
 
@@ -1499,7 +1480,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   // Drain the captured timer (simulating TABLE_PILLBOX_AUTO_COLLAPSE_MS passing)
   const timer = pendingTimers[pendingTimers.length - 1];
   const capturedMs = timer ? timer.ms : -1;
-  eq('expanding-table-pillbox: auto-collapse: timer duration equals TABLE_PILLBOX_AUTO_COLLAPSE_MS',
+  eq('expanding-table-pillbox: auto-collapse: a first touch tap sets a timer for the auto-collapse delay',
     capturedMs, TABLE_PILLBOX_AUTO_COLLAPSE_MS);
 
   if (timer && timer.fn) timer.fn();  // fire the callback
@@ -1518,9 +1499,9 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 
 (function tablePillboxAC_tapOutside_collapses() {
   // We need to capture the global 'pointerdown' listener added to document.
-  // Reset _globalTapCollapseAdded so createTablePillbox re-registers it on our stub.
-  const origTapCollapseAdded = _globalTapCollapseAdded;
-  _globalTapCollapseAdded = false;
+  // Reset globalTapCollapseAdded so createTablePillbox re-registers it on our stub.
+  const origTapCollapseAdded = globalTapCollapseAdded;
+  globalTapCollapseAdded = false;
 
   const docListeners = {};
   const origDocAddListener = global.document.addEventListener;
@@ -1612,7 +1593,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   global.document.querySelectorAll = origQSA;
   global.setTimeout = origSetTimeout;
   global.clearTimeout = origClearTimeout;
-  _globalTapCollapseAdded = origTapCollapseAdded;
+  globalTapCollapseAdded = origTapCollapseAdded;
 
   eq('expanding-table-pillbox: tap-outside collapses .expanded button',
     buttonEl.classList.contains('expanded'), false);
@@ -1620,8 +1601,8 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 
 (function tablePillboxAC_tapInside_preservesExpanded() {
   // Reset so the listener gets re-registered on our stubbed document.addEventListener
-  const origTapCollapseAdded2 = _globalTapCollapseAdded;
-  _globalTapCollapseAdded = false;
+  const origTapCollapseAdded2 = globalTapCollapseAdded;
+  globalTapCollapseAdded = false;
 
   const docListeners = {};
   const origDocAddListener = global.document.addEventListener;
@@ -1707,7 +1688,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   global.document.querySelectorAll = origQSA;
   global.setTimeout = origSetTimeout;
   global.clearTimeout = origClearTimeout;
-  _globalTapCollapseAdded = origTapCollapseAdded2;
+  globalTapCollapseAdded = origTapCollapseAdded2;
 
   eq('expanding-table-pillbox: tap-inside preserves .expanded on button',
     buttonEl.classList.contains('expanded'), true);
@@ -1725,7 +1706,8 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // after each sub-test, and for restoring chrome.runtime.sendMessage.
 
 // ---------------------------------------------------------------------------
-// sidebar open + different table → rebind + RESET dispatched
+// A click on a different table's table pillbox → that table becomes active,
+// one state:tableSwitched, and the table rounds
 // ---------------------------------------------------------------------------
 
 (function sidebarRebind_mouse_differentTable() {
@@ -1746,7 +1728,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   const origSendMessage = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
 
-  // Set module state: sidebar open, bound to tableA
+  // tableA is the active table.
   lastRightClickedTable = tableA;
 
   // Create a table pillbox for tableB and click it (mouse path)
@@ -1762,7 +1744,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   lastRightClickedTable = null;
 
   // 1a. lastRightClickedTable must be tableB
-  eq('rebind mouse: lastRightClickedTable rebound to tableB',
+  eq('rebind mouse: a click on tableB\'s table pillbox makes tableB the active table',
     reboundToB_mouse, true);
 
   // 1b. state:tableSwitched dispatched exactly once. The sidebar's handler
@@ -1816,7 +1798,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   global.chrome.runtime.sendMessage = origSendMessage;
   lastRightClickedTable = null;
 
-  eq('rebind touch: lastRightClickedTable rebound to tableB',
+  eq('rebind touch: a second touch tap on tableB\'s table pillbox makes tableB the active table',
     reboundToB_touch, true);
 
   const switchCalls = sentMessages.filter(m => m.topic === 'state:tableSwitched');
@@ -1832,7 +1814,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 })();
 
 // ---------------------------------------------------------------------------
-// sidebar open, clicking same table → NO RESET dispatched
+// A click on the active table's table pillbox → no state:tableSwitched
 // ---------------------------------------------------------------------------
 
 (function sidebarRebind_mouse_sameTable() {
@@ -1861,7 +1843,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 })();
 
 // ---------------------------------------------------------------------------
-// same table → NO RESET dispatched
+// A second touch tap on the active table's table pillbox → no state:tableSwitched
 // ---------------------------------------------------------------------------
 
 (function sidebarRebind_touch_sameTable() {
@@ -1889,7 +1871,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 })();
 
 // ---------------------------------------------------------------------------
-// sidebar CLOSED → clicking a different table → NO RESET
+// A click on a different table's table pillbox → one state:tableSwitched
 // ---------------------------------------------------------------------------
 
 (function sidebarRebind_mouse_sidebarClosed() {
@@ -1909,7 +1891,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   const origSendMessage = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
 
-  // Sidebar is CLOSED, lastRightClickedTable is tableA (different from tableB)
+  // tableA is the active table.
   lastRightClickedTable = tableA;
 
   const buttonB = createTablePillboxWithSpies(tableB);
@@ -1924,7 +1906,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 })();
 
 // ---------------------------------------------------------------------------
-// sidebar CLOSED → NO RESET
+// A second touch tap on a different table's table pillbox → one state:tableSwitched
 // ---------------------------------------------------------------------------
 
 (function sidebarRebind_touch_sidebarClosed() {
@@ -1956,191 +1938,6 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   eq('second tap on a different table reports the switch with the sidebar closed (part one: nothing reads that state)',
     switchCalls.length, 1);
 })();
-
-// ---------------------------------------------------------------------------
-// Sanity: isAccessibilityArtifact round-trip on the embedded-table fixtures
-// ---------------------------------------------------------------------------
-(function pass2aria_sanity_artifactEmbedded() {
-  const artifact = makeArtifactEmbeddedTable();
-  eq('pass2-aria sanity: isAccessibilityArtifact(embedded accessibility artifact) === true',
-    isAccessibilityArtifact(artifact), true);
-})();
-
-(function pass2aria_sanity_realEmbedded() {
-  const real = makeRealEmbeddedTable();
-  eq('pass2-aria sanity: isAccessibilityArtifact(real embedded table) === false',
-    isAccessibilityArtifact(real), false);
-})();
-
-// ---------------------------------------------------------------------------
-// ARIA grid with ONLY accessibility artifacts → Pass 2 registers it with a table pillbox
-// ---------------------------------------------------------------------------
-(function pass2aria_onlyArtifactTables_getsTablePillbox() {
-  const artifact1 = makeArtifactEmbeddedTable();
-  const artifact2 = makeArtifactEmbeddedTable();
-  const grid = makeAriaGrid([artifact1, artifact2]);
-
-  withTablePillboxDocumentMock(function() {
-    // Pass 1 sees no tables; Pass 2 sees our grid.
-    global.document.querySelectorAll = function(sel) {
-      if (sel === 'table') return [];
-      if (sel === '[role="grid"], [role="table"]') return [grid];
-      return [];
-    };
-
-    injectTablePillboxes();
-  });
-
-  eq('pass2-aria: grid with only accessibility artifacts registers',
-    DR_MODEL.hasTable(grid), true);
-  eq('pass2-aria: grid with only accessibility artifacts gets a table pillbox registered',
-    tablePillboxes.has(grid), true);
-})();
-
-// ---------------------------------------------------------------------------
-// ARIA grid wrapping a REAL table → Pass 2 bows out (no table pillbox, no class)
-// ---------------------------------------------------------------------------
-(function pass2aria_realTable_pass2BowsOut() {
-  const realTbl = makeRealEmbeddedTable();
-  const grid    = makeAriaGrid([realTbl]);
-
-  withTablePillboxDocumentMock(function() {
-    global.document.querySelectorAll = function(sel) {
-      if (sel === 'table') return [];
-      if (sel === '[role="grid"], [role="table"]') return [grid];
-      return [];
-    };
-
-    injectTablePillboxes();
-  });
-
-  eq('pass2-aria: grid wrapping a real table does NOT register',
-    DR_MODEL.hasTable(grid), false);
-  eq('pass2-aria: grid wrapping a real table does NOT get a table pillbox',
-    tablePillboxes.has(grid), false);
-})();
-
-// ---------------------------------------------------------------------------
-// grid with an artifact + one real table → still skipped
-// ---------------------------------------------------------------------------
-(function pass2aria_mixedArtifactAndReal_bowsOut() {
-  const artifact = makeArtifactEmbeddedTable();
-  const real    = makeRealEmbeddedTable();
-  const grid    = makeAriaGrid([artifact, real]);
-
-  withTablePillboxDocumentMock(function() {
-    global.document.querySelectorAll = function(sel) {
-      if (sel === 'table') return [];
-      if (sel === '[role="grid"], [role="table"]') return [grid];
-      return [];
-    };
-
-    injectTablePillboxes();
-  });
-
-  eq('pass2-aria: grid with accessibility artifact and real table does NOT register',
-    DR_MODEL.hasTable(grid), false);
-  eq('pass2-aria: grid with accessibility artifact and real table does NOT get a table pillbox',
-    tablePillboxes.has(grid), false);
-})();
-
-// ---------------------------------------------------------------------------
-// Adversarial: grid with NO embedded tables → Pass 2 adds class + table pillbox
-// (no embedded tables means .some(!artifact) is false — empty array)
-// ---------------------------------------------------------------------------
-(function pass2aria_noEmbeddedTables_getsTablePillbox() {
-  const grid = makeAriaGrid([]);
-
-  withTablePillboxDocumentMock(function() {
-    global.document.querySelectorAll = function(sel) {
-      if (sel === 'table') return [];
-      if (sel === '[role="grid"], [role="table"]') return [grid];
-      return [];
-    };
-
-    injectTablePillboxes();
-  });
-
-  eq('pass2-aria: grid with no embedded tables registers',
-    DR_MODEL.hasTable(grid), true);
-  eq('pass2-aria: grid with no embedded tables gets a table pillbox',
-    tablePillboxes.has(grid), true);
-})();
-
-// ---------------------------------------------------------------------------
-// Adversarial: an already registered grid is skipped (preserved guard)
-// ---------------------------------------------------------------------------
-(function pass2aria_alreadyRegistered_skipped() {
-  const grid = makeAriaGrid([]);
-  DR_MODEL.registerTable(grid); // the "already found" signal pass 2 checks
-
-  withTablePillboxDocumentMock(function() {
-    global.document.querySelectorAll = function(sel) {
-      if (sel === 'table') return [];
-      if (sel === '[role="grid"], [role="table"]') return [grid];
-      return [];
-    };
-
-    injectTablePillboxes();
-  });
-
-  // Already registered → skipped → tablePillboxes should NOT have a new entry
-  eq('pass2-aria: already registered grid gets no table pillbox again',
-    tablePillboxes.has(grid), false);
-})();
-
-// ---------------------------------------------------------------------------
-// Adversarial: element with tagName=TABLE is skipped by the tagName guard
-// (the preserved `if (el.tagName === 'TABLE') return;` fires before the new line)
-// ---------------------------------------------------------------------------
-(function pass2aria_tableTagName_skipped() {
-  const artifact = makeArtifactEmbeddedTable();
-  // Make an ARIA-grid-matching element that is itself a <TABLE>
-  const classes = new Set();
-  const gridTable = {
-    tagName: 'TABLE',    // triggers the early-return guard
-    classList: {
-      contains(c) { return classes.has(c); },
-      add(c)      { classes.add(c); },
-      remove(c)   { classes.delete(c); },
-    },
-    querySelectorAll(sel) {
-      return sel === 'table' ? [artifact] : [];
-    },
-    getBoundingClientRect() { return { top: 0, right: 0, bottom: 0, left: 0 }; },
-  };
-
-  withTablePillboxDocumentMock(function() {
-    global.document.querySelectorAll = function(sel) {
-      if (sel === 'table') return [];
-      if (sel === '[role="grid"], [role="table"]') return [gridTable];
-      return [];
-    };
-
-    injectTablePillboxes();
-  });
-
-  eq('pass2-aria: element with tagName=TABLE is skipped by tagName guard',
-    DR_MODEL.hasTable(gridTable), false);
-  eq('pass2-aria: element with tagName=TABLE does not get a table pillbox via Pass 2',
-    tablePillboxes.has(gridTable), false);
-})();
-
-// ---------------------------------------------------------------------------
-// Checked here:
-//
-// Clicking the table pillbox while the sidebar is open changes
-//      enabledEl.checked to match the table's new rounded/unrounded state
-//      (sidebar handler updates the checkbox).
-//
-// Clicking the sidebar pillbox still updates the table pillbox
-//      state (regression guard).
-//
-// Toggling a table that is NOT lastRightClickedTable sends no spurious
-//      sidebar update.
-//
-// Existing tests pass (covered by running the full suite without --bail).
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Clicking the table pillbox while the sidebar is open sends the
@@ -2292,9 +2089,9 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   global.chrome.runtime.sendMessage = origSend;
   lastRightClickedTable = null;
 
-  eq('clicking non-lastRightClickedTable reassigns lastRightClickedTable',
+  eq('a click on the table pillbox of a table that is not active makes that table active',
     lrc === tableA, true);
-  eq('clicking non-lastRightClickedTable sends state:tableSwitched',
+  eq('a click on the table pillbox of a table that is not active sends state:tableSwitched',
     actions.includes('state:tableSwitched'), true);
   eq('the switch reaches the sidebar before the settings notice',
     actions.indexOf('state:tableSwitched') < actions.indexOf('state:settingsChanged'), true);
@@ -2355,8 +2152,8 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 
 // Right-click activation
 // ---------------------------------------------------------------------------
-// Right-clicking a table causes flashActiveTable to run on that table.
-// state:tableActivated onMessage in sidebar.js calls flashSidebarContainer.
+// Right-clicking a table draws the whole-table outline on that table.
+// The sidebar's state:tableActivated subscriber calls flashSidebarContainer.
 // Right-clicking a non-table element produces NO flash and NO state:tableActivated send.
 // background.js does NOT relay state:tableActivated.
 // ---------------------------------------------------------------------------
@@ -2480,7 +2277,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     // Eval content scripts; the contextmenu listener is registered against captureDoc.
     // contentScriptBundle is already the manifest-order concatenation of all
     // content scripts (see the bootstrap section above).
-    eval(contentScriptBundle);
+    eval(contentScriptBundle + '\nglobalThis.__tca_DR_MODEL = DR_MODEL;');
 
     eq('table-activation runtime: contextmenu handler was captured',
       typeof capturedHandler, 'function');
@@ -2509,14 +2306,17 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
       querySelector() { return null; },
       querySelectorAll() { return []; },
     };
+    // The mock holds no rows, so it resolves only as a registered table: a
+    // native table with nothing to simplify activates nothing.
+    global.__tca_DR_MODEL.registerTable(mockTable);
     sentMessages.length = 0;
     capturedHandler({ target: mockTable });
 
-    eq('active table runtime: flashActiveTable adds dr-ext-active-flash to the table',
+    eq('active table runtime: a right-click on a table adds dr-ext-active-flash to the table',
       flashedClasses.includes('dr-ext-active-flash'),
       true);
 
-    eq('active table runtime: flashActiveTable adds the highlight stylesheet on the first right-click on a page',
+    eq('active table runtime: the first right-click on a page adds the highlight stylesheet',
       addedToHead.some((node) => String(node.textContent).includes('drExtActiveFlash')),
       true);
 
@@ -2543,6 +2343,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     // Restore globals after all handler calls are done.
     global.document = savedDoc;
     global.chrome   = savedChrome;
+    delete global.__tca_DR_MODEL;
   }
 })();
 
@@ -2823,6 +2624,53 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   });
 })();
 
+// --- a native table goes through the same step as a grid ---
+//
+// A native table with nothing to simplify activates nothing and flashes
+// nothing, the way a grid with nothing to simplify does. A native table the
+// scans have not registered registers through the right-click.
+
+(function rightClickRegisters_runtime_aNativeTableWithNothingToSimplifyActivatesNothing() {
+  withRightClickSandbox(function (ctx) {
+    const t = rwBuildTable('native', [['North', 'alpha'], ['South', 'bravo']], { header: ['Region', 'Code'] });
+
+    eq('right-click runtime: the contextmenu handler was captured',
+      typeof ctx.contextmenuHandler, 'function');
+    if (typeof ctx.contextmenuHandler !== 'function') return;
+
+    ctx.contextmenuHandler({ target: t.cell(0, 1) });
+
+    eq('right-click runtime: a click on a native table with nothing to simplify registers nothing',
+      ctx.model.getRegisteredTables().length, 0);
+    eq('right-click runtime: that click leaves no active table', ctx.model.getActiveTable() === null, true);
+    eq('right-click runtime: that click flashes nothing',
+      t.table.classList.contains('dr-ext-active-flash'), false);
+    eq('right-click runtime: that click reports no table as activated',
+      ctx.sentMessages.some((m) => m.topic === 'state:tableActivated'), false);
+  });
+})();
+
+(function rightClickRegisters_runtime_anUnregisteredNativeTableRegisters() {
+  withRightClickSandbox(function (ctx) {
+    const t = rwBuildTable('native', [['North', '4,281,905'], ['South', '622,148']], { header: ['Region', 'Units'] });
+
+    eq('right-click runtime: the contextmenu handler was captured',
+      typeof ctx.contextmenuHandler, 'function');
+    if (typeof ctx.contextmenuHandler !== 'function') return;
+
+    ctx.contextmenuHandler({ target: t.cell(1, 1) });
+
+    eq('right-click runtime: a click on an unregistered native data table registers it',
+      ctx.model.hasTable(t.table), true);
+    eq('right-click runtime: that native table becomes the active table',
+      ctx.model.getActiveTable() === t.table, true);
+    eq('right-click runtime: that native table carries a table pillbox',
+      ctx.tablePillboxes.has(t.table), true);
+    eq('right-click runtime: that click reports the table as activated',
+      ctx.sentMessages.some((m) => m.topic === 'state:tableActivated'), true);
+  });
+})();
+
 // --- the route needs no pending observer ---
 
 (function rightClickRegisters_runtime_theRouteInstallsNoObserver() {
@@ -2891,7 +2739,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 
   flashActiveTable(mockTable);
 
-  eq('active table live: flashActiveTable adds dr-ext-active-flash class',
+  eq('active table live: a whole-table outline adds the dr-ext-active-flash class',
     addedClasses.includes('dr-ext-active-flash'),
     true);
 })();
@@ -2983,4 +2831,87 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   eq('#330: the range pulse frames the cell at the grid column, not at the read position',
     overlay && { left: overlay.style.left, width: overlay.style.width },
     { left: '100px', width: '100px' });
+})();
+
+// ---------------------------------------------------------------------------
+// A pulse over one column of a div-based grid frames that column's cells.
+// The reason the pulse reads cells through the table adapter sits on
+// flashRangePulse in table-pillbox-view.js.
+// ---------------------------------------------------------------------------
+(function tablePillboxSplit_rangeFlashWorksOnGrids() {
+  // 2x2 div-based grid (no ARIA roles, no vendor classes — the plain
+  // fallback shape GridAdapter already supports elsewhere in this suite).
+  const grid = makeGridWrapper([
+    ['1,000,000', '500'],
+    ['2,000,000', '750'],
+  ]);
+
+  // Distinct bounding rects per cell (document order: row0/col0, row0/col1,
+  // row1/col0, row1/col1) so the union rect proves WHICH cells were matched
+  // (column 1 only) rather than the whole grid or nothing at all.
+  const rects = [
+    { top: 0,  left: 0,   right: 100, bottom: 20 },
+    { top: 0,  left: 100, right: 200, bottom: 20 },
+    { top: 20, left: 0,   right: 100, bottom: 40 },
+    { top: 20, left: 100, right: 200, bottom: 40 },
+  ];
+  grid.cellEls.forEach((cell, i) => { cell.getBoundingClientRect = () => rects[i]; });
+
+  // Intercept the overlay div flashRangePulse creates and appends.
+  const origCreateElement = global.document.createElement;
+  const origBody = global.document.body;
+  const origSetTimeout = global.setTimeout;
+  let overlay = null;
+  global.document.createElement = (tag) => {
+    const el = { style: {}, addEventListener() {} };
+    if (tag === 'div') overlay = el;
+    return el;
+  };
+  const appended = [];
+  global.document.body = { appendChild(el) { appended.push(el); } };
+  global.setTimeout = () => 0; // avoid a real pending 1.5s cleanup timer
+
+  // Range expression equivalent to selecting column B only (both rows) —
+  // a partial range, so a whole-grid fallback would be visibly wrong.
+  const ranges = [{ colMin: 1, colMax: 1, rowMin: 0, rowMax: 1 }];
+  flashRangePulse(grid.wrapperEl, ranges);
+
+  global.document.createElement = origCreateElement;
+  global.document.body = origBody;
+  global.setTimeout = origSetTimeout;
+
+  eq('range-flash grid: an overlay is appended to document.body (not silently skipped)',
+    appended.length, 1);
+  eq('range-flash grid: the overlay carries the range-pulse class',
+    overlay && overlay.className, 'dr-ext-range-pulse');
+  eq('range-flash grid: the overlay is sized/positioned to the union of the matched grid cells (col 1 only), not the whole grid or nothing',
+    overlay && { top: overlay.style.top, left: overlay.style.left, width: overlay.style.width, height: overlay.style.height },
+    { top: '0px', left: '100px', width: '100px', height: '40px' });
+})();
+
+// --- The table pillbox redraws from the model's settings notice. A sidebar
+// write reaches the table pillbox with no redraw call from the controller,
+// on a table with nothing to simplify, where the screen never changes. ---
+(function tablePillboxRedrawsFromTheSettingsNotice() {
+  runPressFixture(() => {
+    const table = makePressTable('no digits');
+    DR_BUS.publish('intent:activateTable', { table });
+    const tablePillbox = tablePillboxes.get(table);
+
+    withCreateTreeWalker(() => {
+      askContentScript({ topic: 'request:applySettings',
+        settings: Object.assign({}, DR_DEFAULTS, { enabled: true }) });
+    });
+    eq('settings notice: the table pillbox shows on after the sidebar writes on',
+      tablePillbox.getAttribute('aria-pressed'), 'true');
+
+    withCreateTreeWalker(() => {
+      askContentScript({ topic: 'request:applySettings',
+        settings: Object.assign({}, DR_DEFAULTS, { enabled: false }) });
+    });
+    eq('settings notice: the table pillbox shows off after the sidebar writes off',
+      tablePillbox.getAttribute('aria-pressed'), 'false');
+  });
+  eq('settings notice: the controller holds no direct table pillbox redraw',
+    /syncTablePillbox\(/.test(sourceByName('content.js') || 'syncTablePillbox('), false);
 })();

@@ -73,7 +73,7 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 
 **Floor at the value's OoM:** After rounding, the magnitude of the result is at least `10^floor(log10(|value|))`. A tens-of-millions value can never collapse to `0`, regardless of the requested offset.
 
-**Floor at the integer offset:** A fractional offset whose integer part is 1 or more never rounds finer than the corresponding integer offset. `ROUND_DYNAMIC(87054321, -2.5)` returns 87,100,000 — the `-2` result floors the raw `-2.5` result.
+**Floor at the integer offset:** At a fractional offset whose integer part is 1 or more in size, the result is never smaller than the integer offset's result. At a coarse offset, this keeps a large step from dropping the value to its own OoM: `ROUND_DYNAMIC(87054321, 1.5)` returns 100,000,000, the `1` result, not 10,000,000. At a fine offset, it lifts the result: `ROUND_DYNAMIC(87054321, -2.5)` returns 87,100,000, the `-2` result, not 87,050,000.
 
 **12 significant digits:** Results are trimmed to 12 significant digits, with ties rounding away from zero. This strips floating-point noise from sub-unit steps and is a real precision loss at fine offsets on large or highly precise inputs.
 
@@ -108,7 +108,7 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 - `"13,63"` → `"13,63"` (a comma counts only in the group shape, so a European decimal comma is not read)
 - `"1.234,56"` → `"1.234,56"` (a comma after the decimal dot is not read)
 
-**Currency signs:** Every sign and code in the currency list (`CURRENCIES` in [`lib/dr-number/core.js`](../chrome-extension/lib/dr-number/core.js)), letter signs included. A sign written in letters counts only as its own token, so the rand's "R" counts in "R47" and not in "Revenue". A currency code beside a number makes a unit number, so "CAD45.67" and "1,234 USD" round.
+**Currency signs:** Every sign and code in the currency list (`CURRENCIES` in [`lib/dr-number/reader.js`](../chrome-extension/lib/dr-number/reader.js)), letter signs included. A sign written in letters counts only as its own token, so the rand's "R" counts in "R47" and not in "Revenue". A currency code beside a number makes a unit number, so "CAD45.67" and "1,234 USD" round.
 
 **Identifier shapes:** A phone number, an IP address, a web or email address, an ISBN, a postal code, a digit run with a leading zero ("02134"), and digit groups split by spaces outside thousands grouping stay as written.
 
@@ -150,7 +150,7 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 
 ## Building
 
-`round_dynamic.js` is generated: do not edit it by hand. The Sheets build joins three sources into it: the license header and the Sheets entry source in [`src/`](./src/), and the shared library files the build script lists, which live in the Chrome extension's library: the rounding arithmetic, the number reader, the classification ladder, and the table step. The entry source holds `ROUND_DYNAMIC`, its help card text, the `[VERSION]` line, the fixed settings, the result kind, and the step that sorts each value by its type. Edit a source, then rebuild from the repository root and commit the rebuilt file:
+`round_dynamic.js` is generated: do not edit it by hand. The Sheets build joins three sources into it: the license header and the Sheets entry source in [`src/`](./src/), and the shared library files the build script lists, which live in the Chrome extension's library: the rounding arithmetic, the number reader, the classification ladder, and the table step. The entry source holds `ROUND_DYNAMIC`, its help card text, the `[VERSION]` line, the default offsets, the fixed settings, the result kind, and the Sheets input step. Edit a source, then rebuild from the repository root and commit the rebuilt file:
 
 ```bash
 node scripts/build-sheets.js
@@ -196,7 +196,7 @@ The Chrome extension has no such constraint: it writes plain numbers with traili
 
 ## See Also
 
-- [Design Doc](../docs/design.md) — Algorithm and concepts
+- [Design document](../docs/design.md) — How the system is built, and why
 - [Python version](../python/) — `pip install dynamic-rounding`
 - [Changelog](./CHANGELOG.md)
 

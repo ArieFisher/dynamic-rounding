@@ -5,7 +5,9 @@
 // The first sections load the number library and lib/dr-simplify alone, in a
 // fresh context that holds no page, no browser, no registry, and no log
 // buffer, and run the table step there. The later sections run the same cells
-// through the one simplification pass on a native table and compare.
+// through the one simplification pass on a native table and compare, check a
+// date across two text pieces on both table kinds, and check where the table
+// step's code lives.
 
 // The table step's settings for every case below: the offsets differ, so a
 // cell's band shows in its result.
@@ -52,7 +54,7 @@ function loadTableStepAlone(extraSource) {
   const context = vm.createContext({});
   const source = files.map((file) => sourceByName(file)).join('\n') + '\n' + (extraSource || '') + `
 ;({
-  tablePatches, classifyCell, decisionToLegacyInfo,
+  tablePatches, classifyCell, applyPatches,
   globals: {
     document: typeof document, window: typeof window, chrome: typeof chrome,
     DR_MODEL: typeof DR_MODEL, DR_LOG: typeof DR_LOG,
@@ -62,23 +64,14 @@ function loadTableStepAlone(extraSource) {
 }
 
 // Classify each cell of a table through the ladder alone, as plain
-// classified cells: text, info, and grid column.
+// classified cells: text, classification, and grid column.
 function tableStepCells(api, rows) {
   const cells = [];
   rows.forEach((row, rowIndex) => row.forEach((text, columnIndex) => {
-    const decision = api.classifyCell({ text, rowIndex, columnIndex, ranges: null }, TABLE_STEP_LADDER_OPTS);
-    cells.push({ text, info: api.decisionToLegacyInfo(decision), col: columnIndex });
+    const classification = api.classifyCell({ text, rowIndex, columnIndex, ranges: null }, TABLE_STEP_LADDER_OPTS);
+    cells.push({ text, classification, columnIndex });
   }));
   return cells;
-}
-
-// A text with its patches applied, right to left so each patch keeps the
-// position of the ones before it.
-function applyTableStepPatches(text, patches) {
-  return patches.slice().sort((a, b) => b.index - a.index).reduce((out, p) =>
-    (out.slice(p.index, p.index + p.numStr.length) === p.numStr
-      ? out.slice(0, p.index) + p.newNum + out.slice(p.index + p.numStr.length)
-      : out + ' [patch missed at ' + p.index + ']'), text);
 }
 
 (function tableStep_loadsWithNoPage() {
@@ -97,11 +90,11 @@ function applyTableStepPatches(text, patches) {
   if (loaded === null) return;
   const { api } = loaded;
   const result = api.tablePatches(tableStepCells(api, TABLE_STEP_ROWS), TABLE_STEP_SETTINGS);
-  const at = (r, c) => result.cells[r * TABLE_STEP_ROWS[0].length + c];
+  const at = (r, c) => result.patchedCells[r * TABLE_STEP_ROWS[0].length + c];
   eq('table step alone: the max magnitude comes from every number in the dataset, extracted cells included',
     result.maxMag, 6);
   eq('table step alone: one result per cell, in input order',
-    result.cells.map((cell) => cell.entry.text), TABLE_STEP_ROWS.flat());
+    result.patchedCells.map((cell) => cell.classifiedCell.text), TABLE_STEP_ROWS.flat());
   eq('table step alone: a pure cell takes one patch over its number span, after its leading whitespace',
     at(0, 0).patches,
     [{ index: 1, numStr: '8,584,629', newNum: '8,500,000' }]);
@@ -114,15 +107,17 @@ function applyTableStepPatches(text, patches) {
   eq('table step alone: the column post-pass reads the same date month-first in a month-first column',
     [at(0, 3).patches, at(2, 3).patches],
     [[{ index: 0, numStr: '3/4/2024', newNum: '3/2024' }], [{ index: 0, numStr: '3/4/2024', newNum: '3/2024' }]]);
-  eq('table step alone: the column post-pass settles the ambiguous dates in the cell entry',
-    [at(0, 2).entry.info.ambiguous, at(0, 3).entry.info.ambiguous], [false, false]);
+  eq('table step alone: the column post-pass settles the ambiguous dates in the classified cell',
+    [at(0, 2).classifiedCell.classification.pending, at(0, 3).classifiedCell.classification.pending].map((p) => p === 'ambiguous-date'), [false, false]);
   eq('table step alone: a skip cell takes no patch',
-    { mode: at(1, 0).entry.info.mode, patches: at(1, 0).patches },
+    { mode: at(1, 0).classifiedCell.classification.mode, patches: at(1, 0).patches },
     { mode: 'skip', patches: [] });
   eq('table step alone: a time cell takes one patch over its trimmed text',
     at(2, 0).patches, [{ index: 0, numStr: '10:47', newNum: '11:00' }]);
   eq('table step alone: each cell\'s text with its patches applied',
-    result.cells.map((cell) => applyTableStepPatches(cell.entry.text, cell.patches)),
+    result.patchedCells.map(({ classifiedCell: { text }, patches }) =>
+      (patches.every((p) => text.slice(p.index, p.index + p.numStr.length) === p.numStr)
+        ? api.applyPatches(text, patches) : 'patch missed')),
     TABLE_STEP_EXPECTED_ROWS.flat());
 })();
 
@@ -131,7 +126,7 @@ function applyTableStepPatches(text, patches) {
   if (loaded === null) return;
   const { api } = loaded;
   eq('table step alone: a space-grouped number inside words takes one patch, written with commas',
-    api.tablePatches(tableStepCells(api, [['Revenue 1 034 567 units']]), TABLE_STEP_SETTINGS).cells[0].patches,
+    api.tablePatches(tableStepCells(api, [['Revenue 1 034 567 units']]), TABLE_STEP_SETTINGS).patchedCells[0].patches,
     [{ index: 8, numStr: '1 034 567', newNum: '1,000,000' }]);
 })();
 
@@ -141,7 +136,7 @@ function applyTableStepPatches(text, patches) {
   const { api } = loaded;
   const cells = tableStepCells(api, [['  2024-03-15 ']]);
   eq('table step alone: a date cell\'s patch covers its trimmed text, at the end of its leading whitespace',
-    api.tablePatches(cells, TABLE_STEP_SETTINGS).cells[0].patches,
+    api.tablePatches(cells, TABLE_STEP_SETTINGS).patchedCells[0].patches,
     [{ index: 2, numStr: '2024-03-15', newNum: '2024-03' }]);
 })();
 
@@ -151,9 +146,9 @@ function applyTableStepPatches(text, patches) {
   const { api } = loaded;
   const cells = tableStepCells(api, [['8,500,000', '2096', 'Mar 2096']]);
   eq('table step alone: a number on its step, and a date with no day, take no patch',
-    api.tablePatches(cells, TABLE_STEP_SETTINGS).cells.map((cell) => cell.patches), [[], [], []]);
+    api.tablePatches(cells, TABLE_STEP_SETTINGS).patchedCells.map((cell) => cell.patches), [[], [], []]);
   eq('table step alone: a pure cell whose display simplifies takes a patch',
-    api.tablePatches(tableStepCells(api, [['35.0']]), TABLE_STEP_SETTINGS).cells[0].patches,
+    api.tablePatches(tableStepCells(api, [['35.0']]), TABLE_STEP_SETTINGS).patchedCells[0].patches,
     [{ index: 0, numStr: '35.0', newNum: '35' }]);
 })();
 
@@ -161,12 +156,12 @@ function applyTableStepPatches(text, patches) {
   const loaded = loadTableStepAlone();
   if (loaded === null) return;
   const { api } = loaded;
-  const cells = tableStepCells(api, TABLE_STEP_ROWS).map((cell) => Object.assign({ carried: cell.col }, cell));
+  const cells = tableStepCells(api, TABLE_STEP_ROWS).map((cell) => Object.assign({ carried: cell.columnIndex }, cell));
   const before = JSON.stringify(cells);
   const result = api.tablePatches(cells, TABLE_STEP_SETTINGS);
   eq('table step alone: the classified cells passed in stay unchanged', JSON.stringify(cells), before);
-  eq('table step alone: every other field of a cell passes through to its entry',
-    result.cells.every((cell, k) => cell.entry.carried === cells[k].col), true);
+  eq('table step alone: every other field of a cell passes through to its classified cell',
+    result.patchedCells.every((cell, k) => cell.classifiedCell.carried === cells[k].columnIndex), true);
 })();
 
 // --- A frozen max magnitude. ---
@@ -179,7 +174,7 @@ function applyTableStepPatches(text, patches) {
   const frozen = api.tablePatches(cells, TABLE_STEP_SETTINGS, 7);
   eq('table step, frozen max magnitude: the step returns the frozen max magnitude', frozen.maxMag, 7);
   eq('table step, frozen max magnitude: a magnitude-6 number rounds in the other band against it',
-    frozen.cells[0].patches, [{ index: 1, numStr: '8,584,629', newNum: '8,600,000' }]);
+    frozen.patchedCells[0].patches, [{ index: 1, numStr: '8,584,629', newNum: '8,600,000' }]);
   const frozenZero = api.tablePatches(cells, TABLE_STEP_SETTINGS, 0);
   eq('table step, frozen max magnitude: a frozen max magnitude of 0 stands', frozenZero.maxMag, 0);
   eq('table step, frozen max magnitude: no frozen max magnitude computes one from the dataset',
@@ -191,7 +186,6 @@ function applyTableStepPatches(text, patches) {
   // A stub declared after the real one replaces it in the same scope, so a
   // call to it throws.
   const loaded = loadTableStepAlone(
-    'function datasetMaxMagnitude() { throw new Error("the table step computed a max magnitude"); }\n' +
     'function findMaxMagnitude() { throw new Error("the table step computed a max magnitude"); }\n');
   if (loaded === null) return;
   const { api } = loaded;
@@ -199,7 +193,7 @@ function applyTableStepPatches(text, patches) {
   const run = (frozenMaxMag) => {
     try { return api.tablePatches(cells, TABLE_STEP_SETTINGS, frozenMaxMag).maxMag; } catch (e) { return String(e.message); }
   };
-  eq('table step, frozen max magnitude: with no frozen value the step computes one (the stub runs)',
+  eq('table step, frozen max magnitude: with no frozen value the step computes one',
     run(null), 'the table step computed a max magnitude');
   eq('table step, frozen max magnitude: with a frozen value the step computes none', run(6), 6);
 })();
@@ -210,7 +204,7 @@ function applyTableStepPatches(text, patches) {
   const loaded = loadTableStepAlone();
   if (loaded === null) return;
   const step = loaded.api.tablePatches(tableStepCells(loaded.api, TABLE_STEP_ROWS), TABLE_STEP_SETTINGS);
-  const stepTexts = step.cells.map((cell) => applyTableStepPatches(cell.entry.text, cell.patches));
+  const stepTexts = step.patchedCells.map((cell) => loaded.api.applyPatches(cell.classifiedCell.text, cell.patches));
   const passOpts = Object.assign({}, TABLE_STEP_LADDER_OPTS, TABLE_STEP_SETTINGS);
   eachRewriteKind(['native'], (kind, page, build) => {
     const t = build(TABLE_STEP_ROWS);
@@ -266,8 +260,8 @@ function applyTableStepPatches(text, patches) {
 (function tableStep_oneDefinitionOfEachRule() {
   const contentSrc = sourceByName('content.js');
   const DECL = (name) => new RegExp(`^\\s*function\\s+${name}\\s*\\(`, 'm');
-  const MOVED = ['decisionToLegacyInfo', 'resolveAmbiguousDates', 'datasetMaxMagnitude',
-    'classifiedCellPatches', 'tablePatches'];
+  const TABLE_STEP_FUNCTIONS = ['isAmbiguousDateClassification', 'resolveAmbiguousDates', 'datasetMaxMagnitude',
+    'classifiedCellPatches', 'tablePatches', 'applyPatches'];
   // Every hand-written JavaScript file the extension and the Sheets library
   // ship, outside the tests. The Sheets library itself is skipped: the Sheets
   // build writes it from these files, so it holds a copy of table.js by
@@ -290,17 +284,17 @@ function applyTableStepPatches(text, patches) {
   eq('table step source: the walk finds the extension\'s content script', files.some((f) => f.endsWith('content.js')), true);
   const declaredIn = (name) => files.filter((file) => DECL(name).test(fs.readFileSync(file, 'utf8')))
     .map((file) => path.relative(path.join(__dirname, '..'), file));
-  eq('table step source: each table step function has one declaration in the repository',
-    MOVED.map((name) => [name, declaredIn(name)]),
-    MOVED.map((name) => [name, ['chrome-extension/lib/dr-simplify/table.js']]));
+  eq('table step source: each function in lib/dr-simplify/table.js has one declaration in the repository',
+    TABLE_STEP_FUNCTIONS.map((name) => [name, declaredIn(name)]),
+    TABLE_STEP_FUNCTIONS.map((name) => [name, ['chrome-extension/lib/dr-simplify/table.js']]));
   // The page-free part of a cell's patches: content.js's cellPatches holds
   // none of the rounding or formatting calls the table step makes.
   const body = sourceBodyOf(contentSrc, 'function cellPatches(');
   eq('table step source: content.js declares cellPatches', body !== '', true);
-  const ROUNDING_CALLS = /\b(roundCellSetAware|formatNumber|roundDateText|roundTimeText|pureNumberSpan|findMaxMagnitude|pickDateFormatHint|resolveAmbiguousDateDecision)\s*\(/g;
+  const ROUNDING_CALLS = /\b(roundValueSetAware|formatNumber|roundDateText|roundTimeText|pureNumberSpan|findMaxMagnitude|pickDateFormatHint|resolveAmbiguousDateClassification)\s*\(/g;
   eq('table step source: content.js\'s cellPatches makes no rounding or formatting call',
     (body || '').match(ROUNDING_CALLS) || [], []);
   eq('table step source: content.js calls no column post-pass or max magnitude rule outside the table step',
     [...new Set((contentSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
-      .match(/\b(pickDateFormatHint|resolveAmbiguousDateDecision|findMaxMagnitude|roundDateText|roundTimeText|pureNumberSpan)\s*\(/g) || []))], []);
+      .match(/\b(pickDateFormatHint|resolveAmbiguousDateClassification|findMaxMagnitude|roundDateText|roundTimeText|pureNumberSpan)\s*\(/g) || []))], []);
 })();

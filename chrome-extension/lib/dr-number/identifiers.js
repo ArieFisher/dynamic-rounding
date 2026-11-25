@@ -1,9 +1,4 @@
-/**
- * DynamicRounding Chrome Extension
- * https://github.com/ArieFisher/dynamic-rounding
- * MIT License
- * Copyright (c) 2026 Arie Fisher
- */
+// Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
 /**
  * Identifier shapes: text shapes that read as a code rather than a quantity —
@@ -14,16 +9,17 @@
  * One check finds every code in a cell: findIdentifiers searches the cell's
  * text once for every shape and records, for each code it finds, whether the
  * code fills the cell. A code fills the cell when nothing stands around it
- * but the format marks, signs, and brackets the pure number span steps past
- * (PURE_LEAD_PATTERN and PURE_TRAIL_PATTERN in parsing.js), so "(416)
- * 555-1234" and "$ 416-555-1234" fill their cells. A text in thousands
+ * but the format marks, signs, and brackets the number span of a pure cell
+ * steps past (PURE_LEAD_PATTERN and PURE_TRAIL_PATTERN in
+ * numbers-in-text.js), so "(416) 555-1234" and "$ 416-555-1234" fill their
+ * cells. A text in thousands
  * grouping ("1 234 567 890") is a quantity, and no code fills it.
  *
  * The ladder reads the one result two ways. matchIdentifierShape returns the
  * name of a code that fills the cell, and classifyCell
  * (lib/dr-simplify/ladder.js) skips that cell (reason: 'identifier'), after
  * the date and time checks, so a date the date parser reads ("21 June 2020")
- * stays a date, and before the bracketed-number check. getIdentifierMaskedRanges
+ * stays a date, and before the number reader. getIdentifierMaskedRanges
  * returns the codes that count inside a cell with words ("Call 416-555-1234
  * about 1,613,245 units"), and extractSimplifyMatches drops every number
  * inside one, so the code stays as written and the other numbers round.
@@ -41,12 +37,12 @@
  * Each shape's pattern comes first; the list, the one search, and its two
  * readings close the file.
  *
- * Loaded by manifest content_scripts AFTER lib/dr-number/parsing.js, whose
- * two patterns build the fill tests here at load time, and BEFORE
- * lib/dr-number/index.js, which reads every function here into DR_NUMBER as
- * it loads. The Sheets build joins the files in the same order. All symbols
- * land on the shared global scope, the same convention core.js and
- * parsing.js use.
+ * Loaded by manifest content_scripts AFTER lib/dr-number/numbers-in-text.js,
+ * whose two patterns build the fill tests here at load time, and BEFORE
+ * lib/dr-number/index.js; see its header. The Sheets build joins the files in
+ * the same order. All symbols
+ * land on the shared global scope, the same convention every other
+ * lib/dr-number file uses.
  */
 
 // Where a shape inside text may start and end: not right after a letter, a
@@ -82,7 +78,7 @@ const PHONE_NUMBER_PATTERN = '\\+?(?:1[-.\\s]?)?\\d{3}[-.\\s]\\d{3}[-.\\s]\\d{4}
 
 // --- Grouped digits split by whitespace ---
 // A digit run split by whitespace reads as thousands grouping only in the
-// group shape (groupShapePattern, core.js, the one copy the number shape
+// group shape (groupShapePattern, reader.js, the one copy the number shape
 // test reads too), with an optional decimal part glued to the last group
 // ("1 234 567", "12 345.67"). Anything else with whitespace between two
 // digits — a first group over 3 digits, a later group not exactly 3 — is not
@@ -178,10 +174,10 @@ const LEADING_ZERO_PATTERN = '0\\d+(?![.,]\\d)';
 
 /**
  * True when [start, end) sits inside a longer run the pattern that finds a
- * number inside text (parsing.js) takes as one number, so the characters
- * are one group of that number. That pattern is the one place that states
- * what one number spans, so a group of a space-grouped or comma-grouped
- * number is never read a second way here.
+ * number inside text (numbers-in-text.js) takes as one number, so the characters
+ * are one group of that number. That pattern reads the one copy of a
+ * number's digit run (DIGIT_RUN_PATTERN), so a group of a space-grouped or
+ * comma-grouped number is never read a second way here.
  * @param {string} text
  * @param {number} start
  * @param {number} end

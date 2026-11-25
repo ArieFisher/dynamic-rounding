@@ -21,7 +21,7 @@ except ImportError:
 from . import _round_with_offset, _validate_offset, _preserve_type, DEFAULT_OFFSET
 
 # Regex for parsing formatted strings (JS-compatible). Matches the chrome
-# extension's lib/dr-number/core.js, the source of truth for this behavior.
+# extension's lib/dr-number/reader.js, the source of truth for this behavior.
 # Format marks dropped before a text reads as a number: currency signs,
 # percent signs, and whitespace, except whitespace between two digits. That
 # whitespace is a group mark ("1 234 567"), so it stays, as a comma does, for

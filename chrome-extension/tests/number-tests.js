@@ -2,91 +2,90 @@
 
 // --- extractNumbersInText (multi-match) ---
 
-eq('extractAll: range with en-dash',
+eq('extractNumbersInText: range with en-dash',
   extractNumbersInText('₹615.71–623.33 crore'),
   [
     { numStr: '615.71', num: 615.71, index: 1 },
     { numStr: '623.33', num: 623.33, index: 8 }
   ]);
 
-eq('extractAll: two-number sentence',
+eq('extractNumbersInText: two-number sentence',
   extractNumbersInText('between 1,200 and 3,400 units'),
   [
     { numStr: '1,200', num: 1200, index: 8 },
     { numStr: '3,400', num: 3400, index: 18 }
   ]);
 
-eq('extractAll: single number still returns one-element array',
+eq('extractNumbersInText: "286k" yields one number',
   extractNumbersInText('286k'),
   [{ numStr: '286', num: 286, index: 0 }]);
 
-eq('extractAll: no digits returns empty array',
+eq('extractNumbersInText: text with no digits yields no numbers',
   extractNumbersInText('N/A'),
   []);
 
-// --- Boundary guard: digits welded to letters are identifiers, not quantities ---
-// Rounding them yields a value that still looks like a valid identifier, so the
-// corruption cannot be spotted by eye. The whole run must be skipped.
+// --- Digits joined to letters yield no number ---
+// NUMBER_IN_TEXT_PATTERN (numbers-in-text.js) holds the reason.
 
 const numStrs = text => extractNumbersInText(text).map(m => m.numStr);
 
-eq('guard: application number is not mined for digits',
+eq('extractNumbersInText: application number "XR47182913MKB07" yields no numbers',
   numStrs('XR47182913MKB07'),
   []);
 
-eq('guard: trailing zero-padded segment is not mined',
+eq('extractNumbersInText: zero-padded code "MKB07" yields no numbers',
   numStrs('MKB07'),
   []);
 
-eq('guard: short label+digit is not mined',
+eq('extractNumbersInText: label "Q3" yields no numbers',
   numStrs('Q3'),
   []);
 
-eq('guard: refusal does not let the scan re-enter mid-number',
+eq('extractNumbersInText: "abc1,200" yields no numbers',
   numStrs('abc1,200'),
   []);
 
-// --- Boundary guard: a hyphen after a digit is a separator, not a minus sign ---
+// --- A hyphen after a digit is a separator, not a minus sign ---
 
-eq('guard: phone number yields two positive numbers',
+eq('extractNumbersInText: phone number yields two positive numbers',
   numStrs('555-1234'),
   ['555', '1234']);
 
-eq('guard: ZIP+4 yields two positive numbers',
+eq('extractNumbersInText: ZIP+4 yields two positive numbers',
   numStrs('12345-6789'),
   ['12345', '6789']);
 
-eq('guard: hyphen range yields two positive numbers',
+eq('extractNumbersInText: hyphen range yields two positive numbers',
   numStrs('10-20'),
   ['10', '20']);
 
-eq('guard: hyphen-typed range now matches en-dash behaviour',
+eq('extractNumbersInText: hyphen range with a currency sign yields two positive numbers',
   numStrs('₹1,968-2,054 crore'),
   ['1,968', '2,054']);
 
-eq('guard: en-dash range is unchanged',
+eq('extractNumbersInText: en-dash range with a currency sign yields two positive numbers',
   numStrs('₹1,968–2,054 crore'),
   ['1,968', '2,054']);
 
-eq('guard: year-month is no longer read as a negative month',
+eq('extractNumbersInText: year-month yields two positive numbers',
   numStrs('2022-04'),
   ['2022', '04']);
 
-// --- Boundary guard: genuine negatives and ordinary quantities still match ---
+// --- Negatives and plain amounts yield their numbers ---
 
-eq('guard: negative after whitespace still signed',
+eq('extractNumbersInText: negative after whitespace keeps its minus sign',
   numStrs('down -1,200 units'),
   ['-1,200']);
 
-eq('guard: leading negative still signed',
+eq('extractNumbersInText: leading negative keeps its minus sign',
   numStrs('-5.2% change'),
   ['-5.2']);
 
-eq('guard: currency-prefixed amount unaffected',
+eq('extractNumbersInText: currency-prefixed amount yields its digits',
   numStrs('$48,090.00'),
   ['48,090.00']);
 
-eq('guard: caret exponent notation unaffected',
+eq('extractNumbersInText: caret exponent notation yields two numbers',
   numStrs('10^12'),
   ['10', '12']);
 
@@ -108,25 +107,21 @@ eq('format: small int no commas',
   formatNumber(300, '286'),
   '300');
 
-eq('format: trailing zeros stripped when |x|<10',
-  formatNumber(1.5, '1.234'),
-  '1.5');
-
-eq('format: |x|>=10 drops decimals and groups the digits',
+eq('format: a whole result writes no decimals and groups its digits',
   formatNumber(1500, '1.234'),
   '1,500');
 
-// --- toNumber sanity (covered indirectly but pin behavior) ---
+// --- The number reader: plain, grouped, signed and bracketed text ---
 
-eq('toNumber: plain integer string', toNumber('286'), 286);
+eq('toNumber: "286" reads as 286', toNumber('286'), 286);
 
-eq('toNumber: comma number', toNumber('8,584,629'), 8584629);
+eq('toNumber: "8,584,629" reads as 8584629', toNumber('8,584,629'), 8584629);
 
-eq('toNumber: currency stripped', toNumber('$1,234.56'), 1234.56);
+eq('toNumber: "$1,234.56" reads as 1234.56', toNumber('$1,234.56'), 1234.56);
 
-eq('toNumber: parens treated as negative', toNumber('(500)'), -500);
+eq('toNumber: "(500)" reads as -500', toNumber('(500)'), -500);
 
-eq('toNumber: trailing word -> null', toNumber('286k'), null);
+eq('toNumber: "286k" reads as no number', toNumber('286k'), null);
 
 eq('toNumber: pure text -> null', toNumber('N/A'), null);
 
@@ -147,13 +142,13 @@ eq('toNumber: pure text -> null', toNumber('N/A'), null);
     return { mode: 'skip', num: null, text };
   });
 
-  const numericRange = [infos.map(i => i.num)];
-  const maxMag = findMaxMagnitude(numericRange);
+  const dataset = [infos.map(i => i.num)];
+  const maxMag = findMaxMagnitude(dataset);
   eq('e2e: max magnitude across mixed cells', maxMag, 6);
 
   const out = infos.map(info => {
     if (info.mode === 'skip') return info.text;
-    const rounded = roundCellSetAware(info.num, info.num, maxMag, -0.5, -0.5, 1);
+    const rounded = roundValueSetAware(info.num, maxMag, -0.5, -0.5, 1);
     if (rounded === info.num) return info.text;
     if (info.mode === 'pure') return writePureCell(rounded, info.text);
     const num = formatNumber(rounded, info.numStr);
@@ -174,7 +169,7 @@ eq('toNumber: pure text -> null', toNumber('N/A'), null);
   let out = text;
   for (let i = matches.length - 1; i >= 0; i--) {
     const m = matches[i];
-    const rounded = roundCellSetAware(m.num, m.num, maxMag, -0.5, -0.5, 1);
+    const rounded = roundValueSetAware(m.num, maxMag, -0.5, -0.5, 1);
     if (rounded === m.num) continue;
     const newNum = formatNumber(rounded, m.numStr);
     out = out.substring(0, m.index) + newNum + out.substring(m.index + m.numStr.length);
@@ -193,12 +188,12 @@ eq('toNumber: pure text -> null', toNumber('N/A'), null);
     return { mode: 'skip', num: null, text };
   });
 
-  const numericRange = [infos.map(i => i.num)];
-  const maxMag = findMaxMagnitude(numericRange);
+  const dataset = [infos.map(i => i.num)];
+  const maxMag = findMaxMagnitude(dataset);
 
   const out = infos.map(info => {
     if (info.mode === 'skip') return info.text;
-    const rounded = roundCellSetAware(info.num, info.num, maxMag, -0.5, -0.5, 1);
+    const rounded = roundValueSetAware(info.num, maxMag, -0.5, -0.5, 1);
     return info.mode === 'pure' ? writePureCell(rounded, info.text) : info.text;
   });
 
@@ -208,39 +203,36 @@ eq('toNumber: pure text -> null', toNumber('N/A'), null);
 
 // --- Additional extractNumbersInText cases ---
 
-eq('extractAll: three numbers in a sentence',
+eq('extractNumbersInText: three numbers in a sentence',
   extractNumbersInText('grew from 10 to 200 in 3,000 days').map(m => m.num),
   [10, 200, 3000]);
 
-eq('extractAll: decimal followed by integer',
+eq('extractNumbersInText: decimal followed by integer',
   extractNumbersInText('avg 4.5, peak 9'),
   [
     { numStr: '4.5', num: 4.5, index: 4 },
     { numStr: '9', num: 9, index: 14 }
   ]);
 
-eq('extractAll: indices are correct for splicing',
+eq('extractNumbersInText: "a 100 b 200 c" yields each number\'s index',
   extractNumbersInText('a 100 b 200 c').map(m => ({ s: m.numStr, i: m.index })),
   [{ s: '100', i: 2 }, { s: '200', i: 8 }]);
 
-eq('extractAll: zero is excluded',
+eq('extractNumbersInText: zero is excluded',
   extractNumbersInText('range 0 to 500').map(m => m.num),
   [500]);
 
 // --- A comma that ends a number is punctuation, not a separator ---
-// The match string must end in a digit. A trailing comma in numStr breaks
-// every step that searches the live text for that string: the link filter
-// cannot find "12," inside the <a> whose text node ends at "12", so the
-// linked number is kept; the patch step then finds "12" where it expects
-// "12," and skips, and the cell logs a patch that did not land.
-eq('extractAll: comma after a number is left out of the match',
+// The match string ends in a digit. DIGIT_RUN_PATTERN (numbers-in-text.js)
+// holds the reason.
+eq('extractNumbersInText: comma after a number is left out of the match',
   extractNumbersInText('See ref 12, total 9,850'),
   [
     { numStr: '12', num: 12, index: 8 },
     { numStr: '9,850', num: 9850, index: 18 }
   ]);
 
-eq('extractAll: a list of grouped numbers keeps each number\'s own separators',
+eq('extractNumbersInText: a list of grouped numbers keeps each number\'s own separators',
   extractNumbersInText('1,200, 3,400, and 5,600').map(m => m.numStr),
   ['1,200', '3,400', '5,600']);
 
@@ -254,20 +246,20 @@ eq('extractAll: a list of grouped numbers keeps each number\'s own separators',
   let out = text;
   for (let i = matches.length - 1; i >= 0; i--) {
     const m = matches[i];
-    const rounded = roundCellSetAware(m.num, m.num, maxMag, -0.5, -0.5, 1);
+    const rounded = roundValueSetAware(m.num, maxMag, -0.5, -0.5, 1);
     if (rounded === m.num) continue;
     const newNum = formatNumber(rounded, m.numStr);
     out = out.substring(0, m.index) + newNum + out.substring(m.index + m.numStr.length);
   }
 
   // maxMag = 3 (from 5000). 50 is magnitude 1, far from top -> uses offset_other (=top, both -0.5),
-  // so 50 rounds toward base = 10^1 * 0.5 = 5 -> 50.
+  // so 50 rounds toward step = 10^1 * 0.5 = 5 -> 50.
   // 5000 stays as 5,000.
   eq('range cell: low end keeps its precision when far below top magnitude',
     out, '50–5,000 range');
 })();
 
-// --- Splice safety: rounding does not affect later match indices because we go right-to-left ---
+// --- Two numbers in one text, one longer once rounded, both round in place ---
 (function spliceSafety() {
   // Numbers that change length when rounded: 8,584,629 (9 chars) -> 8,500,000 (9 chars, same).
   // Pick one that changes length: 286 (3) -> 300 (3) same. Use 9,876 -> 10,000 (length grows).
@@ -279,18 +271,18 @@ eq('extractAll: a list of grouped numbers keeps each number\'s own separators',
   let out = text;
   for (let i = matches.length - 1; i >= 0; i--) {
     const m = matches[i];
-    const rounded = roundCellSetAware(m.num, m.num, maxMag, -0.5, -0.5, 1);
+    const rounded = roundValueSetAware(m.num, maxMag, -0.5, -0.5, 1);
     if (rounded === m.num) continue;
     const newNum = formatNumber(rounded, m.numStr);
     out = out.substring(0, m.index) + newNum + out.substring(m.index + m.numStr.length);
   }
 
-  // Both magnitude 3. base = 500. 9876/500=19.75->20*500=10,000. 1234/500=2.47->2*500=1,000.
-  eq('splice safety: right-to-left replacement handles length-changing rounds',
+  // Both magnitude 3. step = 500. 9876/500=19.75->20*500=10,000. 1234/500=2.47->2*500=1,000.
+  eq('two numbers in place: "9,876 then 1,234" rounds to "10,000 then 1,000"',
     out, '10,000 then 1,000');
 })();
 
-// --- Parens-negative survives toNumber ---
+// --- The number reader: brackets, and texts with no digits ---
 eq('toNumber: parens with comma', toNumber('(1,234)'), -1234);
 
 eq('toNumber: empty string returns null', toNumber(''), null);
@@ -301,7 +293,7 @@ eq('toNumber: dollar sign only returns null', toNumber('$'), null);
 
 eq('toNumber: euro sign only returns null', toNumber('€'), null);
 
-eq('toNumber: currency symbol with spaces returns null', toNumber(' $ '), null);
+eq('toNumber: " $ " reads as no number', toNumber(' $ '), null);
 
 // --- Pure cell writes for common shapes ---
 eq('pure cell write: pure integer keeps commas',
@@ -361,7 +353,7 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
     simplifyDates: false, simplifyTimes: false,
     simplifyFirstColumn: false
   });
-  eq('exclude: first column with flag on', getExclusionReason('anything', 0, opts), 'firstColumn');
+  eq('exclude: first column with flag on', getExclusionReason('anything', 0, opts), 'first-column');
   eq('exclude: non-first column ignores flag', getExclusionReason('anything', 1, opts), null);
 })();
 
@@ -415,7 +407,7 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
 (function simplifyFirstRowTests() {
   // simplifyFirstRow=false: row 0 must be excluded regardless of cell content
   eq('simplifyFirstRow: row 0 excluded when flag is false',
-    getExclusionReason('1,234', 1, { simplifyFirstRow: false }, 0), 'firstRow');
+    getExclusionReason('1,234', 1, { simplifyFirstRow: false }, 0), 'first-row');
   // simplifyFirstRow=false: row 1 is not affected
   eq('simplifyFirstRow: row 1 not excluded when flag is false',
     getExclusionReason('1,234', 1, { simplifyFirstRow: false }, 1), null);
@@ -424,13 +416,13 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
     getExclusionReason('1,234', 1, { simplifyFirstRow: true }, 0), null);
   // simplifyFirstRow unset (default): row 0 IS excluded (!undefined = true, same as simplifyFirstRow=false)
   eq('simplifyFirstRow: row 0 excluded when flag is unset (default)',
-    getExclusionReason('1,234', 1, {}, 0), 'firstRow');
-  // simplifyFirstRow takes priority over firstColumn check
-  eq('simplifyFirstRow: firstRow beats firstColumn when both apply',
-    getExclusionReason('anything', 0, { simplifyFirstRow: false, simplifyFirstColumn: false }, 0), 'firstRow');
+    getExclusionReason('1,234', 1, {}, 0), 'first-row');
+  // simplifyFirstRow takes priority over the first-column check
+  eq('simplifyFirstRow: first-row beats first-column when both apply',
+    getExclusionReason('anything', 0, { simplifyFirstRow: false, simplifyFirstColumn: false }, 0), 'first-row');
 })();
 
-// First-match-wins priority: firstRow beats firstColumn beats percent beats currency
+// First-match-wins priority: first-row beats first-column beats percent beats currency
 // (dates and times are not exclusion reasons)
 (function exclusionPriority() {
   const opts = {
@@ -438,9 +430,9 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
     simplifyMixedPercent: false, simplifyMixedCurrency: false
   };
   eq('priority: first row wins even when value is a date',
-    getExclusionReason('2018', 0, opts, 0), 'firstRow');
+    getExclusionReason('2018', 0, opts, 0), 'first-row');
   eq('priority: first column wins even when value is a date (non-zero row)',
-    getExclusionReason('2018', 0, opts, 1), 'firstColumn');
+    getExclusionReason('2018', 0, opts, 1), 'first-column');
   eq('priority: year value not excluded when only first-row/col flags set (dates no longer excluded)',
     getExclusionReason('2018', 1, opts, 1), null);
 })();
@@ -574,66 +566,149 @@ eq('roundDateText: December 13, 2096 at decade -> 2090',
 eq('roundDateText: December 13, 2096 at century -> 2000',
   roundDateText('December 13, 2096', 'century'), '2000');
 
-// Time granularity
-eq('roundTimeText: minute granularity is a no-op',
+// Time granularity: one rule for a clock time and an ISO date-time. A time
+// rounds to the nearest hour or minute; a time in the last hour or the last
+// minute of the clock goes down, so no time passes midnight; seconds drop.
+const CLOCK_TIME_CASES = [
+  // [input, granularity, expected, what the case covers]
+  ['14:29:30', 'hour', '14:00', 'minutes and seconds read once, below the half hour'],
+  ['14:30:00', 'hour', '15:00', 'the half hour rounds up'],
+  ['14:30', 'hour', '15:00', 'the half hour rounds up with no seconds'],
+  ['14:31', 'hour', '15:00', 'past the half hour rounds up'],
+  ['14:29', 'hour', '14:00', 'below the half hour rounds down'],
+  ['3:45 PM', 'hour', '4:00 PM', 'a twelve-hour time keeps its meridiem'],
+  ['2:45pm', 'hour', '3:00pm', 'a lowercase meridiem keeps its case'],
+  ['11:45 AM', 'hour', '12:00 PM', 'the morning rounds up across noon'],
+  ['12:45 PM', 'hour', '1:00 PM', 'noon hour rounds up to one'],
+  ['12:45 AM', 'hour', '1:00 AM', 'midnight hour rounds up to one'],
+  ['09:05', 'hour', '09:00', 'a padded hour keeps its padding'],
+  ['02:30', 'hour', '03:00', 'a padded hour keeps its padding when it rounds up'],
+  ['22:45', 'hour', '23:00', 'the hour before the last hour rounds up'],
+  ['10:45 PM', 'hour', '11:00 PM', 'the hour before the last twelve-hour hour rounds up'],
+  ['23:45', 'hour', '23:00', 'the last hour goes down'],
+  ['23:30', 'hour', '23:00', 'the last hour goes down at the half hour'],
+  ['11:45 PM', 'hour', '11:00 PM', 'the last hour goes down with PM'],
+  ['11:58 p.m.', 'hour', '11:00 p.m.', 'the last hour goes down with a dotted meridiem'],
+  ['11:45', 'hour', '11:00', 'an hour of 11 with no meridiem goes down'],
+  ['23:59:45', 'hour', '23:00', 'the last minute goes down at hour'],
+  ['14:29:30', 'minute', '14:30', 'thirty seconds rounds up'],
+  ['14:29:29', 'minute', '14:29', 'below thirty seconds rounds down'],
+  ['14:59:30', 'minute', '15:00', 'the minute carries into the hour'],
+  ['11:59:30 AM', 'minute', '12:00 PM', 'the minute carries across noon'],
+  ['12:59:30 AM', 'minute', '1:00 AM', 'the minute carries out of the midnight hour'],
+  ['23:58:45', 'minute', '23:59', 'the last hour still rounds up to its last minute'],
+  ['23:59:45', 'minute', '23:59', 'the last minute goes down'],
+  ['11:59:45 PM', 'minute', '11:59 PM', 'the last minute goes down with PM'],
+  ['11:59:45', 'minute', '11:59', 'the last minute of an hour of 11 with no meridiem goes down'],
+  ['09:05:40', 'minute', '09:06', 'a padded hour keeps its padding at minute'],
+];
+
+for (const [input, granularity, expected, covers] of CLOCK_TIME_CASES) {
+  eq(`roundTimeText: ${input} at ${granularity} -> ${expected} (${covers})`,
+    roundTimeText(input, granularity), expected);
+}
+
+eq('roundTimeText: a time with no seconds is unchanged at minute',
   roundTimeText('14:30', 'minute'), null);
-
-eq('roundTimeText: hour rounds 14:30 up (round-half-up)',
-  roundTimeText('14:30', 'hour'), '15:00');
-
-eq('roundTimeText: hour rounds 14:31 up',
-  roundTimeText('14:31', 'hour'), '15:00');
-
-eq('roundTimeText: hour rounds 14:29 down',
-  roundTimeText('14:29', 'hour'), '14:00');
-
-eq('roundTimeText: hour with seconds',
-  roundTimeText('14:29:30', 'hour'), '15:00:00');
-
-eq('roundTimeText: hour with AM/PM preserved',
-  roundTimeText('2:45 PM', 'hour'), '3:00 PM');
-
-eq('roundTimeText: zero-pad preserved',
-  roundTimeText('02:30', 'hour'), '03:00');
-
+eq('roundTimeText: a twelve-hour time with no seconds is unchanged at minute',
+  roundTimeText('3:45 PM', 'minute'), null);
+eq('roundTimeText: a time already on the hour is unchanged at hour',
+  roundTimeText('14:00', 'hour'), null);
 eq('roundTimeText: invalid input -> null',
   roundTimeText('not a time', 'hour'), null);
+eq('roundTimeText: an hour past 23 stays as written',
+  roundTimeText('25:30', 'hour'), null);
+eq('roundTimeText: a minute past 59 stays as written',
+  roundTimeText('14:75', 'hour'), null);
+eq('roundTimeText: a second past 59 stays as written',
+  roundTimeText('14:29:75', 'minute'), null);
+eq('roundTimeText: a twelve-hour hour of 0 stays as written',
+  roundTimeText('0:15 AM', 'hour'), null);
+eq('roundTimeText: a twelve-hour hour past 12 stays as written',
+  roundTimeText('13:15 PM', 'hour'), null);
+eq('roundTimeText: an ISO date-time with a second past 59 stays as written',
+  roundTimeText('2026-01-01T14:29:75', 'minute'), null);
 
-// Edge cases (12-hour and 24-hour wrap)
-eq('roundTimeText: 12:45 PM wraps to 1:00 PM',
-  roundTimeText('12:45 PM', 'hour'), '1:00 PM');
+// No time passes midnight: every second of the last hour, at either
+// granularity, stays inside it.
+(function noTimePassesMidnight() {
+  const pad = (n) => String(n).padStart(2, '0');
+  const crossed = [];
+  for (const granularity of ['hour', 'minute']) {
+    for (let minute = 0; minute < 60; minute++) {
+      for (let second = 0; second < 60; second++) {
+        const text = `23:${pad(minute)}:${pad(second)}`;
+        const twelve = `11:${pad(minute)}:${pad(second)} PM`;
+        const iso = `2026-11-09T23:${pad(minute)}:${pad(second)}`;
+        const out24 = roundTimeText(text, granularity) || text;
+        const out12 = roundTimeText(twelve, granularity) || twelve;
+        const outIso = roundTimeText(iso, granularity) || iso;
+        if (!out24.startsWith('23:')) crossed.push(text + ' ' + granularity + ' -> ' + out24);
+        if (!/^11:\d\d PM$/.test(out12)) crossed.push(twelve + ' ' + granularity + ' -> ' + out12);
+        if (!outIso.startsWith('2026-11-09 23:')) crossed.push(iso + ' ' + granularity + ' -> ' + outIso);
+      }
+    }
+  }
+  eq('roundTimeText: no time in the last hour passes midnight', crossed, []);
+})();
 
-eq('roundTimeText: 11:45 AM crosses noon to 12:00 PM',
-  roundTimeText('11:45 AM', 'hour'), '12:00 PM');
+// roundClockTime: the one rounding rule both paths call. It takes the hour as
+// written and returns it in the same convention.
+eq('roundClockTime: twenty-four hour, hour',
+  roundClockTime({ hour: 14, minute: 29, second: 30 }, 'hour'), { hour: 14, minute: 0, isPm: null });
+eq('roundClockTime: twelve hour carries across noon at minute',
+  roundClockTime({ hour: 11, minute: 59, second: 30, isPm: false }, 'minute'), { hour: 12, minute: 0, isPm: true });
+eq('roundClockTime: an unknown granularity -> null',
+  roundClockTime({ hour: 14, minute: 29, second: 30 }, 'second'), null);
+eq('roundClockTime: a twelve-hour hour of 0 -> null',
+  roundClockTime({ hour: 0, minute: 15, second: 0, isPm: false }, 'hour'), null);
+eq('roundClockTime: an hour of 11 with no AM/PM goes down',
+  roundClockTime({ hour: 11, minute: 45, second: 0 }, 'hour'), { hour: 11, minute: 0, isPm: null });
+eq('roundClockTime: an hour of 11 on the twenty-four hour clock rounds up',
+  roundClockTime({ hour: 11, minute: 45, second: 0, isTwentyFourHour: true }, 'hour'),
+  { hour: 12, minute: 0, isPm: null });
+eq('roundClockTime: hour 23 on the twenty-four hour clock goes down',
+  roundClockTime({ hour: 23, minute: 45, second: 0, isTwentyFourHour: true }, 'hour'),
+  { hour: 23, minute: 0, isPm: null });
 
-eq('roundTimeText: 11:45 PM wraps past midnight to 12:00 AM',
-  roundTimeText('11:45 PM', 'hour'), '12:00 AM');
-
-eq('roundTimeText: 12:45 AM wraps to 1:00 AM',
-  roundTimeText('12:45 AM', 'hour'), '1:00 AM');
-
-eq('roundTimeText: 23:30 wraps to 00:00 (24-hour)',
-  roundTimeText('23:30', 'hour'), '00:00');
-
-eq('roundTimeText: lowercase pm suffix preserved',
-  roundTimeText('2:45pm', 'hour'), '3:00pm');
-
-// --- ISO 8601 date-time: follows the time instruction, date preserved ---
+// --- ISO 8601 date-time: follows the time rule, date preserved ---
 eq('parseISODateTime: full offset timestamp',
   parseISODateTime('2025-11-26T16:16:00.000-05:00'),
-  { year: 2025, month: 11, day: 26, hour: 16, minute: 16 });
+  { year: 2025, month: 11, day: 26, hour: 16, minute: 16, second: 0 });
 
 eq('parseISODateTime: Z suffix', parseISODateTime('2025-11-26T16:16:00Z'),
-  { year: 2025, month: 11, day: 26, hour: 16, minute: 16 });
+  { year: 2025, month: 11, day: 26, hour: 16, minute: 16, second: 0 });
 
 eq('parseISODateTime: space separator', parseISODateTime('2025-11-26 16:16'),
-  { year: 2025, month: 11, day: 26, hour: 16, minute: 16 });
+  { year: 2025, month: 11, day: 26, hour: 16, minute: 16, second: 0 });
+
+eq('parseISODateTime: seconds read', parseISODateTime('2026-01-01T14:29:30'),
+  { year: 2026, month: 1, day: 1, hour: 14, minute: 29, second: 30 });
 
 eq('parseISODateTime: not a datetime -> null',
   parseISODateTime('2025-11-26'), null);
 
 eq('parseISODateTime: out-of-range hour -> null',
   parseISODateTime('2025-11-26T25:16'), null);
+
+// The time part is the one clock-time shape, so a one-digit hour reads the
+// same as a two-digit hour.
+eq('parseISODateTime: one-digit hour, space separator', parseISODateTime('2025-11-26 9:30'),
+  { year: 2025, month: 11, day: 26, hour: 9, minute: 30, second: 0 });
+eq('parseISODateTime: one-digit hour, T separator', parseISODateTime('2025-11-26T9:30:15.5Z'),
+  { year: 2025, month: 11, day: 26, hour: 9, minute: 30, second: 15 });
+eq('parseISODateTime: a fraction with no seconds -> null',
+  parseISODateTime('2025-11-26 09:30.5'), null);
+eq('parseISODateTime: out-of-range seconds -> null',
+  parseISODateTime('2025-01-01T10:00:60'), null);
+eq('readTimeCell: a time with a part out of range is impossible',
+  ['24:00', '10:00:75', '13:00 PM', '2025-11-26T24:00'].map((t) => readTimeCell(t)),
+  [{ impossible: true }, { impossible: true }, { impossible: true }, { impossible: true }]);
+eq('readTimeCell: text in neither time shape -> null',
+  ['123:45', '2025-11-26', '2025-13-01T10:00'].map((t) => readTimeCell(t)), [null, null, null]);
+eq('roundTimeText: one-digit-hour date-time rounds like a two-digit one',
+  [roundTimeText('2025-11-26 9:30', 'hour'), roundTimeText('2025-11-26 09:30', 'hour')],
+  ['2025-11-26 10:00', '2025-11-26 10:00']);
 
 eq('isDateTimeLike: ISO timestamp -> true',
   isDateTimeLike('2025-11-26T16:16:00.000-05:00'), true);
@@ -642,25 +717,36 @@ eq('isDateTimeLike: bare date -> false', isDateTimeLike('2025-11-26'), false);
 
 eq('isDateTimeLike: bare time -> false', isDateTimeLike('16:16'), false);
 
-eq('roundTimeText: ISO datetime minute -> drops seconds/ms/offset, T->space',
-  roundTimeText('2025-11-26T16:16:00.000-05:00', 'minute'), '2025-11-26 16:16');
+const ISO_DATE_TIME_CASES = [
+  // [input, granularity, expected, what the case covers]
+  ['2026-01-01T14:29:30', 'hour', '2026-01-01 14:00', 'minutes and seconds read once'],
+  ['2026-01-01T14:29:30', 'minute', '2026-01-01 14:30', 'thirty seconds rounds up'],
+  ['2026-01-01T14:29:29', 'minute', '2026-01-01 14:29', 'below thirty seconds rounds down'],
+  ['2026-11-09T23:45', 'hour', '2026-11-09 23:00', 'the last hour goes down'],
+  ['2026-11-09T23:59:45', 'minute', '2026-11-09 23:59', 'the last minute goes down'],
+  ['2026-11-09T23:59:45', 'hour', '2026-11-09 23:00', 'the last minute goes down at hour'],
+  ['2026-11-09T22:45', 'hour', '2026-11-09 23:00', 'the hour before the last hour rounds up'],
+  ['2026-11-09T11:45', 'hour', '2026-11-09 12:00', 'an hour of 11 rounds up on the 24-hour clock'],
+  ['2026-11-09T11:30', 'hour', '2026-11-09 12:00', 'an hour of 11 rounds up at the half hour'],
+  ['2026-11-09T11:59:45', 'minute', '2026-11-09 12:00', 'minute 11:59 carries into 12:00 on the 24-hour clock'],
+  ['2026-11-09T14:59:30', 'minute', '2026-11-09 15:00', 'the minute carries into the hour'],
+  ['2025-11-26T16:16:00.000-05:00', 'minute', '2025-11-26 16:16', 'the fraction and offset drop'],
+  ['2025-11-26T16:16:00.000-05:00', 'hour', '2025-11-26 16:00', 'below the half hour rounds down'],
+  ['2025-11-26T16:30:00Z', 'hour', '2025-11-26 17:00', 'the half hour rounds up'],
+  ['2025-11-26T23:15:00Z', 'hour', '2025-11-26 23:00', 'the last hour goes down below the half hour'],
+  ['2024-11-03T08:15:29.999-05:00', 'minute', '2024-11-03 08:15', 'a fraction of a second never rounds up'],
+  ['2024-11-03T08:15:30.250-05:00', 'hour', '2024-11-03 08:00', 'the fraction and offset drop at hour'],
+];
 
-eq('roundTimeText: ISO datetime hour rounds 16:16 down',
-  roundTimeText('2025-11-26T16:16:00.000-05:00', 'hour'), '2025-11-26 16:00');
+for (const [input, granularity, expected, covers] of ISO_DATE_TIME_CASES) {
+  eq(`roundTimeText: ${input} at ${granularity} -> ${expected} (${covers})`,
+    roundTimeText(input, granularity), expected);
+}
 
-eq('roundTimeText: ISO datetime hour rounds 16:30 up (half-up)',
-  roundTimeText('2025-11-26T16:30:00Z', 'hour'), '2025-11-26 17:00');
+eq('roundTimeText: an ISO date-time already in the result form is unchanged',
+  roundTimeText('2025-11-26 16:16', 'minute'), null);
 
-eq('roundTimeText: ISO datetime hour-up at end of day clamps to 23:59 same day',
-  roundTimeText('2025-11-26T23:45:00Z', 'hour'), '2025-11-26 23:59');
-
-eq('roundTimeText: ISO datetime 23:15 hour rounds down to 23:00 (same day)',
-  roundTimeText('2025-11-26T23:15:00Z', 'hour'), '2025-11-26 23:00');
-
-eq('roundTimeText: ISO datetime minute is idempotent on space form',
-  roundTimeText('2025-11-26 16:16', 'minute'), '2025-11-26 16:16');
-
-// --- Advanced parameter resolvers ---
+// --- Offsets and num_top read from a setting value ---
 
 eq('resolveOffset: null -> fallback', resolveOffset(null, -0.5), -0.5);
 
@@ -668,21 +754,21 @@ eq('resolveOffset: undefined -> fallback', resolveOffset(undefined, -0.5), -0.5)
 
 eq('resolveOffset: "" -> fallback', resolveOffset('', -0.5), -0.5);
 
-eq('resolveOffset: numeric string', resolveOffset('-1.5', -0.5), -1.5);
+eq('resolveOffset: "-1.5" -> -1.5', resolveOffset('-1.5', -0.5), -1.5);
 
-eq('resolveOffset: number passes through', resolveOffset(-2, -0.5), -2);
+eq('resolveOffset: -2 -> -2', resolveOffset(-2, -0.5), -2);
 
-eq('resolveOffset: NaN -> fallback', resolveOffset('abc', -0.5), -0.5);
+eq('resolveOffset: "abc" -> fallback', resolveOffset('abc', -0.5), -0.5);
 
-eq('resolveOffset: out-of-range -> fallback (too low)',
+eq('resolveOffset: "-99" -> fallback',
   resolveOffset('-99', -0.5), -0.5);
 
-eq('resolveOffset: out-of-range -> fallback (too high)',
+eq('resolveOffset: "99" -> fallback',
   resolveOffset('99', -0.5), -0.5);
 
-eq('resolveOffset: boundary -20 ok', resolveOffset('-20', -0.5), -20);
+eq('resolveOffset: "-20" -> -20', resolveOffset('-20', -0.5), -20);
 
-eq('resolveOffset: boundary +20 ok', resolveOffset('20', -0.5), 20);
+eq('resolveOffset: "20" -> 20', resolveOffset('20', -0.5), 20);
 
 eq('resolveNumTop: null -> fallback', resolveNumTop(null, 1), 1);
 
@@ -690,13 +776,13 @@ eq('resolveNumTop: "" -> fallback', resolveNumTop('', 1), 1);
 
 eq('resolveNumTop: "3" -> 3', resolveNumTop('3', 1), 3);
 
-eq('resolveNumTop: 0 -> fallback (must be >= 1)',
+eq('resolveNumTop: 0 -> fallback',
   resolveNumTop(0, 1), 1);
 
-eq('resolveNumTop: negative -> fallback',
+eq('resolveNumTop: "-2" -> fallback',
   resolveNumTop('-2', 1), 1);
 
-eq('resolveNumTop: 2.7 floored to 2',
+eq('resolveNumTop: "2.7" -> 2',
   resolveNumTop('2.7', 1), 2);
 
 // A blank offset or top-band count falls back to DR_DEFAULTS, the one
@@ -706,14 +792,14 @@ eq('resolveNumTop: 2.7 floored to 2',
   try {
     DR_DEFAULTS.offsetTop = -1.5;
     DR_DEFAULTS.numTop = 3;
-    eq('resolveRoundingSettings: blank settings fall back to DR_DEFAULTS',
+    eq('rounding settings with every value blank: the offsets and top-band count read DR_DEFAULTS',
       resolveRoundingSettings({}), { offsetTop: -1.5, offsetOther: -1.5, numTop: 3 });
   } finally {
     Object.assign(DR_DEFAULTS, saved);
   }
 })();
 
-// --- Range selector ---
+// --- Range expressions ---
 
 // lettersToColIndex
 eq('lettersToColIndex: A -> 0', lettersToColIndex('A'), 0);
@@ -726,9 +812,9 @@ eq('lettersToColIndex: AA -> 26', lettersToColIndex('AA'), 26);
 
 eq('lettersToColIndex: AB -> 27', lettersToColIndex('AB'), 27);
 
-eq('lettersToColIndex: lowercase ok', lettersToColIndex('a'), 0);
+eq('lettersToColIndex: a -> 0', lettersToColIndex('a'), 0);
 
-eq('lettersToColIndex: non-letter -> null', lettersToColIndex('A1'), null);
+eq('lettersToColIndex: A1 -> null', lettersToColIndex('A1'), null);
 
 // parseRangeExpr
 eq('parseRangeExpr: empty -> null ranges (whole table)',
@@ -775,34 +861,34 @@ eq('parseRangeExpr: whitespace -> null ranges',
 
 (function expr_union() {
   const r = parseRangeExpr('{A1:E8, G3:G, I4:K5}');
-  eq('parseRangeExpr: brace union of three ranges',
+  eq('parseRangeExpr: "{A1:E8, G3:G, I4:K5}" -> 3 ranges',
     r.ranges.length, 3);
 })();
 
 (function expr_unionNoBraces() {
   const r = parseRangeExpr('A1:B2, D:D');
-  eq('parseRangeExpr: comma-separated without braces',
+  eq('parseRangeExpr: "A1:B2, D:D" -> 2 ranges',
     r.ranges.length, 2);
 })();
 
 (function expr_semicolons() {
   const r = parseRangeExpr('A; B; C');
-  eq('parseRangeExpr: semicolon separator',
+  eq('parseRangeExpr: "A; B; C" -> 3 ranges',
     r.ranges.length, 3);
 })();
 
 (function expr_invalid() {
   const r = parseRangeExpr('A:B:C');
-  eq('parseRangeExpr: triple colon -> error',
+  eq('parseRangeExpr: "A:B:C" -> error',
     typeof r.error, 'string');
 })();
 
 (function expr_invalidGarbage() {
   const r = parseRangeExpr('1A');
-  eq('parseRangeExpr: digits-then-letters -> error',
+  eq('parseRangeExpr: "1A" -> error',
     typeof r.error, 'string');
   const r2 = parseRangeExpr('@#$');
-  eq('parseRangeExpr: punctuation -> error',
+  eq('parseRangeExpr: "@#$" -> error',
     typeof r2.error, 'string');
 })();
 
@@ -812,22 +898,22 @@ eq('parseRangeExpr: "G:G3" -> column G up to row 3',
   { ranges: [{ colMin: 6, colMax: 6, rowMin: 0, rowMax: 2 }] });
 
 // Swapped endpoints normalize
-eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
+eq('parseRangeExpr: "A5:A2" -> rows 1-4 of column A',
   parseRangeExpr('A5:A2'),
   { ranges: [{ colMin: 0, colMax: 0, rowMin: 1, rowMax: 4 }] });
 
 // isInRanges
 (function isIn_null() {
-  eq('isInRanges: null ranges -> always true (whole table)',
+  eq('isInRanges: null ranges -> true',
     isInRanges(5, 5, null), true);
 })();
 
 (function isIn_inside() {
   const ranges = [{ colMin: 1, colMax: 3, rowMin: 1, rowMax: 5 }];
-  eq('isInRanges: inside rect', isInRanges(2, 2, ranges), true);
-  eq('isInRanges: on boundary',  isInRanges(1, 1, ranges), true);
-  eq('isInRanges: outside col',  isInRanges(2, 0, ranges), false);
-  eq('isInRanges: outside row',  isInRanges(0, 2, ranges), false);
+  eq('isInRanges: (2,2) in B2:D6 -> true', isInRanges(2, 2, ranges), true);
+  eq('isInRanges: (1,1) in B2:D6 -> true',  isInRanges(1, 1, ranges), true);
+  eq('isInRanges: (2,0) in B2:D6 -> false',  isInRanges(2, 0, ranges), false);
+  eq('isInRanges: (0,2) in B2:D6 -> false',  isInRanges(0, 2, ranges), false);
 })();
 
 (function isIn_unionMembership() {
@@ -835,14 +921,14 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
     { colMin: 0, colMax: 1, rowMin: 0, rowMax: 1 },
     { colMin: 5, colMax: 5, rowMin: 2, rowMax: Infinity }
   ];
-  eq('isInRanges: in first rect', isInRanges(0, 0, ranges), true);
-  eq('isInRanges: in second open rect', isInRanges(100, 5, ranges), true);
-  eq('isInRanges: between rects', isInRanges(2, 2, ranges), false);
+  eq('isInRanges: (0,0) in A1:B2 or F3:F -> true', isInRanges(0, 0, ranges), true);
+  eq('isInRanges: (100,5) in A1:B2 or F3:F -> true', isInRanges(100, 5, ranges), true);
+  eq('isInRanges: (2,2) in A1:B2 or F3:F -> false', isInRanges(2, 2, ranges), false);
 })();
 
-// --- Adversarial range parser tests ---
+// --- Range expressions with a partial endpoint ---
 
-// Primary bug report: f4:g8 (lowercase partial-range)
+// Lowercase letters read as uppercase
 (function f4g8_lowercase() {
   const r = parseRangeExpr('f4:g8');
   eq('partial range: "f4:g8" -> no error',
@@ -896,36 +982,17 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   eq('partial range: "B:D5" rowMax=4', rng && rng.rowMax, 4);
 })();
 
-// Regression guard: the basic shapes still pass
+// A brace union of a rectangle and an open column
 (function regression_union() {
   const r = parseRangeExpr('{A1:E8, G3:G}');
-  eq('regression: "{A1:E8, G3:G}" -> 2 ranges', r.ranges && r.ranges.length, 2);
-})();
-
-// --- Mixed cell — <a>5</a> preserved, 1234 outside rounds ---
-// filterLinkMatches must drop the match for '5' (inside anchor) and keep '1234' (outside).
-(function ac2_filterLinkMatches_mixedCell() {
-  withLinkCreateTreeWalker(function() {
-    // Cell: "1234 and " + <a>5</a>  — innerText = "1234 and 5"
-    // We model: outsideText = "1234 and ", anchor = "5"; the matches count in
-    // the pieces' flat text, which filterLinkMatches reads without a layout.
-    const cell = makeLinkCell(['5'], '1234 and ');
-
-    const matches = extractNumbersInText(cell._textNodes.map((node) => node.nodeValue).join('')); // finds 1234 and 5
-    const filtered = filterLinkMatches(cell, matches);
-
-    // '5' inside anchor must be dropped; '1234' outside must be kept.
-    const nums = filtered.map(m => m.num);
-    eq('filterLinkMatches keeps 1234 (outside anchor)', nums.includes(1234), true);
-    eq('filterLinkMatches drops 5 (inside anchor)', nums.includes(5), false);
-  });
+  eq('parseRangeExpr: "{A1:E8, G3:G}" -> 2 ranges', r.ranges && r.ranges.length, 2);
 })();
 
 // --- Hidden-sortkey regression guard ---
 // A cell like <td><span style="display:none">700023000</span>+2.3%</td>
 // The implementation reads cell.innerText (which browsers exclude hidden text from).
 // We model this by making cell.innerText = '+2.3%' only (hidden span excluded).
-// toNumber('+2.3%') -> null (percent), and with simplifyMixedPercent unset it is excluded entirely.
+// toNumber('+2.3%') -> 2.3, and with simplifyMixedPercent unset the cell is excluded entirely.
 (function ac4_hiddenSortkeyNotExtracted() {
   // Simulate: innerText is what the browser returns (no hidden text).
   // Browsers exclude hidden (display:none) content from innerText, so the cell's
@@ -1015,7 +1082,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   const matches = extractNumbersInText(text);
   const quoteRanges = getQuoteMaskedRanges(text);
   const filtered = matches.filter(m =>
-    !overlapsQuoteRange(quoteRanges, m.index, m.index + m.numStr.length)
+    !overlapsMaskedRange(quoteRanges, m.index, m.index + m.numStr.length)
   );
   eq('quoteFilter: before filter match count includes 42',
     matches.some(m => m.num === 42), true);
@@ -1038,7 +1105,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   eq('scope guard: single quotes not masked (zero quote ranges)',
     sqRanges.length, 0);
   eq('scope guard: 42 inside single quotes NOT excluded by filter',
-    sqMatches.filter(m => !overlapsQuoteRange(sqRanges, m.index, m.index + m.numStr.length))
+    sqMatches.filter(m => !overlapsMaskedRange(sqRanges, m.index, m.index + m.numStr.length))
       .some(m => m.num === 42), true);
 
   // Typographic quotes: “...” are NOT masked
@@ -1048,7 +1115,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
     tqRanges.length, 0);
   // Both 42 and 7 survive unfiltered
   const tqMatches = extractNumbersInText(typoQuote);
-  const tqFiltered = tqMatches.filter(m => !overlapsQuoteRange(tqRanges, m.index, m.index + m.numStr.length));
+  const tqFiltered = tqMatches.filter(m => !overlapsMaskedRange(tqRanges, m.index, m.index + m.numStr.length));
   eq('scope guard: 42 inside typographic quotes NOT excluded',
     tqFiltered.some(m => m.num === 42), true);
 
@@ -1057,7 +1124,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   const mixed = 'he said "foo 5" and 10';
   const mxRanges = getQuoteMaskedRanges(mixed);
   const mxMatches = extractNumbersInText(mixed);
-  const mxFiltered = mxMatches.filter(m => !overlapsQuoteRange(mxRanges, m.index, m.index + m.numStr.length));
+  const mxFiltered = mxMatches.filter(m => !overlapsMaskedRange(mxRanges, m.index, m.index + m.numStr.length));
   eq('scope guard: 5 inside ASCII quotes IS excluded',
     mxFiltered.some(m => m.num === 5), false);
   eq('scope guard: 10 outside ASCII quotes NOT excluded',
@@ -1096,29 +1163,8 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   }
 })();
 
-// --- Trailing zeros ---
+// --- Pure cell write: whole and fractional results ---
 
-// trailing zeros always stripped regardless of the original decimal count
-eq('formatNumber: trailing zeros stripped on whole number',
-  formatNumber(1, '1'), '1');
-
-eq('formatNumber: trailing zeros stripped on one-decimal result',
-  formatNumber(1.5, '1.40'), '1.5');
-
-// original has 2 decimals: result has 2 meaningful decimals, no stripping needed
-eq('formatNumber: two meaningful decimals preserved',
-  formatNumber(1.75, '1.72'), '1.75');
-
-// trailing zeros stripped even when original had 2 decimals and result is whole
-eq('formatNumber: trailing zeros stripped on whole number from "1.00"',
-  formatNumber(1, '1.00'), '1');
-
-eq('formatNumber: |rounded|>=10 writes no decimals',
-  formatNumber(12, '12'), '12');
-
-// --- Whole-number short-circuit ---
-
-// a pure cell write drops trailing zeros for whole-number results under 10
 eq('pure cell write: whole number 1 from "1.04" -> "1"',
   writePureCell(1, '1.04'), '1');
 
@@ -1131,7 +1177,7 @@ eq('pure cell write: 0 from "0.04" -> "0"',
 eq('pure cell write: negative whole number -5 from "-5.2" -> "-5"',
   writePureCell(-5, '-5.2'), '-5');
 
-// Fractional results in the <10 band still keep their decimals
+// A fractional result keeps its own decimals
 eq('pure cell write: 1.5 from "1.4" -> "1.5"',
   writePureCell(1.5, '1.4'), '1.5');
 
@@ -1147,9 +1193,6 @@ eq('pure cell write: whole number with currency -> "$2"',
 
 eq('pure cell write: whole negative in parens -> "(3)"',
   writePureCell(-3, '(2.85)'), '(3)');
-
-eq('formatNumber: whole number 1 from "1.04" -> "1"',
-  formatNumber(1, '1.04'), '1');
 
 // =============================================================================
 // Date rounding to year display tests
@@ -1297,8 +1340,8 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 })();
 
 // ---------------------------------------------------------------------------
-// Sign-aware half-step, value-OoM floor, and the X_FLOOR_THRESHOLD-gated
-// x-floor
+// Sign-aware half-step, value-OoM floor, and a fractional offset above 1 in
+// size never returning less than the integer offset nearer zero
 // ---------------------------------------------------------------------------
 (function halfStepFloorGrid() {
   // 27-cell grid: {87M, 47M, 17M} x {+2, +1.5, +1, +0.5, 0, -0.5, -1, -1.5, -2}
@@ -1317,15 +1360,14 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   for (const row of grid) {
     for (const off of offsets) {
       const key = String(off);
-      eq(`half-step grid: roundWithOffset(${row.v}, ${off})`,
+      eq(`half-step grid: roundWithOffset(${row.v}, ${off}) returns ${row.expected[key]}`,
         roundWithOffset(row.v, off), row.expected[key]);
     }
   }
 
-  // Negative-value sign preservation (spot check)
-  eq('half-step grid: sign preserved for negative input',
+  eq('half-step grid: -87054321 at -0.5 returns -85000000',
     roundWithOffset(-87054321, -0.5), -85000000);
-  eq('half-step grid: zero short-circuits',
+  eq('half-step grid: 0 at 1.5 returns 0',
     roundWithOffset(0, 1.5), 0);
 })();
 
@@ -1345,7 +1387,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     [87054321, -1.25,  87000000],  // very fine step, x-floor at rd(87M, -1) = 87M
   ];
   for (const [v, off, expected] of cases) {
-    eq(`quarter-step grid: roundWithOffset(${v}, ${off})`,
+    eq(`quarter-step grid: roundWithOffset(${v}, ${off}) returns ${expected}`,
       roundWithOffset(v, off), expected);
   }
 })();
@@ -1365,14 +1407,11 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 })();
 
 (function xFloorThresholdFlip() {
-  // Re-eval content.js with X_FLOOR_THRESHOLD = 0 to confirm the x-floor
-  // gates on the constant. We sandbox the patched source so the eq()
-  // assertions below do not disturb the live extension globals.
+  // Eval rounding.js with X_FLOOR_THRESHOLD = 0 to confirm the x-floor gates
+  // on the constant. We sandbox the patched source so the eq() assertions
+  // below do not disturb the live extension globals.
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
-  const contentSrc = sourceByName('content.js');
-  if (roundingSrc === null || contentSrc === null || coreCode === null ||
-      parsingCode === null || detectCode === null || messagingCode === null ||
-      modelCode === null || uiPillboxCode === null) {
+  if (roundingSrc === null) {
     eq('x-floor flip: source files present in manifest', false, true);
     return;
   }
@@ -1383,27 +1422,10 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   eq('x-floor flip: source contains X_FLOOR_THRESHOLD declaration',
     patchedRounding.includes('const X_FLOOR_THRESHOLD = 0;'), true);
 
-  const sandbox = {
-    chrome: global.chrome,
-    document: global.document,
-    window: global.window,
-    NodeFilter: global.NodeFilter,
-    MutationObserver: global.MutationObserver,
-    ResizeObserver: global.ResizeObserver,
-    Node: global.Node,
-    DR_DEFAULTS: globalThis.DR_DEFAULTS,
-  };
+  const sandbox = {};
   const vm = require('vm');
   const ctx = vm.createContext(sandbox);
-  // content.js runs its observer/listener wiring at load and depends on the
-  // extracted layers (core/parsing/detect/ui-pillbox), so eval them in the
-  // same order the manifest loads them before content.js.
-  vm.runInContext(
-    constantsCode + '\n' + (sourceByName('lib/dr-log/index.js') || '') + '\n' +
-    patchedRounding + '\n' + coreCode + '\n' + parsingCode + '\n' +
-    detectCode + '\n' + messagingCode + '\n' + modelCode + '\n' +
-    uiPillboxCode + '\n' + contentSrc +
-    '\nthis.__roundWithOffset = roundWithOffset;', ctx);
+  vm.runInContext(patchedRounding + '\nthis.__roundWithOffset = roundWithOffset;', ctx);
   const patchedRound = sandbox.__roundWithOffset;
 
   eq('x-floor flip: rd(17054321, 0.5) === 20000000 with X_FLOOR_THRESHOLD=0',
@@ -1505,12 +1527,12 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     getExclusionReason('1,234', 0, { simplifyFirstColumn: true, simplifyFirstRow: true }, 1), null);
 
   // Case 2: flag false → col 0 excluded
-  eq('simplifyFirstColumn: false + col 0 → "firstColumn"',
-    getExclusionReason('1,234', 0, { simplifyFirstRow: true, simplifyFirstColumn: false }, 1), 'firstColumn');
+  eq('simplifyFirstColumn: false + col 0 → "first-column"',
+    getExclusionReason('1,234', 0, { simplifyFirstRow: true, simplifyFirstColumn: false }, 1), 'first-column');
 
   // Case 3: flag unset → col 0 excluded (intentional default change)
-  eq('simplifyFirstColumn: unset + col 0 → "firstColumn" (new default semantics)',
-    getExclusionReason('1,234', 0, { simplifyFirstRow: true }, 1), 'firstColumn');
+  eq('simplifyFirstColumn: unset + col 0 → "first-column" (new default semantics)',
+    getExclusionReason('1,234', 0, { simplifyFirstRow: true }, 1), 'first-column');
 
   // Case 4: flag false but col 1 → null (only col 0 is affected)
   eq('simplifyFirstColumn: false + col 1 → null (non-first column unaffected)',
@@ -1552,16 +1574,16 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 
 // ---------------------------------------------------------------------------
 // Lens preview layout
-// formatOomLabel exhaustive suffix-boundary check
-// renderOtherPreview DESCENDING sort (real DOM-stub eval)
-// step-label CSS classes (step top / step bot)
-// Adversarial: sort-mutation side-effect check
+// order of magnitude labels at each suffix boundary
+// the other band's preview lists the largest order of magnitude first
+// step labels in both bands' previews
+// sorting leaves the samples list unchanged
 // ---------------------------------------------------------------------------
 (function advancedPreviewRedesignTests() {
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
   // -------------------------------------------------------------------------
-  // Extract formatOomLabel from sidebar.js source. It depends on trimNum
+  // Extract formatOomLabel from sidebar.js source. It depends on formatStep
   // (from rounding.js), which we pass as a parameter to isolatedFunction.
   // -------------------------------------------------------------------------
   const constBlock = sidebarSrc.match(
@@ -1577,19 +1599,19 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   }
 
   // Build a helper bundle: rounding helpers + sidebar functions.
-  // stepForOffset, formatStep, trimNum come from rounding.js (already evaled
-  // into the test scope's globalThis; we pass them in to avoid scope issues).
-  const apHelperSrc = '(function(trimNum, stepForOffset, formatStep) {\n' +
+  // formatStep comes from rounding.js (already evaled into the test scope's
+  // globalThis; we pass it in to avoid scope issues).
+  const apHelperSrc = '(function(formatStep) {\n' +
     constBlock[0] + '\n' +
     formatOomLabelFn[0] + '\n' +
     'return { formatOomLabel: formatOomLabel };\n' +
-    '})(trimNum, stepForOffset, formatStep)';
+    '})(formatStep)';
 
   let apHelpers;
   try {
-    apHelpers = (isolatedFunction('trimNum', 'stepForOffset', 'formatStep',
+    apHelpers = (isolatedFunction('formatStep',
       'return ' + apHelperSrc + ';'
-    ))(trimNum, stepForOffset, formatStep);
+    ))(formatStep);
   } catch (e) {
     eq('sidebar-ap-extract: isolatedFunction eval succeeded', false, true);
     return;
@@ -1617,13 +1639,10 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   eq('oom: mag=-2 → "0.01+" (sub-unit, 1e-2=0.01)', fmtOom(-2), '0.01+');
 
   // -------------------------------------------------------------------------
-  // STRATEGY-MONOTONIC: the slider stops must be ordered so the resulting
-  // rounding STEP changes in a single direction across the track. This is the
-  // whole point of the stop ordering: stepForOffset is non-monotonic in the
-  // offset value (half-steps interleave with integer steps), so the array order
-  // — not numeric sort — is what guarantees a one-directional strategy sweep.
-  // Read STOPS straight from sidebar.js and assert step() is strictly
-  // increasing across it for several magnitudes.
+  // STRATEGY-MONOTONIC: the comment beside STOPS in sidebar.js holds why the
+  // stops follow the step, not the offset. Read STOPS straight from sidebar.js
+  // and assert stepForOffset strictly increases across it for several
+  // magnitudes.
   // -------------------------------------------------------------------------
   (function strategyMonotonic() {
     const src = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
@@ -1648,7 +1667,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
           break;
         }
       }
-      eq('mono mag=' + mag + ': step() strictly increases across STOPS' +
+      eq('mono mag=' + mag + ': steps at 10^mag strictly increase across the lens control\'s stops' +
         (firstBreak ? ' [break at ' + firstBreak + ']' : ''), monotonic, true);
     }
 
@@ -1716,9 +1735,9 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   // Extract the sidebar consts and render functions + their helpers.
   // We need: OOM_LABEL_CLASS, STEP_HEADER_CLASS, formatOomLabel, magnitudeOf,
   //          appendSampleRow, appendLabel, renderTopPreview, renderOtherPreview.
-  // External deps we pass in: formatOriginal, roundWithOffset, stepForOffset,
+  // External deps we pass in: formatSample, roundWithOffset, stepForOffset,
   //                            formatStep, cachedMaxMag (null = no step header).
-  const renderSrc = '(function(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, cachedMaxMag) {\n' +
+  const renderSrc = '(function(document, formatSample, roundWithOffset, stepForOffset, formatStep, cachedMaxMag) {\n' +
     constBlock[0] + '\n' +
     formatOomLabelFn[0] + '\n' +
     renderHelperFns.map((m) => m[0]).join('\n') + '\n' +
@@ -1728,28 +1747,28 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     '})';
 
   let renderHelpers;
-  let realFormatOriginal;
+  let realFormatSample;
   try {
-    // We need formatOriginal from the already-evaled sidebar helpers.
-    // However, formatOriginal in sidebar.js depends on toNumber (from content.js,
-    // already on globalThis). Extract it from sidebar.js source.
+    // We need formatSample from the already-evaled sidebar helpers.
+    // However, formatSample in sidebar.js depends on toNumber and numberFormat
+    // (from content.js, already on globalThis). Extract it from sidebar.js source.
     const sidebarConstBlock2 = sidebarSrc.match(
       /const PREVIEW_DECIMAL_THRESHOLD\s*=.*?;\s*const PREVIEW_MAX_DECIMALS\s*=.*?;/
     );
-    const formatOriginalFn2 = sidebarSrc.match(/function formatOriginal\([\s\S]*?\n\}/);
+    const formatSampleFn2 = sidebarSrc.match(/function formatSample\([\s\S]*?\n\}/);
 
-    const fmtOrigSrc = '(function(toNumber) {\n' +
+    const fmtSampleSrc = '(function(toNumber, numberFormat) {\n' +
       sidebarConstBlock2[0] + '\n' +
-      formatOriginalFn2[0] + '\n' +
-      'return formatOriginal;\n' +
-      '})(toNumber)';
-    realFormatOriginal = (isolatedFunction('toNumber', 'return ' + fmtOrigSrc + ';'))(toNumber);
+      formatSampleFn2[0] + '\n' +
+      'return formatSample;\n' +
+      '})(toNumber, numberFormat)';
+    realFormatSample = (isolatedFunction('toNumber', 'numberFormat', 'return ' + fmtSampleSrc + ';'))(toNumber, numberFormat);
 
     renderHelpers = (isolatedFunction(
-      'document', 'formatOriginal', 'roundWithOffset', 'stepForOffset',
-      'formatStep', 'trimNum', 'cachedMaxMag',
-      'return ' + renderSrc + '(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, cachedMaxMag);'
-    ))(stubDocument, realFormatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, null);
+      'document', 'formatSample', 'roundWithOffset', 'stepForOffset',
+      'formatStep', 'cachedMaxMag',
+      'return ' + renderSrc + '(document, formatSample, roundWithOffset, stepForOffset, formatStep, cachedMaxMag);'
+    ))(stubDocument, realFormatSample, roundWithOffset, stepForOffset, formatStep, null);
   } catch (e) {
     eq('sidebar-ap-extract: renderOtherPreview eval succeeded', String(e), '');
     return;
@@ -1771,15 +1790,15 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   const bandEl = makeBandEl();
   realRenderOtherPreview(bandEl, rowsAscending, -0.5, 4);
 
-  // The band container should have 4 "pair" div children.
-  eq('sort: renderOtherPreview appended 4 pair elements', bandEl._appended.length, 4);
+  // The band container should have 4 "row" div children.
+  eq('sort: renderOtherPreview appended 4 row elements', bandEl._appended.length, 4);
 
-  // Each pair div contains children: from-span, arrow-span, num-span, step-span.
+  // Each row div contains children: from-span, arrow-span, num-span, step-span.
   // The from-span's textContent reflects the original number.
-  // We can extract the rendered order by reading from-span textContent on each pair.
-  function getFromText(pairEl) {
+  // We can extract the rendered order by reading from-span textContent on each row.
+  function getFromText(rowEl) {
     // first child is the "from" span
-    return pairEl._children[0] ? pairEl._children[0].textContent : '';
+    return rowEl._children[0] ? rowEl._children[0].textContent : '';
   }
 
   const renderedFromTexts = bandEl._appended.map(getFromText);
@@ -1809,45 +1828,43 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     afterNums, originalNums);
 
   // -------------------------------------------------------------------------
-  // edge: zero rows and null el guard
+  // edge: zero rows
   // -------------------------------------------------------------------------
   const emptyEl = makeBandEl();
   realRenderOtherPreview(emptyEl, [], -0.5, 0);
   eq('edge: empty rows renders nothing', emptyEl._appended.length, 0);
 
-  realRenderOtherPreview(null, rowsAscending, -0.5, 4); // should not throw
-
   // -------------------------------------------------------------------------
   // other preview examples carry a brown trailing step label "(5k)" after
   // the rounded number, showing what the example rounds to the nearest of. The
-  // pair still has three cells (from, arrow, num); the step span lives INSIDE
+  // row still has three cells (from, arrow, num); the step span lives INSIDE
   // the num span (a 4th grid child would wrap to the next row). The top example
   // keeps its three cells and is prefixed "e.g.".
   // -------------------------------------------------------------------------
 
-  // other preview pair has 3 cells (from/arrow/num); the brown step label
+  // other preview row has 3 cells (from/arrow/num); the brown step label
   // is nested in the num span, not a 4th grid child.
   const otherPreviewEl2 = makeBandEl();
   realRenderOtherPreview(otherPreviewEl2, [{ num: 1000, original: '1,000' }], -0.5, 3);
-  eq('bot: bottom example pair has exactly 3 cells (from/arrow/num)',
+  eq('other band: a preview row has exactly 3 cells (from/arrow/num)',
     otherPreviewEl2._appended[0]._children.length, 3);
-  const botNumSpan = otherPreviewEl2._appended[0]._children[2];
-  eq('bot: num span has a nested step-label child',
-    botNumSpan._children.length, 1);
-  eq('bot: step-label child has class "step-label"',
-    botNumSpan._children[0] ? botNumSpan._children[0].className : '', 'step-label');
+  const otherNumSpan = otherPreviewEl2._appended[0]._children[2];
+  eq('other band: num span has a nested step-label child',
+    otherNumSpan._children.length, 1);
+  eq('other band: step-label child has class "step-label"',
+    otherNumSpan._children[0] ? otherNumSpan._children[0].className : '', 'step-label');
   // 1,000 at offset -0.5 rounds to the nearest 500 → label "(500)".
-  eq('bot: step-label text is " (500)"',
-    botNumSpan._children[0] ? botNumSpan._children[0].textContent : '', ' (500)');
+  eq('other band: step-label text is " (500)"',
+    otherNumSpan._children[0] ? otherNumSpan._children[0].textContent : '', ' (500)');
 
   // zero: a zero row gets no step label (avoids "(0)").
-  const botZeroEl = makeBandEl();
-  realRenderOtherPreview(botZeroEl, [{ num: 0, original: '0' }], -0.5, 3);
-  const zeroNumSpan = botZeroEl._appended[0]._children[2];
-  eq('bot-zero: zero row num span has no step-label child',
+  const otherZeroEl = makeBandEl();
+  realRenderOtherPreview(otherZeroEl, [{ num: 0, original: '0' }], -0.5, 3);
+  const zeroNumSpan = otherZeroEl._appended[0]._children[2];
+  eq('other band zero: zero row num span has no step-label child',
     zeroNumSpan._children.length, 0);
 
-  // top preview example pair is prefixed "e.g." and has no step label.
+  // top preview example row is prefixed "e.g." and has no step label.
   // renderTopPreview with cachedMaxMag=null skips the step header, so the only
   // appended element is the example.
   const topPreviewEl2 = makeBandEl();
@@ -1880,17 +1897,16 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     /const STEP_LABEL_CLASS\s*=\s*['"]step-label['"]/.test(sidebarSrc), true);
 
   // when cachedMaxMag is set, the top preview renders the step header AND
-  // the example as two from|arrow|num pairs in the same band container (the
-  // #topPreview grid lays them on two lines with their "→" arrows aligned in the
-  // middle column). Rebuild the render helpers with a non-null cachedMaxMag to
-  // exercise the header path.
+  // the example as two from|arrow|num rows in the same band container.
+  // Rebuild the render helpers with a non-null cachedMaxMag to exercise the
+  // header path.
   let renderHelpersWithMag;
   try {
     renderHelpersWithMag = (isolatedFunction(
-      'document', 'formatOriginal', 'roundWithOffset', 'stepForOffset',
-      'formatStep', 'trimNum', 'cachedMaxMag',
-      'return ' + renderSrc + '(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, cachedMaxMag);'
-    ))(stubDocument, realFormatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, 6);
+      'document', 'formatSample', 'roundWithOffset', 'stepForOffset',
+      'formatStep', 'cachedMaxMag',
+      'return ' + renderSrc + '(document, formatSample, roundWithOffset, stepForOffset, formatStep, cachedMaxMag);'
+    ))(stubDocument, realFormatSample, roundWithOffset, stepForOffset, formatStep, 6);
   } catch (e) {
     eq('renderTopPreview (cachedMaxMag=6) eval succeeded', String(e), '');
   }
@@ -1899,30 +1915,30 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     renderHelpersWithMag.renderTopPreview(topWithHdr, [{ num: 8584629, original: '8,584,629' }], -0.5);
     eq('top preview appends 2 elements (step header + example)',
       topWithHdr._appended.length, 2);
-    const stratPair = topWithHdr._appended[0];
-    const examplePair = topWithHdr._appended[1];
-    eq('first appended element is the step header pair (class "pair step-header")',
-      stratPair.className, 'pair step-header');
-    eq('step header pair has 3 cells (from/arrow/num)',
-      stratPair._children.length, 3);
+    const stratRow = topWithHdr._appended[0];
+    const exampleRow = topWithHdr._appended[1];
+    eq('first appended element is the step header row (class "row step-header")',
+      stratRow.className, 'row step-header');
+    eq('step header row has 3 cells (from/arrow/num)',
+      stratRow._children.length, 3);
     eq('step header "from" is the OoM label "1M+" (maxMag=6)',
-      stratPair._children[0].textContent, '1M+');
+      stratRow._children[0].textContent, '1M+');
     eq('step header "num" starts "nearest "',
-      stratPair._children[2].textContent.indexOf('nearest ') === 0, true);
-    eq('second appended element is the example pair (class "pair example")',
-      examplePair.className, 'pair example');
-    eq('example pair has 3 cells (from/arrow/num)',
-      examplePair._children.length, 3);
+      stratRow._children[2].textContent.indexOf('nearest ') === 0, true);
+    eq('second appended element is the example row (class "row example")',
+      exampleRow.className, 'row example');
+    eq('example row has 3 cells (from/arrow/num)',
+      exampleRow._children.length, 3);
     // The two "→" arrows sit in the same (middle) grid column so they align.
     eq('step header arrow is in the middle cell ("→")',
-      stratPair._children[1].textContent, '→');
+      stratRow._children[1].textContent, '→');
     eq('example arrow is in the middle cell ("→")',
-      examplePair._children[1].textContent, '→');
+      exampleRow._children[1].textContent, '→');
   }
 
-  // sidebar.html lays the top preview out on the shared lens-preview grid
-  // (no flex override), so the step header and the example line stack and
-  // their "→" arrows align in the middle column. The step header cells are blue.
+  // sidebar.html lays the top preview out on the shared lens-preview grid,
+  // with no flex override. The lens preview comment in sidebar.html holds the
+  // reason.
   const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
   eq('#topPreview element carries the lens-preview grid class',
     /<div[^>]*id="topPreview"[^>]*class="lens-preview"|<div[^>]*class="lens-preview"[^>]*id="topPreview"/.test(sidebarHtmlSrc), true);
@@ -2056,12 +2072,12 @@ const LADDER_OPTS = {
         const nTop = params.num_top === undefined ? SHARED_DEFAULT_NUM_TOP : params.num_top;
         const nums = input.map((v) => toNumber(v));
         const maxMag = findMaxMagnitude([nums]);
-        const actual = input.map((v, i) => roundCellSetAware(v, nums[i], maxMag, oTop, oOther, nTop));
+        const actual = input.map((v, i) => (nums[i] === null ? v : roundValueSetAware(nums[i], maxMag, oTop, oOther, nTop)));
         eq(name, actual, expected);
       } else {
         const offset = params.offset_top === undefined ? SHARED_DEFAULT_OFFSET : params.offset_top;
         const num = toNumber(input);
-        const actual = num === null ? input : (num === 0 ? 0 : roundWithOffset(num, offset));
+        const actual = num === null ? input : roundWithOffset(num, offset);
         eq(name, actual, expected);
       }
     }
@@ -2224,20 +2240,20 @@ const LADDER_OPTS = {
 // ---------------------------------------------------------------------------
 // A pulled enabled:false must survive
 // sidebar reopen when the reopen lands on a TABLE THAT IS BOUND. This drives
-// sidebar.js's real redrawFromActiveTable() -> applySettingsToUI() ->
+// sidebar.js's real redrawFromActiveTable() -> drawControls() ->
 // setTableBound() path end to end (same eval harness shape as
 // appModelSettings_settingsPublish_deliveryFeedback_behavioral above).
 //
-// The pin: redrawFromActiveTable applies the answer's settings, then calls
+// The pin: redrawFromActiveTable draws the answer's settings, then calls
 // setTableBound(true) because the same answer holds a bound table's samples.
 // setTableBound's bound branch must not write the sidebar pillbox, so the
 // pulled false survives the reopen.
 // ---------------------------------------------------------------------------
 (function appModelSettings_pulledEnabledSurvivesReopenOnBoundTable() {
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
-  const coreSrc = sourceByName('lib/dr-number/core.js');
-  if (constantsCode === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
-    eq('reopen-bound: source files (defaults/rounding/core/messaging) present in manifest',
+  const readerSrc = sourceByName('lib/dr-number/reader.js');
+  if (constantsCode === null || roundingSrc === null || readerSrc === null || busCode === null) {
+    eq('reopen-bound: source files (defaults/rounding/reader/bus) present in manifest',
       false, true);
     return;
   }
@@ -2329,8 +2345,8 @@ const LADDER_OPTS = {
       eval(
         constantsCode + '\n' +
         roundingSrc + '\n' +
-        coreSrc + '\n' +
-        messagingCode + '\n' +
+        readerSrc + '\n' +
+        busCode + '\n' +
         fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8')
       );
     } catch (e) {
@@ -2517,7 +2533,7 @@ const LADDER_OPTS = {
 // =============================================================================
 // One currency list
 // =============================================================================
-// Every currency rule reads CURRENCIES in lib/dr-number/core.js. These
+// Every currency rule reads CURRENCIES in lib/dr-number/reader.js. These
 // assertions drive themselves from that list, so a currency added there is
 // covered here without a second list to keep in step.
 
@@ -2554,9 +2570,9 @@ const LADDER_OPTS = {
   // The number span steps past every sign, so a cell that draws its sign in
   // one piece and its digits in another still simplifies.
   for (const sign of CURRENCY_SIGNS) {
-    const decision = classifyCell({ text: sign + '450', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS);
+    const classification = classifyCell({ text: sign + '450', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS);
     eq('currencies: a cell drawn as "' + sign + '" beside "450" keeps its number',
-      placeDecision(decision, { original: [sign, '450'], toFlat: null }).value.matches,
+      placeClassification(classification, { original: [sign, '450'], toFlat: null }).value.matches,
       [{ numStr: '450', num: 450, index: sign.length }]);
   }
 })();
@@ -2589,10 +2605,10 @@ const LADDER_OPTS = {
     eq('currencies: "' + text + '" does not read as a number',
       toNumber(text), null);
   }
-  eq('currencies: a letter sign against the digits still reads ("R45")', toNumber('R45'), 45);
-  eq('currencies: a letter sign and a space still read ("kr 45")', toNumber('kr 45'), 45);
-  eq('currencies: a two-letter sign against the digits still reads ("Fr45")', toNumber('Fr45'), 45);
-  eq('currencies: the longest sign wins ("EC$45")', toNumber('EC$45'), 45);
+  eq('currencies: "R45" reads as 45', toNumber('R45'), 45);
+  eq('currencies: "kr 45" reads as 45', toNumber('kr 45'), 45);
+  eq('currencies: "Fr45" reads as 45', toNumber('Fr45'), 45);
+  eq('currencies: "EC$45" reads as 45', toNumber('EC$45'), 45);
   eq('currencies: a picture sign after the digits reads ("45€")', toNumber('45€'), 45);
   eq('currencies: a picture sign with a letter left beside it does not read ("a€45")',
     toNumber('a€45'), null);
@@ -2653,20 +2669,9 @@ eq('bracketed: an unclosed bracket leaves the number positive',
 eq('bracketed: an unopened bracket leaves the number positive',
   extractNumbersInText('1,234)').map((m) => m.num), [1234]);
 
-eq('bracketed: the bracket test answers for the number it is given',
+eq('bracketed: "(1,234)" is a bracketed negative and "(see 4)" is not',
   [isBracketedNegative('(1,234)', 1, '1,234'), isBracketedNegative('(see 4)', 5, '4')],
   [true, false]);
-
-// --- Writing the sign back ---
-
-eq('bracketed: the rounded number carries the sign the original text showed',
-  formatNumber(-1200, '1,234'), '1,200');
-
-eq('bracketed: a written minus sign survives rounding',
-  formatNumber(-1200, '-1,234'), '-1,200');
-
-eq('bracketed: the sign rule leaves a positive number alone',
-  formatNumber(1200, '1,234'), '1,200');
 
 // --- The whole-text match ---
 
@@ -2679,10 +2684,10 @@ eq('bracketed: a bracket pair holding more than the number is not a whole-text m
   [null, null, null]);
 
 // --- Decimal comma: strict US reading ---
-// The number format function returns the marks a number uses, US style for
-// now. The number shape test accepts a group mark only in the group shape
-// and only before the decimal mark. A run with no group mark goes to the
-// conversion, so a second dot still fails there.
+// The number format function returns the marks a number uses, US style.
+// The number shape test accepts a group mark only in the group shape and
+// only before the decimal mark. A run with no group mark goes to the
+// conversion, and a run with a second dot gives no number there.
 
 eq('number format function: returns the US marks',
   numberFormat(), { group: ',', decimal: '.' });
@@ -2721,7 +2726,7 @@ eq('number reader: the capture values in European style read as no number',
   ['13,63€', '5,16€', '2,37€', '1.234,56 €', '1 234,56'].map(toNumber),
   [null, null, null, null, null]);
 
-eq('number reader: US-style values read as before',
+eq('number reader: "1,234", "€1,234.56" and "0.125" read as 1234, 1234.56 and 0.125',
   ['1,234', '€1,234.56', '0.125'].map(toNumber),
   [1234, 1234.56, 0.125]);
 
@@ -2740,7 +2745,7 @@ eq('decimal comma in text: a dotted date "on 12.03.2024 we" holds no number',
 eq('decimal comma in text: a dotted version "1.2.3" holds no number',
   extractNumbersInText('version 1.2.3 ships'), []);
 
-eq('decimal comma in text: "up 1,234.56 units" reads as before',
+eq('decimal comma in text: "up 1,234.56 units" holds the number 1,234.56',
   extractNumbersInText('up 1,234.56 units'),
   [{ numStr: '1,234.56', num: 1234.56, index: 3 }]);
 
@@ -2750,7 +2755,7 @@ eq('decimal comma in text: a sentence\'s final period stays outside the run',
 eq('decimal comma: "1.234,56 EUR" is not a unit number',
   matchUnitNumber('1.234,56 EUR'), null);
 
-eq('decimal comma: "1,234.56 EUR" is a unit number, as before',
+eq('decimal comma: "1,234.56 EUR" is a unit number',
   matchUnitNumber('1,234.56 EUR'), { numStr: '1,234.56', num: 1234.56, index: 0 });
 
 (function decimalComma_ladderLeavesTheCellAsWritten() {
@@ -2760,7 +2765,7 @@ eq('decimal comma: "1,234.56 EUR" is a unit number, as before',
     ['13,63€', '5,16 €', '1.234,56 €', '0,75', '987,5',
       '14,37€ (includes 2,49€ VAT)'].map((text) => decide(text).mode),
     ['skip', 'skip', 'skip', 'skip', 'skip', 'skip']);
-  eq('decimal comma: the ladder still rounds a US-style cell',
+  eq('decimal comma: the ladder gives "1,234.56" and "0.125" the mode extracted',
     ['1,234.56', '0.125'].map((text) => decide(text).mode), ['extracted', 'extracted']);
 })();
 
@@ -2796,6 +2801,9 @@ eq('decimal comma: "1,234.56 EUR" is a unit number, as before',
       toNumber(text), expected);
   }
 })();
+
+eq('number reader: "125" above "126", and "1" above "234", read as no number',
+  ['125\n126', '1\n234'].map(toNumber), [null, null]);
 
 eq('group space in text: a space-grouped number is one run',
   extractNumbersInText('Revenue 1 034 567 units'),
@@ -2879,6 +2887,15 @@ eq('write-back: a space-grouped original comes back with commas',
 
 eq('write-back: trailing zeros go',
   formatNumber(35, '35.0'), '35');
+
+eq('write-back: a whole result from a whole original writes no decimals',
+  formatNumber(12, '12'), '12');
+
+eq('write-back: a result writes its own decimals, not the original\'s count',
+  formatNumber(1.5, '1.234'), '1.5');
+
+eq('write-back: a result keeps every decimal it holds',
+  formatNumber(1.75, '1.72'), '1.75');
 
 eq('write-back: a negative whose original holds no minus sign writes none',
   formatNumber(-1000, '1,234'), '1,000');

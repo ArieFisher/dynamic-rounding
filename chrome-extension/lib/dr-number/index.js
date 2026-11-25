@@ -1,34 +1,33 @@
+// Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 /**
  * DynamicRounding lib/dr-number package bundle.
  *
- * Loaded LAST within lib/dr-number, after rounding.js, core.js, parsing.js,
- * and identifiers.js. Those four files still declare their functions as bare
- * top-level names on the shared global scope (content.js and sidebar.js
- * keep consuming those bare names unchanged — this sprint does not migrate
- * any consumer). This file adds one more thing:
- * a single DR_NUMBER object that groups every public function the package
- * exposes, so future consumers can start depending on DR_NUMBER.x instead of
- * the bare name without another move.
+ * Loaded LAST within lib/dr-number, because the object below reads each name
+ * as this file loads. The other files declare their functions as bare
+ * top-level names on the shared global scope, and their callers call those
+ * bare names. This file adds a single DR_NUMBER object that groups every
+ * top-level function declaration of those files. No file reads DR_NUMBER.x
+ * yet.
  *
- * No logic lives here — this is a pure re-export list. Do not add behavior.
+ * Do not add behavior.
  */
 
 const DR_NUMBER = {
   // rounding.js
   roundWithOffset,
-  roundCellSetAware,
+  roundValueSetAware,
   stepForOffset,
   formatStep,
   trimNum,
-
-  // core.js
   findMaxMagnitude,
+
+  // reader.js
   numberFormat,
   groupShapePattern,
   isNumberShape,
   toNumber,
 
-  // parsing.js
+  // settings.js
   lettersToColIndex,
   parseRangeEndpoint,
   parseRangeToken,
@@ -36,27 +35,36 @@ const DR_NUMBER = {
   isInRanges,
   resolveOffset,
   resolveNumTop,
+
+  // numbers-in-text.js
   matchUnitNumber,
   getExclusionReason,
-  findDates,
-  isAmbiguousDate,
-  isDateLike,
-  isTimeLike,
-  clockTimeRanges,
-  parseISODateTime,
-  isDateTimeLike,
-  roundDateText,
-  roundISODateTime,
-  roundTimeText,
   getQuoteMaskedRanges,
-  overlapsQuoteRange,
+  overlapsMaskedRange,
   extractNumbersInText,
   bracketSignSpan,
   isBracketedNegative,
   matchBracketedNumber,
-  eraYearDigitRanges,
-  formatNumber,
   pureNumberSpan,
+
+  // dates.js
+  knownDate,
+  findDates,
+  isAmbiguousDate,
+  isDateLike,
+  isTimeLike,
+  getClockTimeMaskedRanges,
+  parseISODateTime,
+  isDateTimeLike,
+  isClockTimeInRange,
+  readTimeCell,
+  roundDateText,
+  roundClockTime,
+  roundTimeText,
+  getEraYearMaskedRanges,
+
+  // write-back.js
+  formatNumber,
 
   // identifiers.js
   insideNumberRun,

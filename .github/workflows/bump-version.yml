@@ -11,9 +11,13 @@ permissions:
 
 jobs:
   bump:
+    # A version-bump pull request opened with BUMP_PR_TOKEN carries the token
+    # owner's login, so the head branch is the only field that separates it
+    # from other pull requests. The guard skips it so that no bump follows a
+    # bump.
     if: >
       github.event.pull_request.merged == true &&
-      github.event.pull_request.user.login != 'github-actions[bot]'
+      !startsWith(github.event.pull_request.head.ref, 'chore/version-bump-pr-')
     runs-on: ubuntu-latest
     steps:
       - name: Check out main
@@ -47,9 +51,13 @@ jobs:
           python3 scripts/bump-versions.py "$MINOR" \
             < "$RUNNER_TEMP/changed-files" > "$RUNNER_TEMP/bumped-files"
 
+      # GitHub can hold the checks of a pull request opened with the workflow
+      # token until someone approves them, and the wait below then times out.
+      # GitHub runs the checks of a pull request opened with BUMP_PR_TOKEN at
+      # once.
       - name: Open version-bump PR if anything changed
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.BUMP_PR_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           xargs --no-run-if-empty git add -- < "$RUNNER_TEMP/bumped-files"
           if git diff --cached --quiet; then
@@ -103,5 +111,15 @@ jobs:
             exit 1
           fi
           # Automatic head-branch deletion does not fire for merges made with the
-          # workflow token, so delete the bump branch here.
-          git push origin --delete "$BUMP_BRANCH"
+          # workflow token, so delete the bump branch here. It does fire for a
+          # merge made with BUMP_PR_TOKEN, so a branch already gone is success.
+          # git ls-remote --exit-code exits 2 only when the branch is absent;
+          # a network or authentication failure exits 128.
+          if ! git push origin --delete "$BUMP_BRANCH"; then
+            STATUS=0
+            git ls-remote --exit-code --heads origin "$BUMP_BRANCH" > /dev/null || STATUS=$?
+            if [ "$STATUS" -ne 2 ]; then
+              echo "Could not delete $BUMP_BRANCH."
+              exit 1
+            fi
+          fi

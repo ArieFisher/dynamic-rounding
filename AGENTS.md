@@ -17,7 +17,7 @@ Rules group by reader. The contributor guide holds the rules every contributor n
 - Read it in full when starting a branch. Use the vocabulary when writing (e.g. code, code comments, test names, the commit message, issue and pull request text, etc.). Never vary word choice for style.
 - **At every commit**, sweep the change's **new** lines and:
   - *retired synonyms*: Replace a retired synonym with its canonical term.
-  - *new concepts*: Define new concepts in `docs/vocabulary.md` on the same branch, as its own `docs:` commit.
+  - *new concepts*: Define new concepts in `docs/vocabulary.md` on the same branch.
 
 ### Group like concepts into a single location
 
@@ -27,8 +27,9 @@ A list belongs in exactly one place. Two copies drift apart and nothing reports 
 - Put the machine form beside the human form — a column, a fenced block, a front-matter key — and parse it.
 - Never add a "keep in step with X" comment: it marks a duplicate that will drift. Remove the duplicate.
 - Fail closed when the parse returns nothing. On a missing file, a renamed heading, or a reshaped row, the check must exit with an error, because "found nothing" and "nothing to enforce" look identical from outside.
+- An explanation follows the same rule. Write a reason in full once, in the comment beside the code it governs. Every other place that needs the reason holds a pointer to that comment.
 
-Applies to allowlists, error codes, supported-version tables, feature flags, and these conventions.
+Applies to allowlists, error codes, supported-version tables, feature flags, the reasons in code comments, and these conventions.
 
 ### Collapse a path before opening a second one
 
@@ -81,6 +82,7 @@ This repository is public. Before staging a new file, answer this: does it serve
 - Keep code simple and readable.
 - Give every new Python parameter and return value a type hint. In JavaScript, write no per-parameter doc comments; a parameter's name states its meaning. The exception is `ROUND_DYNAMIC`, whose JSDoc Google Sheets reads to build the help card.
 - A comment holds only what the code cannot show: a reason, a constraint, or a fact about the page or a caller outside the file. No comment restates what the code does, because the restatement becomes false when the code changes. Before writing a comment, check whether a clearer name or a smaller function would make it unnecessary; that is a judgement, not a rule.
+- A test name holds the input and the result the test expects, never the rule or code path that produces the result. A test group's heading holds the behavior its tests check. A name that holds the mechanism becomes false when the mechanism changes, and the test still passes.
 
 ### Regression fixtures
 
@@ -88,18 +90,22 @@ A capture from the extension holds real page content, and this repository is pub
 
 ### The manual test page
 
-`docs/test-pages/test-tables-1.html` holds one table per shape the extension handles, each with the result to expect. It is the page I load to check a change by hand, so it is the only place a manual test can name.
+`docs/test-pages/test-tables-1.html` holds one table per shape the extension handles, each with the result to expect. It is the page I load to check a change by hand, so it is the only place a manual test of the extension can name.
 
-- **Every change that adds a kind of test names the table in that page to test it on.** Give me the section number in the pull request's manual tests and in chat. A test with no table to run it on is a test I cannot run.
+- **Every change that adds a kind of test names the table in that page to test it on.** Give me the section number in the pull request's manual tests and in chat only when the test cannot run automatically: in the test suites, or on the page in a headless browser. Run every other test, and report it under `## Tested`. A test with no table to run it on is a test I cannot run.
 - **A change to a table shape the page already holds needs no new table.** Point at the section that holds it.
 - **A change that turns on a shape the page does not hold gets a new section, in the same branch.** Merged cells are the example: nothing on the page carried one, so no amount of simplifying it could tell the new reading from the old. The measure is whether the shape matters to someone using the extension, not whether the change was large.
-- Each new section states what the table holds and what to expect. Where a passing result looks like nothing happened, it states what a failure looks like, in the present tense. It never states what a setting does to the table, what the extension did before a change, or the issue behind a fixture. A row whose result waits on an open design decision links to that decision's issue. A row label carries "rounds" or "held" only when that row is the exception to the section's expectation.
+- Each new section states what the table holds and what to expect, in the section's tester's notes, which stay closed until the reader opens them. Where a passing result looks like nothing happened, it states what a failure looks like, in the present tense. It never states what a setting does to the table, what the extension did before a change, or the issue behind a fixture. A row whose result waits on an open design decision links to that decision's issue. A row label carries "rounds" or "held" only when that row is the exception to the section's expectation.
+- **A section can also be a puzzle.** A puzzle holds a question for any reader, not only a tester: what story the section's table tells once simplified. It holds the question, the data patterns, and the story, and the reader opens or hides either panel at any time. The puzzle text never states what a setting does to the table; the section's tester's notes still hold that for the tester.
+- **A manual test of the Claude Code plugin runs on the plugin test prompt.** The plugin draws no page, so the test runs on the table that the prompt in `claude-code-plugin/README.md` makes the model write, with the written text to expect under it. When a change turns on a shape the prompt's table does not hold, add the shape to that table in the same branch.
 
 ### Docs track behavior
 
-Living documents: `README.md`, `CONTRIBUTING.md`, `MAINTAINERS.md`, `chrome-extension/README.md`, `docs/design.md`, `docs/test-pages/test-tables-1.html`, `docs/vocabulary.md`, `js/README.md`, `js/tests-googlesheets-tab.md`, `python/README.md`, the `.agent/` instruction files, and this file. Sprint plans and logs, research notes, and released `js/CHANGELOG.md` entries are historical records. Mark them, never rewrite them.
+Living documents: `README.md`, `CONTRIBUTING.md`, `MAINTAINERS.md`, `chrome-extension/README.md`, `claude-code-plugin/README.md`, `docs/capability-map.md`, `docs/design.md`, `docs/table-kind-pairs.md`, `docs/test-pages/test-tables-1.html`, `docs/vocabulary.md`, `js/README.md`, `js/tests-googlesheets-tab.md`, `python/README.md`, the `.agent/` instruction files, and this file. Sprint plans and logs, research notes, and released `js/CHANGELOG.md` entries are historical records. Mark them, never rewrite them.
 
 - A pull request that changes behavior updates every living document its change invalidates, in the same branch. If none apply, write "No doc impact" in the body.
+- Whoever changes code (a name, a value, a condition, or what it does) searches the repository in the same commit for the old name and for text that describes the old code: comments, test names, test group headings, and documents. Correct each one the change made false.
+- Whoever changes a rule in this file, a rule in the design document, or a term in the vocabulary searches the repository in the same branch for text written under the old rule or term: code, comments, test names, and living documents. Correct each one that no longer follows the rule or still uses the old term. Historical records stay as written.
 
 ### Public repository, security disclosure
 
@@ -153,7 +159,9 @@ A Product section leads with the underlying issue: the flaw in the code that let
 ```bash
 node scripts/build-sheets.js
 ```
-CI runs `node scripts/build-sheets.js --check` and fails when the committed file differs from the build. The shared library files are part of the Sheets library, so rebuild after a change to one of them as well.
+CI runs `node scripts/build-sheets.js --check` and fails when a committed file differs from the build. The shared library files are part of the Sheets library, so rebuild after a change to one of them as well.
+
+The same build writes the plugin library, `claude-code-plugin/hooks/library.js`, from the shared library files and the extension's settings contract. It is generated too: never edit it by hand, and commit it with the Sheets file when a rebuild changes it.
 
 Run the test suite:
 ```bash
@@ -178,6 +186,20 @@ node chrome-extension/tests.js
 
 The tests live in pieces under `chrome-extension/tests/`, and `tests.js` joins them in its order list and runs them as one script. A new helper function goes in `helpers.js`. Each other piece holds the tests for one area of the extension, named on its first line; add a test to the piece for the area it tests. A new piece goes in the order list.
 
+#### Claude Code plugin
+
+Run the Node suite, part of CI on every PR. It covers the markdown adapter, the text table step, and the plugin test prompt's table in the plugin's README:
+```bash
+node claude-code-plugin/tests.js
+```
+
+Run the engine's two commands before opening a pull request that touches the plugin, and report both under `## Tested`. The first reads the plugin's manifest and hooks module the way the engine will, and the second runs the engine test on each surface:
+```bash
+claude plugin validate --strict claude-code-plugin
+claude plugin test claude-code-plugin
+```
+CI runs neither: it holds no Claude Code, and the plugin API is early access, so a Claude Code release can change either result with no change in this repository.
+
 #### Python
 
 Run the test suite:
@@ -198,7 +220,7 @@ pytest
 
 ### How versions move (this repository)
 
-The `Bump package versions on merge` workflow (`.github/workflows/bump-version.yml`) runs after every merged PR. `scripts/bump-versions.py` holds the table of packages and their version files. If the PR touched `python/**`, `chrome-extension/**`, or `js/**` — documentation included — it bumps the patch of the matching version file, or the minor version when the merged PR carries the `minor` label (the patch then resets to 0), opens a bump PR titled `chore(version): bump after #NNN`, waits for the required checks, merges it, and deletes the bump branch. For JS it also runs the Sheets build (`node scripts/build-sheets.js`), so the version-bump PR carries a `js/round_dynamic.js` that matches the build, and turns the `## [Unreleased]` heading in `js/CHANGELOG.md` into the new version's heading. Nobody edits those version lines or release headings by hand. To release a minor version, add the `minor` label to the PR before merging it.
+The `Bump package versions on merge` workflow (`.github/workflows/bump-version.yml`) runs after every merged PR. `scripts/bump-versions.py` holds the table of packages and their version files. If the PR touched `python/**`, `chrome-extension/**`, `claude-code-plugin/**`, or `js/**` — documentation included — it bumps the patch of the matching version file, or the minor version when the merged PR carries the `minor` label (the patch then resets to 0), opens a bump PR titled `chore(version): bump after #NNN` (with the token [MAINTAINERS.md](MAINTAINERS.md#bump-workflow-token) describes), waits for the required checks, merges it, and deletes the bump branch. For JS it also runs the Sheets build (`node scripts/build-sheets.js`), so the version-bump PR carries a `js/round_dynamic.js` that matches the build, and turns the `## [Unreleased]` heading in `js/CHANGELOG.md` into the new version's heading. The plugin's version file is its manifest, `claude-code-plugin/.claude-plugin/plugin.json`; no build follows its bump, because the plugin library holds no version. A pull request that changes a shared library file holds the rebuilt Sheets file and plugin library, so the workflow bumps the extension, the Sheets library, and the plugin after it merges. Nobody edits those version lines or release headings by hand. To release a minor version, add the `minor` label to the PR before merging it.
 
 ## Agents
 
@@ -255,12 +277,25 @@ In a GitHub issue this section goes on top, with the original engineering findin
 
 ### GitHub access model
 
-- The `origin` remote is a proxy mirror of GitHub and can lag or diverge. github.com is the source of truth for branch, pull request, and `main` state.
-- The HTTPS and git proxies authenticate through the connected GitHub App and ignore pasted tokens. A token in a command changes nothing, so an invalid token can appear to work.
-- `gh` succeeds for issues, pull requests, and API reads under App auth. Use it first, and ask for a personal access token only after `gh` itself fails.
-- Verify a token before first use: `curl --noproxy '*' -H "Authorization: Bearer <token>" https://api.github.com/user` must return the right login.
-- The GitHub MCP server and raw proxy `curl` still fail on writes with `403 Resource not accessible by integration`.
+github.com is the source of truth for branch, pull request, and `main` state. How a session reaches it depends on where the session runs.
+
+**Cloud session.**
+- The `origin` remote is a proxy mirror of GitHub and can lag or diverge.
+- The HTTPS and git proxies authenticate through the connected GitHub App and ignore pasted tokens. A token in a command that goes through a proxy has no effect, so an invalid token can appear to work.
+- The GitHub MCP server and raw proxy `curl` fail on writes with `403 Resource not accessible by integration`.
 - Anonymous `curl --noproxy '*' https://api.github.com/repos/<owner>/<repo>/branches` reaches real GitHub directly and is fine for branches, pull requests, commits, compare, and events. It omits repository merge settings entirely, so read those with `gh api`.
+- Push with `git push origin <branch>`, then confirm the branch arrived with the anonymous branches read above.
+- When `gh pr create` returns 403, call the API directly with a personal access token, past the proxy: `curl --noproxy '*' -H "Authorization: Bearer <token>" https://api.github.com/repos/<owner>/<repo>/pulls -d '{"title": "...", "head": "<branch>", "base": "main", "body": "..."}'`.
+
+**Local checkout.**
+- The `origin` remote is GitHub itself. `git` and `gh` use the stored login of the person at the machine, and a pasted token works.
+- When that login has expired (`gh` returns 401, or `git push` reports "could not read Username"), pass the token to each command through the `GH_TOKEN` environment variable, and push through the `gh` credential helper: `GH_TOKEN=<token> git -c credential.helper= -c 'credential.helper=!gh auth git-credential' push -u origin <branch>`.
+- When `gh pr create` returns `HTTP 403 Forbidden` from the GraphQL endpoint, open the pull request through the REST endpoint: `GH_TOKEN=<token> gh api repos/<owner>/<repo>/pulls -X POST -f base=main -f head=<branch> -f "title=..." -F body=@<file>`. This 403 was seen on 2026-11-18 and 2026-11-24 with a fine-grained token that held pull request write permission, and the REST call succeeded with the same token.
+
+**Both.**
+- Use `gh` first for issues, pull requests, and API reads. Ask me for a personal access token only after `gh` itself fails.
+- Verify a token before first use. In a cloud session, `curl --noproxy '*' -H "Authorization: Bearer <token>" https://api.github.com/user` must return the right login. In a local checkout, `GH_TOKEN=<token> gh api user --jq .login` must print it.
+- A 403 whose body is an HTML "Access Denied" page comes from a network security layer, not from GitHub. Stop and ask me before trying another route.
 - Diagnose which layer gates a blocked call before re-sending anything.
 
 **Token hygiene.** A personal access token lives in session memory only. Never write it to `.git/config`, `~/.git-credentials`, a commit message, a git URL, or any tracked file. `git push -u <token-URL> <branch>` stores the token as the branch upstream. After any push involving one, check `.git/config` for it and unset the upstream if it landed.

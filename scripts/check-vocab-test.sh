@@ -144,7 +144,7 @@ expect_pass  "canonical prose passes"               docs/design.md   'The pillbo
 expect_pass  "allowed sense passes"                 docs/design.md   'A blank range expression covers the whole table; offsets outside the range throw.'
 expect_pass  "record path exempt"                   docs/sprint-logs/old-log.md 'The table toggle was renamed later.'
 expect_block "code comment caught"                  chrome-extension/sidebar.js '// The main switch turns the table off.'
-expect_block "test name caught"                     chrome-extension/tests/pillbox.js "eq('the pill toggles the table', a, b);"
+expect_block "test name caught"                     chrome-extension/tests/pillbox-tests.js "eq('the pill toggles the table', a, b);"
 expect_block "non-markdown text file caught"        scripts/notes.txt 'the table toggle lives here'
 expect_pass  "self-test exempt"                     scripts/check-vocab-test.sh 'expect_block "x" docs/design.md "The table toggle."'
 
@@ -217,6 +217,48 @@ if (cd "$dir" && scripts/check-vocab.sh --staged >/dev/null 2>&1); then
   record fail "rename-plus-edit is caught (gate passed it)"
 else
   record pass "rename-plus-edit is caught"
+fi
+
+# A rename with no edit adds no line, so an old line that still holds a retired
+# synonym must not block it, in either mode.
+dir=$(scratch_repo)
+printf 'The table toggle turns rounding on.\n' > "$dir/docs/design.md"
+git -C "$dir" add docs/design.md
+git -C "$dir" commit -qm base-owns-synonym
+base=$(git -C "$dir" rev-parse HEAD)
+git -C "$dir" mv docs/design.md docs/renamed.md
+if (cd "$dir" && scripts/check-vocab.sh --staged >/dev/null 2>&1); then
+  record pass "a plain rename passes --staged"
+else
+  record fail "a plain rename passes --staged (gate blocked a line the rename did not add)"
+fi
+git -C "$dir" commit -qm rename
+head=$(git -C "$dir" rev-parse HEAD)
+if (cd "$dir" && scripts/check-vocab.sh --range "$base" "$head" >/dev/null 2>&1); then
+  record pass "a plain rename passes --range"
+else
+  record fail "a plain rename passes --range (gate blocked a line the rename did not add)"
+fi
+
+# A file moved out of an exempt path into a living one reads as all-new prose,
+# so a retired synonym the record held blocks the move, in either mode.
+dir=$(scratch_repo)
+printf 'The table toggle turns rounding on.\n' > "$dir/docs/sprint-logs/old.md"
+git -C "$dir" add docs/sprint-logs/old.md
+git -C "$dir" commit -qm record
+base=$(git -C "$dir" rev-parse HEAD)
+git -C "$dir" mv docs/sprint-logs/old.md docs/promoted.md
+if (cd "$dir" && scripts/check-vocab.sh --staged >/dev/null 2>&1); then
+  record fail "a rename out of an exempt path is caught by --staged (gate passed it)"
+else
+  record pass "a rename out of an exempt path is caught by --staged"
+fi
+git -C "$dir" commit -qm promote
+head=$(git -C "$dir" rev-parse HEAD)
+if (cd "$dir" && scripts/check-vocab.sh --range "$base" "$head" >/dev/null 2>&1); then
+  record fail "a rename out of an exempt path is caught by --range (gate passed it)"
+else
+  record pass "a rename out of an exempt path is caught by --range"
 fi
 
 # --range mode: a committed violation between two revisions is caught.

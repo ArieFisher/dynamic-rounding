@@ -1,31 +1,22 @@
-/**
- * DynamicRounding Chrome Extension
- * https://github.com/ArieFisher/dynamic-rounding
- * MIT License
- * Copyright (c) 2026 Arie Fisher
- */
+// Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
 /**
  * DynamicRounding lib/dr-capture package: the capture file renderer.
  *
  * buildCaptureDocument() turns one capture state into one self-contained
- * HTML document — a string in, a string out, no browser API touched. The
+ * HTML document — plain values in, one string out, no browser API touched. The
  * document reads as a report, top to bottom: a header of facts, the mark and
  * remarks, a likeness of the sidebar, the screenshot, the bound table, the
  * registry, the detection settings in force, the log rows of both contexts, the
  * fixture seed as readable text, and the whole state as machine-readable
  * JSON at the bottom.
- * A thin line separates every section. A reader hint (a note) renders one
- * size below the table text, in italics, opening with "Note: ", through one
- * helper, so it never reads as content.
  *
- * Safety doctrine, adapted from the model extension's capture for string
- * assembly (the test harness has no DOM, so the document cannot be built as
- * nodes and serialized):
+ * Safety doctrine for string assembly (the test harness has no DOM, so the
+ * document cannot be built as nodes and serialized):
  *
  * 1. Every dynamic value passes through escapeHtml() on its way into the
  *    string. No interpolation of raw state exists in this file; the
- *    hostile-payload tests in tests/capture-log.js attack this directly.
+ *    hostile-payload tests in tests/capture-log-tests.js attack this directly.
  * 2. The file declares its own Content-Security-Policy meta tag —
  *    script-src 'none', img-src data: — and carries no script element, so
  *    a renderer bug cannot become code execution and a remote reference in
@@ -37,10 +28,6 @@
  * 4. The capture carries the fixture seed twice: an escaped visible block
  *    for reading, and the JSON copy for byte-exact trust — the HTML parser
  *    folds CR and drops a leading newline in a pre, JSON.stringify does not.
- *
- * The sidebar likeness is deliberately crude — positions and states, no
- * pixel fidelity. The JSON island carries the precision; the likeness only
- * has to show what stood where.
  */
 
 const CAPTURE_CSP = [
@@ -57,12 +44,19 @@ const CAPTURE_MARK_GLYPHS = {
   'looks-wrong': '\u{1F44E}',
 };
 
+// Own-property check: only the three mark tokens pass. A bare lookup would
+// resolve prototype property names too, and the glyph is interpolated as
+// markup.
+function isCaptureMark(token) {
+  return Object.prototype.hasOwnProperty.call(CAPTURE_MARK_GLYPHS, token);
+}
+
 // The mark's word for reading, derived from its token — "looks-right" reads
 // "Looks right" — so the glyph map above stays the one list of marks. Only the
-// three own tokens derive a word; any other value returns as it is, and the
-// caller escapes it like every other value.
+// three mark tokens derive a word; any other value goes through displayValue,
+// and the caller escapes it like every other value.
 function captureMarkLabel(token) {
-  if (!Object.prototype.hasOwnProperty.call(CAPTURE_MARK_GLYPHS, token)) {
+  if (!isCaptureMark(token)) {
     return displayValue(token);
   }
   const words = String(token).split('-').join(' ');
@@ -74,18 +68,15 @@ const CAPTURE_STYLES = [
   'h1 { font-size: 18px; margin: 0 0 4px; }',
   'h2 { font-size: 15px; margin: 0 0 8px; }',
   'h3 { font-size: 13px; margin: 12px 0 4px; }',
-  // The header is a header: the facts read one size below the body text, muted.
   '.cap-meta { font-size: 12px; color: #666; margin: 4px 0 0; }',
   '.cap-meta dt { color: #888; }',
-  // One thin line between sections; the sections stack, none sits beside another.
   'main > section { border-top: 1px solid #ddd; margin-top: 16px; padding-top: 8px; }',
-  '.cap-mark { font-size: 20px; margin: 4px 0; }',
+  '.cap-mark { font-size: 20px; }',
   '.cap-mark span { font-size: 13px; color: #555; vertical-align: middle; }',
   'dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 8px 0; }',
   'dt { color: #555; } dd { margin: 0; overflow-wrap: anywhere; }',
   '.cap-remarks { border-left: 3px solid #3d85c6; padding: 4px 12px; margin: 12px 0; }',
   '.cap-remarks p { margin: 2px 0; white-space: pre-wrap; }',
-  // A reader note: one size below the table text, italic, never content.
   '.cap-note { font-size: 13px; font-style: italic; color: #555; margin: 4px 0; }',
   '.cap-panel { max-width: 320px; border: 1px solid #ccc; border-radius: 8px; padding: 12px; }',
   'img.cap-shot { max-width: 100%; border: 1px solid #ccc; }',
@@ -126,13 +117,13 @@ function displayValue(value) {
   return value === null || value === undefined || value === '' ? '—' : String(value);
 }
 
-/* ------------------------------------------------------------- filenames */
+/* ------------------------------------------------------------ file names */
 
 function capturePad2(n) {
   return String(n).padStart(2, '0');
 }
 
-// A value reduced to something a filename can hold: lower case, runs of
+// A value reduced to something a file name can hold: lower case, runs of
 // anything outside a-z and 0-9 collapsed to one dash, edge dashes trimmed.
 // Chrome strips path separators out of a download name anyway; build them
 // out here.
@@ -173,7 +164,6 @@ function captureSourceSlug(url) {
 // Compact date first so captures sort by day; time after the source so a
 // second capture of the same page is a new file, never Chrome's "(1)" copy;
 // the mark token last, so a folder listing shows each file's verdict.
-// The mark passes through the same reducer as the source.
 function captureFilenameFor(opts) {
   const at = opts.at;
   const date = at.getFullYear() + capturePad2(at.getMonth() + 1) + capturePad2(at.getDate());
@@ -182,15 +172,15 @@ function captureFilenameFor(opts) {
     '-' + captureSlug(opts.mark) + '.html';
 }
 
-/* -------------------------------------------------------------- size note */
+/* ----------------------------------------------------------- size warning */
 
 // The saved file carries the same content about four times — the two table
 // renderings, the JSON island, and the visible seed — so the serialized
 // state's length times this factor estimates the file's size before any
 // file exists. The screenshot stays out of the estimate: it lands once, its
 // size is bounded by the viewport (a few hundred thousand characters, under
-// a tenth of the warning threshold), and the size note runs when the form
-// opens, before any screenshot exists.
+// a tenth of the warning threshold), and the sidebar computes the size
+// warning when the form opens, before any screenshot exists.
 const CAPTURE_FILE_CHARS_PER_STATE_CHAR = 4;
 // Estimates at or above this many characters (about 4 MB) get a size
 // warning on the capture form. The full-detail default stays: the warning
@@ -201,8 +191,6 @@ const CAPTURE_SIZE_WARN_CHARS = 4 * 1000 * 1000;
  * A size warning for the capture form: null for an ordinary state, one
  * sentence with the estimated file size for a large one. The caller passes
  * the same pulled state the file would be built from.
- * @param {object} state
- * @returns {string|null}
  */
 function captureSizeWarning(state) {
   let length;
@@ -227,8 +215,21 @@ function renderNote(text) {
   return '<p class="cap-note">Note: ' + escapeHtml(text) + '</p>';
 }
 
+function renderAbsence(text) {
+  return '<p class="cap-empty">' + escapeHtml(text) + '</p>';
+}
+
+function renderSection(heading, body) {
+  return '<section><h2>' + escapeHtml(heading) + '</h2>' + body + '</section>';
+}
+
+function renderLabeledRow(label, value) {
+  return '<div class="cap-switch"><span>' + escapeHtml(label) + '</span><b>' +
+    escapeHtml(value) + '</b></div>';
+}
+
 // The header holds the facts alone: the title and a small muted list. The
-// verdict and the remarks follow in their own section, so the eye lands on
+// mark and the remarks follow in their own section, so the eye lands on
 // them first among the content.
 function renderCaptureHeader(state) {
   const meta = state.meta || {};
@@ -248,15 +249,10 @@ function renderCaptureHeader(state) {
     '</header>';
 }
 
-// The mark and the remarks together: the glyph and its word, then the text.
 function renderMarkAndRemarks(state) {
-  // Own-property guard: only the three mark tokens resolve a glyph. A bare
-  // lookup would resolve prototype property names too, and the glyph is
-  // interpolated as markup.
-  const glyph = Object.prototype.hasOwnProperty.call(CAPTURE_MARK_GLYPHS, state.mark)
-    ? CAPTURE_MARK_GLYPHS[state.mark] : '';
+  const glyph = isCaptureMark(state.mark) ? CAPTURE_MARK_GLYPHS[state.mark] : '';
   // The remarks are one free-text field; line breaks the user typed survive
-  // through the pre-wrap rule on .cap-remarks.
+  // through the pre-wrap rule on .cap-remarks p.
   return '<section class="cap-remarks">' +
     '<p class="cap-mark">' + glyph + ' <span>' + escapeHtml(captureMarkLabel(state.mark)) + '</span></p>' +
     '<p><b>Remarks:</b> ' + escapeHtml(displayValue(state.remarks)) + '</p>' +
@@ -268,7 +264,7 @@ function renderMarkAndRemarks(state) {
 // showed; a simplified cell (its original differs from what it shows) gets
 // the original in its title, so hover reveals it the way the live page does.
 // mode 'originals' shows the originals themselves. A cell with no stored
-// original splits on the rounded marker: with the marker the original is
+// original splits on the marker class: with the marker class the original is
 // lost and renders as that absence, never a substituted value; without it
 // the cell was never rounded, so its displayed text IS the original.
 function renderCapTable(table, mode) {
@@ -287,14 +283,11 @@ function renderCapTable(table, mode) {
   // sparse arrays, and map passes over the holes that are the whole point.
   // Each row draws to the table's full width, so the columns a merge covers
   // render blank wherever the merge sits, its right edge included.
-  const width = Math.max(table.columnCount || 0, 0);
+  const width = table.columnCount || 0;
   const rowsHtml = Array.from(byRow, function (rowCells) {
     const cells = rowCells || [];
     const cellsHtml = Array.from({ length: Math.max(cells.length, width) }, function (_, col) {
       const cell = cells[col];
-      // The columns a merge covers hold no cell of their own. They render as
-      // empty slots, which is what keeps the cells after them in place; the
-      // note below states that the merge itself is not drawn.
       if (!cell) return '<td></td>';
       const tag = cell.role === 'th' ? 'th' : 'td';
       if (mode === 'originals') {
@@ -319,32 +312,23 @@ function renderCapTable(table, mode) {
 // forms are readable without hovering. The hover reveal on the displayed
 // copy stays for cell-by-cell comparison.
 function renderBoundTable(state) {
-  const table = state.activeTableIndex === null || state.activeTableIndex === undefined
-    ? null
-    : state.tables[state.activeTableIndex];
+  const table = (state.tables || [])[state.activeTableIndex];
   if (!table) {
-    return '<p class="cap-empty">No table was bound when this capture was taken. ' +
-      'The state below records everything the extension had.</p>';
+    return renderAbsence('No table was bound when this capture was taken. ' +
+      'The state below records everything the extension had.');
   }
   // An error record holds a failure, not cells; rendering it through the
   // table path would caption null counts over an empty table and read as a
   // finding about the page. The failure is the finding.
   if (table.kind === 'unknown') {
-    return '<p class="cap-empty">Serialization of this table failed: ' +
-      escapeHtml(table.error || '') +
-      '. The state below records everything the extension had.</p>';
+    return renderAbsence('Serialization of this table failed: ' + (table.error || '') +
+      '. The state below records everything the extension had.');
   }
-  const caption = escapeHtml(table.kind) + ' table, ' +
-    escapeHtml(String(table.rowCount)) + ' row(s) × ' +
-    escapeHtml(String(table.columnCount)) + ' column(s), ' + shownValues(table);
-  return '<h3>' + caption + '</h3>' +
+  return '<h3>' + escapeHtml(table.kind + ' table, ' + tableSummary(table)) + '</h3>' +
     renderCapTable(table, 'displayed') +
     renderNote('Hover a dotted cell to see its original.') +
     '<h3>The same table, with the originals</h3>' +
     renderCapTable(table, 'originals') +
-    // The state records each cell's column but not how far a merge reaches,
-    // so both renderings and the JSON place every cell in its own slot and
-    // leave the rest of a merge blank.
     renderNote('Cell spans are not recorded: a merged cell renders in the ' +
       'column it starts at, and the columns it covers render blank, here ' +
       'and in the state below.');
@@ -356,6 +340,11 @@ function shownValues(table) {
   return simplified ? 'showing simplified values' : 'showing original values';
 }
 
+function tableSummary(table) {
+  return table.rowCount + ' row(s) × ' + table.columnCount + ' column(s), ' +
+    shownValues(table);
+}
+
 // Every table the registry held, one line each, the bound one marked. The
 // full per-cell detail sits in the JSON island; this list shows at a glance
 // what was found.
@@ -364,24 +353,17 @@ function renderRegistrySection(state) {
     const bound = index === state.activeTableIndex;
     const label = table.kind === 'unknown'
       ? 'serialization failed: ' + (table.error || '')
-      : table.kind + ', ' + table.rowCount + ' row(s) × ' + table.columnCount +
-        ' column(s), ' + shownValues(table);
-    return '<div class="cap-switch"><span>#' + (index + 1) + ' — ' + escapeHtml(label) +
-      '</span><b>' + (bound ? 'bound' : '') + '</b></div>';
+      : table.kind + ', ' + tableSummary(table);
+    return renderLabeledRow('#' + (index + 1) + ' — ' + label, bound ? 'bound' : '');
   }).join('');
-  const body = rows || '<p class="cap-empty">The registry held no tables.</p>';
-  return '<section><h2>Registry</h2>' + body + '</section>';
+  const body = rows || renderAbsence('The registry held no tables.');
+  return renderSection('Registry', body);
 }
 
-// A setting's own value, rendered for reading: a list joins its items
-// with ", " (an empty list falls back to displayValue's dash), a scalar goes
-// through displayValue. Every item and every scalar passes through
-// escapeHtml — the vendor profiles' selectors are strings that reach the
-// file like any other value, so they pass through it too.
 function renderSettingValue(value) {
   if (Array.isArray(value)) {
     if (value.length === 0) return escapeHtml(displayValue(null));
-    return value.map(function (item) { return escapeHtml(String(item)); }).join(', ');
+    return value.map(function (item) { return escapeHtml(item); }).join(', ');
   }
   return escapeHtml(displayValue(value));
 }
@@ -390,9 +372,6 @@ function renderSettingValue(value) {
 // list lives here, so a key added to DR_DETECTION_SETTINGS prints with no
 // renderer change when it holds a scalar, a list of strings, or a list of
 // flat profile objects.
-// gridDisplayValues (an array of strings) joins onto one line.
-// vendorProfiles (an array of profile objects) prints one line per profile,
-// its own fields listed by name; the branch is on shape, not on the key.
 function renderDetectionSettingsRows(settings) {
   return Object.keys(settings).map(function (key) {
     const value = settings[key];
@@ -420,7 +399,7 @@ function renderDetectionSettingsSection(state) {
   const body = settings
     ? '<dl>' + renderDetectionSettingsRows(settings) + '</dl>'
     : '<dl><dt>detectionSettings</dt><dd>' + escapeHtml(displayValue(null)) + '</dd></dl>';
-  return '<section><h2>Detection settings</h2>' + body + '</section>';
+  return renderSection('Detection settings', body);
 }
 
 // The one shape an image may take on its way into the file: a JPEG or PNG
@@ -430,42 +409,40 @@ const CAPTURE_IMAGE_DATA_URL = /^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/
 
 // The screenshot the sidebar took at finish: the bound tab's visible area.
 // The image arrives beside the state, never inside it; the state holds the
-// take's record alone. A take that failed, a record that is missing, and
-// image data outside the one accepted shape each render as an absence
-// that states the reason — never as an empty frame.
+// take's record alone, so the JSON island stays small. A take that failed,
+// a record that is missing, and image data outside the one accepted shape
+// each render as an absence that states the reason — never as an empty
+// frame.
 function renderScreenshotSection(state, dataUrl) {
   const record = state.screenshot;
   let body;
   if (!record) {
-    body = '<p class="cap-empty">No screenshot was recorded.</p>';
+    body = renderAbsence('No screenshot was recorded.');
   } else if (!record.taken) {
-    body = '<p class="cap-empty">No screenshot: ' + escapeHtml(displayValue(record.reason)) + '.</p>';
+    body = renderAbsence('No screenshot: ' + displayValue(record.reason) + '.');
   } else if (typeof dataUrl !== 'string' || !CAPTURE_IMAGE_DATA_URL.test(dataUrl)) {
-    body = '<p class="cap-empty">No screenshot: the image data was not an image data URL.</p>';
+    body = renderAbsence('No screenshot: the image data was not an image data URL.');
   } else {
     body = '<img class="cap-shot" src="' + escapeHtml(dataUrl) +
       '" alt="The bound tab as it stood at capture time">' +
       renderNote('The tab’s visible area at the Save capture press. ' +
         'The sidebar is browser UI and is not in the image.');
   }
-  return '<section><h2>Screenshot</h2>' + body + '</section>';
+  return renderSection('Screenshot', body);
 }
 
 // The sidebar likeness: positions and states from plain values, rendered
 // open, under this file's own stylesheet — no page CSS, no cloned nodes,
 // and deliberately crude. The JSON island carries the precision.
 function renderSidebarLikeness(state) {
+  // tests/sidebar-tests.js scans this file's source for the keys read off the
+  // local names sidebarSnapshot and lens, so a rename of either fails it.
   const sidebarSnapshot = state.sidebarSnapshot;
   if (!sidebarSnapshot) {
-    return '<div class="cap-panel"><p class="cap-empty">No sidebar snapshot was recorded.</p></div>';
+    return '<div class="cap-panel">' + renderAbsence('No sidebar snapshot was recorded.') + '</div>';
   }
-  const onOff = function (isOn) { return isOn ? 'on' : 'off'; };
-  const switchRow = function (label, isOn) {
-    return '<div class="cap-switch"><span>' + escapeHtml(label) + '</span><b>' +
-      onOff(!!isOn) + '</b></div>';
-  };
   const switches = Object.keys(sidebarSnapshot.switches || {}).map(function (key) {
-    return switchRow(key, sidebarSnapshot.switches[key]);
+    return renderLabeledRow(key, sidebarSnapshot.switches[key] ? 'on' : 'off');
   }).join('');
 
   const stops = Array.isArray(sidebarSnapshot.stops) && sidebarSnapshot.stops.length > 1 ? sidebarSnapshot.stops : null;
@@ -480,7 +457,7 @@ function renderSidebarLikeness(state) {
     '<span class="cap-thumb" style="left: ' + pct(sidebarSnapshot.topVal) + '%"></span>' +
     '<span class="cap-thumb cap-thumb-bot' + (sidebarSnapshot.coupled ? ' cap-coupled' : '') +
       '" style="left: ' + pct(sidebarSnapshot.coupled ? sidebarSnapshot.topVal : sidebarSnapshot.botVal) + '%"></span>';
-  const lens = sidebarSnapshot.lensPreview || { top: [], bottom: [] };
+  const lens = sidebarSnapshot.lensPreview || {};
   const bandRows = function (rows) {
     return (rows || []).map(function (row) {
       return '<div class="cap-band">' + escapeHtml(row) + '</div>';
@@ -488,10 +465,10 @@ function renderSidebarLikeness(state) {
   };
 
   return '<div class="cap-panel">' +
-    switchRow('Rounding', sidebarSnapshot.enabled) +
+    renderLabeledRow('Rounding', sidebarSnapshot.enabled ? 'on' : 'off') +
     switches +
-    '<div class="cap-switch"><span>Dates</span><b>' + escapeHtml(displayValue(sidebarSnapshot.dateGranularity)) + '</b></div>' +
-    '<div class="cap-switch"><span>Times</span><b>' + escapeHtml(displayValue(sidebarSnapshot.timeGranularity)) + '</b></div>' +
+    renderLabeledRow('Dates', displayValue(sidebarSnapshot.dateGranularity)) +
+    renderLabeledRow('Times', displayValue(sidebarSnapshot.timeGranularity)) +
     '<h3>Lens control (' +
       (sidebarSnapshot.coupled
         ? 'coupled, both at ' + escapeHtml(displayValue(sidebarSnapshot.topVal))
@@ -521,22 +498,20 @@ const CAPTURE_BARE_FRAME = /^\s*at (\S+):(\d+):(\d+)$/;
 // reader still sees every line V8 wrote. The result is plain text; the
 // caller escapes it at the boundary like every other value.
 function formatStackFrame(line) {
+  const shortFrame = function (location, lineNumber, column, name) {
+    return location.replace(CAPTURE_FRAME_ORIGIN, '') + ':' + lineNumber + ':' + column +
+      ' (' + name + ')';
+  };
   const named = CAPTURE_NAMED_FRAME.exec(line);
-  if (named) {
-    return named[2].replace(CAPTURE_FRAME_ORIGIN, '') + ':' + named[3] + ':' + named[4] +
-      ' (' + named[1] + ')';
-  }
+  if (named) return shortFrame(named[2], named[3], named[4], named[1]);
   const bare = CAPTURE_BARE_FRAME.exec(line);
-  if (bare) {
-    return bare[1].replace(CAPTURE_FRAME_ORIGIN, '') + ':' + bare[2] + ':' + bare[3] +
-      ' (anonymous function)';
-  }
+  if (bare) return shortFrame(bare[1], bare[2], bare[3], 'anonymous function');
   return line;
 }
 
 // Both contexts' log rows, labeled by provenance. An empty buffer is a
 // finding, so it renders as a sentence, never as a missing section — and a
-// missing snapshot is a different finding: the state pull for that context
+// missing buffer copy is a different finding: the state pull for that context
 // failed, so no buffer arrived at all. A row's stack trace (warn and error
 // rows carry one) sits under the row in a details element, folded, so a
 // reader opens the trace for the row in question, each frame in the short
@@ -550,14 +525,14 @@ function renderCaptureLogs(state) {
     return '<details><summary>Stack trace</summary><pre class="cap-trace">' +
       escapeHtml(frames) + '</pre></details>';
   };
-  const section = function (label, snap) {
-    if (!snap) {
+  const section = function (label, buffer) {
+    if (!buffer) {
       return '<h3>' + escapeHtml(label) + '</h3>' +
-        '<p class="cap-empty">The page state pull failed; no log snapshot arrived.</p>';
+        renderAbsence('The page state pull failed; no log buffer copy arrived.');
     }
-    const rows = snap && Array.isArray(snap.entries) ? snap.entries : [];
-    const dropped = snap && snap.dropped ? '<li>(' + escapeHtml(String(snap.dropped)) +
-      ' earlier row(s) dropped past the cap)</li>' : '';
+    const rows = Array.isArray(buffer.rows) ? buffer.rows : [];
+    const dropped = buffer.dropped ? '<li>(' + escapeHtml(buffer.dropped) +
+      ' earlier row(s) dropped past the limit)</li>' : '';
     const items = rows.map(function (row) {
       return '<li class="' + escapeHtml(row.level) + '">' + escapeHtml(row.at) + ' [' +
         escapeHtml(row.level) + '] ' + escapeHtml(row.text) + trace(row) + '</li>';
@@ -567,42 +542,34 @@ function renderCaptureLogs(state) {
       : '<ul class="cap-log">' + dropped + items + '</ul>';
     return '<h3>' + escapeHtml(label) + '</h3>' + body;
   };
-  return '<section><h2>Extension logs</h2>' +
+  return renderSection('Extension logs',
     section('Content script', log.content) +
     section('Sidebar', log.sidebar) +
-    renderNote('Service worker rows are not captured.') +
-    '</section>';
+    renderNote('Service worker rows are not captured.'));
 }
 
 function renderFixtureSeed(state) {
   if (!state.fixtureSeed) {
-    return '<section><h2>Fixture seed</h2>' +
-      '<p class="cap-empty">No fixture seed: no table was bound.</p></section>';
+    return renderSection('Fixture seed',
+      renderAbsence('No fixture seed: no table was bound.'));
   }
-  return '<section><h2>Fixture seed</h2>' +
+  return renderSection('Fixture seed',
     renderNote('The bound table’s markup as it stood at capture time, ' +
       'escaped here for reading. The JSON below carries it byte-exact.') +
-    '<pre class="cap-seed">' + escapeHtml(state.fixtureSeed) + '</pre></section>';
+    '<pre class="cap-seed">' + escapeHtml(state.fixtureSeed) + '</pre>');
 }
 
 /**
  * The whole capture document. input.state is the full capture state — it
  * becomes the JSON island verbatim, and every visible section renders from
  * it. input.screenshotDataUrl is the screenshot the sidebar took, passed beside
- * the state so the JSON island never carries the image. The sections stack
- * in reading order: the mark and remarks, the sidebar likeness, the
- * screenshot, the bound table, the registry, the detection settings, the logs,
- * the seed.
+ * the state (see renderScreenshotSection).
  */
 function buildCaptureDocument(input) {
   const state = input.state;
   const screenshotDataUrl = input.screenshotDataUrl;
   const meta = state.meta || {};
-  // data-dr-capture is the capture marker: a saved capture holds a real
-  // table, and with file access enabled Chrome injects this extension's own
-  // content scripts into the opened file. The controller reads this marker
-  // and stands down (see content.js's IS_CAPTURE_PAGE), so a capture always
-  // shows what was captured, never what the extension would do to it.
+  // data-dr-capture is the capture marker; see IS_CAPTURE_PAGE in content.js.
   return '<!DOCTYPE html>\n<html lang="en" data-dr-capture="1">\n<head>\n' +
     '<meta charset="utf-8">\n' +
     '<meta http-equiv="Content-Security-Policy" content="' + CAPTURE_CSP + '">\n' +
@@ -613,9 +580,9 @@ function buildCaptureDocument(input) {
     renderCaptureHeader(state) +
     '<main>' +
     renderMarkAndRemarks(state) +
-    '<section><h2>Sidebar</h2>' + renderSidebarLikeness(state) + '</section>' +
+    renderSection('Sidebar', renderSidebarLikeness(state)) +
     renderScreenshotSection(state, screenshotDataUrl) +
-    '<section><h2>Bound table</h2>' + renderBoundTable(state) + '</section>' +
+    renderSection('Bound table', renderBoundTable(state)) +
     renderRegistrySection(state) +
     renderDetectionSettingsSection(state) +
     renderCaptureLogs(state) +

@@ -3,11 +3,9 @@
 // so every other name here (the number reader, the classification ladder,
 // the table step, the rounding) comes from chrome-extension/lib.
 
-// parameters' default values
-const DEFAULT_OFFSET_TOP = -0.5; // in all modes, by default, round to the nearest half order of magnitude
-const DEFAULT_NUM_TOP = 1; // in dataset-aware modes, by default, round numbers that are in the top 1 order of magnitude to DEFAULT_OFFSET_TOP
+const DEFAULT_OFFSET_TOP = -0.5;
+const DEFAULT_NUM_TOP = 1;
 
-// Settings
 // The result kind: what a text cell that holds one number returns, a pure
 // cell ("$1,011", "12.5%") or a bracketed number ("(1,234)").
 //   'text'   returns the write-back's text, "$1,000": the typed sign stays.
@@ -34,7 +32,7 @@ const SHEETS_LADDER_OPTIONS = Object.freeze({
  * [MODE 1] single value: =ROUND_DYNAMIC(value, [offset])
  * [MODE 2] dataset: =ROUND_DYNAMIC(range, [offset_top], [offset_other], [num_top])
  * [INSTRUCTIONS] HTTPS://github.com/ArieFisher/dynamic-rounding
- * [VERSION] 0.5.1
+ * [VERSION] 0.5.20
  *
  * @param {number|Array} values The value or range of values to round.
  * @param {number} offset_top The OoM offset for the single value, or, the numbers in the largest order of magnitude of a dataset (default -0.5).
@@ -44,45 +42,41 @@ const SHEETS_LADDER_OPTIONS = Object.freeze({
  * @customfunction
  */
 function ROUND_DYNAMIC(values, offset_top, offset_other, num_top) {
-  const firstIsArray = Array.isArray(values);
+  return Array.isArray(values)
+    ? datasetMode(values, offset_top, offset_other, num_top)
+    : singleValueMode(values, offset_top);
+}
 
-  if (firstIsArray) {
-    // Dataset mode: ROUND_DYNAMIC(range, [offset_top], [offset_other], [num_top])
-    return datasetMode(values, offset_top, offset_other, num_top);
-  } else {
-    // Single mode: ROUND_DYNAMIC(value, [offset])
-    return singleValueMode(values, offset_top);
-  }
+function orDefault(value, fallback) {
+  return value === undefined || value === "" ? fallback : value;
 }
 
 /**
- * Single mode: rounds one value based on its own magnitude. A text value
- * takes the same path as a one-cell dataset, rounded at the one offset.
+ * Single mode: rounds one value against its own order of magnitude. A text
+ * value takes the same path as a one-cell dataset, rounded at the one offset.
  */
 function singleValueMode(value, offset) {
-  offset = (offset === undefined || offset === "") ? DEFAULT_OFFSET_TOP : offset;
+  offset = orDefault(offset, DEFAULT_OFFSET_TOP);
   validateOffset(offset, "offset");
   const settings = { offsetTop: offset, offsetOther: offset, numTop: DEFAULT_NUM_TOP };
   return roundValues([[value]], settings)[0][0];
 }
 
 /**
- * Dataset mode: rounds an array of values using a set-aware heuristic.
- * Values near the dataset's maximum magnitude are rounded using offset_top,
- * while smaller values are rounded using offset_other.
+ * Dataset mode: rounds a dataset set-aware. Values in the top band round at
+ * offset_top, and values in the other band at offset_other.
  */
-function datasetMode(range, offset_top, offset_other, num_top) {
-  offset_top = (offset_top === undefined || offset_top === "") ? DEFAULT_OFFSET_TOP : offset_top;
-  offset_other = (offset_other === undefined || offset_other === "") ? offset_top : offset_other;
-  num_top = (num_top === undefined || num_top === "") ? DEFAULT_NUM_TOP : num_top;
+function datasetMode(dataset, offset_top, offset_other, num_top) {
+  offset_top = orDefault(offset_top, DEFAULT_OFFSET_TOP);
+  offset_other = orDefault(offset_other, offset_top);
+  num_top = orDefault(num_top, DEFAULT_NUM_TOP);
   validateOffset(offset_top, "offset_top");
   validateOffset(offset_other, "offset_other");
 
-  // Normalize to 2D array
-  if (!Array.isArray(range[0])) {
-    range = [range];
+  if (!Array.isArray(dataset[0])) {
+    dataset = [dataset];
   }
-  return roundValues(range, { offsetTop: offset_top, offsetOther: offset_other, numTop: num_top });
+  return roundValues(dataset, { offsetTop: offset_top, offsetOther: offset_other, numTop: num_top });
 }
 
 /**
@@ -91,71 +85,50 @@ function datasetMode(range, offset_top, offset_other, num_top) {
  *   number      a finite one rounds and returns a number; one that is not
  *               finite returns unchanged
  *   text        the classification ladder reads it, the table step rounds
- *               it, and the text returns with its patches applied
+ *               it, and the text returns with its patches applied, or as
+ *               a number under the result kind 'number' (see RESULT_KIND)
  *   "" or null  returns ""
  *   anything else (a date, a boolean) returns unchanged
- * The max magnitude spans every number in the range: the number cells and
+ * The max magnitude spans every number in the dataset: the number cells and
  * every number the ladder reads in a text cell.
  */
-function roundValues(range, settings) {
-  const numberEntries = [];
-  const textEntries = [];
-  range.forEach((row, r) => row.forEach((value, c) => {
+function roundValues(dataset, settings) {
+  const numberCells = [];
+  const textCells = [];
+  dataset.forEach((row, r) => row.forEach((value, c) => {
     if (typeof value === "number" && isFinite(value)) {
-      numberEntries.push({ r, c, num: value, info: { mode: "extracted", matches: [{ num: value }] } });
+      numberCells.push({ r, c, num: value, classification: { mode: "extracted", value: { matches: [{ num: value }] } } });
     } else if (typeof value === "string" && value !== "") {
-      const decision = classifyCell({ text: value, rowIndex: r, columnIndex: c, ranges: null },
+      const classification = classifyCell({ text: value, rowIndex: r, columnIndex: c, ranges: null },
         SHEETS_LADDER_OPTIONS);
-      textEntries.push({ r, c, text: value, col: c, info: decisionToLegacyInfo(decision) });
+      textCells.push({ r, columnIndex: c, text: value, classification });
     }
   }));
-  const maxMag = datasetMaxMagnitude(numberEntries.concat(textEntries));
-  const roundNumber = (num) => roundCellSetAware(num, num, maxMag,
+  const maxMag = datasetMaxMagnitude(numberCells.concat(textCells));
+  const roundNumber = (num) => roundValueSetAware(num, maxMag,
     settings.offsetTop, settings.offsetOther, settings.numTop);
 
-  const results = new Map();
-  for (const { r, c, num } of numberEntries) {
-    results.set(r + "," + c, roundNumber(num));
+  const results = dataset.map((row) => row.map((value) => (value === null ? "" : value)));
+  for (const { r, c, num } of numberCells) {
+    results[r][c] = roundNumber(num);
   }
-  for (const { entry, patches } of tablePatches(textEntries, settings, maxMag).cells) {
-    results.set(entry.r + "," + entry.c, textResult(entry, patches, roundNumber));
+  const { patchedCells } = tablePatches(textCells, settings, maxMag);
+  for (const { classifiedCell, patches } of patchedCells) {
+    results[classifiedCell.r][classifiedCell.columnIndex] = textResult(classifiedCell, patches, roundNumber);
   }
-  return range.map((row, r) => row.map((value, c) => {
-    const key = r + "," + c;
-    if (results.has(key)) return results.get(key);
-    return value === "" || value === null ? "" : value;
-  }));
+  return results;
 }
 
-/**
- * A text cell's result under the result kind. Under 'number', a pure cell or
- * a bracketed number returns its rounded value; every other text cell
- * returns its text with the patches applied.
- */
-function textResult(entry, patches, roundNumber) {
-  if (RESULT_KIND === "number" && entry.info.mode === "extracted") {
-    const bracketed = matchBracketedNumber(entry.text);
-    const num = bracketed ? bracketed.num : toNumber(entry.text);
+// A text cell's result under the result kind (see RESULT_KIND).
+function textResult(classifiedCell, patches, roundNumber) {
+  if (RESULT_KIND === "number" && classifiedCell.classification.mode === "extracted") {
+    const bracketed = matchBracketedNumber(classifiedCell.text);
+    const num = bracketed ? bracketed.num : toNumber(classifiedCell.text);
     if (num !== null) return roundNumber(num);
   }
-  return applyPatches(entry.text, patches);
+  return applyPatches(classifiedCell.text, patches);
 }
 
-/**
- * Apply a cell's patches to its text, last patch first, so each earlier
- * patch's position still counts into the text as the ladder read it.
- */
-function applyPatches(text, patches) {
-  return patches
-    .slice()
-    .sort((a, b) => b.index - a.index)
-    .reduce((out, p) => out.slice(0, p.index) + p.newNum + out.slice(p.index + p.numStr.length), text);
-}
-
-/**
- * Validates that offset is within acceptable range.
- * Throws an error if offset is outside -20 to 20.
- */
 function validateOffset(offset, paramName) {
   if (offset < -VALIDATION_LIMIT || offset > VALIDATION_LIMIT) {
     throw new Error(paramName + " must be between -" + VALIDATION_LIMIT + " and " + VALIDATION_LIMIT + ", got " + offset);

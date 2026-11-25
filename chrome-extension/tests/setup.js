@@ -1,10 +1,9 @@
 /**
- * Test suite for chrome-extension content.js pure helpers.
+ * Setup for the chrome-extension test suite.
  * Run: node tests.js
  *
- * Stubs out browser globals so the content scripts run in Node and exercise
- * the pure functions (extractNumbersInText, formatNumber, toNumber,
- * roundCellSetAware, findMaxMagnitude, pureNumberSpan).
+ * Stubs out browser globals and loads the content scripts in manifest order,
+ * so the test pieces run them in Node.
  */
 
 const fs = require('fs');
@@ -46,12 +45,12 @@ global.window = {
 };
 global.NodeFilter = { SHOW_TEXT: 4 };
 
-// DR_LOG (lib/dr-log) forwards every row to the real console so devtools
-// output is unchanged; in this suite that forwarding would print a row for
-// every instrumented call site straight into the test report. Mute the two
-// forwarded levels the content scripts use. The dr-log forwarding test
-// installs its own console.debug spy and puts this mute back. The report at
-// the bottom prints through console.log, which stays untouched.
+// DR_LOG (lib/dr-log) forwards every row to the real console; in this suite
+// that forwarding would print a row for every instrumented call site straight
+// into the test report. Mute the two forwarded levels the content scripts use.
+// The dr-log forwarding test installs its own console.debug spy and puts this
+// mute back. The report at the bottom prints through console.log, which stays
+// untouched.
 console.debug = () => {};
 console.warn = () => {};
 
@@ -90,8 +89,15 @@ function sourceByName(name) {
 const contentScriptBundle = contentScriptFiles
   .map((file) => contentScriptSources.get(file))
   .join('\n');
-const coreCode = sourceByName('lib/dr-number/core.js');
-const parsingCode = sourceByName('lib/dr-number/parsing.js');
+const readerCode = sourceByName('lib/dr-number/reader.js');
+// The lib/dr-number files the content script loads and the sidebar does not,
+// in manifest order; null when the manifest lacks one of them.
+const numberTextFiles = [
+  'lib/dr-number/settings.js', 'lib/dr-number/numbers-in-text.js',
+  'lib/dr-number/dates.js', 'lib/dr-number/write-back.js',
+];
+const numberTextCode = numberTextFiles.some((file) => sourceByName(file) === null)
+  ? null : numberTextFiles.map(sourceByName).join('\n');
 // The detection layer's source: the four lib/dr-table files and the placement
 // step, in manifest order; null when the manifest lacks one of them.
 const detectionFiles = [
@@ -106,9 +112,9 @@ const constantsCode = sourceByName('constants.js');
 // equivalent for, and several sections below eval a whole context file on its
 // own. Stub the loader so those sites load.
 global.importScripts = () => {};
-const messagingCode = sourceByName('adapters/messaging.js');
+const busCode = sourceByName('app/bus.js');
 const modelCode = sourceByName('app/model.js');
-const uiPillboxCode = sourceByName('ui-pillbox.js');
+const tablePillboxViewCode = sourceByName('table-pillbox-view.js');
 // Combined source for "source-includes" assertions that do not care which
 // content-script file holds a symbol.
 const allContentSrc = contentScriptBundle;
@@ -124,8 +130,8 @@ globalThis.DR_DETECTION_SETTINGS = DR_DETECTION_SETTINGS;
 globalThis.DR_NUMBER = DR_NUMBER;
 // Expose the log buffer (lib/dr-log) for the dr-log test suite.
 globalThis.DR_LOG = DR_LOG;
-// Expose the capture state serializer (lib/dr-capture) and its content.js
-// wire-response composer for the capture test suites.
+// Expose the capture state serializer (lib/dr-capture) and content.js's
+// answer to request:captureState for the capture test suites.
 globalThis.collectCaptureState = collectCaptureState;
 globalThis.buildCaptureStateResponse = buildCaptureStateResponse;
 // Expose the capture format version so the capture-settings tests can pin the
@@ -159,17 +165,16 @@ globalThis.injectTablePillboxes = injectTablePillboxes;
 globalThis.isDataTable = isDataTable;
 // The lens preview's sample pool for one table, built from the two steps
 // extractPreviewSamples runs, so a test reads the pool without the bucketing.
-globalThis.collectNumericCells = (table, options) => numericPreviewCells(classifyPreviewCells(table, options));
+globalThis.collectNumericCells = (table, options) =>
+  numericPreviewCells(classifyPreviewCells(table, Object.assign({}, DR_DEFAULTS, options)));
 globalThis.extractPreviewSamples = extractPreviewSamples;
 // The one currency list and what it derives, so the currency suite reads the
 // canon rather than restating any part of it.
 globalThis.CURRENCIES = CURRENCIES;
 globalThis.CURRENCY_SIGNS = CURRENCY_SIGNS;
 globalThis.CLEAN_REGEX = CLEAN_REGEX;
-globalThis.eraYearDigitRanges = eraYearDigitRanges;
-globalThis.clockTimeRanges = clockTimeRanges;
-globalThis.formatStep = formatStep;
-globalThis.stepForOffset = stepForOffset;
+globalThis.getEraYearMaskedRanges = getEraYearMaskedRanges;
+globalThis.getClockTimeMaskedRanges = getClockTimeMaskedRanges;
 // Expose the table pillbox geometry constants (all are const, so direct assignment works)
 globalThis.TABLE_PILLBOX_DOT_PX = TABLE_PILLBOX_DOT_PX;
 globalThis.TABLE_PILLBOX_PILL_HEIGHT_PX = TABLE_PILLBOX_PILL_HEIGHT_PX;
@@ -181,15 +186,15 @@ globalThis.TABLE_PILLBOX_COLOR_ON = TABLE_PILLBOX_COLOR_ON;
 globalThis.TABLE_PILLBOX_AUTO_COLLAPSE_MS = TABLE_PILLBOX_AUTO_COLLAPSE_MS;
 globalThis.TABLE_PILLBOX_CLIP_WALK_CAP = TABLE_PILLBOX_CLIP_WALK_CAP;
 globalThis.ensureScrollResizeListeners = ensureScrollResizeListeners;
-// _globalTapCollapseAdded is a let; expose getter/setter so tests can reset it.
-Object.defineProperty(globalThis, '_globalTapCollapseAdded', {
-  get() { return _globalTapCollapseAdded; },
-  set(v) { _globalTapCollapseAdded = v; },
+// globalTapCollapseAdded is a let; expose getter/setter so tests can reset it.
+Object.defineProperty(globalThis, 'globalTapCollapseAdded', {
+  get() { return globalTapCollapseAdded; },
+  set(v) { globalTapCollapseAdded = v; },
   configurable: true,
 });
 // lastRightClickedTable proxies the active table onto DR_MODEL's
 // getter/setter pair, exactly like the tablePillboxStyleInjected/
-// _globalTapCollapseAdded shims above proxy onto their own file-level lets.
+// globalTapCollapseAdded shims above proxy onto their own file-level lets.
 Object.defineProperty(globalThis, 'lastRightClickedTable', {
   get() { return DR_MODEL.getActiveTable(); },
   set(v) { DR_MODEL.setActiveTable(v); },
@@ -215,15 +220,11 @@ globalThis.makeAdapter = makeAdapter;
 globalThis.NativeTableAdapter = NativeTableAdapter;
 globalThis.GridAdapter = GridAdapter;
 globalThis.GRID_CELL_SELECTOR = GRID_CELL_SELECTOR;
-// Expose the lib/dr-table package bundle, mirroring DR_NUMBER below.
+// Expose the lib/dr-table package bundle, mirroring DR_NUMBER above.
 globalThis.DR_TABLE = DR_TABLE;
-// Expose the lib/dr-simplify package bundle (the classification ladder),
-// mirroring DR_NUMBER/DR_TABLE above.
-globalThis.DR_SIMPLIFY = DR_SIMPLIFY;
 globalThis.classifyCell = classifyCell;
 globalThis.pickDateFormatHint = pickDateFormatHint;
-globalThis.resolveAmbiguousDateDecision = resolveAmbiguousDateDecision;
-globalThis.decisionToLegacyInfo = decisionToLegacyInfo;
+globalThis.resolveAmbiguousDateClassification = resolveAmbiguousDateClassification;
 // Expose grid-virtualization internals for the grid-virtualization test suite.
 globalThis.reapplyRounding = reapplyRounding;
 globalThis.simplifyTableCells = simplifyTableCells;
@@ -236,7 +237,7 @@ globalThis.GRID_REAPPLY_DEBOUNCE_MS = DR_DETECTION_SETTINGS.settleDelayMs;
 // suites read them here rather than through findTables.
 globalThis.chainRootOf = chainRootOf;
 globalThis.nominateNest = nominateNest;
-globalThis.nominateNests = nominateNests;
+globalThis.scanTables = scanTables;
 // Expose the controller's pending-table state and the two functions that
 // hold and drop a pending record.
 globalThis.holdPendingTable = holdPendingTable;
@@ -245,6 +246,13 @@ globalThis.pendingRoots = pendingRoots;
 globalThis.pendingObservers = pendingObservers;
 globalThis.pendingRetestTimers = pendingRetestTimers;
 globalThis.pendingRetestCounts = pendingRetestCounts;
+// pendingTableCapLogged is a let; expose a getter/setter so the page cap case
+// can start from a page that has not yet written the cap row.
+Object.defineProperty(globalThis, 'pendingTableCapLogged', {
+  get() { return pendingTableCapLogged; },
+  set(v) { pendingTableCapLogged = v; },
+  configurable: true,
+});
 // Expose the accessibility artifact predicate and its threshold constant for tests
 globalThis.isAccessibilityArtifact = isAccessibilityArtifact;
 globalThis.OFFSCREEN_LEFT_PX_THRESHOLD = DR_DETECTION_SETTINGS.offscreenLeftPx;

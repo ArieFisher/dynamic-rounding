@@ -15,11 +15,13 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '26'
-      - name: Check the Sheets file matches the build of its sources
+      - name: Check the Sheets file and the plugin library match the build of their sources
         run: node scripts/build-sheets.js --check
       - name: Run ROUND_DYNAMIC (Google Sheets) tests
         run: node js/tests.js
       - name: Run chrome extension tests
         run: node chrome-extension/tests.js
+      - name: Run Claude Code plugin tests
+        run: node claude-code-plugin/tests.js
       - name: Run the documented examples against the library
         run: node js/doc-tests.js

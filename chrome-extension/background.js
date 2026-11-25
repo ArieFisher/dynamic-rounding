@@ -1,11 +1,6 @@
-/**
- * DynamicRounding Chrome Extension
- * https://github.com/ArieFisher/dynamic-rounding
- * MIT License
- * Copyright (c) 2026 Arie Fisher
- */
+// Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
-importScripts('lib/dr-log/index.js', 'adapters/messaging.js');
+importScripts('lib/dr-log/index.js', 'app/bus.js');
 
 // Every right-click place but the toolbar icon's own menu, where no table
 // sits under the pointer.
@@ -24,9 +19,8 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-// Chrome gives the activeTab grant the screenshot needs, and accepts the
-// open, only as a direct response to the user's click, so a caller runs this
-// before any await of its own.
+// Chrome accepts the open only as a direct response to the user's click, so a
+// caller runs this before any await of its own.
 async function openSidebarOnTab(tabId) {
   try {
     await chrome.sidePanel.open({ tabId });

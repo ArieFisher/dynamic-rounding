@@ -1,39 +1,24 @@
-/**
- * DynamicRounding Chrome Extension
- * https://github.com/ArieFisher/dynamic-rounding
- * MIT License
- * Copyright (c) 2026 Arie Fisher
- */
+// Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
 /**
- * The classification ladder: the ordered per-cell decision rules that decide
- * whether and how a cell simplifies. Before this file, the ladder existed as
- * two hand-kept-in-sync copies — the engine's per-cell loop in content.js
- * (duplicated again between the native-<table> path and the virtualized-grid
- * path, which documented itself as needing to match the native path "EXACTLY")
- * and a third, much thinner copy in the sidebar preview-sample extractor that
- * skipped most of the rules outright. All three now call classifyCell below.
+ * The classification ladder: the ordered per-cell rules that determine
+ * whether and how a cell simplifies. classifyTableCell (lib/dr-table) calls
+ * classifyCell for the rounding pass, the lens preview, and the data test,
+ * and the Sheets input step calls it for each text cell.
  *
- * PURE: classifyCell takes plain cell values (text, row/column position,
- * a pre-parsed range list, and a handful of caller-computed booleans/ranges
- * standing in for the few checks that inherently need the DOM — whole-cell
- * link, and superscript/footnote position) plus a plain options bag. It never
- * touches a page element and returns its decision as data. It depends only on
- * DR_NUMBER's bare names (parsing/rounding), loaded ahead of this file.
- *
- * DOM-only work the ladder deliberately does NOT do: isCellWholeLink and
- * getSuperscriptRanges (both in lib/dr-table) require walking real text
- * nodes, so callers compute isWholeLink/hasSuperscript/superscriptRanges once
- * per cell and pass them in as plain data. filterLinkMatches (also
- * lib/dr-table) has the same requirement for the individual numbers inside a
- * cell with words; since filters are independent per-match predicates, their
- * order never changes the result, so a caller that produces 'extracted'
- * matches is expected to run filterLinkMatches over decision.value.matches
- * afterward and, if that empties the list, downgrade the decision to
- * { mode: 'skip', reason: decision.reason } itself. That single downgrade
- * check lives in one caller-side function, which the native-table path, the
- * grid path, and the preview-sample extractor all call, so it is not a
- * second copy of ladder logic.
+ * Core layer: reads no page and calls no Chrome. classifyCell takes the
+ * cell's text, its row and column, the range list parsed once per table, and
+ * the simplification options, and returns its classification as data. In the
+ * extension the text is the rendered text (the raw text when the rendered
+ * text is empty) or a simplified cell's stored original; in Sheets it is the
+ * cell value. Four more values come from the cell's source, and the caller
+ * derives them: the markup ranges, the spans of the text that the source
+ * marks as a link or as code (getMarkupRanges in lib/dr-table on a page, the
+ * markdown adapter in the plugin); whether the cell holds a superscript; the
+ * superscript spans in the text classifyCell reads (getSuperscriptRanges);
+ * and whether the cell's digits sit in more than one text piece (from the
+ * piece layout). The bare names the ladder calls come from the lib/dr-number
+ * files, loaded ahead of this file.
  */
 
 /**
@@ -47,81 +32,76 @@ function isWholeCellQuoted(trimmedText) {
 }
 
 /**
- * Drop any match overlapping a masked range (a quote span, an identifier
- * span, a superscript span, or an era-marked year, all in the same flat-text
- * coordinate space extractNumbersInText uses). A no-op when ranges is empty.
+ * The text with each range blanked to spaces. The blanks keep every position
+ * in place, so a position in the result is the same position in the text.
  */
-function filterMaskedMatches(matches, ranges) {
-  if (!ranges || ranges.length === 0) return matches;
-  return matches.filter((m) => !overlapsQuoteRange(ranges, m.index, m.index + m.numStr.length));
+function blankRanges(text, ranges) {
+  return ranges.reduce(
+    (t, r) => t.slice(0, r.start) + ' '.repeat(r.end - r.start) + t.slice(r.end), text);
 }
 
 /**
- * Every text-only filter mode:'extracted' applies before a caller's DOM-only
- * link filter: pull numbers out of `text` and drop each one inside a masked
- * range — a quoted span, an identifier span ("Call 416-555-1234"; see
- * getIdentifierMaskedRanges in lib/dr-number/identifiers.js), a superscript
- * span, an era-marked year (issue #4 — "2898 AD" is a date, not a
- * quantity), or a clock time ("9:45 - 11:45 AM"; its hour and minutes are
- * not quantities, and it stays as written whatever the Times setting holds).
- * The masked ranges are one list, so a new kind of text whose
- * numbers stay as written is one more source here. superscriptRanges is
- * caller-supplied plain data (see file header); pass [] when the cell
- * carries no <sup>. The identifier scan and the clock-time scan read the
- * text with each superscript span blanked to spaces, so a footnote marker
- * right after a phone number ("416-555-1234<sup>1</sup>") or a clock time
- * ("18:30<sup>2</sup>") never joins its digits; the blanks keep every
- * position in place.
+ * The dates findDates reads from the trimmed text, leaving out each date that
+ * overlaps a markup range, and the spans of the dates left out. A date only
+ * partly inside a link ("<a>Jan 15</a>, 2024") is left out whole. Each round
+ * blanks the dates it leaves out, so a date beside them, a bare year
+ * included, is read in the next round; every round blanks at least one date,
+ * so the rounds end.
  */
-function extractSimplifyMatches(text, superscriptRanges) {
-  const superscripts = superscriptRanges || [];
-  const shapeText = superscripts.reduce(
-    (t, r) => t.slice(0, r.start) + ' '.repeat(r.end - r.start) + t.slice(r.end), text);
+function readDatesOutsideMarkup(trimmed, markupInTrimmed) {
+  const heldSpans = [];
+  let readText = trimmed;
+  for (;;) {
+    const found = findDates(readText);
+    if (!found) return { dates: null, heldSpans };
+    const inside = found.filter((d) => overlapsMaskedRange(markupInTrimmed, d.start, d.end));
+    if (inside.length === 0) return { dates: found, heldSpans };
+    const spans = inside.map((d) => ({ start: d.start, end: d.end }));
+    heldSpans.push(...spans);
+    readText = blankRanges(readText, spans);
+  }
+}
+
+/**
+ * The masked ranges are one list, so a new kind of text whose numbers stay as
+ * written is one more source here. The identifier scan and the clock-time
+ * scan read the text with each superscript span blanked, so a footnote marker
+ * right after a phone number ("416-555-1234<sup>1</sup>") or a clock time
+ * ("18:30<sup>2</sup>") never joins its digits.
+ */
+function extractSimplifyMatches(text, superscriptRanges, markupRanges = []) {
+  const shapeText = blankRanges(text, superscriptRanges);
   const masked = [
+    ...markupRanges,
     ...getQuoteMaskedRanges(text),
     ...getIdentifierMaskedRanges(shapeText),
-    ...superscripts,
-    ...eraYearDigitRanges(text),
-    ...clockTimeRanges(shapeText),
+    ...superscriptRanges,
+    ...getEraYearMaskedRanges(text),
+    ...getClockTimeMaskedRanges(shapeText),
   ];
-  return filterMaskedMatches(extractNumbersInText(text), masked);
+  return extractNumbersInText(text)
+    .filter((m) => !overlapsMaskedRange(masked, m.index, m.index + m.numStr.length));
 }
 
 /**
- * Classify a single cell and return a decision: { mode, reason, value?,
+ * Classify a single cell and return a classification: { mode, reason, value?,
  * pending? }.
  *
  *   mode: 'skip' | 'date' | 'time' | 'extracted'
- *   reason: one of the ladder's rule names — 'out-of-range', 'first-row',
- *     'first-column', 'percent', 'currency', 'quoted', 'identifier', 'link',
- *     'footnote', 'dates-disabled', 'times-disabled',
- *     'no-number', 'ambiguous-date', 'impossible-date', 'simplify' for a
- *     cell that rounds, or
- *     'unit' for a unit number (see matchUnitNumber in lib/dr-number), which
- *     rounds.
+ *   reason: the rule that gave the mode. For a skip: 'out-of-range', the
+ *     exclusion getExclusionReason returns ('first-row', 'first-column',
+ *     'percent', 'currency'), 'quoted', 'times-disabled', 'dates-disabled',
+ *     'impossible-date', 'impossible-time', 'identifier', 'markup', or
+ *     'no-number'. 'superscript' marks a cell with a superscript whose text
+ *     the number reader reads as one number, skipped or extracted. 'unit'
+ *     marks a unit number, and 'simplify' every other cell that simplifies.
  *   value: mode-specific payload —
  *     'date' (resolved) → { dates }, each date with a known reading — see
  *       findDates in lib/dr-number
  *     'date' (needs the column post-pass) → { dates }, at least one of them
  *       all-numeric (isAmbiguousDate), plus pending: 'ambiguous-date'
- *     'extracted' → { matches } — matches still need a caller-side
- *       filterLinkMatches pass; see file header. A cell that is one number
- *       (plain, bracketed, or a unit number) holds one match.
- *
- * @param {object} input
- * @param {string} input.text - raw cell text (as returned by the adapter)
- * @param {number} input.rowIndex
- * @param {number} input.columnIndex
- * @param {Array|null} input.ranges - parseRangeExpr(...).ranges (already parsed once per table)
- * @param {boolean} [input.isWholeLink] - isCellWholeLink(cell) result
- * @param {boolean} [input.hasSuperscript] - !!cell.querySelector('sup')
- * @param {{start:number,end:number}[]} [input.superscriptRanges] - getSuperscriptRanges(cell) result
- * @param {boolean} [input.digitsSpanPieces] - true when the cell's digits sit
- *   in more than one text piece (see matchIdentifierShape)
- * @param {object} options - resolved rounding options (simplifyFirstRow,
- *   simplifyFirstColumn, simplifyMixedPercent, simplifyMixedCurrency,
- *   simplifyDates, simplifyTimes)
- * @returns {{mode: string, reason: string, value?: object, pending?: string}}
+ *     'extracted' → { matches }. A cell that is one number (a pure cell, a
+ *       bracketed number, or a unit number) holds one match.
  */
 function classifyCell(input, options) {
   const {
@@ -129,48 +109,59 @@ function classifyCell(input, options) {
     rowIndex,
     columnIndex,
     ranges,
-    isWholeLink = false,
+    markupRanges = [],
     hasSuperscript = false,
     superscriptRanges = [],
     digitsSpanPieces = false,
   } = input;
-  const trimmed = typeof text === 'string' ? text.trim() : '';
-  // A cell that is one number changes its digits alone, which is the extracted
-  // write, so a sign, a bracket, a currency sign, a percent sign, a suffix, or
-  // a currency code stays where the page put it.
-  const oneNumber = (match, reason) => (isWholeLink
-    ? { mode: 'skip', reason: 'link' }
-    : { mode: 'extracted', reason, value: { matches: [match] } });
+  const trimmed = text.trim();
+  // The markup ranges, then each date or time that overlaps one: its digits
+  // stay as written too.
+  let held = markupRanges;
+  // A cell that is one number gets one match over its digits alone, so the
+  // write-back leaves a sign, a bracket, a currency sign, a percent sign, a
+  // suffix, or a currency code where the page put it.
+  const oneNumber = (match, reason) => (
+    overlapsMaskedRange(held, match.index, match.index + match.numStr.length)
+      ? { mode: 'skip', reason: 'markup' }
+      : { mode: 'extracted', reason, value: { matches: [match] } });
 
   if (!isInRanges(rowIndex, columnIndex, ranges)) {
     return { mode: 'skip', reason: 'out-of-range' };
   }
 
   const exclusion = getExclusionReason(text, columnIndex, options, rowIndex);
-  if (exclusion === 'firstRow') return { mode: 'skip', reason: 'first-row' };
-  if (exclusion === 'firstColumn') return { mode: 'skip', reason: 'first-column' };
-  if (exclusion === 'percent') return { mode: 'skip', reason: 'percent' };
-  if (exclusion === 'currency') return { mode: 'skip', reason: 'currency' };
-  // Fail closed: any non-null exclusion reason this ladder does not recognize
-  // still skips the cell, instead of silently falling through to simplify it.
-  if (exclusion) return { mode: 'skip', reason: 'excluded' };
+  if (exclusion) return { mode: 'skip', reason: exclusion };
 
   if (isWholeCellQuoted(trimmed)) {
     return { mode: 'skip', reason: 'quoted' };
   }
 
-  if (isDateTimeLike(trimmed)) {
-    // ISO date-time follows the time instruction (date preserved). Checked
-    // before findDates, which would otherwise match a space-separated form.
-    return options.simplifyTimes
-      ? { mode: 'time', reason: 'simplify' }
-      : { mode: 'skip', reason: 'times-disabled' };
-  }
+  // A date or a time that overlaps a markup range stays as written, and its
+  // digits join the held ranges for the number steps.
+  const lead = text.length - text.trimStart().length;
+  const markupInTrimmed = markupRanges.map((r) => ({ start: r.start - lead, end: r.end - lead }));
+  const fromTrimmed = (r) => ({ start: r.start + lead, end: r.end + lead });
 
-  const dates = findDates(trimmed);
+  // A clock time, or an ISO date-time with its date kept, follows the "times"
+  // switch. Checked before findDates, which would otherwise match the date of
+  // a space-separated date-time.
+  let dates = null;
+  const time = readTimeCell(trimmed);
+  if (time) {
+    if (!overlapsMaskedRange(markupInTrimmed, 0, trimmed.length)) {
+      if (!options.simplifyTimes) return { mode: 'skip', reason: 'times-disabled' };
+      if (time.impossible) return { mode: 'skip', reason: 'impossible-time' };
+      return { mode: 'time', reason: 'simplify' };
+    }
+    held = [...held, fromTrimmed({ start: 0, end: trimmed.length })];
+  } else {
+    const read = readDatesOutsideMarkup(trimmed, markupInTrimmed);
+    dates = read.dates;
+    held = [...held, ...read.heldSpans.map(fromTrimmed)];
+  }
   if (dates) {
     if (!options.simplifyDates) return { mode: 'skip', reason: 'dates-disabled' };
-    // A cell holding a date that cannot exist ("2020-13-45") stays as written.
     if (dates.some((d) => d.impossible)) return { mode: 'skip', reason: 'impossible-date' };
     if (dates.some(isAmbiguousDate)) {
       return { mode: 'date', reason: 'simplify', pending: 'ambiguous-date', value: { dates } };
@@ -178,62 +169,36 @@ function classifyCell(input, options) {
     return { mode: 'date', reason: 'simplify', value: { dates } };
   }
 
-  if (isTimeLike(trimmed)) {
-    return options.simplifyTimes
-      ? { mode: 'time', reason: 'simplify' }
-      : { mode: 'skip', reason: 'times-disabled' };
+  // In a cell with a superscript, the text classifyCell reads joins base and
+  // exponent digits ("10<sup>12</sup>" reads "1012"), which is not the text
+  // the reader sees. So no whole-cell shape is tested against it, and
+  // extraction masks each superscript span.
+  if (hasSuperscript) {
+    const isNumber = toNumber(text) !== null;
+    const matches = extractSimplifyMatches(text, superscriptRanges, held);
+    if (matches.length === 0) return { mode: 'skip', reason: isNumber ? 'superscript' : 'no-number' };
+    return { mode: 'extracted', reason: isNumber ? 'superscript' : 'simplify', value: { matches } };
   }
 
-  // An identifier shape (a phone number, an IP address, a web or email
-  // address, an ISBN, a postal code, a digit run with a leading zero, or a
-  // digit run split by whitespace that is not thousands grouping) reads as a
-  // code, not a quantity, so the whole cell stays as written. Checked after
-  // the date and time checks above, so a date the date parser reads ("21
-  // June 2020") stays a date, and before the bracketed-number check below,
-  // since a phone number's bracketed area code ("(416) 555-1234") is not
-  // that bracket's minus sign.
-  // matchIdentifierShape (lib/dr-number/identifiers.js) holds the one list of
-  // shapes; this is the one place that reads it. digitsSpanPieces comes from
-  // the caller's piece layout, so the join of numbers that sit in separate
-  // pieces never reads as one spaced identifier. A cell with a <sup> takes the
-  // footnote path below instead: its flattened text joins base and exponent
-  // digits ("20 10<sup>15</sup>" reads "20 1015"), which is not the text the
-  // reader sees, so no shape is tested against it.
-  if (!hasSuperscript && matchIdentifierShape(trimmed, digitsSpanPieces)) {
+  // An identifier shape reads as a code, not a quantity, so the whole cell
+  // stays as written. Checked before the number reader, which also reads a
+  // digit run with a leading zero ("0012345678", "(0012345678)") as a number.
+  if (matchIdentifierShape(trimmed, digitsSpanPieces)) {
     return { mode: 'skip', reason: 'identifier' };
   }
 
-  // A bracketed number ("(1,234)", "$(1,234)") is one number whose minus sign
-  // is written as the brackets around it. A cell with a <sup> takes the
-  // footnote path below instead, so its exponent stays masked;
-  // extractSimplifyMatches reads the same bracket sign there.
-  const bracketed = hasSuperscript ? null : matchBracketedNumber(text);
-  if (bracketed) return oneNumber(bracketed, 'simplify');
-
   const num = toNumber(text);
   if (num !== null) {
-    if (hasSuperscript) {
-      if (isWholeLink) return { mode: 'skip', reason: 'link' };
-      // The cell contains a <sup> element: the flattened text mixes base and
-      // exponent digits (e.g. "10<sup>12</sup>" -> "1012"). Route through
-      // extraction so superscript masking can protect the exponent, instead
-      // of rounding the flattened (wrong) number.
-      const matches = extractSimplifyMatches(text, superscriptRanges);
-      if (matches.length === 0) return { mode: 'skip', reason: 'footnote' };
-      return { mode: 'extracted', reason: 'footnote', value: { matches } };
-    }
-
     const span = pureNumberSpan(text);
     return oneNumber({ numStr: span.numStr, num, index: span.index }, 'simplify');
   }
 
   // A unit number ("4.91tn", "CAD45.67") is one number with a suffix or a
-  // currency code. A cell with a <sup> takes the footnote path above instead,
-  // so its exponent stays masked.
-  const unit = hasSuperscript ? null : matchUnitNumber(text);
+  // currency code.
+  const unit = matchUnitNumber(text);
   if (unit) return oneNumber(unit, 'unit');
 
-  const matches = extractSimplifyMatches(text, superscriptRanges);
+  const matches = extractSimplifyMatches(text, superscriptRanges, held);
   if (matches.length === 0) return { mode: 'skip', reason: 'no-number' };
   return { mode: 'extracted', reason: 'simplify', value: { matches } };
 }
@@ -242,12 +207,9 @@ function classifyCell(input, options) {
  * Decide how to read a column's ambiguous N1/N2/Y dates (e.g. "03/04/2020"),
  * given every ambiguous date's {n1, n2} found in that column. Any n > 12 in
  * one position rules out that position being the month, so a lone violator
- * pins the whole column's format; violators on both sides make the column
- * unsafe to guess ('MIXED'); no violator leaves it genuinely ambiguous
- * ('AMBIGUOUS').
- *
- * @param {{n1: number, n2: number}[]} ambiguousList
- * @returns {'MDY'|'DMY'|'MIXED'|'AMBIGUOUS'}
+ * pins the whole column's format ('month-first' or 'day-first'); violators on
+ * both sides make the column unsafe to guess ('mixed'); no violator leaves it
+ * genuinely ambiguous ('ambiguous').
  */
 function pickDateFormatHint(ambiguousList) {
   let hasN1gt12 = false;
@@ -256,28 +218,25 @@ function pickDateFormatHint(ambiguousList) {
     if (n1 > 12) hasN1gt12 = true;
     if (n2 > 12) hasN2gt12 = true;
   }
-  if (hasN1gt12 && !hasN2gt12) return 'DMY'; // n1 is day, n2 is month
-  if (hasN2gt12 && !hasN1gt12) return 'MDY'; // n1 is month, n2 is day
-  if (hasN1gt12 && hasN2gt12) return 'MIXED';
-  return 'AMBIGUOUS';
+  if (hasN1gt12 && !hasN2gt12) return 'day-first';
+  if (hasN2gt12 && !hasN1gt12) return 'month-first';
+  if (hasN1gt12 && hasN2gt12) return 'mixed';
+  return 'ambiguous';
 }
 
 /**
- * Turn a pending ambiguous-date decision (classifyCell's pending:
- * 'ambiguous-date') into its final decision, given the column's format hint
- * from pickDateFormatHint. MDY/DMY give each all-numeric date of the cell its
- * day and month; MIXED/AMBIGUOUS cannot be read safely and downgrade the whole cell to
- * skip, so a cell never changes some of its dates and holds others.
- *
- * @param {{value: {dates: object[]}}} decision - see findDates
- * @param {'MDY'|'DMY'|'MIXED'|'AMBIGUOUS'} hint
- * @returns {{mode: string, reason: string, value?: object}}
+ * Turn a pending ambiguous-date classification (classifyCell's pending:
+ * 'ambiguous-date') into its final classification, given the column's format
+ * hint from pickDateFormatHint. month-first and day-first give each all-numeric
+ * date of the cell its day and month; mixed and ambiguous cannot be read
+ * safely and downgrade the whole cell to skip, so a cell never changes some
+ * of its dates and holds others.
  */
-function resolveAmbiguousDateDecision(decision, hint) {
-  if (hint !== 'MDY' && hint !== 'DMY') return { mode: 'skip', reason: 'ambiguous-date' };
-  const dates = decision.value.dates.map((d) => (isAmbiguousDate(d)
-    ? { year: d.year, month: hint === 'MDY' ? d.n1 : d.n2, monthFirst: true,
-      start: d.start, end: d.end, dayCut: hint === 'MDY' ? d.n2Cut : d.n1Cut }
+function resolveAmbiguousDateClassification(classification, hint) {
+  if (hint !== 'month-first' && hint !== 'day-first') return { mode: 'skip', reason: 'ambiguous-date' };
+  const isMonthFirst = hint === 'month-first';
+  const dates = classification.value.dates.map((d) => (isAmbiguousDate(d)
+    ? knownDate(d.year, isMonthFirst ? d.n1 : d.n2, true, d.start, d.end, isMonthFirst ? d.n2Cut : d.n1Cut)
     : d));
   return { mode: 'date', reason: 'simplify', value: { dates } };
 }

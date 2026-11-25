@@ -1,9 +1,4 @@
-/**
- * DynamicRounding Chrome Extension
- * https://github.com/ArieFisher/dynamic-rounding
- * MIT License
- * Copyright (c) 2026 Arie Fisher
- */
+// Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
 /**
  * The table step: the three steps that run over a whole table after the
@@ -11,132 +6,116 @@
  *
  *   1. The column post-pass settles each ambiguous date against its
  *      column's format hint.
- *   2. The max magnitude comes from every number in the dataset, the
- *      numbers inside extracted cells included, unless the caller passes a
- *      frozen one.
+ *   2. The max magnitude is the one the caller passes, or else the largest
+ *      order of magnitude among the extracted cells' numbers; the step
+ *      counts no date or time.
  *   3. Each cell's numbers, dates, and times round and become patches.
  *
- * PURE: the step reads plain classified cells and plain settings and returns
- * data. It holds no reference to the page, a text piece, the registry, the
- * log buffer, or the browser. It depends only on DR_NUMBER's bare names and
- * the ladder's pickDateFormatHint and resolveAmbiguousDateDecision, loaded
- * ahead of this file.
+ * Core layer: reads no page and calls no Chrome. It depends only on
+ * lib/dr-number's bare names and the ladder's pickDateFormatHint and
+ * resolveAmbiguousDateClassification, loaded ahead of this file.
  *
- * A classified cell is any object carrying:
- *   text  the text the cell classified (a simplified cell's stored original)
- *   info  the decisionToLegacyInfo shape of the ladder's decision
- *   col   the cell's grid column, which groups the column post-pass
+ * The step reads one classified cell per cell. A classified cell is any
+ * object carrying:
+ *   text            the text the ladder classified
+ *   classification  the ladder's classification (classifyCell)
+ *   columnIndex     the cell's grid column
  * The step copies every other field through untouched, so a caller can carry
  * its own per-cell data beside them.
- *
- * Page work stays with the caller: the magnitude freeze a table keeps across
- * re-apply passes, the check that a changed date or time sits in one text piece, the
- * link filter, and the write of patches into text pieces. A date or time
- * cell's patch covers its trimmed text, so the patch's index and the length
- * of its numStr are the span that check reads.
  */
 
-// Adapts a classifyCell decision to the { mode, num, dates, ambiguous,
-// matches } shape the table step reads in its column post-pass, its max
-// magnitude, and its patches.
-function decisionToLegacyInfo(decision) {
-  if (decision.mode === 'extracted') return { mode: 'extracted', matches: decision.value.matches };
-  if (decision.mode === 'date') {
-    return { mode: 'date', dates: decision.value.dates, ambiguous: decision.pending === 'ambiguous-date' };
-  }
-  if (decision.mode === 'time') return { mode: 'time' };
-  return { mode: 'skip' };
+function isAmbiguousDateClassification(classification) {
+  return classification.pending === 'ambiguous-date';
 }
 
-// The column post-pass: resolve each ambiguous numeric date against its
-// column's format hint. Every all-numeric date in the column counts, the
-// second date of a cell included. Grouping runs on the grid column each cell carries,
-// so one visual column settles one reading for all of its cells — a merge
-// inside the table cannot split a column into two groups that read 7/4/99 as
-// July in one row and April in another.
-function resolveAmbiguousDates(entries) {
-  const isAmbiguous = (info) => info.mode === 'date' && info.ambiguous;
-  const readingsByCol = new Map();
-  for (const { info, col } of entries) {
-    if (!isAmbiguous(info)) continue;
-    if (!readingsByCol.has(col)) readingsByCol.set(col, []);
-    readingsByCol.get(col).push(...info.dates.filter(isAmbiguousDate));
+// The column post-pass. It groups cells by grid column, so a merged cell
+// cannot split one column into two groups that read 7/4/99 as July in one row
+// and April in another.
+function resolveAmbiguousDates(classifiedCells) {
+  const ambiguousDatesByCol = new Map();
+  for (const { classification, columnIndex } of classifiedCells) {
+    if (!isAmbiguousDateClassification(classification)) continue;
+    if (!ambiguousDatesByCol.has(columnIndex)) ambiguousDatesByCol.set(columnIndex, []);
+    ambiguousDatesByCol.get(columnIndex).push(...classification.value.dates.filter(isAmbiguousDate));
   }
-  const hintByCol = new Map(Array.from(readingsByCol, ([col, readings]) => [col, pickDateFormatHint(readings)]));
-  return entries.map((entry) => {
-    if (!isAmbiguous(entry.info)) return entry;
-    const pendingDecision = { value: { dates: entry.info.dates } };
-    const info = decisionToLegacyInfo(resolveAmbiguousDateDecision(pendingDecision, hintByCol.get(entry.col)));
-    return Object.assign({}, entry, { info });
+  const hintByCol = new Map(Array.from(ambiguousDatesByCol,
+    ([columnIndex, ambiguousDates]) => [columnIndex, pickDateFormatHint(ambiguousDates)]));
+  return classifiedCells.map((classifiedCell) => {
+    if (!isAmbiguousDateClassification(classifiedCell.classification)) return classifiedCell;
+    const classification = resolveAmbiguousDateClassification(
+      classifiedCell.classification, hintByCol.get(classifiedCell.columnIndex));
+    return Object.assign({}, classifiedCell, { classification });
   });
 }
 
-// The max magnitude over the dataset: each number of an extracted cell, from
-// every row of the table.
-function datasetMaxMagnitude(entries) {
+function datasetMaxMagnitude(classifiedCells, passedMaxMag) {
+  if (passedMaxMag != null) return passedMaxMag;
   const allNums = [];
-  for (const { info } of entries) {
-    if (info.mode === 'extracted') {
-      for (const m of info.matches) allNums.push(m.num);
+  for (const { classification } of classifiedCells) {
+    if (classification.mode === 'extracted') {
+      for (const m of classification.value.matches) allNums.push(m.num);
     }
   }
   return findMaxMagnitude([allNums]);
 }
 
-// One cell's patches, positioned in the text the cell classified: empty for a
-// skip cell or an unchanged value. A date or time cell takes one patch: its
-// trimmed text, replaced whole, so the text keeps its own whitespace. Every
-// number takes the one write-back, formatNumber, patched in place. An extracted
-// cell takes one patch per changed number; the patch compares the written
-// digits to the match, which catches a number that is unchanged but whose
-// display simplifies (e.g. "35.0" to "35"). The text around each match, a
-// sign, a currency sign, and a percent sign included, stays where the page
-// put it.
-function classifiedCellPatches(entry, maxMag, settings) {
-  const { text, info } = entry;
+// One cell's patches, positioned in the classified text: empty for a skip
+// cell or an unchanged value. A date or time cell takes one patch over its
+// trimmed text, so the text keeps its own whitespace. An extracted cell takes
+// one patch per number whose written digits differ from the match, which
+// catches a number that is unchanged but whose display simplifies (e.g.
+// "35.0" to "35").
+function classifiedCellPatches(classifiedCell, maxMag, settings) {
+  const { text, classification } = classifiedCell;
   const { offsetTop, offsetOther, numTop } = settings;
-  const trimmed = typeof text === 'string' ? text.trim() : '';
-  const lead = typeof text === 'string' ? text.length - text.trimStart().length : 0;
-  if (info.mode === 'date' || info.mode === 'time') {
-    const rounded = info.mode === 'date'
-      ? roundDateText(trimmed, settings.dateGranularity, info.dates)
+  if (classification.mode === 'date' || classification.mode === 'time') {
+    const trimmed = text.trim();
+    const lead = text.length - text.trimStart().length;
+    const rounded = classification.mode === 'date'
+      ? roundDateText(trimmed, settings.dateGranularity, classification.value.dates)
       : roundTimeText(trimmed, settings.timeGranularity);
-    if (rounded === null || rounded === trimmed) return { patches: [] };
-    return { patches: [{ index: lead, numStr: trimmed, newNum: rounded }] };
+    if (rounded === null || rounded === trimmed) return [];
+    return [{ index: lead, numStr: trimmed, newNum: rounded }];
   }
-  if (info.mode === 'extracted') {
+  if (classification.mode === 'extracted') {
     const patches = [];
-    for (const m of info.matches) {
-      const rounded = roundCellSetAware(m.num, m.num, maxMag, offsetTop, offsetOther, numTop);
+    for (const m of classification.value.matches) {
+      const rounded = roundValueSetAware(m.num, maxMag, offsetTop, offsetOther, numTop);
       const newNum = formatNumber(rounded, m.numStr);
       if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
     }
-    return { patches };
+    return patches;
   }
-  return { patches: [] };
+  return [];
 }
 
 /**
- * The table step (see the file header).
+ * The table step (see the file header). settings holds the resolved
+ * offsetTop, offsetOther, and numTop, and the dateGranularity and
+ * timeGranularity. When passedMaxMag is neither null nor undefined, the step
+ * rounds against it and computes none: the extension passes the table's
+ * magnitude freeze, and Sheets the max magnitude over the dataset, number
+ * cells included.
  *
- * @param {object[]} entries - Classified cells in page order, each carrying
- *   text, info, and col.
- * @param {{offsetTop: number, offsetOther: number, numTop: number,
- *          dateGranularity: string, timeGranularity: string}} settings -
- *   Resolved offsets and top-band count, and the date and time granularity.
- * @param {number|null} [frozenMaxMag] - A frozen max magnitude. When given,
- *   the step rounds against it and computes none of its own.
  * @returns {{maxMag: number|null,
- *            cells: Array<{entry: object, patches: object[]}>}}
- *   cells holds every cell in input order: the entry after the column
- *   post-pass, and its patches in the text it classified.
+ *            patchedCells: Array<{classifiedCell: object, patches: object[]}>}}
+ *   One patched cell per classified cell, in input order: the classified
+ *   cell after the column post-pass, and its patches in the classified text.
  */
-function tablePatches(entries, settings, frozenMaxMag) {
-  const resolved = resolveAmbiguousDates(entries);
-  const maxMag = (frozenMaxMag !== undefined && frozenMaxMag !== null)
-    ? frozenMaxMag
-    : datasetMaxMagnitude(resolved);
-  const cells = resolved.map((entry) =>
-    Object.assign({ entry }, classifiedCellPatches(entry, maxMag, settings)));
-  return { maxMag, cells };
+function tablePatches(classifiedCells, settings, passedMaxMag) {
+  const resolved = resolveAmbiguousDates(classifiedCells);
+  const maxMag = datasetMaxMagnitude(resolved, passedMaxMag);
+  const patchedCells = resolved.map((classifiedCell) =>
+    ({ classifiedCell, patches: classifiedCellPatches(classifiedCell, maxMag, settings) }));
+  return { maxMag, patchedCells };
+}
+
+// Apply patches to a text, last patch first, so the positions of the earlier
+// patches stay valid. For a caller with no page: the extension writes through
+// the patch writer, one text piece at a time.
+function applyPatches(text, patches) {
+  return patches
+    .slice()
+    .sort((a, b) => b.index - a.index)
+    .reduce((out, p) => out.slice(0, p.index) + p.newNum + out.slice(p.index + p.numStr.length), text);
 }

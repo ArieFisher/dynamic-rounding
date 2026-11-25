@@ -1,0 +1,12 @@
+{
+  "name": "dynamic-rounding",
+  "description": "DynamicRounding for Claude Code: simplify the numbers in the markdown tables of a session",
+  "owner": { "name": "Arie Fisher" },
+  "plugins": [
+    {
+      "name": "dynamic-rounding",
+      "source": "./claude-code-plugin",
+      "description": "Simplify the numbers in the markdown tables of a Claude Code session, on or off with /simplify-data"
+    }
+  ]
+}

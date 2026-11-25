@@ -1,36 +1,22 @@
 // Checks that read source files, the manifest, bundles, or the living documents as text.
 
-// --- Manifest + background invariants ---
+// --- Manifest invariants ---
 // NOTE: These are static-analysis proxies only. Whether Chrome grants the tab
 // permission on a toolbar icon click, and whether the context menu visually
 // works, cannot be verified in this Node harness — those require a live browser.
 
 (function toolbarIconOpensSidebar() {
   const manifestPath = path.join(__dirname, 'manifest.json');
-  const bgPath = path.join(__dirname, 'background.js');
-
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  const bgSource = fs.readFileSync(bgPath, 'utf8');
 
-  // 1. "action" key must be present — without it Chrome sends no toolbar icon
-  // click to the service worker.
   eq('manifest: "action" key present (the toolbar icon click reaches the service worker)',
     Object.prototype.hasOwnProperty.call(manifest, 'action'), true);
 
-  // 2. "side_panel" must still be present — the sidebar itself must remain registered.
-  eq('manifest: "side_panel" key still present',
+  eq('manifest: "side_panel" key present',
     Object.prototype.hasOwnProperty.call(manifest, 'side_panel'), true);
 
-  // 3. "contextMenus" must still be in permissions — right-click menu requires it.
-  eq('manifest: "contextMenus" still in permissions',
+  eq('manifest: "contextMenus" in permissions (the right-click menu needs it)',
     Array.isArray(manifest.permissions) && manifest.permissions.includes('contextMenus'), true);
-
-  // 4. background.js must still wire up contextMenus.create and sidePanel.open.
-  eq('background.js: contextMenus.create still present',
-    bgSource.includes('contextMenus.create'), true);
-
-  eq('background.js: sidePanel.open still present',
-    bgSource.includes('sidePanel.open'), true);
 })();
 
 // --- manifest.json has a valid N.N.N version string ---
@@ -45,23 +31,9 @@
 // blocks (which assert no sibling files contain new identifiers) cover scope
 // without depending on git history shape.
 
-// --- Static analysis: link-aware functions are defined and exported ---
+// --- Static analysis: the markup range read is defined ---
 (function ac_staticAnalysis() {
-  eq('static: isCellWholeLink is defined', typeof isCellWholeLink, 'function');
-  eq('static: filterLinkMatches is defined', typeof filterLinkMatches, 'function');
-
-  // isCellWholeLink: cell with no querySelectorAll support returns false safely
-  eq('static: isCellWholeLink handles cell without querySelectorAll',
-    isCellWholeLink({ innerText: '123' }), false);
-
-  // filterLinkMatches: returns original matches when cell has no querySelectorAll
-  const dummyMatches = [{ numStr: '100', num: 100, index: 0 }];
-  eq('static: filterLinkMatches returns matches unchanged when cell has no querySelectorAll',
-    filterLinkMatches({ innerText: '100' }, dummyMatches), dummyMatches);
-
-  // filterLinkMatches: empty matches returned as-is
-  eq('static: filterLinkMatches handles empty matches array',
-    filterLinkMatches({ innerText: '100', querySelectorAll: () => [] }, []).length, 0);
+  eq('static: getMarkupRanges is defined', typeof getMarkupRanges, 'function');
 })();
 
 // --- Regression guards ---
@@ -115,21 +87,23 @@
   eq('sidebar-defaults: sidebar.html loads constants.js before sidebar.js',
     /constants\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
   eq('sidebar-defaults: sidebar.js fills every control unset by the settings from DR_DEFAULTS',
-    /function applySettingsToUI\(settings\)\s*\{\s*const s = Object\.assign\(\{\}, DR_DEFAULTS, settings \|\| \{\}\)/.test(sidebarJsSource), true);
-  eq('sidebar-defaults: manifest content_scripts load order is defaults, log buffer, dr-number package, dr-table package, dr-simplify package, messaging bus, application model, table pillbox view, content',
+    /function drawControls\(settings\)\s*\{\s*const s = Object\.assign\(\{\}, DR_DEFAULTS, settings \|\| \{\}\)/.test(sidebarJsSource), true);
+  eq('sidebar-defaults: manifest content_scripts load order is defaults, log buffer, dr-number package, dr-table package, dr-simplify package, dr-capture package, event bus, application model, table pillbox view, toast view, content',
     JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify([
       'constants.js',
       'lib/dr-log/index.js',
-      'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
-      'lib/dr-number/parsing.js', 'lib/dr-number/identifiers.js',
+      'lib/dr-number/rounding.js', 'lib/dr-number/reader.js',
+      'lib/dr-number/settings.js', 'lib/dr-number/numbers-in-text.js',
+      'lib/dr-number/dates.js', 'lib/dr-number/write-back.js',
+      'lib/dr-number/identifiers.js',
       'lib/dr-number/index.js',
       'lib/dr-table/cells.js', 'lib/dr-table/adapters.js',
       'lib/dr-table/classify.js', 'lib/dr-table/detect.js', 'lib/dr-table/index.js',
-      'lib/dr-simplify/placement.js', 'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js', 'lib/dr-simplify/index.js',
+      'lib/dr-simplify/placement.js', 'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js',
       'lib/dr-capture/state.js', 'lib/dr-capture/render.js',
       'lib/dr-capture/index.js',
-      'adapters/messaging.js', 'app/model.js',
-      'ui-pillbox.js', 'ui-toast.js', 'content.js',
+      'app/bus.js', 'app/model.js',
+      'table-pillbox-view.js', 'toast-view.js', 'content.js',
     ]), true);
 
   // rangeSection div has "hidden" attribute.
@@ -141,7 +115,7 @@
   eq('sidebar-defaults: rangeSection markup still present in HTML',
     sidebarHtml.includes('id="rangeSection"'), true);
 
-  // parseRangeExpr is defined (in parsing.js).
+  // parseRangeExpr is defined (in settings.js).
   eq('sidebar-defaults: content scripts still define parseRangeExpr',
     /function parseRangeExpr\b/.test(allContentSrc), true);
 
@@ -176,7 +150,7 @@
 // --- Regression guard: content.js declares the new infrastructure ---
 
 (function tablePillbox_contentJsDeclarations() {
-  // Table pillbox infrastructure lives in ui-pillbox.js;
+  // Table pillbox infrastructure lives in table-pillbox-view.js;
   // scan the combined content-script source so the contract is location-agnostic.
   const src = allContentSrc;
   eq('table-pillbox: declares tablePillboxViews WeakMap',
@@ -201,7 +175,7 @@
 //       :focus-visible rule with `outline` and `!important`.
 
 (function accessibilityAC2_focusVisibleCSS() {
-  const src = allContentSrc; // table pillbox CSS lives in ui-pillbox.js
+  const src = allContentSrc; // table pillbox CSS lives in table-pillbox-view.js
 
   eq('accessibility: content.js CSS contains :focus-visible selector',
     src.includes(':focus-visible'), true);
@@ -228,7 +202,7 @@
 // Soft check: the constant names TABLE_PILLBOX_DOT_PX etc. appear in the CSS template block.
 
 (function tablePillboxAC_constantsUsedInCSS() {
-  const src = allContentSrc; // table pillbox geometry lives in ui-pillbox.js
+  const src = allContentSrc; // table pillbox geometry lives in table-pillbox-view.js
 
   // The CSS function body should contain interpolations of the constants, not bare literals.
   // We extract the ensureTablePillboxStyleInjected function body as a rough string.
@@ -266,18 +240,19 @@
 
 (function layerLoadOrderAcrossEntryPoints() {
   // The sidebar deliberately does NOT load the content-only layers — it only
-  // needs the pure domain (defaults, rounding, core).
+  // needs the pure domain (defaults, rounding, the number reader).
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
-  eq('sidebar.html loads lib/dr-number/core.js after lib/dr-number/rounding.js and before sidebar.js',
-    /lib\/dr-number\/rounding\.js[\s\S]*lib\/dr-number\/core\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
-  eq('sidebar.html does not load content-only lib/dr-number/parsing.js', sidebarHtml.includes('lib/dr-number/parsing.js'), false);
+  eq('sidebar.html loads lib/dr-number/reader.js after lib/dr-number/rounding.js and before sidebar.js',
+    /lib\/dr-number\/rounding\.js[\s\S]*lib\/dr-number\/reader\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
+  for (const file of numberTextFiles) {
+    eq('sidebar.html does not load content-only ' + file, sidebarHtml.includes(file), false);
+  }
   eq('sidebar.html does not load content-only lib/dr-number/index.js', sidebarHtml.includes('lib/dr-number/index.js'), false);
   eq('sidebar.html does not load content-only lib/dr-table/detect.js', sidebarHtml.includes('lib/dr-table/detect.js'), false);
   eq('sidebar.html does not load content-only lib/dr-table/index.js', sidebarHtml.includes('lib/dr-table/index.js'), false);
   eq('sidebar.html does not load content-only lib/dr-simplify/ladder.js', sidebarHtml.includes('lib/dr-simplify/ladder.js'), false);
-  eq('sidebar.html does not load content-only lib/dr-simplify/index.js', sidebarHtml.includes('lib/dr-simplify/index.js'), false);
-  eq('sidebar.html does not load content-only ui-pillbox.js', sidebarHtml.includes('ui-pillbox.js'), false);
-  eq('sidebar.html does not load content-only ui-toast.js', sidebarHtml.includes('ui-toast.js'), false);
+  eq('sidebar.html does not load content-only table-pillbox-view.js', sidebarHtml.includes('table-pillbox-view.js'), false);
+  eq('sidebar.html does not load content-only toast-view.js', sidebarHtml.includes('toast-view.js'), false);
 })();
 
 (function lensPreview_sidebarHtmlHasTopAndBottom() {
@@ -532,13 +507,13 @@
 })();
 
 // --- The keys simplifyDates/simplifyTimes reach every file that reads them ---
-(function dateTimeSwitches_oldKeysAbsent() {
+(function dateTimeSwitches_keysReachEveryReader() {
   // The simplifyDates/simplifyTimes option reads (and every other
   // classification-ladder rule) live in lib/dr-simplify/ladder.js; content.js
   // only calls classifyCell.
   const ladderSrc = sourceByName('lib/dr-simplify/ladder.js');
   if (constantsCode === null || ladderSrc === null) {
-    eq('invert-pills regression: source files present in manifest', false, true);
+    eq('date and time switches: source files present in manifest', false, true);
     return;
   }
   const sidebarSrc  = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
@@ -546,17 +521,17 @@
   // simplifyDates and simplifyTimes must appear in each file.
   // content.js references them only transitively (via opts passed to
   // classifyCell) — the ladder is the actual point of use.
-  eq('invert-pills regression: lib/dr-simplify/ladder.js references simplifyDates',
+  eq('date and time switches: lib/dr-simplify/ladder.js references simplifyDates',
     /\bsimplifyDates\b/.test(ladderSrc), true);
-  eq('invert-pills regression: lib/dr-simplify/ladder.js references simplifyTimes',
+  eq('date and time switches: lib/dr-simplify/ladder.js references simplifyTimes',
     /\bsimplifyTimes\b/.test(ladderSrc), true);
-  eq('invert-pills regression: constants.js references simplifyDates',
+  eq('date and time switches: constants.js references simplifyDates',
     /\bsimplifyDates\b/.test(constantsCode), true);
-  eq('invert-pills regression: constants.js references simplifyTimes',
+  eq('date and time switches: constants.js references simplifyTimes',
     /\bsimplifyTimes\b/.test(constantsCode), true);
-  eq('invert-pills regression: sidebar.js references simplifyDates',
+  eq('date and time switches: sidebar.js references simplifyDates',
     /\bsimplifyDates\b/.test(sidebarSrc), true);
-  eq('invert-pills regression: sidebar.js references simplifyTimes',
+  eq('date and time switches: sidebar.js references simplifyTimes',
     /\bsimplifyTimes\b/.test(sidebarSrc), true);
 })();
 
@@ -564,7 +539,6 @@
 
 (function rightClickRegisters_theLivingDocumentsStateTheRoute() {
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
-  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const extensionReadme = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
 
   const loadTimeScanRow = vocabularyMd.split('\n')
@@ -578,17 +552,6 @@
   eq('right-click: that row keeps the geometry probe as the unmarked grid route',
     /unmarked grid/i.test(loadTimeScanRow) && /geometry probe/i.test(loadTimeScanRow), true);
 
-  const detectionParagraph = designMd.split('\n')
-    .find((line) => /^\*\*Detection\.\*\*/.test(line)) || '';
-  eq('right-click: docs/design.md keeps a Detection paragraph',
-    detectionParagraph !== '', true);
-  eq('right-click: the Detection paragraph states the right-click route',
-    /right-click/i.test(detectionParagraph) &&
-      /nomination step/i.test(detectionParagraph) &&
-      /chain root/i.test(detectionParagraph), true);
-  eq('right-click: the Detection paragraph states the gutter outcome',
-    /gutter[\s\S]{0,120}scrolling pane/i.test(detectionParagraph), true);
-
   const readmeDetectionPoint = extensionReadme.split('\n')
     .find((line) => /^1\. \*\*Detection runs on demand/.test(line)) || '';
   eq('right-click: chrome-extension/README.md keeps its first detection point',
@@ -599,36 +562,25 @@
       /chain root/i.test(readmeDetectionPoint), true);
 })();
 
-// the three living documents each state the 1000-cell budget, per AGENTS.md's
-// rule that a behavior-invalidating change updates every living document it
-// invalidates in the same branch.
+// the two living documents each state the data test's cell budget, per
+// AGENTS.md's rule that a behavior-invalidating change updates every living
+// document it invalidates in the same branch. The budget comes from the
+// detection settings, so a change to the setting fails here until both
+// documents state the new value.
 (function dataTestBudget_livingDocumentsStateTheBudget() {
   const readmeMd = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
-  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
+  const budget = String(DR_DETECTION_SETTINGS.dataTestCellBudget);
   // The pattern matches a reworded sentence and fails on a sentence with no
-  // budget: the digits 1000 must sit within 80 characters of either
+  // budget: the budget's digits must sit within 80 characters of either
   // "data test" or "cell read(s)".
-  const statesBudget = (text) =>
-    /1000[\s\S]{0,80}(data test|cell reads?)|(data test|cell reads?)[\s\S]{0,80}1000/i.test(text);
-  eq('living documents: chrome-extension/README.md states the 1000-cell budget',
+  const statesBudget = (text) => new RegExp(
+    `${budget}[\\s\\S]{0,80}(data test|cell reads?)|(data test|cell reads?)[\\s\\S]{0,80}${budget}`, 'i').test(text);
+  eq(`living documents: chrome-extension/README.md states the ${budget}-cell budget`,
     statesBudget(readmeMd), true);
-  eq('living documents: docs/design.md states the 1000-cell budget',
-    statesBudget(designMd), true);
-  eq('living documents: docs/vocabulary.md states the 1000-cell budget',
+  eq(`living documents: docs/vocabulary.md states the ${budget}-cell budget`,
     statesBudget(vocabularyMd), true);
 })();
-
-// ---------------------------------------------------------------------------
-// background.js does NOT relay the settings notice.
-//
-// background.js runs in a service-worker context without the DOM and module
-// system our harness uses, so we cannot eval() it directly alongside the content
-// scripts. Instead we test the guard at two levels:
-//   (a) Static analysis: the source contains the null-guard exactly as specced.
-//   (b) Extracted-logic test: inline a minimal reproduction of the guard and
-//       verify its branching behaviour, confirming the written code is correct.
-// ---------------------------------------------------------------------------
 
 // --- The settings notice reaches the sidebar exactly once ---
 //
@@ -638,7 +590,7 @@
 // delivery.
 (function onOffReportDeliveredOnce() {
   const bgSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
-  eq('one delivery: the worker makes no wire send of its own for anything',
+  eq('one delivery: the worker source holds no send of its own to extension pages',
     bgSrc.includes('chrome.runtime.sendMessage'), false);
 })();
 
@@ -790,9 +742,9 @@
   let capturedOnMessageHandler = null;
   global.chrome.runtime.onMessage.addListener = (fn) => { capturedOnMessageHandler = fn; };
   const roundingSrcForFlash = sourceByName('lib/dr-number/rounding.js');
-  const coreSrcForFlash = sourceByName('lib/dr-number/core.js');
-  if (constantsCode === null || roundingSrcForFlash === null || coreSrcForFlash === null) {
-    eq('active table live: source files (defaults/rounding/core) present in manifest',
+  const readerSrcForFlash = sourceByName('lib/dr-number/reader.js');
+  if (constantsCode === null || roundingSrcForFlash === null || readerSrcForFlash === null) {
+    eq('active table live: source files (defaults/rounding/reader) present in manifest',
       false, true);
     global.document = savedDoc;
     global.chrome   = savedChrome;
@@ -810,8 +762,8 @@
     eval(
       constantsCode + '\n' +
       roundingSrcForFlash + '\n' +
-      coreSrcForFlash     + '\n' +
-      messagingCode + '\n' +
+      readerSrcForFlash     + '\n' +
+      busCode + '\n' +
       fs.readFileSync(path.join(dir, 'sidebar.js'), 'utf8')
     );
   } catch(e) {
@@ -843,55 +795,6 @@
   global.document = savedDoc;
   global.chrome   = savedChrome;
   global.window   = savedWindow;
-})();
-
-// the worker relays no activation topic into a tab, whether or
-// not it holds a sidebar tab number. The worker holds no message listener of
-// its own, so the listener under test is the bus's, and the worker's own
-// subscriptions are the only thing that could act on an arriving topic. It
-// subscribes to no activation topic, so nothing does.
-(function tableContextmenuActivation_backgroundRelay() {
-  const sentTabMessages = [];
-  let capturedBgHandler = null;
-  let capturedClickHandler = null;
-
-  const captureChromeBg = {
-    runtime: {
-      lastError: null,
-      onInstalled: { addListener: () => {} },
-      onMessage:   { addListener: (fn) => { capturedBgHandler = fn; } },
-      sendMessage: (msg, cb) => { if (cb) cb(undefined); },
-    },
-    contextMenus: {
-      create: () => {},
-      update: () => {},
-      onClicked: { addListener: (fn) => { capturedClickHandler = fn; } },
-    },
-    action: { onClicked: { addListener: () => {} } },
-    tabs: {
-      query(q, cb) { cb([{ id: 1 }]); },
-      sendMessage(tabId, msg, cb) { sentTabMessages.push({ tabId, msg }); if (cb) cb(undefined); },
-    },
-    sidePanel: { open: () => Promise.resolve() },
-  };
-
-  const PANEL_TAB = 99;
-  isolatedFunction('chrome', 'importScripts', messagingCode + '\n' +
-    fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'))(captureChromeBg, importScripts);
-  eq('active table runtime: the bus listener is the worker\'s only message listener',
-    typeof capturedBgHandler, 'function');
-  if (typeof capturedBgHandler !== 'function') return;
-
-  sentTabMessages.length = 0;
-  capturedBgHandler({ topic: 'state:tableActivated' }, {}, () => {});
-  eq('active table runtime: no relay before the sidebar opens',
-    sentTabMessages.length, 0);
-
-  capturedClickHandler({ menuItemId: 'dr-menu-toggle-sidebar' }, { id: PANEL_TAB });
-  sentTabMessages.length = 0;
-  capturedBgHandler({ topic: 'state:tableActivated' }, {}, () => {});
-  eq('active table runtime: still no relay after the sidebar opens',
-    sentTabMessages.length, 0);
 })();
 
 // ---------------------------------------------------------------------------
@@ -1058,10 +961,10 @@
 // such as the side panel, and never reaches content scripts. A content script
 // is reachable only through chrome.tabs.sendMessage(tabId, ...). One rule
 // follows, asserted at runtime rather than by source regex:
-// state:tableActivated must not be relayed into the tab. content.js already
-// sends it with runtime.sendMessage, which the sidebar receives directly.
+// state:tableActivated must not be relayed into the tab. content.js publishes
+// it on the extension-pages route, which the sidebar receives directly.
 // Relaying it into the tab delivers it to a content script that has no
-// handler for that action.
+// subscriber for that topic.
 // ---------------------------------------------------------------------------
 
 (function backgroundMessageRouting() {
@@ -1090,7 +993,6 @@
       },
       contextMenus: {
         create: () => {},
-        update: () => {},
         onClicked: { addListener: (fn) => { listeners.menuClicked = fn; } },
       },
       action: { onClicked: { addListener: (fn) => { listeners.iconClicked = fn; } } },
@@ -1106,7 +1008,7 @@
         onActivated: { addListener: (fn) => { listeners.activated = fn; } },
       },
     };
-    isolatedFunction('chrome', 'console', 'importScripts', messagingCode + '\n' + bgSrc)(
+    isolatedFunction('chrome', 'console', 'importScripts', busCode + '\n' + bgSrc)(
       chromeStub,
       { warn: () => {}, debug: () => {}, log: () => {} },
       importScripts
@@ -1141,7 +1043,7 @@
         sendMessage: (tabId, msg, cb) => { if (cb) cb(undefined); },
       },
     };
-    isolatedFunction('chrome', 'console', 'importScripts', messagingCode + '\n' + bgSrc)(
+    isolatedFunction('chrome', 'console', 'importScripts', busCode + '\n' + bgSrc)(
       chromeStub, { warn: () => {}, debug: () => {}, log: () => {} }, importScripts);
     if (installed) installed();
     eq('menu items: the menu toggle and the menu toggle with sidebar carry fixed labels',
@@ -1149,7 +1051,6 @@
         { id: 'dr-menu-toggle', title: 'Simplify' },
         { id: 'dr-menu-toggle-sidebar', title: 'Simplify and open sidebar' },
       ]);
-    // In the toolbar icon's menu no table sits under the pointer.
     eq('menu items: neither item appears in the toolbar icon menu',
       created.filter((item) => !Array.isArray(item.contexts) ||
         item.contexts.includes('all') || item.contexts.includes('action')).map((item) => item.id),
@@ -1165,8 +1066,7 @@
       ctx.tabSends.map((s) => s.msg.topic), []);
   })();
 
-  // Chrome accepts the open only as a direct response to the click, so each
-  // handler must call it before the first await.
+  // The comment on openSidebarOnTab in background.js holds the reason.
   (function clicksOpenBeforeAwaiting() {
     function opensFor(click) {
       const opens = [];
@@ -1230,13 +1130,15 @@
 (function manifestDrivenSourceLoading() {
   const CONTENT_SCRIPT_FILES = [
     'constants.js',
-    'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
-    'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
+    'lib/dr-number/rounding.js', 'lib/dr-number/reader.js',
+    'lib/dr-number/settings.js', 'lib/dr-number/numbers-in-text.js',
+    'lib/dr-number/dates.js', 'lib/dr-number/write-back.js',
+    'lib/dr-number/index.js',
     'lib/dr-table/cells.js', 'lib/dr-table/adapters.js',
     'lib/dr-table/classify.js', 'lib/dr-table/detect.js', 'lib/dr-table/index.js',
-    'lib/dr-simplify/placement.js', 'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js', 'lib/dr-simplify/index.js',
-    'adapters/messaging.js', 'app/model.js',
-    'ui-pillbox.js', 'ui-toast.js', 'content.js',
+    'lib/dr-simplify/placement.js', 'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js',
+    'app/bus.js', 'app/model.js',
+    'table-pillbox-view.js', 'toast-view.js', 'content.js',
   ];
 
   // no content-script filename literal reaches readFileSync/path.join
@@ -1312,33 +1214,34 @@
 })();
 
 // ---------------------------------------------------------------------------
-// The pure number-logic package lives under
-// lib/dr-number/ (rounding.js, core.js, parsing.js, identifiers.js,
-// index.js). This test is the package discipline check: index.js's only
-// job — assigning every public function onto one DR_NUMBER bundle — actually
-// happened.
+// lib/dr-number/index.js has one job: to put every top-level function
+// declaration in lib/dr-number onto DR_NUMBER. This test checks that it did.
 // ---------------------------------------------------------------------------
 (function drNumberBundleIsPublished() {
   const EXPECTED_DR_NUMBER_NAMES = [
     // rounding.js
-    'roundWithOffset', 'roundCellSetAware', 'stepForOffset', 'formatStep', 'trimNum',
-    // core.js
-    'findMaxMagnitude', 'numberFormat', 'groupShapePattern', 'isNumberShape', 'toNumber',
-    // parsing.js
+    'roundWithOffset', 'roundValueSetAware', 'stepForOffset', 'formatStep', 'trimNum',
+    'findMaxMagnitude',
+    // reader.js
+    'numberFormat', 'groupShapePattern', 'isNumberShape', 'toNumber',
+    // settings.js
     'lettersToColIndex', 'parseRangeEndpoint', 'parseRangeToken', 'parseRangeExpr',
-    'isInRanges', 'resolveOffset', 'resolveNumTop', 'matchUnitNumber', 'getExclusionReason',
-    'findDates', 'isAmbiguousDate',
-    'isDateLike', 'isTimeLike', 'clockTimeRanges', 'parseISODateTime', 'isDateTimeLike',
-    'roundDateText', 'roundISODateTime', 'roundTimeText',
-    'getQuoteMaskedRanges', 'overlapsQuoteRange', 'extractNumbersInText',
-    'bracketSignSpan', 'isBracketedNegative', 'matchBracketedNumber',
-    'eraYearDigitRanges', 'formatNumber', 'pureNumberSpan',
+    'isInRanges', 'resolveOffset', 'resolveNumTop',
+    // numbers-in-text.js
+    'matchUnitNumber', 'getExclusionReason',
+    'getQuoteMaskedRanges', 'overlapsMaskedRange', 'extractNumbersInText',
+    'bracketSignSpan', 'isBracketedNegative', 'matchBracketedNumber', 'pureNumberSpan',
+    // dates.js
+    'knownDate', 'findDates', 'isAmbiguousDate',
+    'isDateLike', 'isTimeLike', 'getClockTimeMaskedRanges', 'parseISODateTime', 'isDateTimeLike',
+    'isClockTimeInRange', 'readTimeCell',
+    'roundDateText', 'roundClockTime', 'roundTimeText', 'getEraYearMaskedRanges',
+    // write-back.js
+    'formatNumber',
     // identifiers.js
     'insideNumberRun', 'findIdentifiers', 'matchIdentifierShape', 'getIdentifierMaskedRanges',
   ].sort();
 
-  eq('lib/dr-number/index.js: DR_NUMBER exists on the global scope after the main eval',
-    typeof globalThis.DR_NUMBER, 'object');
   eq('lib/dr-number/index.js: DR_NUMBER exposes exactly the expected public function names',
     Object.keys(globalThis.DR_NUMBER || {}).sort(), EXPECTED_DR_NUMBER_NAMES);
   eq('lib/dr-number/index.js: every DR_NUMBER entry is itself a function',
@@ -1349,76 +1252,37 @@
 // ---------------------------------------------------------------------------
 // ROUND_DYNAMIC, singleValueMode, datasetMode, and validateOffset belong to
 // the Sheets library, not the extension: nothing in the extension calls
-// them. These typeof checks read the
-// bare names the main eval's function declarations leave in this module's
-// scope (the same sloppy-mode leak DR_NUMBER's helpers rely on before their
-// explicit globalThis bridge) — so a reintroduced declaration in core.js
-// flips a result from 'undefined' to 'function' even if nobody re-adds a
-// globalThis bridge or a DR_NUMBER entry for it.
+// them. These typeof checks read the top-level function declarations the
+// content scripts leave on the global scope, so a reintroduced declaration in
+// lib/dr-number flips a result from 'undefined' to 'function' even if nobody
+// re-adds a globalThis bridge or a DR_NUMBER entry for it.
 // ---------------------------------------------------------------------------
 (function deletedRoundingEntryPointsStayDeleted() {
-  eq('core.js: ROUND_DYNAMIC stays deleted', typeof ROUND_DYNAMIC, 'undefined');
-  eq('core.js: singleValueMode stays deleted', typeof singleValueMode, 'undefined');
-  eq('core.js: datasetMode stays deleted', typeof datasetMode, 'undefined');
-  eq('core.js: validateOffset stays deleted', typeof validateOffset, 'undefined');
+  eq('lib/dr-number: ROUND_DYNAMIC stays deleted', typeof ROUND_DYNAMIC, 'undefined');
+  eq('lib/dr-number: singleValueMode stays deleted', typeof singleValueMode, 'undefined');
+  eq('lib/dr-number: datasetMode stays deleted', typeof datasetMode, 'undefined');
+  eq('lib/dr-number: validateOffset stays deleted', typeof validateOffset, 'undefined');
 })();
 
-// index.js's own doc comment says "No logic lives here — this is a pure
-// re-export list." That claim is only as good as index.js's grammar: the file
-// must introduce exactly one top-level binding (DR_NUMBER) and nothing else.
-// drNumberBundleIsPublished above checks DR_NUMBER's *contents*; this checks
-// that index.js could not have smuggled in a second global even if its
-// contents were otherwise correct — a stray second `const`/`function` at top
-// level would land on the shared content-script scope unnoticed by any
-// content-only assertion.
-(function indexJsDeclaresExactlyOneGlobal() {
-  const indexSrc = sourceByName('lib/dr-number/index.js');
-  if (indexSrc === null) {
-    eq('lib/dr-number/index.js: source present in manifest', false, true);
-    return;
-  }
-  const topLevelDeclarations = indexSrc.match(/^(const|let|var|function\b|class\b)/gm) || [];
-  eq('lib/dr-number/index.js: exactly one top-level declaration in the file',
-    topLevelDeclarations.length, 1);
-  eq('lib/dr-number/index.js: the sole top-level declaration is DR_NUMBER',
-    /^const DR_NUMBER\b/m.test(indexSrc), true);
-})();
+checkIndexDeclaresOnlyPackageObject('dr-number', 'DR_NUMBER');
 
-// The EXPECTED_DR_NUMBER_NAMES list in drNumberBundleIsPublished above is a
-// hand-copied literal, kept explicit on purpose. This test instead derives
-// the expected set mechanically — regex-extracting every top-level
-// `function name(...)` declaration straight from rounding.js, core.js, and
-// parsing.js — so a function added to (or removed from) one of those files
-// without a matching index.js edit fails here even if someone forgets to
-// update the hand-copied list too.
-(function drNumberBundleMatchesSourceDeclarations() {
-  const FUNCTION_DECL_RE = /^function\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm;
-  const declaredNamesIn = (src) => src === null ? [] : [...src.matchAll(FUNCTION_DECL_RE)].map((m) => m[1]);
-  const declaredNames = [
-    ...declaredNamesIn(sourceByName('lib/dr-number/rounding.js')),
-    ...declaredNamesIn(sourceByName('lib/dr-number/core.js')),
-    ...declaredNamesIn(sourceByName('lib/dr-number/parsing.js')),
-    ...declaredNamesIn(sourceByName('lib/dr-number/identifiers.js')),
-  ].sort();
-  eq('lib/dr-number bundle: source files declared at least one top-level function',
-    declaredNames.length > 0, true);
-  eq('lib/dr-number bundle: DR_NUMBER keys are exactly the top-level functions declared in rounding.js + core.js + parsing.js + identifiers.js',
-    Object.keys(globalThis.DR_NUMBER || {}).sort(), declaredNames);
-})();
+// drNumberBundleIsPublished above checks a hand-copied list, kept explicit
+// on purpose. This check derives the list from the source files instead.
+checkPackageObjectMatchesDeclarations('dr-number', 'DR_NUMBER',
+  ['rounding.js', 'reader.js', 'settings.js', 'numbers-in-text.js', 'dates.js', 'write-back.js',
+    'identifiers.js']);
 
 // ---------------------------------------------------------------------------
-// Table detection lives under lib/dr-table/
-// (cells.js, adapters.js, classify.js, detect.js, index.js), mirroring the
-// lib/dr-number package structure and discipline checks above. Four groups of tests:
-//   1. DR_TABLE bundle discipline (mirrors drNumberBundleIsPublished /
-//      indexJsDeclaresExactlyOneGlobal, but against an explicit hand-written
-//      list, not a source-derived one — the package also carries write-engine
-//      helpers alongside detection, so "every top-level function" is not the
-//      right criterion here the way it is for the pure lib/dr-number files).
+// The lib/dr-table package (cells.js, adapters.js, classify.js, detect.js,
+// index.js) follows the lib/dr-number package structure and checks above.
+// Four groups of tests:
+//   1. DR_TABLE is compared against a hand-written list, not against every
+//      top-level function, because the package's files declare private
+//      helpers that DR_TABLE leaves out.
 //   2. The jsdom-less criterion: detection runs with no Chrome globals at all.
 //   3. VendorProfiles: a custom list replaces (not merges with) the default.
 //   4. findTables' isArtifact: the default drops accessibility artifacts; a
-//      pass-through filter keeps it.
+//      filter that drops nothing keeps it.
 // ---------------------------------------------------------------------------
 (function drTableBundleIsPublished() {
   const EXPECTED_DR_TABLE_NAMES = [
@@ -1426,9 +1290,9 @@
     'GridAdapter',
     'makeAdapter',
     'getSuperscriptRanges',
-    'isCellWholeLink',
-    'filterLinkMatches',
+    'getMarkupRanges',
     'classifyTableCell',
+    'makeCellObj',
     'collectTextPieces',
     'mapRenderedToFlat',
     'writePatches',
@@ -1438,43 +1302,32 @@
     'findTargetTable',
     'findTables',
     'scanTables',
-    'registrableTables',
     'chainRootOf',
+    'nominateNest',
     'isAccessibilityArtifact',
     'isDataTable',
     'readTableFingerprint',
     'sameTableFingerprint',
   ].sort();
 
-  eq('lib/dr-table/index.js: DR_TABLE exists on the global scope after the main eval',
+  eq('lib/dr-table/index.js: DR_TABLE exists on the global scope',
     typeof globalThis.DR_TABLE, 'object');
   eq('lib/dr-table/index.js: DR_TABLE exposes exactly the expected public names',
     Object.keys(globalThis.DR_TABLE || {}).sort(), EXPECTED_DR_TABLE_NAMES);
-  eq('lib/dr-table/index.js: every DR_TABLE entry is itself a function (classes included — typeof a class is "function")',
+  eq('lib/dr-table/index.js: every DR_TABLE entry is itself a function',
     EXPECTED_DR_TABLE_NAMES.every((n) => typeof (globalThis.DR_TABLE || {})[n] === 'function'),
     true);
 })();
 
-(function drTableIndexJsDeclaresExactlyOneGlobal() {
-  const indexSrc = sourceByName('lib/dr-table/index.js');
-  if (indexSrc === null) {
-    eq('lib/dr-table/index.js: source present in manifest', false, true);
-    return;
-  }
-  const topLevelDeclarations = indexSrc.match(/^(const|let|var|function\b|class\b)/gm) || [];
-  eq('lib/dr-table/index.js: exactly one top-level declaration in the file',
-    topLevelDeclarations.length, 1);
-  eq('lib/dr-table/index.js: the sole top-level declaration is DR_TABLE',
-    /^const DR_TABLE\b/m.test(indexSrc), true);
-})();
+checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 
 // ---------------------------------------------------------------------------
 // Every detection setting and both lookup
 // lists have one home, the detection settings (DR_DETECTION_SETTINGS, in
 // the configuration file constants.js). The
 // table pillbox auto-collapse delay lives in the table pillbox view
-// (ui-pillbox.js) as its own constant: the view alone reads it. Four groups
-// of tests:
+// (table-pillbox-view.js) as its own constant; the reason sits on that
+// constant. Four groups of tests:
 //   1. Source scan: none of the eight retired names carries a second
 //      const/let/var definition anywhere the manifest loads, and the two
 //      retired literal forms (the repetition-share division, the bare
@@ -1484,10 +1337,9 @@
 //      read DR_DETECTION_SETTINGS as a bare global — no typeof guard, no
 //      OR-fallback, no reassignment — and the table pillbox view reads none of it.
 //   3. Behavior: a sandbox that evaluates the configuration file and then
-//      the detection layer carries the nine pre-move values unchanged, and
-//      looksLikeGrid, findTargetTable, isAccessibilityArtifact, and isDataTable
-//      behave exactly as the pre-move source did, on fixtures whose outcome
-//      the pre-move values determine.
+//      the detection layer holds the expected values, and looksLikeGrid,
+//      findTargetTable, isAccessibilityArtifact, and isDataTable give the
+//      outcomes those values determine.
 //   4. Behavior: a sandbox that evaluates the detection layer alone, with
 //      no configuration file, fails at load with a ReferenceError naming
 //      DR_DETECTION_SETTINGS — before any function in the file runs.
@@ -1520,11 +1372,11 @@
 
 (function detectionSettings_retiredLiteralFormsAreGoneFromDetection() {
   const src = detectCode || '';
-  eq('detection settings: the detection layer no longer computes the repetition floor as children.length / 2',
+  eq('detection settings: the detection layer does not compute the repetition floor as children.length / 2',
     /children\.length\s*\/\s*2/.test(src), false);
-  eq('detection settings: the detection layer no longer compares column-width agreement to a bare 0.8 literal',
+  eq('detection settings: the detection layer does not compare column-width agreement to a bare 0.8 literal',
     />=\s*0\.8\b/.test(src), false);
-  eq('detection settings: the detection layer no longer builds a Set of the four display values',
+  eq('detection settings: the detection layer does not build a Set of the four display values',
     /new Set\(\s*\[\s*['"]grid['"]/.test(src), false);
   eq('detection settings: the detection layer reads the display-value list through DR_DETECTION_SETTINGS.gridDisplayValues.includes(display)',
     /DR_DETECTION_SETTINGS\.gridDisplayValues\.includes\(display\)/.test(src), true);
@@ -1557,10 +1409,10 @@
 // delay is its own constant, so the view reads the detection settings
 // nowhere and the settings carry no delay the view alone reads.
 (function detectionSettings_pillboxViewHoldsItsOwnDelay() {
-  const src = uiPillboxCode || '';
-  eq('detection settings: ui-pillbox.js defines TABLE_PILLBOX_AUTO_COLLAPSE_MS as its own constant',
+  const src = tablePillboxViewCode || '';
+  eq('detection settings: table-pillbox-view.js defines TABLE_PILLBOX_AUTO_COLLAPSE_MS as its own constant',
     /^const TABLE_PILLBOX_AUTO_COLLAPSE_MS = 3000;/m.test(src), true);
-  eq('detection settings: ui-pillbox.js reads DR_DETECTION_SETTINGS nowhere',
+  eq('detection settings: table-pillbox-view.js reads DR_DETECTION_SETTINGS nowhere',
     /DR_DETECTION_SETTINGS/.test(src), false);
   eq('detection settings: the auto-collapse timer takes the view\'s own constant',
     /},\s*TABLE_PILLBOX_AUTO_COLLAPSE_MS\);/.test(src), true);
@@ -1568,14 +1420,11 @@
     Object.prototype.hasOwnProperty.call(DR_DETECTION_SETTINGS, 'pillboxAutoCollapseMs'), false);
 })();
 
-// Living documents: docs/design.md's package table and docs/vocabulary.md both
-// carry the detection settings, per AGENTS.md's rule that a behavior-invalidating
-// change updates every living document it invalidates in the same branch.
+// Living documents: docs/vocabulary.md defines the detection settings, per
+// AGENTS.md's rule that a behavior-invalidating change updates every living
+// document it invalidates in the same branch.
 (function detectionSettings_livingDocumentsCarryTheTerm() {
-  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
-  eq('living documents: docs/design.md carries the detection settings',
-    designMd.includes('detection settings'), true);
   eq('living documents: docs/vocabulary.md defines the detection settings',
     vocabularyMd.includes('detection settings'), true);
 })();
@@ -1622,9 +1471,8 @@
     controllerSrc !== null &&
       (controllerSrc.includes('GRID_ARIA_SELECTOR') || controllerSrc.includes('role="grid"')),
     false);
-  // The step's page-wide entry point is nominateNests, which scanTables
-  // composes. The load-time scan and the added-node pass share one function,
-  // and that function calls scanTables.
+  // The step's page-wide entry point is scanTables. The load-time scan and
+  // the added-node pass share one function, and that function calls it.
   eq('nesting: the load-time scan calls the table scan',
     controllerSrc !== null && /scanTables\s*\(/.test(controllerSrc), true);
   eq('nesting: the added-node pass passes each added element to the load-time scan function',
@@ -1635,7 +1483,6 @@
 
 (function gridNesting_livingDocumentsAndTheTestPageStateTheRule() {
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
-  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const extensionReadme = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
   const testPage = fs.readFileSync(
     path.join(__dirname, '..', 'docs', 'test-pages', 'test-tables-1.html'), 'utf8');
@@ -1652,8 +1499,6 @@
 
   eq('nesting: chrome-extension/README.md states the nesting depth',
     /nesting depth/i.test(extensionReadme), true);
-  eq('nesting: docs/design.md states the nesting depth',
-    /nesting depth/i.test(designMd), true);
 
   const sectionStart = testPage.indexOf('13. Pinned-pane vendor grid');
   const nextHeadingAt = testPage.indexOf('<h2>', sectionStart);
@@ -1675,12 +1520,10 @@
 //
 // Two doc-pin blocks already stand in this suite (the nesting rule's and the
 // data-test budget's); this one follows them. The vocabulary defines the term
-// and the registry row lists it; the design document's state-ownership paragraph
-// lists it among the per-table registry fields.
+// and the registry row lists it.
 
 (function shapeFingerprint_theLivingDocumentsStateTheField() {
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
-  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
 
   const fingerprintRow = vocabularyMd.split('\n')
     .find((line) => /^\|\s*shape fingerprint\s*\|/i.test(line)) || '';
@@ -1701,22 +1544,12 @@
     .find((line) => /^\|\s*registry\s*\|/i.test(line)) || '';
   eq('fingerprint docs: the registry row lists the shape fingerprint among its details',
     /shape fingerprint/i.test(registryRow), true);
-
-  const stateOwnership = designMd.split('\n')
-    .find((line) => /The registry keys per-table storage on the live element/i.test(line)) || '';
-  eq('fingerprint docs: docs/design.md keeps its per-table registry sentence',
-    stateOwnership !== '', true);
-  eq('fingerprint docs: that sentence lists the shape fingerprint',
-    /shape fingerprint/i.test(stateOwnership), true);
-  eq('fingerprint docs: that sentence states when the fingerprint carries header texts',
-    /header row/i.test(stateOwnership), true);
 })();
 
 // --- the living documents state the pending table rule ---
 
 (function pendingRetest_livingDocumentsStateTheRule() {
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
-  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const extensionReadme = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
 
   const pendingRow = vocabularyMd.split('\n')
@@ -1728,21 +1561,6 @@
   eq('pending: the pending table row states the re-test cap',
     /re-test cap/i.test(pendingRow), true);
 
-  const designParagraphs = designMd.split('\n\n');
-  const detectionParagraph = designParagraphs.find((p) => /^\*\*Detection\.\*\*/.test(p)) || '';
-  eq('pending: docs/design.md carries a Detection paragraph',
-    detectionParagraph !== '', true);
-  eq('pending: the Detection paragraph states that an empty chain leaves a pending table',
-    /pending table/i.test(detectionParagraph), true);
-  eq('pending: the Detection paragraph states the cap on failed re-tests',
-    /reaches the cap/i.test(detectionParagraph), true);
-
-  const stateParagraph = designParagraphs.find((p) => /hold state outside the model/i.test(p)) || '';
-  eq('pending: docs/design.md lists the state held outside the model',
-    stateParagraph !== '', true);
-  eq('pending: that list names each pending table\'s subtree observer',
-    /pending table[^.]*observer/i.test(stateParagraph), true);
-
   const detectionPoint = extensionReadme.split('\n')
     .find((line) => /Detection runs on demand/i.test(line)) || '';
   eq('pending: chrome-extension/README.md carries the detection point',
@@ -1751,55 +1569,6 @@
     /pending table/i.test(detectionPoint), true);
   eq('pending: the detection point names the re-test cap in the detection settings',
     /pendingRetestCap/.test(detectionPoint), true);
-})();
-
-// =============================================================================
-// Lib/dr-simplify classification ladder
-// =============================================================================
-//
-// The engine's per-cell pass in content.js and the lens preview extractor
-// (classifyPreviewCells / extractPreviewSamples) both call classifyCell
-// (lib/dr-simplify/ladder.js).
-//
-// This section has three parts:
-//   1. Package discipline — mirrors the DR_NUMBER/DR_TABLE checks.
-//   2. classifyCell unit tests — one per ladder rule, exercised directly with
-//      plain data (no DOM), matching the file's PURE contract.
-//   3. Divergence tests — each test pins the MERGED (engine-wins) behavior
-//      the lens preview extractor follows.
-
-// --- 1. Package discipline ---
-
-(function drSimplifyBundleMatchesSourceDeclarations() {
-  const FUNCTION_DECL_RE = /^function\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm;
-  const tableStepCode = sourceByName('lib/dr-simplify/table.js');
-  const placementCode = sourceByName('lib/dr-simplify/placement.js');
-  const declaredNames = [placementCode, ladderCode, tableStepCode]
-    .flatMap((code) => (code === null ? [] : [...code.matchAll(FUNCTION_DECL_RE)].map((m) => m[1])))
-    .sort();
-  eq('lib/dr-simplify/ladder.js: source present in manifest', ladderCode !== null, true);
-  eq('lib/dr-simplify/table.js: source present in manifest', tableStepCode !== null, true);
-  eq('lib/dr-simplify bundle: ladder.js declared at least one top-level function',
-    declaredNames.length > 0, true);
-  eq('lib/dr-simplify/index.js: DR_SIMPLIFY exists on the global scope after the main eval',
-    typeof globalThis.DR_SIMPLIFY, 'object');
-  eq('lib/dr-simplify bundle: DR_SIMPLIFY keys are exactly the top-level functions declared in placement.js, ladder.js, and table.js',
-    Object.keys(globalThis.DR_SIMPLIFY || {}).sort(), declaredNames);
-  eq('lib/dr-simplify bundle: every DR_SIMPLIFY entry is itself a function',
-    declaredNames.every((n) => typeof (globalThis.DR_SIMPLIFY || {})[n] === 'function'), true);
-})();
-
-(function drSimplifyIndexJsDeclaresExactlyOneGlobal() {
-  const indexSrc = sourceByName('lib/dr-simplify/index.js');
-  if (indexSrc === null) {
-    eq('lib/dr-simplify/index.js: source present in manifest', false, true);
-    return;
-  }
-  const topLevelDeclarations = indexSrc.match(/^(const|let|var|function\b|class\b)/gm) || [];
-  eq('lib/dr-simplify/index.js: exactly one top-level declaration in the file',
-    topLevelDeclarations.length, 1);
-  eq('lib/dr-simplify/index.js: the sole top-level declaration is DR_SIMPLIFY',
-    /^const DR_SIMPLIFY\b/m.test(indexSrc), true);
 })();
 
 // ---------------------------------------------------------------------------
@@ -1850,13 +1619,14 @@
 // ---------------------------------------------------------------------------
 // Pin the exact state:rangeOk/state:rangeError message
 // sequence for one full apply (applySidebarRounding -> roundTable ->
-// sendRangeStatusMessage -> chrome.runtime.sendMessage).
+// publishRangeStatus -> the event bus, which sends through
+// chrome.runtime.sendMessage).
 //
 // The apply is the one path to roundTable, so it drives the flow here. It
 // sends the state:rangeOk/state:rangeError messages.
 //
-// The engine returns { applied, rangeStatus, error } and the controller
-// sends the message. The two expected sequences below (one per
+// roundTable returns { rangeStatus, error } and the controller publishes
+// the range status. The two expected sequences below (one per
 // range-validity branch) are literals, so a future change cannot silently
 // drop or duplicate a message.
 // ---------------------------------------------------------------------------
@@ -1988,7 +1758,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// ui-pillbox.js splits into drawing (render from state,
+// table-pillbox-view.js splits into drawing (render from state,
 // hold only view-transient state) and publishing (intents on DR_BUS in place
 // of calls into the controller).
 //
@@ -1997,13 +1767,13 @@
 // past the intent and around the one press path.
 // ---------------------------------------------------------------------------
 (function tablePillboxSplit_viewCallsNoControllerFunctionDirectly() {
-  const uiPillboxSrc = sourceByName('ui-pillbox.js');
-  if (uiPillboxSrc === null) {
-    eq('table-pillbox-split: ui-pillbox.js is present in the manifest', false, true);
+  const tablePillboxViewSrc = sourceByName('table-pillbox-view.js');
+  if (tablePillboxViewSrc === null) {
+    eq('table-pillbox-split: table-pillbox-view.js is present in the manifest', false, true);
     return;
   }
   const FORBIDDEN_CONTROLLER_CALLS = ['applySidebarRounding', 'resetTable', 'roundTable',
-    'registerDataTable', 'injectTablePillboxes', 'consumeNominations'];
+    'registerDataTable', 'injectTablePillboxes', 'consumeNomination'];
   // Sanity check on the scan itself: every forbidden name is a real function
   // in the content-script stack, so the filter below tests something.
   const missingFromController = FORBIDDEN_CONTROLLER_CALLS.filter(
@@ -2013,26 +1783,26 @@
 
   const foundCalls = FORBIDDEN_CONTROLLER_CALLS.filter((name) => {
     const callRe = new RegExp('\\b' + name + '\\s*\\(');
-    return callRe.test(uiPillboxSrc);
+    return callRe.test(tablePillboxViewSrc);
   });
-  eq('table-pillbox-split: ui-pillbox.js calls no controller function directly',
+  eq('table-pillbox-split: table-pillbox-view.js calls no controller function directly',
     foundCalls, []);
 
   // The controller is the model's one writer; the view reads the model and
   // writes nothing to it.
-  eq('table-pillbox-split: ui-pillbox.js writes nothing to the model',
-    uiPillboxSrc.match(/DR_MODEL\.(register|unregister|set)[A-Za-z]*\s*\(/g) || [], []);
+  eq('table-pillbox-split: table-pillbox-view.js writes nothing to the model',
+    tablePillboxViewSrc.match(/DR_MODEL\.(register|unregister|set)[A-Za-z]*\s*\(/g) || [], []);
 
   // The click handler publishes the press as an intent instead.
-  eq('table-pillbox-split: ui-pillbox.js publishes intent:toggleTable from the click handler',
-    /DR_BUS\.publish\(\s*'intent:toggleTable'/.test(uiPillboxSrc), true);
+  eq('table-pillbox-split: table-pillbox-view.js publishes intent:toggleTable from the click handler',
+    /DR_BUS\.publish\(\s*'intent:toggleTable'/.test(tablePillboxViewSrc), true);
 })();
 
 // --- sidebar: the screenshot take never blocks the save ---
 //
 // takeCaptureScreenshot takes its tabs interface as a parameter and answers
 // through one callback, so the suite drives the real source with a stub
-// that settles at once. Every route — a resolved take, a rejected one, a
+// that settles at once. Every path — a resolved take, a rejected one, a
 // throw before the promise exists, a tabs interface with no capture — calls
 // the callback exactly once, with the image or with a not-taken record that
 // holds the reason.
@@ -2099,22 +1869,16 @@
 })();
 
 // the living documents name the detection settings in the capture
-// paragraph or row a reader would consult — the README's capture section,
-// the design document's Capture paragraph, and the vocabulary's capture state
-// row — loose enough to survive rewording, tight enough to fail if the
+// paragraph or row a reader would consult — the README's capture section and
+// the vocabulary's capture state row — loose enough to survive rewording, tight enough to fail if the
 // mention is dropped.
 (function captureDetectionSettingsLivingDocumentsNameTheTerm() {
   const readmeMd = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
-  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
 
   const readmeCaptureSection = (readmeMd.split('\n## Capture\n')[1] || '').split('\n## ')[0];
   eq('living documents: chrome-extension/README.md\'s capture paragraph names the detection settings',
     readmeCaptureSection.includes('detection settings'), true);
-
-  const designCaptureParagraph = designMd.split('\n').find((line) => line.startsWith('**Capture.**')) || '';
-  eq('living documents: docs/design.md\'s Capture paragraph names the detection settings',
-    designCaptureParagraph.includes('detection settings'), true);
 
   const vocabularyCaptureStateRow = vocabularyMd.split('\n').find((line) => line.startsWith('| capture state |')) || '';
   eq('living documents: docs/vocabulary.md\'s capture state row names the detection settings',
@@ -2126,10 +1890,10 @@
 // A saved capture holds a real table; opened with file access enabled, the
 // content script runs on it like on any page. The renderer stamps
 // data-dr-capture on the document element, and the controller gates its two
-// entry points on that marker — the contextmenu handler (selection and the
+// entry points on that marker — the contextmenu handler (activation and the
 // menu path) and the load-time scan with its added-node observer (table pillboxes
 // and registration). With neither, no table on a capture page is ever
-// selected, registered, or rounded. Source-text assertions, matching the
+// activated, registered, or rounded. Source-text assertions, matching the
 // suite's style for load-time wiring the harness cannot re-run.
 
 (function captureMarkerStandDown() {
@@ -2145,12 +1909,12 @@
 // --- lib/dr-log: the log buffer ---
 //
 // DR_LOG holds the last 50 rows the extension records, one instance per
-// context (content script and sidebar each evaluate the file separately).
-// Every capture carries a snapshot of this buffer, so these tests pin the
-// row shape, the cap, the drop counter, the console forwarding, and the
-// snapshot's copy semantics. The buffer is a singleton shared with every
+// context; the header comment in lib/dr-log/index.js lists the contexts.
+// Every capture carries a copy of this buffer, so these tests pin the
+// row shape, the limit, the drop counter, the console forwarding, and the
+// copy semantics. The buffer is a singleton shared with every
 // other test in this file, so all assertions here are relative (last row,
-// before/after counts) — and the cap test runs last because it fills it.
+// before/after counts) — and the limit test runs last because it fills it.
 
 (function drLogBuffer() {
   eq('dr-log: DR_LOG loads in the content-script bundle',
@@ -2164,14 +1928,14 @@
   const LOG = globalThis.DR_LOG;
 
   LOG.debug('row shape probe');
-  let snap = LOG.snapshot();
-  const last = snap.entries[snap.entries.length - 1];
+  let buffer = LOG.copyBuffer();
+  const last = buffer.rows[buffer.rows.length - 1];
   eq('dr-log: a row holds its level and text',
     { level: last.level, text: last.text },
     { level: 'debug', text: 'row shape probe' });
   eq('dr-log: a row\'s timestamp parses as a date',
     isNaN(Date.parse(last.at)), false);
-  eq('dr-log: the snapshot reports the row cap', snap.limit, 50);
+  eq('dr-log: the buffer copy reports the row limit', buffer.limit, 50);
 
   // console.info and console.error are not muted by the harness (only debug
   // and warn are); spy them for the duration of these three calls so the
@@ -2186,16 +1950,16 @@
   console.info = origInfo;
   console.error = origError;
   eq('dr-log: info, warn, and error rows carry their level',
-    LOG.snapshot().entries.slice(-3).map((e) => e.level),
+    LOG.copyBuffer().rows.slice(-3).map((e) => e.level),
     ['info', 'warn', 'error']);
 
   LOG.debug(42);
   eq('dr-log: non-string text is stored as a string',
-    LOG.snapshot().entries.slice(-1)[0].text, '42');
+    LOG.copyBuffer().rows.slice(-1)[0].text, '42');
 
-  // Forwarding: a row still reaches the console (devtools behavior is
-  // unchanged). The harness mutes console.debug/console.warn globally; this
-  // test installs its own spy and puts the mute back.
+  // Forwarding: each row also goes to the console. The harness mutes
+  // console.debug/console.warn globally; this test installs its own spy and
+  // puts the mute back.
   const origDebug = console.debug;
   let forwarded = null;
   console.debug = (msg) => { forwarded = msg; };
@@ -2203,35 +1967,34 @@
   console.debug = origDebug;
   eq('dr-log: a row forwards to the console', forwarded, 'forwarding probe');
 
-  const snapA = LOG.snapshot();
-  snapA.entries[snapA.entries.length - 1].text = 'mutated';
-  eq('dr-log: snapshot rows are copies, so mutating one never reaches the buffer',
-    LOG.snapshot().entries.slice(-1)[0].text, 'forwarding probe');
+  const bufferA = LOG.copyBuffer();
+  bufferA.rows[bufferA.rows.length - 1].text = 'mutated';
+  eq('dr-log: rows in a buffer copy are copies, so mutating one never reaches the buffer',
+    LOG.copyBuffer().rows.slice(-1)[0].text, 'forwarding probe');
 
   LOG.debug('x'.repeat(3000));
   eq('dr-log: a long row is cut at 2000 characters',
-    LOG.snapshot().entries.slice(-1)[0].text.length, 2000);
+    LOG.copyBuffer().rows.slice(-1)[0].text.length, 2000);
 
-  // The 50-row cap and the drop counter — last in this section because it
+  // The 50-row limit and the drop counter — last in this section because it
   // fills the shared buffer.
-  const droppedBefore = LOG.snapshot().dropped;
+  const droppedBefore = LOG.copyBuffer().dropped;
   for (let i = 0; i < 55; i++) LOG.debug('cap probe ' + i);
-  snap = LOG.snapshot();
-  eq('dr-log: the buffer holds at most 50 rows', snap.entries.length, 50);
-  eq('dr-log: rows dropped past the cap are counted',
-    snap.dropped >= droppedBefore + 5, true);
-  eq('dr-log: the newest row survives the cap',
-    snap.entries[snap.entries.length - 1].text, 'cap probe 54');
+  buffer = LOG.copyBuffer();
+  eq('dr-log: the buffer holds at most 50 rows', buffer.rows.length, 50);
+  eq('dr-log: rows dropped past the limit are counted',
+    buffer.dropped >= droppedBefore + 5, true);
+  eq('dr-log: the newest row survives the limit',
+    buffer.rows[buffer.rows.length - 1].text, 'cap probe 54');
 })();
 
 // --- lib/dr-log: the stack trace and the row listener ---
 //
 // A warn or error row carries the stack trace at the moment it was recorded,
 // the same trace the extension error page shows, so a capture holds it and
-// the application model can store it. Debug and info rows carry none: they
-// are frequent, and a trace costs a stack walk per row. The row listener is
-// how the controller learns that a row landed without the log module reaching
-// up to the application model or the bus, both of which load after it.
+// the application model can store it. Debug and info rows carry none. The
+// comments in lib/dr-log/index.js hold the reasons for both the levels and the
+// row listener.
 
 (function drLogStackTraceAndListener() {
   if (typeof globalThis.DR_LOG !== 'object') return;
@@ -2241,7 +2004,7 @@
   try {
     function stackProbeCaller() { LOG.warn('stack probe'); }
     stackProbeCaller();
-    const warnRow = LOG.snapshot().entries.slice(-1)[0];
+    const warnRow = LOG.copyBuffer().rows.slice(-1)[0];
     eq('dr-log: a warn row carries the stack trace that recorded it',
       typeof warnRow.stack === 'string' && /stackProbeCaller/.test(warnRow.stack), true);
     eq('dr-log: the stack trace starts at the caller, with the log module\'s own frames left out',
@@ -2250,11 +2013,11 @@
     function errorStackProbeCaller() { LOG.error('error stack probe'); }
     errorStackProbeCaller();
     eq('dr-log: an error row carries the stack trace',
-      /errorStackProbeCaller/.test(LOG.snapshot().entries.slice(-1)[0].stack || ''), true);
+      /errorStackProbeCaller/.test(LOG.copyBuffer().rows.slice(-1)[0].stack || ''), true);
 
     function failedStepProbeCaller() { LOG.warnError('probe step', new TypeError('x')); }
     failedStepProbeCaller();
-    const failedStepRow = LOG.snapshot().entries.slice(-1)[0];
+    const failedStepRow = LOG.copyBuffer().rows.slice(-1)[0];
     eq('dr-log: warnError writes a warn row naming the step and the error type',
       [failedStepRow.level, failedStepRow.text],
       ['warn', 'Dynamic Rounding: error · step: probe step · error: TypeError']);
@@ -2262,17 +2025,17 @@
       /failedStepProbeCaller/.test(String(failedStepRow.stack).split('\n')[0]), true);
     LOG.warnError('probe step');
     eq('dr-log: warnError with no thrown value leaves the error label out',
-      LOG.snapshot().entries.slice(-1)[0].text, 'Dynamic Rounding: error · step: probe step');
+      LOG.copyBuffer().rows.slice(-1)[0].text, 'Dynamic Rounding: error · step: probe step');
 
     LOG.debug('no stack probe');
     eq('dr-log: a debug row carries no stack trace',
-      LOG.snapshot().entries.slice(-1)[0].stack, null);
+      LOG.copyBuffer().rows.slice(-1)[0].stack, null);
     LOG.info('no stack probe');
     eq('dr-log: an info row carries no stack trace',
-      LOG.snapshot().entries.slice(-1)[0].stack, null);
+      LOG.copyBuffer().rows.slice(-1)[0].stack, null);
 
-    // One list: the levels that carry a trace are the levels the controller
-    // records as extension errors, read from here and held nowhere else.
+    // The ERROR_LEVELS comment in lib/dr-log/index.js holds the reason for
+    // one list.
     eq('dr-log: the error levels are warn and error', LOG.ERROR_LEVELS, ['warn', 'error']);
     eq('dr-log: the controller reads the error levels from the log module',
       /DR_LOG\.ERROR_LEVELS/.test(sourceByName('content.js') || '') &&
@@ -2285,12 +2048,12 @@
     deepWarn(150);
     Error.stackTraceLimit = savedLimit;
     eq('dr-log: a long stack trace is cut at 2000 characters',
-      String(LOG.snapshot().entries.slice(-1)[0].stack).length, 2000);
+      String(LOG.copyBuffer().rows.slice(-1)[0].stack).length, 2000);
 
-    const snapCopy = LOG.snapshot();
-    snapCopy.entries[snapCopy.entries.length - 1].stack = 'mutated';
-    eq('dr-log: a snapshot row\'s stack trace is a copy',
-      LOG.snapshot().entries.slice(-1)[0].stack === 'mutated', false);
+    const bufferCopy = LOG.copyBuffer();
+    bufferCopy.rows[bufferCopy.rows.length - 1].stack = 'mutated';
+    eq('dr-log: a copied row\'s stack trace is a copy',
+      LOG.copyBuffer().rows.slice(-1)[0].stack === 'mutated', false);
 
     const seen = [];
     const off = LOG.onRow((row) => { seen.push(row); });
@@ -2299,7 +2062,7 @@
       seen.length === 1 && seen[0].text === 'listener probe' && seen[0].level === 'debug', true);
     seen[0].text = 'mutated';
     eq('dr-log: the listener receives a copy, so mutating it never reaches the buffer',
-      LOG.snapshot().entries.slice(-1)[0].text, 'listener probe');
+      LOG.copyBuffer().rows.slice(-1)[0].text, 'listener probe');
     off();
     LOG.debug('after removal probe');
     eq('dr-log: a removed row listener receives nothing more', seen.length, 1);
@@ -2310,7 +2073,7 @@
     LOG.debug('throwing listener probe');
     offThrowing();
     eq('dr-log: a listener that throws does not stop the row from recording',
-      LOG.snapshot().entries.slice(-1)[0].text, 'throwing listener probe');
+      LOG.copyBuffer().rows.slice(-1)[0].text, 'throwing listener probe');
     eq('dr-log: a listener\'s failure is reported on the console',
       typeof reported === 'string' && /listener failure/.test(reported), true);
   } finally {
@@ -2320,25 +2083,19 @@
 
 // --- toast view: an error row shows on the page ---
 //
-// The toast view subscribes to the model's error state change and draws the
-// newest row's text in one fixed element at the page's bottom right, removed
-// by a click or after the hide delay. A second row replaces the text and
-// restarts the delay, so a repeating warning shows one toast. The view never
-// logs: a row it recorded would publish back to it.
-//
 // The live view has drawn against earlier tests' page stubs by the time this
 // section runs, so these build the settings contract, the bus, the model,
 // and the view together in a fresh context with their own page stub. The
 // model's publish reaching the view's subscription is the wiring under test.
 
 (function toastViewShowsErrorRows() {
-  const uiToastCode = sourceByName('ui-toast.js');
-  eq('toast: ui-toast.js is a content script in the manifest', uiToastCode !== null, true);
-  if (uiToastCode === null) return;
+  const toastViewCode = sourceByName('toast-view.js');
+  eq('toast: toast-view.js is a content script in the manifest', toastViewCode !== null, true);
+  if (toastViewCode === null) return;
 
   const appended = [];
   const timers = [];
-  let cleared = 0;
+  const cleared = [];
   const makeEl = (tag) => {
     const listeners = {};
     const attrs = {};
@@ -2347,6 +2104,7 @@
       setAttribute(name, value) { attrs[name] = value; },
       getAttribute(name) { return attrs[name] === undefined ? null : attrs[name]; },
       addEventListener(evt, fn) { (listeners[evt] = listeners[evt] || []).push(fn); },
+      remove() { if (this.parentNode) this.parentNode.removeChild(this); },
     };
   };
   const container = () => ({
@@ -2363,10 +2121,10 @@
     console,
     document: { createElement: makeEl, body: container(), head: container() },
     setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
-    clearTimeout: () => { cleared++; },
+    clearTimeout: (id) => { cleared.push(id); },
   };
   const ctx = vm.createContext(sandbox);
-  vm.runInContext(constantsCode + '\n' + messagingCode + '\n' + modelCode + '\n' + uiToastCode +
+  vm.runInContext(constantsCode + '\n' + busCode + '\n' + modelCode + '\n' + toastViewCode +
     '\nthis.__model = DR_MODEL; this.__toast = DR_TOAST;', ctx);
   const model = sandbox.__model;
   const view = sandbox.__toast;
@@ -2374,35 +2132,36 @@
 
   model.recordError({ at: 'x', level: 'warn', text: 'Dynamic Rounding: toast probe one', stack: null });
   const toast = appended.find(isToast);
-  eq('toast: an error row appends one toast to the page', !!toast, true);
+  eq('toast: after one error row, the page holds one toast', !!toast, true);
   eq('toast: the toast shows the row\'s text',
     toast ? toast.textContent : null, 'Dynamic Rounding: toast probe one');
   eq('toast: the toast is a status region for assistive technology',
     toast ? toast.getAttribute('role') : null, 'status');
   eq('toast: the view injects its stylesheet once',
     appended.filter((el) => el._tag === 'style' && el.textContent.includes(view.TOAST_CLASS)).length, 1);
-  eq('toast: the toast hides itself after the hide delay',
+  eq('toast: after one error row, the view sets one timer for the hide delay',
     timers.length === 1 && timers[0].ms === view.TOAST_HIDE_MS, true);
 
   model.recordError({ at: 'x', level: 'warn', text: 'toast probe two', stack: null });
-  eq('toast: a second row replaces the text of the one toast',
+  eq('toast: after a second error row, the page holds one toast with the second row\'s text',
     { count: appended.filter(isToast).length, text: toast ? toast.textContent : null },
     { count: 1, text: 'toast probe two' });
-  eq('toast: a second row restarts the hide delay',
-    { cleared, timers: timers.length }, { cleared: 1, timers: 2 });
+  eq('toast: after a second error row, the view clears the first timer and sets a second',
+    { firstTimerCleared: cleared.includes(1), timers: timers.length },
+    { firstTimerCleared: true, timers: 2 });
 
   if (timers[1]) timers[1].fn();
-  eq('toast: the hide delay removes the toast', appended.some(isToast), false);
+  eq('toast: when the hide delay ends, the page holds no toast', appended.some(isToast), false);
 
   model.recordError({ at: 'x', level: 'error', text: 'toast probe three', stack: null });
   const second = appended.find(isToast);
-  eq('toast: a row after the hide draws a fresh toast',
+  eq('toast: after an error row that follows the hide, the page holds a new toast with that row\'s text',
     !!second && second !== toast && second.textContent === 'toast probe three', true);
   if (second) second._listeners.click[0]();
-  eq('toast: a click removes the toast', appended.some(isToast), false);
+  eq('toast: after a click on the toast, the page holds no toast', appended.some(isToast), false);
   eq('toast: the stylesheet is injected once for the page\'s life',
     appended.filter((el) => el._tag === 'style').length, 1);
-  eq('toast: the view logs nothing', /DR_LOG\./.test(uiToastCode), false);
+  eq('toast: the view logs nothing', /DR_LOG\./.test(toastViewCode), false);
 })();
 
 // --- lib/dr-log: call sites route through the buffer ---
@@ -2424,8 +2183,8 @@
 // --- The service worker runs on the bus ---
 (function workerRunsOnBus() {
   const bgSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
-  eq('worker on bus: importScripts loads the messaging adapter',
-    /importScripts\([^)]*adapters\/messaging\.js/.test(bgSrc), true);
+  eq('worker on bus: importScripts loads the event bus',
+    /importScripts\([^)]*app\/bus\.js/.test(bgSrc), true);
   eq('worker log row: importScripts loads the log module',
     /importScripts\([^)]*lib\/dr-log\/index\.js/.test(bgSrc), true);
   eq('worker log row: the open-sidebar failure records the one row format in the log buffer',
@@ -2434,7 +2193,7 @@
     /console\.(warn|error|log|debug|info)\(/.test(bgSrc), false);
   eq('worker on bus: no raw chrome.tabs.sendMessage call',
     bgSrc.includes('chrome.tabs.sendMessage'), false);
-  eq('worker on bus: the menu click publishes with an explicit tab number',
+  eq('worker on bus: the menu click publishes with an explicit tab ID',
     /DR_BUS\.publish\(\s*'intent:menuClicked',\s*\{\},\s*\{\s*tabId:/.test(bgSrc), true);
   eq('worker on bus: no re-send of the settings notice',
     bgSrc.includes('settingsChanged'), false);
@@ -2483,8 +2242,8 @@
 // drives a report and a tab switch through the real path.
 (function boundTabWiringSection() {
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
-  const coreSrc = sourceByName('lib/dr-number/core.js');
-  if (constantsCode === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
+  const readerSrc = sourceByName('lib/dr-number/reader.js');
+  if (constantsCode === null || roundingSrc === null || readerSrc === null || busCode === null) {
     eq('bound tab wiring: source files present in manifest', false, true);
     return;
   }
@@ -2588,8 +2347,8 @@
     eval(
       constantsCode + '\n' +
       roundingSrc + '\n' +
-      coreSrc + '\n' +
-      messagingCode + '\n' +
+      readerSrc + '\n' +
+      busCode + '\n' +
       fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8')
     );
   } catch (e) {
@@ -2657,14 +2416,14 @@
 
 (function currencies_noSecondList() {
   // Fail closed on a restated list. A second copy of the signs necessarily
-  // carries several currency pictures, so no content script outside core.js
+  // carries several currency pictures, so no content script outside reader.js
   // may hold more than one distinct picture. The dollar sign stays out of the
   // scan: it is ordinary regular-expression and template syntax. A file that
   // legitimately needs several pictures reads CURRENCY_SIGNS instead.
   const pictures = /[€£¥₹₽₺₣]/g;
   const offenders = [];
   for (const [file, src] of contentScriptSources) {
-    if (file === 'lib/dr-number/core.js') continue; // the one list lives here
+    if (file === 'lib/dr-number/reader.js') continue; // the one list lives here
     const distinct = new Set(src.match(pictures) || []);
     if (distinct.size > 1) offenders.push(file);
   }

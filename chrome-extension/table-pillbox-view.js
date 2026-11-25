@@ -1,9 +1,4 @@
-/**
- * DynamicRounding Chrome Extension
- * https://github.com/ArieFisher/dynamic-rounding
- * MIT License
- * Copyright (c) 2026 Arie Fisher
- */
+// Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
 /**
  * The table pillbox view: the table pillbox's geometry, styles, creation and
@@ -17,7 +12,6 @@
  * wired in content.js, which loads after this file.
  */
 
-// Table pillbox geometry constants
 const TABLE_PILLBOX_DOT_PX = 10;
 const TABLE_PILLBOX_PILL_WIDTH_PX = 28;
 const TABLE_PILLBOX_PILL_HEIGHT_PX = 16;
@@ -46,8 +40,6 @@ const PULSE_CLEANUP_MS = 1500;
 // Overflow values that cut off an element's content at its box.
 const CLIPPING_OVERFLOW = new Set(['hidden', 'scroll', 'auto', 'clip']);
 
-// --- Per-table pillbox infrastructure ---
-
 // A table (native or grid) → { button, resizeObserver }.
 const tablePillboxViews = new WeakMap();
 
@@ -57,7 +49,6 @@ function syncTablePillbox(table) {
   view.button.setAttribute('aria-pressed', DR_MODEL.isTableOn(table) ? 'true' : 'false');
 }
 
-/** @param {Element} table The table whose table pillbox this removes. */
 function removeTablePillbox(table) {
   const view = tablePillboxViews.get(table);
   if (!view) return;
@@ -76,11 +67,31 @@ DR_BUS.subscribe('state:settingsChanged', () => {
   if (active) syncTablePillbox(active);
 });
 
+function appendStyleSheet(cssText) {
+  const style = document.createElement('style');
+  style.textContent = cssText;
+  (document.head || document.documentElement).appendChild(style);
+}
+
 let tablePillboxStyleInjected = false;
 function ensureTablePillboxStyleInjected() {
   if (tablePillboxStyleInjected) return;
-  const style = document.createElement('style');
-  style.textContent = `
+  const expandedLook = (buttons) => {
+    const select = (suffix) => buttons.map((b) => b + suffix).join(',\n');
+    return `
+    ${select(' .dr-ext-table-pillbox-dot')} {
+      width: ${TABLE_PILLBOX_PILL_WIDTH_PX}px;
+      height: ${TABLE_PILLBOX_PILL_HEIGHT_PX}px;
+      border-radius: 999px;
+    }
+    ${select(' .dr-ext-table-pillbox-knob')} {
+      opacity: 1;
+    }
+    ${select('[aria-pressed="true"] .dr-ext-table-pillbox-knob')} {
+      left: ${TABLE_PILLBOX_KNOB_INSET_PX + TABLE_PILLBOX_KNOB_TRAVEL_PX}px;
+    }`;
+  };
+  appendStyleSheet(`
     .dr-ext-table-pillbox {
       position: absolute;
       z-index: 2147483646;
@@ -119,45 +130,19 @@ function ensureTablePillboxStyleInjected() {
       opacity: 0;
       transition: opacity .12s ease, left .2s ease;
     }
-    .dr-ext-table-pillbox.expanded .dr-ext-table-pillbox-dot,
-    .dr-ext-table-pillbox:focus-visible .dr-ext-table-pillbox-dot {
-      width: ${TABLE_PILLBOX_PILL_WIDTH_PX}px;
-      height: ${TABLE_PILLBOX_PILL_HEIGHT_PX}px;
-      border-radius: 999px;
-    }
-    .dr-ext-table-pillbox.expanded .dr-ext-table-pillbox-knob,
-    .dr-ext-table-pillbox:focus-visible .dr-ext-table-pillbox-knob {
-      opacity: 1;
-    }
-    .dr-ext-table-pillbox.expanded[aria-pressed="true"] .dr-ext-table-pillbox-knob,
-    .dr-ext-table-pillbox:focus-visible[aria-pressed="true"] .dr-ext-table-pillbox-knob {
-      left: ${TABLE_PILLBOX_KNOB_INSET_PX + TABLE_PILLBOX_KNOB_TRAVEL_PX}px;
-    }
+    ${expandedLook(['.dr-ext-table-pillbox.expanded', '.dr-ext-table-pillbox:focus-visible'])}
     @media (hover: hover) and (pointer: fine) {
-      .dr-ext-table-pillbox:hover .dr-ext-table-pillbox-dot {
-        width: ${TABLE_PILLBOX_PILL_WIDTH_PX}px;
-        height: ${TABLE_PILLBOX_PILL_HEIGHT_PX}px;
-        border-radius: 999px;
-      }
-      .dr-ext-table-pillbox:hover .dr-ext-table-pillbox-knob {
-        opacity: 1;
-      }
-      .dr-ext-table-pillbox:hover[aria-pressed="true"] .dr-ext-table-pillbox-knob {
-        left: ${TABLE_PILLBOX_KNOB_INSET_PX + TABLE_PILLBOX_KNOB_TRAVEL_PX}px;
-      }
+      ${expandedLook(['.dr-ext-table-pillbox:hover'])}
     }
     .dr-ext-table-pillbox:focus-visible { outline: 2px solid ${TABLE_PILLBOX_COLOR_ON}!important; outline-offset: 2px; }
-  `;
-  (document.head || document.documentElement).appendChild(style);
+  `);
   tablePillboxStyleInjected = true;
 }
 
-// The table pillbox sits in the page body, outside every page area, so the
-// positioning hides it while its spot is out of a page area's view.
-// isTablePillboxSpotClipped returns true when the point (x, y), in
-// window coordinates, sits outside the box of an ancestor that cuts off its
-// content on that axis. The walk stops at the page body, whose overflow the
-// window scroll covers, and at TABLE_PILLBOX_CLIP_WALK_CAP ancestors.
+// The table pillbox sits in the page body, outside every page area, so
+// positionTablePillbox hides it while its spot is out of a page area's view.
+// x and y are window coordinates. The walk stops at the page body, whose
+// overflow the window scroll covers.
 function isTablePillboxSpotClipped(table, x, y) {
   let el = table.parentElement;
   for (let i = 0; el && el !== document.body && i < TABLE_PILLBOX_CLIP_WALK_CAP; i++) {
@@ -189,7 +174,6 @@ function positionTablePillbox(table, button) {
   const spotY = rect.top + TABLE_PILLBOX_DOT_OVERLAP_PX - TABLE_PILLBOX_DOT_PX / 2;
   if (
     (rect.width === 0 && rect.height === 0) ||
-    computedStyle.display === 'none' ||
     computedStyle.visibility === 'hidden' ||
     isTablePillboxSpotClipped(table, spotX, spotY)
   ) {
@@ -198,21 +182,14 @@ function positionTablePillbox(table, button) {
   }
   button.style.display = '';
   const { x: scrollX, y: scrollY } = windowScrollOffset();
-  // Position so the dot's bottom = rect.top + scrollY + TABLE_PILLBOX_DOT_OVERLAP_PX
-  // and the dot's right = rect.right + scrollX + TABLE_PILLBOX_DOT_OVERHANG_PX.
-  // The button has TABLE_PILLBOX_HIT_PAD_PX padding on every side; with flex-end /
-  // flex-start the dot sits inside the button's content box, so its right
-  // edge is button.right - padding (not button.right). One padding subtracts
-  // from each axis — there is no double-padding term.
-  const padding = TABLE_PILLBOX_HIT_PAD_PX;
-  const buttonLeft = (rect.right + scrollX + TABLE_PILLBOX_DOT_OVERHANG_PX) - TABLE_PILLBOX_DOT_PX - padding;
-  const buttonTop  = (rect.top   + scrollY + TABLE_PILLBOX_DOT_OVERLAP_PX)  - TABLE_PILLBOX_DOT_PX - padding;
+  // The button's padding surrounds the dot.
+  const buttonLeft = spotX + scrollX - TABLE_PILLBOX_DOT_PX / 2 - TABLE_PILLBOX_HIT_PAD_PX;
+  const buttonTop  = spotY + scrollY - TABLE_PILLBOX_DOT_PX / 2 - TABLE_PILLBOX_HIT_PAD_PX;
   button.style.left = buttonLeft + 'px';
   button.style.top  = buttonTop  + 'px';
 }
 
-/** Guard so the global tap-outside collapse listener is added only once */
-let _globalTapCollapseAdded = false;
+let globalTapCollapseAdded = false;
 
 function createTablePillbox(table) {
   ensureTablePillboxStyleInjected();
@@ -243,32 +220,27 @@ function createTablePillbox(table) {
     pointerType = e.pointerType || '';
   });
 
-  let _touchPenCollapseTimer = null;
+  let touchPenCollapseTimer = null;
 
   function scheduleAutoCollapse() {
-    if (_touchPenCollapseTimer !== null) clearTimeout(_touchPenCollapseTimer);
-    _touchPenCollapseTimer = setTimeout(() => {
+    if (touchPenCollapseTimer !== null) clearTimeout(touchPenCollapseTimer);
+    touchPenCollapseTimer = setTimeout(() => {
       button.classList.remove('expanded');
-      _touchPenCollapseTimer = null;
+      touchPenCollapseTimer = null;
     }, TABLE_PILLBOX_AUTO_COLLAPSE_MS);
   }
 
   // Mouse and keyboard press at once; touch and pen expand on the first tap and
-  // press on the second. On a press this handler publishes intent:toggleTable
-  // and calls nothing else. The controller in content.js runs the shape check
-  // and then the press. This view holds only the expand and collapse state.
+  // press on the second.
   button.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (pointerType === 'touch' || pointerType === 'pen') {
-      if (!button.classList.contains('expanded')) {
-        button.classList.add('expanded');
-      } else {
-        DR_BUS.publish('intent:toggleTable', { table });
-      }
-      scheduleAutoCollapse();
+    const touchOrPen = pointerType === 'touch' || pointerType === 'pen';
+    if (touchOrPen && !button.classList.contains('expanded')) {
+      button.classList.add('expanded');
     } else {
       DR_BUS.publish('intent:toggleTable', { table });
     }
+    if (touchOrPen) scheduleAutoCollapse();
   });
 
   button.addEventListener('keydown', (e) => {
@@ -285,9 +257,8 @@ function createTablePillbox(table) {
 
   tablePillboxViews.set(table, { button, resizeObserver });
 
-  // Global tap-outside collapse (added once for all table pillboxes)
-  if (!_globalTapCollapseAdded) {
-    _globalTapCollapseAdded = true;
+  if (!globalTapCollapseAdded) {
+    globalTapCollapseAdded = true;
     document.addEventListener('pointerdown', (e) => {
       document.querySelectorAll('.dr-ext-table-pillbox.expanded').forEach((btn) => {
         if (!btn.contains(e.target)) {
@@ -311,9 +282,9 @@ function repositionAllTablePillboxes() {
   }
 }
 
-// Reposition every table pillbox on scroll/resize. A scroll event fires on the
-// element that scrolled and does not bubble, so the scroll listener runs in
-// the capture phase: it runs on a page area's scroll as well as the window's.
+// A scroll event fires on the element that scrolled and does not bubble, so
+// the scroll listener runs in the capture phase: it runs on a page area's
+// scroll as well as the window's.
 // The browser fires at most one scroll event per scrolling element per frame.
 function ensureScrollResizeListeners() {
   window.addEventListener('scroll', repositionAllTablePillboxes, { capture: true, passive: true });
@@ -323,11 +294,10 @@ function ensureScrollResizeListeners() {
 let highlightStyleInjected = false;
 function ensureHighlightStyleInjected() {
   if (highlightStyleInjected) return;
-  const style = document.createElement('style');
   // The whole-table outline sits inside the table's edge: a page box that
   // cuts off its content at the table's edge, such as a chat page's table
   // card, would cut off an outline drawn outside it.
-  style.textContent = `
+  appendStyleSheet(`
     @keyframes drExtActiveFlash {
       0%   { outline: 2px solid rgba(66, 133, 244, 0.95); outline-offset: -2px; }
       100% { outline: 2px solid rgba(66, 133, 244, 0);    outline-offset: -2px; }
@@ -351,8 +321,7 @@ function ensureHighlightStyleInjected() {
       box-sizing: border-box;
       animation: drExtRangePulse 0.6s ease-in-out 2;
     }
-  `;
-  (document.head || document.documentElement).appendChild(style);
+  `);
   highlightStyleInjected = true;
 }
 
@@ -366,16 +335,11 @@ function flashActiveTable(table) {
 
 /**
  * Pulse a faint blue-and-white border around the range expression's cells.
- * - If ranges is null (a blank or invalid range expression), shows the whole-table outline flash.
- * - If ranges is an array, overlays an absolutely positioned div sized to the bounding
- *   rectangle of the range expression's cells, and removes it after the animation ends (about 1.2 seconds).
- *   The div goes in document.body so it never wraps or alters td elements.
- *
- * Cells come from the TableAdapter (makeAdapter), because table.rows and
- * row.cells exist only on native tables.
+ * The overlay goes in the page body so it never wraps or alters the page's
+ * cells. Cells come from the table adapter, because table.rows and row.cells
+ * exist only on native tables.
  */
 function flashRangePulse(table, ranges) {
-  ensureHighlightStyleInjected();
   if (!ranges) {
     flashActiveTable(table);
     return;
@@ -386,9 +350,9 @@ function flashRangePulse(table, ranges) {
   for (let r = 0; r < adapterRows.length; r++) {
     const cells = adapterRows[r].getCells();
     for (let c = 0; c < cells.length; c++) {
-      // The cell's grid column, the same number the engine gates on, so the
-      // pulse frames the cells the range actually rounds even where a merge
-      // moves a cell away from its position in the row read.
+      // The cell's grid column, the same number the rounding pass gates on,
+      // so the pulse frames the cells the range actually rounds even where a
+      // merge moves a cell away from its position in the row read.
       if (isInRanges(r, cells[c].columnIndex, ranges)) {
         matchedCells.push(cells[c].el);
       }
@@ -396,7 +360,7 @@ function flashRangePulse(table, ranges) {
   }
 
   if (matchedCells.length === 0) {
-    // No cells matched (e.g. range outside table bounds) — fall back to whole-table flash.
+    // A range outside the table matches no cells.
     flashActiveTable(table);
     return;
   }
@@ -414,15 +378,16 @@ function flashRangePulse(table, ranges) {
   const { x: scrollX, y: scrollY } = windowScrollOffset();
   const absTop    = top    + scrollY;
   const absLeft   = left   + scrollX;
-  const absWidth  = right  - left;
-  const absHeight = bottom - top;
+  const width     = right  - left;
+  const height    = bottom - top;
 
+  ensureHighlightStyleInjected();
   const overlay = document.createElement('div');
   overlay.className = 'dr-ext-range-pulse';
   overlay.style.top    = absTop    + 'px';
   overlay.style.left   = absLeft   + 'px';
-  overlay.style.width  = absWidth  + 'px';
-  overlay.style.height = absHeight + 'px';
+  overlay.style.width  = width  + 'px';
+  overlay.style.height = height + 'px';
 
   // The timeout removes the overlay when animationend never fires.
   const cleanup = () => {

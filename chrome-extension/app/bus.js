@@ -1,9 +1,4 @@
-/**
- * DynamicRounding Chrome Extension
- * https://github.com/ArieFisher/dynamic-rounding
- * MIT License
- * Copyright (c) 2026 Arie Fisher
- */
+// Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
 /**
  * Typed event bus over Chrome messaging.
@@ -13,7 +8,7 @@
  * topic's audience. Three families:
  *
  *   - 'intent'       A gesture: the user did something. The publisher only
- *                     reports it. The controller, the one subscriber to
+ *                     publishes it. The controller, the one subscriber to
  *                     intent topics, determines what changes.
  *   - 'state-change' A fact: the application model, a tab, or the sidebar
  *                     changed. The component that made or detected the
@@ -23,7 +18,8 @@
  *
  * Three routes:
  *
- *   - null              Same context only. publish() sends nothing on the wire.
+ *   - null              Same context only. publish() sends nothing to
+ *                        another context.
  *   - 'extension-pages' chrome.runtime.sendMessage, reaching the service
  *                        worker and the open sidebar. Chrome never delivers
  *                        that call to a content script.
@@ -52,19 +48,17 @@ const DR_BUS = (function () {
   const TOPICS = {
     'intent:activateTable': { family: INTENT, route: null },
     'intent:toggleTable': { family: INTENT, route: null },
-    // Same context only: the sidebar reads the error state through
-    // request:captureState.
+    // The sidebar reads the error state through request:captureState, so
+    // this topic needs no route.
     'state:errorRecorded': { family: STATE_CHANGE, route: null },
-    // The sidebar's requests. Each addresses the tab's content script, which
-    // holds the application model.
+    // The sidebar's requests. The content script holds the application model.
     'request:applySettings': { family: REQUEST, route: ROUTE_TAB },
     'request:activeTable': { family: REQUEST, route: ROUTE_TAB },
     'request:captureState': { family: REQUEST, route: ROUTE_TAB },
-    // The service worker's one topic, for the tab's content script.
+    // The service worker's one topic.
     'intent:menuClicked': { family: INTENT, route: ROUTE_TAB },
-    // The content script's topics for the sidebar. Each takes the
-    // extension-pages route: the content script has no chrome.tabs, and the
-    // sidebar is an extension page.
+    // The content script's topics for the sidebar. The content script has no
+    // chrome.tabs, and the sidebar is an extension page.
     'state:settingsChanged': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:tableActivated': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:tableSwitched': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
@@ -75,7 +69,6 @@ const DR_BUS = (function () {
 
   const subscribers = new Map(); // topic name -> Set<handler>
 
-  /** @param {string} topic - The topic name to look up in TOPICS. */
   function isKnownTopic(topic) {
     return Object.prototype.hasOwnProperty.call(TOPICS, topic);
   }
@@ -88,15 +81,10 @@ const DR_BUS = (function () {
 
   const TOPIC_FIELD = 'topic';
 
-  /**
-   * @param {string} topic - The topic name the message carries.
-   * @param {Object} payload - The plain-value fields sent beside the name.
-   */
   function encodeMessage(topic, payload) {
     return Object.assign({ [TOPIC_FIELD]: topic }, payload);
   }
 
-  /** @param {*} message - The value Chrome handed the listener. */
   function decodeMessage(message) {
     if (!message || typeof message[TOPIC_FIELD] !== 'string') return null;
     const payload = Object.assign({}, message);
@@ -115,10 +103,11 @@ const DR_BUS = (function () {
   }
 
   // Chrome attaches a sender record to every arriving message. The bus passes
-  // on one fact from it, the number of the tab a content script sent from,
+  // on one fact from it, the tab ID of the tab a content script sent from,
   // and keeps the rest of Chrome's record out of its own contract.
-  // The sidebar compares that number against its bound tab. A message from
-  // an extension page has no tab, so it carries null.
+  // The sidebar compares it with its bound tab's tab ID. A message from
+  // an extension page has no tab, so this function returns null, and
+  // publish() passes null for a same-context publish.
   function senderTabId(sender) {
     return sender && sender.tab && typeof sender.tab.id === 'number' ? sender.tab.id : null;
   }
@@ -127,12 +116,10 @@ const DR_BUS = (function () {
   // arriving message without sending it out again.
   //
   // Delivery is synchronous: every handler runs, in subscription order,
-  // before publish() returns. A controller that calls a model setter from a
-  // handler has updated the application model by the time publish() returns.
+  // before publish() returns.
   //
   // meta.tabId travels beside the payload, never inside it, so no handler can
-  // mistake it for data the publisher supplied. It is null for a same-context
-  // publish.
+  // mistake it for data the publisher supplied.
   function deliverLocally(topic, payload, tabId) {
     const set = subscribers.get(topic);
     if (!set) return;
@@ -142,21 +129,14 @@ const DR_BUS = (function () {
     }
   }
 
-  // A handler invoked by deliverLocally() may itself publish (directly, or
-  // through a model setter) before returning, so the nested publish() runs on
-  // top of the outer call's stack frame. A cycle with no caller-side guard
-  // would recurse until the real call stack overflows. The cap sits far above
-  // any chain the extension publishes today, and turns an unguarded cycle into
-  // a clear, catchable error instead of a crash.
+  // A handler may publish again before it returns, so publish() recurses.
+  // A cycle with no caller-side guard would recurse until the real call stack
+  // overflows. The cap sits far above any chain the extension publishes
+  // today, and turns an unguarded cycle into a clear, catchable error instead
+  // of a crash.
   const MAX_PUBLISH_DEPTH = 20;
   let publishDepth = 0;
 
-  /**
-   * @param {string} action - The words the error text puts before the topic
-   *   name, e.g. 'publishing'.
-   * @param {string} topic - The topic being delivered, for the error text.
-   * @param {Function} deliver - The delivery to run at the deeper level.
-   */
   function withDepthGuard(action, topic, deliver) {
     publishDepth++;
     try {
@@ -190,18 +170,19 @@ const DR_BUS = (function () {
         void chrome.runtime.lastError;
       });
     } catch (e) {
-      // extension context may not be available; harmless.
+      // Chrome throws here when this context has lost its connection to the
+      // rest of the extension. Nothing can be sent, so the send ends quietly.
     }
   }
 
-  // A tab-routed send needs a tab number. A caller holding one passes it as
+  // A tab-routed send needs a tab ID. A caller holding one passes it as
   // opts.tabId: the service worker does, for the right-clicked tab, and the
   // sidebar does, for its bound tab. Otherwise the bus
   // queries the tab in front of the current window.
   //
-  // onReply, when given, receives the responder's answer, or undefined on
+  // onAnswer, when given, receives the responder's answer, or undefined on
   // every failure path after the chrome.tabs check.
-  function sendToTab(topic, payload, opts, onReply) {
+  function sendToTab(topic, payload, opts, onAnswer) {
     if (!chrome.tabs || typeof chrome.tabs.sendMessage !== 'function' ||
         typeof chrome.tabs.query !== 'function') {
       // A tab-routed topic published from a context with no chrome.tabs (a
@@ -213,17 +194,17 @@ const DR_BUS = (function () {
     const message = encodeMessage(topic, payload);
     const deliver = (tabId) => {
       try {
-        chrome.tabs.sendMessage(tabId, message, (response) => {
-          // Read lastError on every send, one-way publishes included: an
-          // unread lastError on a failed delivery logs Chrome's "Unchecked
-          // runtime.lastError" warning. A failed delivery reaches the
-          // publisher as an answer of undefined.
+        chrome.tabs.sendMessage(tabId, message, (answer) => {
+          // Read lastError on one-way publishes too, not only on requests: an
+          // unread lastError logs Chrome's "Unchecked runtime.lastError" warning.
           void chrome.runtime.lastError;
-          if (onReply) onReply(response);
+          if (onAnswer) onAnswer(answer);
         });
       } catch (e) {
-        // no content script on this tab (or it has not loaded yet); harmless.
-        if (onReply) onReply(undefined);
+        // Chrome reports a failed connection to the tab through lastError in
+        // the callback above. This catch covers a synchronous throw from the
+        // call itself.
+        if (onAnswer) onAnswer(undefined);
       }
     };
     const explicitTabId = opts && typeof opts.tabId === 'number' ? opts.tabId : null;
@@ -234,21 +215,22 @@ const DR_BUS = (function () {
     try {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         if (!tabs || !tabs[0]) {
-          if (onReply) onReply(undefined);
+          if (onAnswer) onAnswer(undefined);
           return;
         }
         deliver(tabs[0].id);
       });
     } catch (e) {
-      // extension context may not be available; harmless.
-      if (onReply) onReply(undefined);
+      // Chrome throws here when this context has lost its connection to the
+      // rest of the extension. Nothing can be sent, so the send ends quietly.
+      if (onAnswer) onAnswer(undefined);
     }
   }
 
   function publish(topic, payload, opts) {
     assertKnownTopic(topic);
     if (TOPICS[topic].family === REQUEST) {
-      throw new Error('DR_BUS: publish() cannot carry a request-family topic; "' +
+      throw new Error('DR_BUS: publish() cannot carry a request topic; "' +
         topic + '" is answered, and publish() discards the answer — use request()');
     }
     withDepthGuard('publishing', topic, () => {
@@ -270,7 +252,7 @@ const DR_BUS = (function () {
 
   function assertRequestFamily(topic, verb) {
     if (TOPICS[topic].family !== REQUEST) {
-      throw new Error('DR_BUS: ' + verb + '() needs a request-family topic; "' +
+      throw new Error('DR_BUS: ' + verb + '() needs a request topic; "' +
         topic + '" is ' + TOPICS[topic].family);
     }
   }
@@ -297,7 +279,6 @@ const DR_BUS = (function () {
   // callback rather than throwing the way a tab-routed publish does. A lost
   // one-way publish is a silent miss; an unanswered request is a case every
   // publisher already handles.
-  /** @param {{tabId: ?number}} [opts] - The tab to send to, as sendToTab takes it. */
   function request(topic, payload, callback, opts) {
     assertKnownTopic(topic);
     assertRequestFamily(topic, 'request');

@@ -21,6 +21,8 @@ set -uo pipefail
 # which is what stops a stray report or scratch doc at the repository root.
 ALLOWED_DIRS=(
   chrome-extension/
+  claude-code-plugin/
+  .claude-plugin/
   js/
   python/
   docs/
@@ -29,6 +31,7 @@ ALLOWED_DIRS=(
   .githooks/
   .agent/rules/
   .agent/skills/
+  .claude/agents/
 )
 
 # Files that may sit at the repository root, where nothing else may.

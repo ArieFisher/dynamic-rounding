@@ -1,9 +1,4 @@
-/**
- * DynamicRounding Chrome Extension - Sidebar
- * https://github.com/ArieFisher/dynamic-rounding
- * MIT License
- * Copyright (c) 2026 Arie Fisher
- */
+// Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
 const enabledEl = document.getElementById('enabled');
 const optionsSection = document.getElementById('optionsSection');
@@ -29,10 +24,7 @@ function createBoundTab(tabsApi, bus) {
   let boundTabId = null;
   let boundWindowId = null;
 
-  // A message belongs to the bound tab only when the two numbers match. A
-  // message carrying no tab came from an extension page rather than a content
-  // script, and belongs to no tab at all. A message arriving before resolve()
-  // records the tab is dropped.
+  // A message with no tab ID came from an extension page.
   function isBoundTabMessage(meta) {
     return boundTabId !== null && !!meta && meta.tabId === boundTabId;
   }
@@ -40,18 +32,15 @@ function createBoundTab(tabsApi, bus) {
   return {
     // Record the tab the sidebar was opened for, and the window holding it,
     // then run onReady. The order is load-bearing: the read reaches the page,
-    // the page publishes back, and a message arriving before the tab number
+    // the page publishes back, and a message arriving before the tab ID
     // exists has nothing to be compared against. No tab to bind to leaves the
-    // number unset and still runs the read, which falls to the unbound state
+    // tab ID unset and still runs the read, which falls to the unbound state
     // on its own when nothing answers it.
     resolve(onReady) {
       if (!tabsApi || typeof tabsApi.query !== 'function') {
         onReady();
         return;
       }
-      // The catch covers a query that throws before answering. Once it has
-      // answered, a throw from the read itself is the read's own, and running
-      // the read a second time would send its messages twice.
       let answered = false;
       try {
         tabsApi.query({ active: true, currentWindow: true }, (tabs) => {
@@ -63,11 +52,12 @@ function createBoundTab(tabsApi, bus) {
           onReady();
         });
       } catch (e) {
-        // A throw after the query answered came from the read, not from the
-        // query, so it belongs to the read and travels on. Swallowing it here
-        // would hide a broken read behind a working tab lookup.
+        // A throw after the query answered came from the read, so it is thrown
+        // again: running the read a second time would send its messages
+        // twice, and swallowing the throw would hide a broken read behind a
+        // working tab lookup. A throw before the answer means the extension
+        // context is not available, and the read still runs.
         if (answered) throw e;
-        // extension context may not be available; harmless.
         onReady();
       }
     },
@@ -108,10 +98,6 @@ function createBoundTab(tabsApi, bus) {
     // With no tab recorded there is nothing to have left, so nothing closes.
     onLeave(onLeft) {
       if (!tabsApi) return;
-      /**
-       * @param {object|undefined} event A chrome.tabs event, or undefined when the tabs interface lacks it.
-       * @param {function(...*): boolean} hasLeft Reads the event's arguments and returns true when the bound tab left.
-       */
       const listen = (event, hasLeft) => {
         if (!event || typeof event.addListener !== 'function') return;
         event.addListener((...args) => {
@@ -130,15 +116,11 @@ function createBoundTab(tabsApi, bus) {
 
 const boundTab = createBoundTab(chrome.tabs, DR_BUS);
 
-/**
- * Write the status line. A message with a source holds the line against
- * every write without one until clearStatus() runs for that source, because
- * Chrome does not order the content script's range message against the
- * answer to a settings apply.
- * @param {string} text - The message, or '' to clear the line.
- * @param {string} [source] - The source of the message, 'range' for a range error; omitted for a message with no source.
- * @returns {boolean} Whether the line now holds the text.
- */
+// Write the status line, or clear it with ''. A message with a source holds
+// the line against every write without one until clearStatus() runs for that
+// source, because Chrome does not order the content script's range message
+// against the answer to a settings apply. The one source is 'range', for a
+// range error. Returns whether the line now holds the text.
 function writeStatus(text, source) {
   if (source === undefined && statusEl.dataset.source) return false;
   statusEl.textContent = text;
@@ -146,50 +128,39 @@ function writeStatus(text, source) {
   return true;
 }
 
-/**
- * Clear the status line when a message from the source holds it.
- * @param {string} [source] - The source of the message to clear; omitted to clear any message.
- */
+// Clear the status line when a message from the source holds it. With no
+// source, clear any message.
 function clearStatus(source) {
   if (source !== undefined && statusEl.dataset.source !== source) return;
   statusEl.textContent = '';
   delete statusEl.dataset.source;
 }
 
+// Clear the status line when it shows the text. Each caller's text is written
+// with no source, so the line holds no source while it shows that text.
+function clearStatusShowing(text) {
+  if (statusEl.textContent === text) writeStatus('');
+}
+
 function setTableBound(isBound) {
   document.body.classList.toggle(UNBOUND_CLASS, !isBound);
   if (!isBound) {
-    // No active table: there is nothing for rounding to act on, so flip the
-    // sidebar pillbox to its off state rather than dimming the whole sidebar.
+    // No bound table: there is nothing for rounding to act on, so the sidebar
+    // pillbox shows off.
     clearStatus();
     enabledEl.checked = false;
     writeStatus(UNBOUND_STATUS_MSG);
   } else {
-    // A table is now bound. The sidebar pillbox is not touched here: the
-    // redraw read has already set it from the answer's settings, and a bind
-    // must not reset it.
-    if (statusEl.textContent === UNBOUND_STATUS_MSG) {
-      statusEl.textContent = '';
-    }
+    // The sidebar pillbox is not touched here: a bind must not reset it.
+    clearStatusShowing(UNBOUND_STATUS_MSG);
   }
   updateDisabledState();
 }
 
 // Each switch's element id is its setting's name. The order is the order of
 // the switch keys in the settings payload.
-const SWITCH_NAMES = [
-  'simplifyMixedCurrency',
-  'simplifyMixedPercent',
-  'simplifyFirstRow',
-  'simplifyFirstColumn',
-  'simplifyDates',
-  'simplifyTimes',
-];
+const SWITCH_NAMES = Object.keys(DR_DEFAULTS).filter((key) => key.startsWith('simplify'));
 
-/**
- * Run a function on each switch.
- * @param {function(string, HTMLInputElement): void} fn - Called with the switch's setting name and its checkbox.
- */
 function forEachSwitch(fn) {
   for (const name of SWITCH_NAMES) fn(name, document.getElementById(name));
 }
@@ -202,10 +173,11 @@ const rangeExprEl = document.getElementById('rangeExpr');
 // Stops are ordered so the *step* changes monotonically across the
 // track (finest step on the left, coarsest on the right), NOT by offset value.
 // stepForOffset is non-monotonic in the offset because half-step offsets
-// interleave with the integer ones: e.g. at mag 6 the steps run
+// interleave with the integer ones: e.g. at an order of magnitude of 6 the
+// steps run
 //   -2:10k  -1.5:50k  -1:100k  -0.25:250k  -0.5:500k
 //    0:1M   0.25:2.5M  0.5:5M    1:10M
-// Hence -0.25 precedes -0.5, and -1 sits right after -1.5.
+// Hence -0.25 precedes -0.5.
 const STOPS = [-2, -1.5, -1, -0.25, -0.5, 0, 0.25, 0.5, 1];
 
 const lensControlEl = document.getElementById('lensControl');
@@ -226,26 +198,25 @@ function snap(v) {
   }
   return best;
 }
-/**
- * The track position of a stop: the centre of its column, as a percentage of
- * the track width. Every stop has a column of equal width, one per tick,
- * because the stop values are unevenly spaced.
- * @param {number} v - An offset; a value off the stops counts as its nearest stop.
- * @returns {number} The position, from 0 to 100.
- */
+// The track position of a stop, as a percentage of the track width: the
+// centre of its column. Every stop has a column of equal width, one per tick,
+// because the stop values are unevenly spaced. A value off the stops counts as
+// its nearest stop.
 function stopPosition(v) {
-  let k = STOPS.indexOf(v);
-  if (k === -1) k = STOPS.indexOf(snap(v));
+  const k = STOPS.indexOf(snap(v));
   return (k + 0.5) / STOPS.length * 100;
 }
 
-/**
- * The stop whose column holds a point on the track.
- * @param {number} ratio - The point's distance from the track's left end, as a share of the track width, from 0 to 1.
- * @returns {number} The stop.
- */
+// The stop whose column holds a point on the track. The ratio is the point's
+// distance from the track's left end, as a share of the track width; a point
+// past either end takes that end's stop.
 function stopAtRatio(ratio) {
-  return STOPS[Math.max(0, Math.min(STOPS.length - 1, Math.floor(ratio * STOPS.length)))];
+  return stopAt(Math.floor(ratio * STOPS.length));
+}
+
+// An index past either end takes that end's stop.
+function stopAt(k) {
+  return STOPS[Math.max(0, Math.min(STOPS.length - 1, k))];
 }
 
 function renderLensControl() {
@@ -269,11 +240,12 @@ const PREVIEW_MAX_DECIMALS = 4;
 
 // A value at or above PREVIEW_DECIMAL_THRESHOLD shows no decimals; a smaller
 // one shows at most PREVIEW_MAX_DECIMALS. Both cut digits off, never round.
-function formatOriginal(numOrStr) {
+function formatSample(numOrStr) {
   const parsed = toNumber(numOrStr);
   if (parsed === null || !isFinite(parsed)) return String(numOrStr);
   const abs = Math.abs(parsed);
-  const intStr = String(Math.trunc(abs)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const marks = numberFormat();
+  const intStr = String(Math.trunc(abs)).replace(/\B(?=(\d{3})+(?!\d))/g, marks.group);
   // toString() gives the shortest decimal that reads back as the same value,
   // so cutting its text truncates without rounding. A value it writes in
   // exponent form, such as 1e-7, holds no digit within the decimals shown.
@@ -284,7 +256,7 @@ function formatOriginal(numOrStr) {
     : '';
   // A negative value that truncates to 0 shows "0", never "-0".
   const sign = parsed < 0 && (intStr !== '0' || fracStr !== '') ? '-' : '';
-  return sign + intStr + (fracStr === '' ? '' : '.' + fracStr);
+  return sign + intStr + (fracStr === '' ? '' : marks.decimal + fracStr);
 }
 
 const OOM_LABEL_CLASS = 'oom-label';
@@ -292,107 +264,75 @@ const STEP_LABEL_CLASS = 'step-label';
 const STEP_HEADER_CLASS = 'step-header';
 
 /**
- * Return a human-readable OoM label for a given magnitude (floor(log10(|n|))).
+ * Return a human-readable label for an order of magnitude (OoM).
  * Examples: mag=5 → "100k+", mag=3 → "1k+", mag=0 → "1+", mag=-1 → "0.1+"
  */
 function formatOomLabel(mag) {
-  const val = Math.pow(10, mag);
-  let str;
-  if (val >= 1e9) {
-    str = trimNum(val / 1e9) + 'B';
-  } else if (val >= 1e6) {
-    str = trimNum(val / 1e6) + 'M';
-  } else if (val >= 1e3) {
-    str = trimNum(val / 1e3) + 'k';
-  } else {
-    // Includes sub-integer magnitudes: mag=-1 → 0.1, mag=-2 → 0.01
-    str = trimNum(val);
-  }
-  return str + '+';
+  return formatStep(Math.pow(10, mag)) + '+';
 }
 
-/**
- * @param {number} n - A sample value.
- * @returns {number} The value's order of magnitude, or -Infinity for 0.
- */
+// -Infinity for 0.
 function magnitudeOf(n) {
-  return n !== 0 ? Math.floor(Math.log10(Math.abs(n))) : -Infinity;
+  return Math.floor(Math.log10(Math.abs(n)));
 }
 
-/**
- * Append one row to a lens preview element: a from cell, an arrow cell, and a
- * num cell, which the element's three-column grid lines up with every other
- * row.
- * @param {Element} el - The lens preview element that receives the row.
- * @param {string} className - The row's class attribute.
- * @param {string} fromText - The from cell's text.
- * @param {string} numText - The num cell's text.
- * @returns {{from: Element, num: Element}} The from and num cells, for a label to go inside.
- */
+// Append one row to a lens preview element: a from cell, an arrow cell, and a
+// num cell. Returns the from and num cells, for a label to go inside.
 function appendSampleRow(el, className, fromText, numText) {
-  const pair = document.createElement('div');
-  pair.className = className;
+  const row = document.createElement('div');
+  row.className = className;
   const cells = {};
   for (const [cellClass, text] of [['from', fromText], ['arrow', '→'], ['num', numText]]) {
     const cell = document.createElement('span');
     cell.className = cellClass;
     cell.textContent = text;
-    pair.appendChild(cell);
+    row.appendChild(cell);
     cells[cellClass] = cell;
   }
-  el.appendChild(pair);
+  el.appendChild(row);
   return cells;
 }
 
 /**
- * Render the top of the lens preview on two lines: the step header (blue) on the
- * first line and a single worked example ("e.g. <original> → <rounded>", black)
- * on the second. Both lines are laid out as from|arrow|num pairs in the shared
- * 3-column grid so their "→" arrows line up vertically. The example carries no
- * step annotation and shows the bare original number.
+ * Render the top band's preview on two lines: the step header on the first
+ * line and a single worked example ("e.g. <original> → <rounded>") on the
+ * second.
  */
 function renderTopPreview(el, rows, offset) {
-  if (!el) return;
   el.innerHTML = '';
   if (!rows || rows.length === 0) return;
 
   if (cachedMaxMag !== null && cachedMaxMag !== undefined) {
     const step = stepForOffset(Math.pow(10, cachedMaxMag), offset);
-    appendSampleRow(el, 'pair ' + STEP_HEADER_CLASS,
+    appendSampleRow(el, 'row ' + STEP_HEADER_CLASS,
       formatOomLabel(cachedMaxMag), 'nearest ' + formatStep(step));
   }
   const num = rows[0].num;
-  appendSampleRow(el, 'pair example',
-    'e.g. ' + formatOriginal(num), formatOriginal(roundWithOffset(num, offset)));
+  appendSampleRow(el, 'row example',
+    'e.g. ' + formatSample(num), formatSample(roundWithOffset(num, offset)));
 }
 
 /**
- * Render the lens preview's sample rows: rows sorted DESCENDING by magnitude, each
- * showing the bare original number with its OoM label. A brown trailing step
+ * Render the other band's preview: rows sorted DESCENDING by magnitude, each
+ * showing the bare original number with its OoM label. A trailing step
  * annotation — "(5k)" — follows the rounded number to show what each example
  * rounds to the nearest of.
  */
 function renderOtherPreview(el, rows, offset) {
-  if (!el) return;
   el.innerHTML = '';
   if (!rows || rows.length === 0) return;
 
   const sorted = rows.slice().sort((a, b) => magnitudeOf(b.num) - magnitudeOf(a.num));
   for (const { num } of sorted) {
-    const cells = appendSampleRow(el, 'pair',
-      formatOriginal(num), formatOriginal(roundWithOffset(num, offset)));
+    const cells = appendSampleRow(el, 'row',
+      formatSample(num), formatSample(roundWithOffset(num, offset)));
     if (num === 0) continue;
     appendLabel(cells.from, OOM_LABEL_CLASS, formatOomLabel(magnitudeOf(num)));
     appendLabel(cells.num, STEP_LABEL_CLASS, formatStep(stepForOffset(num, offset)));
   }
 }
 
-/**
- * Append a bracketed label, such as " (100k+)", to a lens preview cell.
- * @param {Element} cell - The cell that receives the label.
- * @param {string} className - The label's class attribute.
- * @param {string} text - The label's text, without the brackets.
- */
+// Append a bracketed label, such as " (100k+)", to a lens preview cell.
 function appendLabel(cell, className, text) {
   const label = document.createElement('span');
   label.className = className;
@@ -410,21 +350,22 @@ function renderLensPreview() {
   renderOtherPreview(otherPreviewEl, cachedSamples.bottom, otherVal);
 }
 
-/**
- * Redraw the sidebar from one read of the active table. With no answer, which
- * means no content script on the tab, the sidebar shows the shipped defaults,
- * unbound. The bound state follows the samples alone, and it is set after the
- * controls, because an unbound sidebar shows its sidebar pillbox off whatever the
- * settings hold.
- * @param {boolean} [keepControls] - true to leave the controls as they stand, for an echo of the sidebar's own write, whose settings are older than a keystroke or lens control step made after that write.
- */
+// Redraw the sidebar from one read of the active table. With no answer, which
+// means no content script on the tab, the sidebar shows the shipped defaults,
+// unbound. The bound state follows the samples alone, and it is set after the
+// controls, because an unbound sidebar shows its sidebar pillbox off whatever
+// the settings hold.
+//
+// keepControls leaves the controls as they stand. It is set for the echo of
+// the sidebar's own write, whose settings are older than a keystroke or lens
+// control step made after that write.
 function redrawFromActiveTable(keepControls) {
   DR_BUS.request('request:activeTable', {}, (answer) => {
-    if (!keepControls) applySettingsToUI(answer ? answer.settings : null);
     cachedSamples = answer ? answer.samples : null;
     cachedMaxMag = answer ? answer.maxMag : null;
+    if (keepControls) renderLensPreview();
+    else drawControls(answer ? answer.settings : null);
     setTableBound(cachedSamples !== null);
-    renderLensPreview();
   }, { tabId: boundTab.tabId() });
 }
 
@@ -442,13 +383,9 @@ function recoupleIfMatched() {
   }
 }
 
-/**
- * Move one thumb to a stop, then redraw and apply. While the lens control is
- * coupled, a move of the top thumb moves the other thumb with it.
- * @param {string} which - 'top' or 'other': the thumb to move.
- * @param {number} stop - The stop to move it to.
- * @returns {boolean} Whether a value changed.
- */
+// Move the 'top' or 'other' thumb to a stop, then redraw and apply. While the
+// lens control is coupled, a move of the top thumb moves the other thumb with
+// it. Returns whether a value changed.
 function setThumbValue(which, stop) {
   if (which === 'top') {
     if (topVal === stop && (!coupled || otherVal === stop)) return false;
@@ -466,17 +403,14 @@ function setThumbValue(which, stop) {
 function startDrag(which) {
   return function (e) {
     if (e.cancelable) e.preventDefault();
-    if (which === 'other' && coupled) decouple();
+    if (which === 'other') decouple();
     const rect = trackEl.getBoundingClientRect();
     const target = which === 'top' ? topThumb : otherThumb;
     if (target.setPointerCapture && e.pointerId !== undefined) {
       try { target.setPointerCapture(e.pointerId); } catch (_) {}
     }
     function move(ev) {
-      const clientX = ev.clientX !== undefined
-        ? ev.clientX
-        : (ev.touches && ev.touches[0] ? ev.touches[0].clientX : 0);
-      setThumbValue(which, stopAtRatio(Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))));
+      setThumbValue(which, stopAtRatio((ev.clientX - rect.left) / rect.width));
     }
     function up() {
       document.removeEventListener('pointermove', move);
@@ -493,15 +427,11 @@ function startDrag(which) {
 
 function keyboardStep(which, delta) {
   const cur = which === 'top' ? topVal : otherVal;
-  const next = STOPS[Math.max(0, Math.min(STOPS.length - 1, STOPS.indexOf(cur) + delta))];
-  if (which === 'other' && coupled) decouple();
+  const next = stopAt(STOPS.indexOf(cur) + delta);
+  if (which === 'other') decouple();
   if (setThumbValue(which, next)) recoupleIfMatched();
 }
 
-/**
- * @param {string} which - 'top' or 'other': the thumb that receives the key presses.
- * @returns {function(KeyboardEvent): void} The thumb's keydown handler.
- */
 function thumbKeyHandler(which) {
   return (e) => {
     let delta = 0;
@@ -549,8 +479,7 @@ function currentSettings() {
 
 function updateDisabledState() {
   optionsSection.classList.toggle('disabled', !enabledEl.checked);
-  // Granularity dropdown only matters when the row's switch is on
-  // (i.e. that type's cells are bucketed by the chosen granularity).
+  // Granularity dropdown only matters when the row's switch is on.
   dateGranularityEl.disabled = !document.getElementById('simplifyDates').checked;
   timeGranularityEl.disabled = !document.getElementById('simplifyTimes').checked;
 }
@@ -573,17 +502,13 @@ function applyNow() {
   }, { tabId: boundTab.tabId() });
 }
 
-enabledEl.addEventListener('change', () => {
+function onCheckedChange() {
   updateDisabledState();
   applyNow();
-});
+}
 
-forEachSwitch((name, el) => {
-  el.addEventListener('change', () => {
-    updateDisabledState();
-    applyNow();
-  });
-});
+enabledEl.addEventListener('change', onCheckedChange);
+forEachSwitch((name, el) => { el.addEventListener('change', onCheckedChange); });
 
 dateGranularityEl.addEventListener('change', applyNow);
 timeGranularityEl.addEventListener('change', applyNow);
@@ -630,10 +555,9 @@ boundTab.subscribe('state:tableSwitched', () => {
   redrawFromActiveTable();
 });
 
-// Populate every control from a settings object. The redraw read's settings
-// and DR_DEFAULTS share this one path, so the sidebar and content.js can
-// never drift apart, whichever one supplied the values.
-function applySettingsToUI(settings) {
+// Draw every control from a settings object. A field the settings lack takes
+// the shipped default.
+function drawControls(settings) {
   const s = Object.assign({}, DR_DEFAULTS, settings || {});
   enabledEl.checked = s.enabled !== false;
   forEachSwitch((name, el) => { el.checked = !!s[name]; });
@@ -659,9 +583,6 @@ const captureSaveEl = document.getElementById('captureSave');
 const captureCancelEl = document.getElementById('captureCancel');
 const captureSizeNoteEl = document.getElementById('captureSizeNote');
 
-// The one remarks field's preview text follows the mark: looks wrong
-// prompts for the fixture loop's three facts, not sure prompts loosely,
-// looks right needs only remarks.
 const CAPTURE_REMARKS_HINTS = {
   'looks-right': 'Remarks',
   'not-sure': 'Suggestions / questions / remarks',
@@ -681,18 +602,18 @@ function renderCaptureMarks() {
   }
 }
 
-// Folds the form and clears the mark. Typed remarks survive a fold, so
-// an accidental cancel loses nothing; a completed save clears it below.
+// Typed remarks survive a fold, so an accidental cancel loses nothing; a
+// completed save clears them.
 function foldCaptureForm() {
   captureMark = null;
   renderCaptureMarks();
 }
 
-// Opening the form pulls the capture state once, only to measure it: a
-// heavy page renders a file in the tens of megabytes, and the person about
-// to press finish reads the size estimate before the save, not after. The
-// finish press pulls fresh; this response is never reused. A failed pull
-// here shows no note — finish logs its own pull failure.
+// Each mark press that leaves the form open pulls the capture state, only to
+// measure it: a heavy page renders a file in the tens of megabytes, and the
+// person about to press finish reads the size estimate before the save, not
+// after. The finish press pulls fresh; this response is never reused. A
+// failed pull here shows no note — finish logs its own pull failure.
 function refreshCaptureSizeNote() {
   captureSizeNoteEl.hidden = true;
   DR_BUS.request('request:captureState', {}, (answer) => {
@@ -708,7 +629,7 @@ function refreshCaptureSizeNote() {
 
 for (const el of captureMarkEls) {
   el.addEventListener('click', () => {
-    // Re-pressing the lit mark folds the form (same-mark toggle).
+    // Re-pressing the lit mark folds the form.
     captureMark = el.dataset.mark === captureMark ? null : el.dataset.mark;
     if (captureMark !== null) refreshCaptureSizeNote();
     renderCaptureMarks();
@@ -718,9 +639,8 @@ for (const el of captureMarkEls) {
 captureCancelEl.addEventListener('click', foldCaptureForm);
 
 // An anchor, not chrome.downloads: that permission gates the API, and the
-// download attribute is honored for a blob made on an extension page — the
-// model extension's proven save path. The delayed revoke gives the browser
-// time to read the blob.
+// download attribute is honored for a blob made on an extension page. The
+// delayed revoke gives the browser time to read the blob.
 function saveCaptureFile(opts) {
   const url = URL.createObjectURL(new Blob([opts.html], { type: 'text/html' }));
   const anchor = document.createElement('a');
@@ -732,11 +652,8 @@ function saveCaptureFile(opts) {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
-// The sidebar's own half of the capture state: every control's value, the
-// lens control positions, and what the status line said — read at finish
-// time from this page's live controls and variables. Sidebar view state has
-// no model by existing design, so this is evidence-taking, not a second
-// store of record.
+// The sidebar's half of the capture state, read at finish from this page's
+// controls and variables.
 function collectSidebarSnapshot() {
   return Object.assign(readControls(), {
     stops: STOPS.slice(),
@@ -759,14 +676,12 @@ const CAPTURE_SCREENSHOT_QUALITY = 85;
 
 // The bound tab's visible area as one image data URL, for the capture. The
 // tabs interface arrives as a parameter so the suite drives this with a
-// stub. chrome.tabs.captureVisibleTab needs the activeTab grant, which the
-// right-click menu item that opened the sidebar gives for that tab and a
-// navigation takes away; it runs from extension pages, and Chrome settles
-// its promise on every documented failure (no grant, quota, protected
-// page), so no timer guards it. Every route calls done exactly once: with
-// the image and a taken record, or with no image and a record that holds the
-// reason. A failure here never blocks the save; it is one more fact the
-// capture records.
+// stub. chrome.tabs.captureVisibleTab runs from extension pages, and Chrome
+// settles its promise on every documented failure (no grant, quota,
+// protected page), so no timer guards it. Every path calls done exactly
+// once: with the image and a taken record, or with no image and a record
+// that holds the reason. A failure here never blocks the save; it is one
+// more fact the capture records.
 function takeCaptureScreenshot(tabsApi, windowId, done) {
   const fail = (reason) => {
     const text = reason && reason.message ? reason.message : String(reason);
@@ -799,14 +714,14 @@ function takeCaptureScreenshot(tabsApi, windowId, done) {
   }, fail);
 }
 
+const CAPTURE_SAVED_STATUS_MSG = 'Capture saved.';
+
 // One capture state from the page's half (the request:captureState answer,
 // or null when the pull failed), this page's half, and the screenshot take's
 // answer. CAPTURE_FORMAT comes from lib/dr-capture/state.js, loaded by this
 // page too, so the fallback carries the same version the serializer stamps.
-// The image passes to the renderer beside the state, never inside it: the
-// state holds the take's record alone, so the JSON island stays small.
-const CAPTURE_SAVED_STATUS_MSG = 'Capture saved.';
-
+// The image passes to the renderer beside the state, never inside it (see
+// renderScreenshotSection in lib/dr-capture/render.js).
 function assembleAndSaveCapture(mark, remarks, pageState, shot) {
   const at = new Date();
   const state = Object.assign({
@@ -829,14 +744,12 @@ function assembleAndSaveCapture(mark, remarks, pageState, shot) {
   };
   state.mark = mark;
   state.remarks = remarks;
-  state.screenshot = shot && shot.record
-    ? shot.record
-    : { taken: false, reason: 'no screenshot was attempted' };
+  state.screenshot = shot.record;
   state.sidebarSnapshot = collectSidebarSnapshot();
   // Provenance is evidence: the two contexts' rows stay in separate lists.
   state.log = {
     content: pageState ? pageState.log || null : null,
-    sidebar: DR_LOG.snapshot(),
+    sidebar: DR_LOG.copyBuffer(),
   };
   // A failure while building or saving the file shows on the status line
   // and is logged; the form stays open with the typed remarks, so a retry
@@ -844,7 +757,7 @@ function assembleAndSaveCapture(mark, remarks, pageState, shot) {
   try {
     const html = DR_CAPTURE.buildCaptureDocument({
       state: state,
-      screenshotDataUrl: shot ? shot.dataUrl : null,
+      screenshotDataUrl: shot.dataUrl,
     });
     saveCaptureFile({
       filename: DR_CAPTURE.filenameFor({ at: at, url: state.meta.url, mark: mark }),
@@ -858,9 +771,7 @@ function assembleAndSaveCapture(mark, remarks, pageState, shot) {
   foldCaptureForm();
   captureRemarksEl.value = '';
   if (writeStatus(CAPTURE_SAVED_STATUS_MSG)) {
-    setTimeout(() => {
-      if (statusEl.textContent === CAPTURE_SAVED_STATUS_MSG) writeStatus('');
-    }, 2500);
+    setTimeout(() => clearStatusShowing(CAPTURE_SAVED_STATUS_MSG), 2500);
   }
 }
 
@@ -904,8 +815,5 @@ rangeExprEl.value = '';
 // samples, and the sidebar shows the unbound prompt.
 boundTab.resolve(() => {
   redrawFromActiveTable();
-  // Registered after the tab lookup, for the reason resolve() states.
   boundTab.onLeave(() => { window.close(); });
 });
-
-updateDisabledState();

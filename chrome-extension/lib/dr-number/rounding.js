@@ -1,20 +1,15 @@
+// Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 /**
- * DynamicRounding shared rounding helpers
- *
- * The one copy of the rounding arithmetic, read by three scripts: the
- * content script (page context, via manifest content_scripts), the sidebar
- * (extension side-panel context, via <script> tag), and the Google Sheets
- * library, which scripts/build-sheets.js writes by joining this file with
- * the rest of the shared library and the Sheets entry source. Must remain
- * framework-free and side-effect-free: no chrome.*, no DOM access, no Node
- * module code. All symbols land on the global scope of whichever script
- * holds this file.
+ * DynamicRounding shared rounding helpers: the one copy of the rounding
+ * arithmetic. docs/design.md "How the code is shared" lists where it loads.
+ * Must remain side-effect-free: no chrome.*, no DOM access, no Node module
+ * code. All symbols land on the global scope of whichever script holds this
+ * file.
  */
 
 const EPSILON = 1e-9;
-// Threshold for the "no-coarser-than-x" floor in half-step rounding. When the
-// integer part of a half-step offset has |trunc(offset)| >= X_FLOOR_THRESHOLD,
-// the result is also floored at roundWithOffset(|num|, trunc(offset)).
+// The smallest abs(trunc(offset)) at which the x-floor applies to a
+// fractional offset.
 const X_FLOOR_THRESHOLD = 1;
 
 function roundWithOffset(num, offset) {
@@ -23,17 +18,7 @@ function roundWithOffset(num, offset) {
   const sign = num < 0 ? -1 : 1;
   const absnum = Math.abs(num);
   const current_mag = Math.floor(Math.log10(absnum));
-
-  let target_mag;
-  let step;
-  if (Number.isInteger(offset)) {
-    target_mag = current_mag + offset;
-    step = Math.pow(10, target_mag);
-  } else {
-    target_mag = current_mag + Math.ceil(offset);
-    const f = Math.abs(offset - Math.trunc(offset));
-    step = f * Math.pow(10, target_mag);
-  }
+  const step = stepForOffset(absnum, offset);
 
   const raw = Math.round(absnum / step + EPSILON) * step;
   const floor_oom = Math.pow(10, current_mag);
@@ -45,7 +30,7 @@ function roundWithOffset(num, offset) {
     result = Math.max(result, floor_x);
   }
 
-  if (result >= 10 || result % 1 === 0) {
+  if (result >= 10) {
     result = Math.round(result);
   }
 
@@ -55,10 +40,7 @@ function roundWithOffset(num, offset) {
   return sign * result;
 }
 
-function roundCellSetAware(value, num, max_mag, offset_top, offset_other, num_top) {
-  if (value === "" || value === null) return "";
-
-  if (num === null) return value;
+function roundValueSetAware(num, max_mag, offset_top, offset_other, num_top) {
   if (num === 0) return 0;
 
   const current_mag = Math.floor(Math.log10(Math.abs(num)));
@@ -71,11 +53,7 @@ function roundCellSetAware(value, num, max_mag, offset_top, offset_other, num_to
   return roundWithOffset(num, offset);
 }
 
-/**
- * Compute the step that roundWithOffset would use for the given num + offset.
- * Used by the lens preview to render "(5k)" / "(0.25)" alongside the
- * rounded value, without duplicating the rounding formula.
- */
+// The step roundWithOffset rounds num to under offset.
 function stepForOffset(num, offset) {
   if (num === 0) return 0;
   const current_mag = Math.floor(Math.log10(Math.abs(num)));
@@ -86,36 +64,32 @@ function stepForOffset(num, offset) {
   return f * Math.pow(10, current_mag + Math.ceil(offset));
 }
 
-/**
- * Human-readable step label for the lens preview.
- *   5000     -> "5k"
- *   500      -> "500"
- *   2500000  -> "2.5M"
- *   2.5      -> "2.5"
- *   0.25     -> "0.25"
- */
+// The step as the lens preview shows it.
 function formatStep(step) {
-  if (!isFinite(step) || step === 0) return "0";
+  if (!isFinite(step)) return "0";
   const abs = Math.abs(step);
   if (abs >= 1e9) return trimNum(step / 1e9) + "B";
   if (abs >= 1e6) return trimNum(step / 1e6) + "M";
   if (abs >= 1e3) return trimNum(step / 1e3) + "k";
-  if (abs >= 1) return trimNum(step);
-  // Sub-integer: show as a decimal, dropping any trailing zeros.
   return trimNum(step);
 }
 
+// Rounds to at most 3 decimal places.
 function trimNum(n) {
-  // Up to 3 decimal places, but avoid scientific notation for the values
-  // formatStep produces (steps are 1, 2.5, or 5 times a power of 10).
-  const rounded = Math.round(n * 1000) / 1000;
-  let s = String(rounded);
-  if (s.indexOf("e") !== -1) {
-    s = rounded.toFixed(10);
+  return String(Math.round(n * 1000) / 1000);
+}
+
+function findMaxMagnitude(dataset) {
+  let max_mag = null;
+  for (const row of dataset) {
+    for (const num of row) {
+      if (num !== null && num !== 0 && isFinite(num)) {
+        const mag = Math.floor(Math.log10(Math.abs(num)));
+        if (max_mag === null || mag > max_mag) {
+          max_mag = mag;
+        }
+      }
+    }
   }
-  // Trim trailing zeros after a decimal point.
-  if (s.indexOf(".") !== -1) {
-    s = s.replace(/0+$/, "").replace(/\.$/, "");
-  }
-  return s;
+  return max_mag;
 }

@@ -97,7 +97,7 @@ Same parameters as `round_dynamic`, but operates on a pandas Series.
 
 **Floor at the value's OoM:** After rounding, the magnitude of the result is at least `10 ** floor(log10(abs(value)))` — so a tens-of-millions value can never collapse to `0`.
 
-**Floor at the integer offset:** A fractional offset whose integer part is 1 or more never rounds finer than the corresponding integer offset. `round_dynamic(87054321, offset=-2.5)` returns `87100000` — the `-2` result floors the raw `-2.5` result.
+**Floor at the integer offset:** At a fractional offset whose integer part is 1 or more in size, the result is never smaller than the integer offset's result. At a coarse offset, this keeps a large step from dropping the value to its own OoM: `round_dynamic(87054321, offset=1.5)` returns `100000000`, the `1` result, not `10000000`. At a fine offset, it lifts the result: `round_dynamic(87054321, offset=-2.5)` returns `87100000`, the `-2` result, not `87050000`.
 
 **12 significant digits:** Results are trimmed to 12 significant digits, with ties rounding away from zero. `round_dynamic(1234567890123, offset=-12)` returns `1234567890120`.
 
@@ -118,4 +118,4 @@ MIT
 ## See Also
 
 - [Google Sheets version](https://github.com/ArieFisher/dynamic-rounding/tree/main/js) — Use `=ROUND_DYNAMIC()` in spreadsheets
-- [Design doc](https://github.com/ArieFisher/dynamic-rounding/blob/main/docs/design.md) — Algorithm details
+- [Design document](https://github.com/ArieFisher/dynamic-rounding/blob/main/docs/design.md) — How the system is built, and why

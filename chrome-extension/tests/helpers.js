@@ -118,7 +118,7 @@ function runRowHeaderTable(optsOverrides) {
 function isRounded(cell) { return cell.classList.contains('dr-ext-rounded'); }
 
 // Helper: build a mock anchor element that looks enough like a DOM <a> node
-// for isCellWholeLink and filterLinkMatches to consume.
+// for getMarkupRanges to consume.
 function makeMockAnchor(text) {
   const anchor = {
     innerText: text,
@@ -145,7 +145,7 @@ function makeMockTextNode(text, insideAnchor, cell) {
   };
 }
 
-// Build a mock cell for isCellWholeLink / filterLinkMatches testing.
+// Build a mock cell for getMarkupRanges testing.
 // anchors: array of anchor text strings that appear as <a> children
 // outsideText: text in the cell that is NOT inside any anchor (null if none)
 // cell.innerText = outsideText + anchor texts combined (as visible text)
@@ -173,8 +173,8 @@ function makeLinkCell(anchors, outsideText) {
     tagName: 'TD',
   };
 
-  // Build text nodes list for filterLinkMatches's createTreeWalker.
-  // We model the DOM structure: anchor text is inside anchor nodes, outside text is bare.
+  // The text nodes in page order: anchor text sits inside its anchor, outside
+  // text is bare.
   const textNodes = [];
   if (outsideText) {
     textNodes.push(makeMockTextNode(outsideText, null, cell));
@@ -183,7 +183,7 @@ function makeLinkCell(anchors, outsideText) {
     textNodes.push(makeMockTextNode(a.innerText, a, cell));
   }
 
-  // Attach a createTreeWalker stub that returns these text nodes in order.
+  // withLinkCreateTreeWalker's stub returns these text nodes in order.
   cell._textNodes = textNodes;
   return cell;
 }
@@ -574,8 +574,8 @@ function makeSuperscriptCell(segments) {
     dataset: {},
     title: '',
     tagName: 'TD',
-    // querySelectorAll('a') → no anchors so filterLinkMatches is a no-op
-    querySelectorAll: (sel) => sel === 'a' ? [] : [],
+    // querySelectorAll → no <a> or <code>, so getMarkupRanges holds nothing
+    querySelectorAll: () => [],
     // querySelector('sup') → truthy iff any segment is inside <sup>
     querySelector: (sel) => sel === 'sup' && hasSup ? { tagName: 'SUP' } : null,
   };
@@ -583,13 +583,16 @@ function makeSuperscriptCell(segments) {
   // Build mock text nodes in document order.
   // Each node has parentNode whose ancestor chain reaches 'cell'.
   // For inSup nodes: parentNode is a fake <sup> element whose parentNode is cell.
-  // For plain nodes: parentNode is cell itself (so the while-loop terminates).
+  // For plain nodes: parentNode is cell itself (so the ancestor walk stops at the cell).
   const textNodes = segments.map(seg => {
     let parentNode;
     if (seg.inSup) {
       // A fake <sup> element: tagName matches SUPERSCRIPT_TAG ('SUP'), parent is cell
       const supEl = { tagName: 'SUP', parentNode: cell, parentElement: cell };
       parentNode = supEl;
+    } else if (seg.styledSup) {
+      // A span the page raises through its style alone; inlineStyleProbe reports it.
+      parentNode = { tagName: 'SPAN', style: { verticalAlign: 'super' }, parentNode: cell, parentElement: cell };
     } else {
       // Direct child of the cell — the ancestor walk hits cell immediately and stops
       parentNode = cell;
@@ -637,7 +640,7 @@ function makeExtractedCell(segments) {
     dataset: {},
     title: '',
     tagName: 'TD',
-    querySelectorAll: (sel) => sel === 'a' ? [] : [],
+    querySelectorAll: () => [],
     querySelector: (sel) => sel === 'sup' && segments.some(s => s.inSup) ? { tagName: 'SUP' } : null,
   };
   const textNodes = segments.map(seg => {
@@ -704,6 +707,9 @@ function makeGridContainer(rows, display, role, className) {
     getAttribute: function(attr) {
       if (attr === 'role') return role || null;
       return null;
+    },
+    matches(selector) {
+      return !!role && selector.split(',').some((part) => part.trim() === `[role="${role}"]`);
     },
     classList: {
       _c: [],
@@ -1243,11 +1249,15 @@ function makeKeyStatsGrid() {
   ])]);
   setGridCellPieces(dollar, [makeElementNode('sym', [makeTextNode('$')]), makeElementNode('num', [makeTextNode('337.91')])]);
   setGridCellPieces(split, [makeTextNode('4.'), makeElementNode('dec', [makeTextNode('91')]), makeTextNode('tn')]);
-  const anchor = makeElementNode('a', [makeTextNode('7.5m')]);
+  const anchorText = makeTextNode('7.5m');
+  const anchor = makeElementNode('a', [anchorText]);
   anchor.innerText = '7.5m';
+  anchor.closest = (sel) => (sel === 'a' ? anchor : null);
+  anchorText.parentElement = anchor;
   setGridCellPieces(link, [anchor]);
   link.innerText = '7.5m';
   link.querySelectorAll = (sel) => (sel === 'a' ? [anchor] : []);
+  link.contains = (node) => node === anchor;
   setGridCellPieces(date, [makeTextNode('2024-'), makeElementNode('md', [makeTextNode('03-15')])]);
   return grid;
 }
@@ -1435,18 +1445,19 @@ function makePositionedAncestor(styleOverrides) {
 }
 
 // =============================================================================
-// Pass 1 guard skips accessibility artifacts
+// The load-time scan skips accessibility artifacts
 // =============================================================================
 //
-// injectTablePillboxes() Pass 1 calls document.querySelectorAll('table') and skips
-// any table for which isAccessibilityArtifact(table) is true, then calls
-// registerDataTable(table) only for the survivors.
+// injectTablePillboxes() runs scanTables, which runs the nomination step over
+// each table document.querySelectorAll('table') returns. The step reports an
+// accessibility artifact as 'artifact', and consumeNomination registers only
+// the table of a 'selected' outcome.
 //
 // A table pillbox was created iff tablePillboxes.has(table) becomes true afterwards.
 //
 // For each test we:
-//   1. Temporarily replace global.document.querySelectorAll so Pass 1 sees our
-//      fixture tables and Pass 2 (GRID_ARIA_SELECTOR) sees an empty list.
+//   1. Temporarily replace global.document.querySelectorAll so the scan sees our
+//      fixture tables and an empty list for GRID_ARIA_SELECTOR.
 //   2. Temporarily stub document.createElement + document.body.appendChild so
 //      createTablePillbox can run without errors.
 //   3. Reset tablePillboxes for each run by deleting entries we
@@ -1516,7 +1527,7 @@ function runPass1WithTables(tables) {
   const origBody     = global.document.body;
   const origDocEl    = global.document.documentElement;
 
-  // Stub querySelectorAll: Pass 1 → our tables; Pass 2 (GRID_ARIA_SELECTOR) → []
+  // Stub querySelectorAll: 'table' → our tables; GRID_ARIA_SELECTOR → []
   global.document.querySelectorAll = function(sel) {
     if (sel === 'table') return tables;
     return [];
@@ -1583,24 +1594,25 @@ function runPass1WithTables(tables) {
   return { tables };
 }
 
-// Helper: clean up tablePillboxes for a list of table objects so
-// they do not pollute subsequent tests.
+// Helper: clean up tablePillboxes and pending records for a list of table
+// objects so they do not pollute subsequent tests.
 function cleanupPass1Tables(tables) {
   for (const t of tables) {
     if (tablePillboxes.has(t)) {
       tablePillboxes.delete(t);
     }
+    dropPendingTable(t);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Pass 2 accessibility artifact guard in injectTablePillboxes
+// The load-time scan's accessibility artifact guard on grids
 // ---------------------------------------------------------------------------
 //
-// Pass 2 (the nomination step) skips an ARIA grid ONLY when it contains at
-// least one REAL <table>, one that is not an accessibility artifact. A grid
-// that contains only accessibility artifacts (aria-hidden, offscreen, or
-// svg-chart-wrapped) must be picked up by Pass 2 and get a table pillbox.
+// The nomination step skips an ARIA grid ONLY when it contains at least one
+// REAL <table>, one that is not an accessibility artifact. A grid that
+// contains only accessibility artifacts (aria-hidden or offscreen) must be
+// picked up by the scan and get a table pillbox.
 //
 // Helper: build a minimal ARIA grid element (div with role="grid" or role="table")
 // with a proper classList and the querySelectorAll('table') that returns a given
@@ -2331,8 +2343,8 @@ function recordAppendedChildren(el) {
  */
 function makeIssue251SidebarHarness(opts) {
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
-  const coreSrc = sourceByName('lib/dr-number/core.js');
-  if (constantsCode === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
+  const readerSrc = sourceByName('lib/dr-number/reader.js');
+  if (constantsCode === null || roundingSrc === null || readerSrc === null || busCode === null) {
     return null;
   }
 
@@ -2441,8 +2453,8 @@ function makeIssue251SidebarHarness(opts) {
     eval(
       constantsCode + '\n' +
       roundingSrc + '\n' +
-      coreSrc + '\n' +
-      messagingCode + '\n' +
+      readerSrc + '\n' +
+      busCode + '\n' +
       fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8')
     );
   } catch (e) {
@@ -2601,7 +2613,7 @@ function makeIsolatedModel() {
   const vm = require('vm');
   const sandbox = { chrome: global.chrome, console };
   const ctx = vm.createContext(sandbox);
-  vm.runInContext(constantsCode + '\n' + messagingCode + '\n' + modelCode +
+  vm.runInContext(constantsCode + '\n' + busCode + '\n' + modelCode +
     '\nthis.__model = DR_MODEL; this.__bus = DR_BUS;', ctx);
   return { model: sandbox.__model, bus: sandbox.__bus };
 }
@@ -2609,7 +2621,7 @@ function makeIsolatedModel() {
 // ---------------------------------------------------------------------------
 // Every cross-context topic on the event bus.
 //
-// A shared sandbox harness for the bus tests below. adapters/messaging.js has
+// A shared sandbox harness for the bus tests below. app/bus.js has
 // no DOM dependency, so it runs in its own vm context with only the Chrome
 // interfaces stubbed. Each call builds a fresh bus, which matters: a responder
 // registration and a subscription both outlive the test that made them, and
@@ -2646,7 +2658,7 @@ function makeBusSandbox(opts) {
   };
   if (!options.noTabs) sandbox.chrome.tabs = tabs;
   vm.createContext(sandbox);
-  vm.runInContext(constantsCode + '\n' + messagingCode + '\nthis.__DR_BUS = DR_BUS;', sandbox);
+  vm.runInContext(constantsCode + '\n' + busCode + '\nthis.__DR_BUS = DR_BUS;', sandbox);
   return {
     bus: sandbox.__DR_BUS,
     sent,
@@ -3136,14 +3148,13 @@ function eachRewriteKind(kinds, run) {
   }
 }
 
-// Read the list of table kind pairs from the design document: each row's key,
-// state, and note. Every failure to find the list returns null, so a renamed
-// heading or a reshaped row fails the run rather than leaving nothing to
-// compare.
+// Read the list of table kind pairs: each row's key, state, and note. Every
+// failure to find the list returns null, so a renamed heading or a reshaped
+// row fails the run rather than leaving nothing to compare.
 function tkReadPairList() {
-  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
-  const lines = designMd.split('\n');
-  const start = lines.findIndex((line) => line.trim() === '### Table kind pairs');
+  const pairsMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'table-kind-pairs.md'), 'utf8');
+  const lines = pairsMd.split('\n');
+  const start = lines.findIndex((line) => line.trim() === '# Table kind pairs');
   if (start === -1) return null;
   const header = lines.findIndex((line, i) => i > start && line.startsWith('| Key |'));
   if (header === -1) return null;
@@ -3181,10 +3192,10 @@ function tkRead(kind, pair, settings) {
   const drawOpts = Object.assign({ gridRole: 'table' }, pair.opts);
   const place = pair.place || ((table) => table);
   const foundIn = (table) => findTables(rwEl('div', {}, [place(table)]), { styleProbe: inlineStyleProbe })
-    .map((found) => found.handle).filter((el) => isDataTable(el));
+    .filter((el) => isDataTable(el));
   // The count runs on the rewrite page too: the data test reads each cell
-  // through the per-cell read the pass runs, and its link filter walks the
-  // cell's text pieces with the page's tree walker.
+  // through the per-cell read the pass runs, and its markup range read walks
+  // the cell's text pieces with the page's tree walker.
   let count = 0;
   withRewritePage(() => { count = foundIn(rwDrawTable(kind, pair.sections, drawOpts).table).length; });
   const tables = [];
@@ -3557,4 +3568,43 @@ const AF_VISIBLE_FORMS = [
 // through JSON, which cannot serialize a model element.
 function afSame(actual, expected) {
   return actual.length === expected.length && actual.every((el, i) => el === expected[i]);
+}
+
+// A package's index.js must declare exactly one top-level name, its package
+// object. A check of the object's keys alone would miss a stray second
+// top-level const or function, which lands on the shared content-script scope.
+function checkIndexDeclaresOnlyPackageObject(packageDir, objectName) {
+  const indexPath = `lib/${packageDir}/index.js`;
+  const indexSrc = sourceByName(indexPath);
+  if (indexSrc === null) {
+    eq(`${indexPath}: source present in manifest`, false, true);
+    return;
+  }
+  const topLevelDeclarations = indexSrc.match(/^(const|let|var|function\b|class\b)/gm) || [];
+  eq(`${indexPath}: exactly one top-level declaration in the file`,
+    topLevelDeclarations.length, 1);
+  eq(`${indexPath}: the sole top-level declaration is ${objectName}`,
+    new RegExp(`^const ${objectName}\\b`, 'm').test(indexSrc), true);
+}
+
+// Derives the expected keys of a package object from the top-level
+// `function name(...)` declarations in the package's source files, so a
+// function added to or removed from one of them without a matching index.js
+// edit fails here.
+function checkPackageObjectMatchesDeclarations(packageDir, objectName, sourceFiles) {
+  const FUNCTION_DECL_RE = /^function\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm;
+  const declaredNames = sourceFiles.flatMap((file) => {
+    const code = sourceByName(`lib/${packageDir}/${file}`);
+    eq(`lib/${packageDir}/${file}: source present in manifest`, code !== null, true);
+    return code === null ? [] : [...code.matchAll(FUNCTION_DECL_RE)].map((m) => m[1]);
+  }).sort();
+  const packageObject = globalThis[objectName] || {};
+  eq(`lib/${packageDir} bundle: source files declared at least one top-level function`,
+    declaredNames.length > 0, true);
+  eq(`lib/${packageDir}/index.js: ${objectName} exists on the global scope`,
+    typeof globalThis[objectName], 'object');
+  eq(`lib/${packageDir} bundle: ${objectName} keys are exactly the top-level functions declared in ${sourceFiles.join(', ')}`,
+    Object.keys(packageObject).sort(), declaredNames);
+  eq(`lib/${packageDir} bundle: every ${objectName} entry is itself a function`,
+    declaredNames.every((n) => typeof packageObject[n] === 'function'), true);
 }
