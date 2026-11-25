@@ -180,19 +180,7 @@ Sprint commits do not touch version files. Versioning is handled at merge time b
 
 ### Push and PR auth
 
-`origin` may be a proxy that authenticates through a connected GitHub App and ignores pasted tokens. Push with plain `git push origin <branch>`, then verify arrival by reading real GitHub:
-
-```
-curl --noproxy '*' https://api.github.com/repos/<owner>/<repo>/branches
-```
-
-For PR creation, try `gh pr create`. If it returns `403 Resource not accessible by integration`, ask the user for a PAT and call the real API directly:
-
-```
-curl --noproxy '*' -H "Authorization: Bearer <PAT>" https://api.github.com/repos/<owner>/<repo>/pulls -d '{"title": "...", "head": "<branch>", "base": "main", "body": "..."}'
-```
-
-Never put a token in a git URL — `push -u` with a token URL stores it in `.git/config` as the branch upstream, and the proxy ignores it anyway. Hold a PAT in session memory only; after any push involving one, `grep -c x-access-token .git/config` must return `0`.
+Push the branch and open the pull request as "GitHub access model" in `AGENTS.md` describes, including its token hygiene.
 
 ### Write the plan
 
