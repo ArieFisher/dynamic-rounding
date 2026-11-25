@@ -310,96 +310,39 @@ eq('pure cell write: parens-negative preserved',
 
 // --- Exclusion checkboxes ---
 
-eq('isDateLike: bare 4-digit year', isDateLike('2018'), true);
+eq('findDates: bare 4-digit year', findDates('2018') !== null, true);
 
-eq('isDateLike: bare year out of range', isDateLike('1899'), false);
+eq('findDates: bare year out of range', findDates('1899') !== null, false);
 
-eq('isDateLike: bare year out of range', isDateLike('2100'), false);
+eq('findDates: bare year out of range', findDates('2100') !== null, false);
 
-eq('isDateLike: ISO date', isDateLike('2024-03-14'), true);
+eq('findDates: ISO date', findDates('2024-03-14') !== null, true);
 
-eq('isDateLike: US slash date', isDateLike('3/14/2024'), true);
+eq('findDates: US slash date', findDates('3/14/2024') !== null, true);
 
-eq('isDateLike: dash date', isDateLike('3-14-2024'), true);
+eq('findDates: dash date', findDates('3-14-2024') !== null, true);
 
-eq('isDateLike: "March 14, 2024"', isDateLike('March 14, 2024'), true);
+eq('findDates: "March 14, 2024"', findDates('March 14, 2024') !== null, true);
 
-eq('isDateLike: "14 March 2024"', isDateLike('14 March 2024'), true);
+eq('findDates: "14 March 2024"', findDates('14 March 2024') !== null, true);
 
-eq('isDateLike: "Mar 2024"', isDateLike('Mar 2024'), true);
+eq('findDates: "Mar 2024"', findDates('Mar 2024') !== null, true);
 
-eq('isDateLike: "Sept 2024"', isDateLike('Sept 2024'), true);
+eq('findDates: "Sept 2024"', findDates('Sept 2024') !== null, true);
 
-eq('isDateLike: plain number not a year -> false', isDateLike('1234'), false);
+eq('findDates: plain number not a year -> false', findDates('1234') !== null, false);
 
-eq('isDateLike: random text -> false', isDateLike('hello'), false);
+eq('findDates: random text -> false', findDates('hello') !== null, false);
 
-eq('isDateLike: empty -> false', isDateLike(''), false);
-
-eq('isTimeLike: 14:30 -> true', isTimeLike('14:30'), true);
-
-eq('isTimeLike: 14:30:45 -> true', isTimeLike('14:30:45'), true);
-
-eq('isTimeLike: 2:30 PM -> true', isTimeLike('2:30 PM'), true);
-
-eq('isTimeLike: 2:30pm -> true', isTimeLike('2:30pm'), true);
-
-eq('isTimeLike: 2:3 -> false (single-digit minutes)', isTimeLike('2:3'), false);
-
-eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
+eq('findDates: empty -> false', findDates('') !== null, false);
 
 (function exclusionFirstColumn() {
   const opts = Object.assign({}, {
     simplifyDates: false, simplifyTimes: false,
     simplifyFirstColumn: false
   });
-  eq('exclude: first column with flag on', getExclusionReason('anything', 0, opts), 'first-column');
-  eq('exclude: non-first column ignores flag', getExclusionReason('anything', 1, opts), null);
-})();
-
-(function exclusionDates() {
-  // Dates and times are not exclusion reasons — getExclusionReason never returns
-  // 'dates' or 'times' regardless of simplifyDates/simplifyTimes setting.
-  const opts = { simplifyDates: true };
-  eq('exclude: year cell with simplifyDates=true is NOT excluded (returns null)',
-    getExclusionReason('2018', 1, opts), null);
-  eq('exclude: non-date cell with simplifyDates=true returns null',
-    getExclusionReason('1,234', 1, opts), null);
-  eq('exclude: year cell with simplifyDates=false is NOT excluded (returns null)',
-    getExclusionReason('2018', 1, { simplifyDates: false }), null);
-})();
-
-(function exclusionTimes() {
-  // Times are not an exclusion reason — simplifyTimes only controls the
-  // classification pass, not getExclusionReason.
-  eq('exclude: time cell with simplifyTimes=true is NOT excluded (returns null)',
-    getExclusionReason('14:30', 1, { simplifyTimes: true }), null);
-})();
-
-(function exclusionPercent() {
-  // New semantics: percent cells are EXCLUDED by default (simplifyMixedPercent defaults false/unset).
-  eq('exclude: percent excluded by default (simplifyMixedPercent unset)',
-    getExclusionReason('45%', 1, {}), 'percent');
-  eq('exclude: percent excluded when simplifyMixedPercent=false',
-    getExclusionReason('45%', 1, { simplifyMixedPercent: false }), 'percent');
-  eq('exclude: percent included when simplifyMixedPercent=true',
-    getExclusionReason('45%', 1, { simplifyMixedPercent: true }), null);
-})();
-
-(function exclusionCurrency() {
-  // New semantics: currency cells are EXCLUDED by default (simplifyMixedCurrency defaults false/unset).
-  eq('exclude: currency excluded by default (simplifyMixedCurrency unset)',
-    getExclusionReason('$1,234', 1, {}), 'currency');
-  eq('exclude: currency excluded when simplifyMixedCurrency=false',
-    getExclusionReason('$1,234', 1, { simplifyMixedCurrency: false }), 'currency');
-  eq('exclude: currency included when simplifyMixedCurrency=true',
-    getExclusionReason('$1,234', 1, { simplifyMixedCurrency: true }), null);
-  eq('exclude: euro excluded by default',
-    getExclusionReason('€1,234', 1, {}), 'currency');
-  eq('exclude: euro included when simplifyMixedCurrency=true',
-    getExclusionReason('€1,234', 1, { simplifyMixedCurrency: true }), null);
-  eq('exclude: rupee excluded by default',
-    getExclusionReason('₹615', 1, {}), 'currency');
+  eq('exclude: first column with flag on', getExclusionReason(0, opts), 'first-column');
+  eq('exclude: non-first column ignores flag', getExclusionReason(1, opts), null);
 })();
 
 // --- simplifyFirstRow ---
@@ -407,34 +350,33 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
 (function simplifyFirstRowTests() {
   // simplifyFirstRow=false: row 0 must be excluded regardless of cell content
   eq('simplifyFirstRow: row 0 excluded when flag is false',
-    getExclusionReason('1,234', 1, { simplifyFirstRow: false }, 0), 'first-row');
+    getExclusionReason(1, { simplifyFirstRow: false }, 0), 'first-row');
   // simplifyFirstRow=false: row 1 is not affected
   eq('simplifyFirstRow: row 1 not excluded when flag is false',
-    getExclusionReason('1,234', 1, { simplifyFirstRow: false }, 1), null);
+    getExclusionReason(1, { simplifyFirstRow: false }, 1), null);
   // simplifyFirstRow=true: row 0 is NOT excluded
   eq('simplifyFirstRow: row 0 not excluded when flag is true',
-    getExclusionReason('1,234', 1, { simplifyFirstRow: true }, 0), null);
+    getExclusionReason(1, { simplifyFirstRow: true }, 0), null);
   // simplifyFirstRow unset (default): row 0 IS excluded (!undefined = true, same as simplifyFirstRow=false)
   eq('simplifyFirstRow: row 0 excluded when flag is unset (default)',
-    getExclusionReason('1,234', 1, {}, 0), 'first-row');
+    getExclusionReason(1, {}, 0), 'first-row');
   // simplifyFirstRow takes priority over the first-column check
   eq('simplifyFirstRow: first-row beats first-column when both apply',
-    getExclusionReason('anything', 0, { simplifyFirstRow: false, simplifyFirstColumn: false }, 0), 'first-row');
+    getExclusionReason(0, { simplifyFirstRow: false, simplifyFirstColumn: false }, 0), 'first-row');
 })();
 
-// First-match-wins priority: first-row beats first-column beats percent beats currency
-// (dates and times are not exclusion reasons)
+// First-match-wins priority: first-row beats first-column
 (function exclusionPriority() {
   const opts = {
     simplifyFirstRow: false, simplifyFirstColumn: false, simplifyDates: true, simplifyTimes: true,
     simplifyMixedPercent: false, simplifyMixedCurrency: false
   };
-  eq('priority: first row wins even when value is a date',
-    getExclusionReason('2018', 0, opts, 0), 'first-row');
-  eq('priority: first column wins even when value is a date (non-zero row)',
-    getExclusionReason('2018', 0, opts, 1), 'first-column');
-  eq('priority: year value not excluded when only first-row/col flags set (dates no longer excluded)',
-    getExclusionReason('2018', 1, opts, 1), null);
+  eq('priority: row 0, column 0 -> first row',
+    getExclusionReason(0, opts, 0), 'first-row');
+  eq('priority: row 1, column 0 -> first column',
+    getExclusionReason(0, opts, 1), 'first-column');
+  eq('priority: row 1, column 1 -> no exclusion, with every other switch off',
+    getExclusionReason(1, opts, 1), null);
 })();
 
 // --- Per-type granularity ---
@@ -539,8 +481,8 @@ eq('roundDateText: mixed cell preserves label at month granularity',
 
 // An ordinal suffix on any part of a date keeps the cell a date, and the
 // suffix goes with the part it follows.
-eq('isDateLike: "2020th" (ordinal on a bare year) -> true', isDateLike('2020th'), true);
-eq('isDateLike: "7/21st/2020" (ordinal on a numeric part) -> true', isDateLike('7/21st/2020'), true);
+eq('findDates: "2020th" (ordinal on a bare year) -> true', (findDates('2020th') !== null), true);
+eq('findDates: "7/21st/2020" (ordinal on a numeric part) -> true', (findDates('7/21st/2020') !== null), true);
 eq('roundDateText: "Jun 2015th" at decade -> "2010"', roundDateText('Jun 2015th', 'decade'), '2010');
 eq('roundDateText: "2015-07-21st" at month -> "2015-07"', roundDateText('2015-07-21st', 'month'), '2015-07');
 eq('roundDateText: "2015-07-21st" at year -> "2015"', roundDateText('2015-07-21st', 'year'), '2015');
@@ -556,10 +498,10 @@ eq('roundDateText: "2019-03-02 and 2096-12-13" at decade -> "2010 and 2090"',
   roundDateText('2019-03-02 and 2096-12-13', 'decade'), '2010 and 2090');
 
 // A month word must be a month name or its short form.
-eq('isDateLike: "market 21, 2015" (word starting like a month) -> false', isDateLike('market 21, 2015'), false);
-eq('isDateLike: "Marching 4, 2015" -> false', isDateLike('Marching 4, 2015'), false);
-eq('isDateLike: "Sept. 4, 1998" -> true', isDateLike('Sept. 4, 1998'), true);
-eq('isDateLike: "MAY 4, 1998" -> true', isDateLike('MAY 4, 1998'), true);
+eq('findDates: "market 21, 2015" (word starting like a month) -> false', (findDates('market 21, 2015') !== null), false);
+eq('findDates: "Marching 4, 2015" -> false', (findDates('Marching 4, 2015') !== null), false);
+eq('findDates: "Sept. 4, 1998" -> true', (findDates('Sept. 4, 1998') !== null), true);
+eq('findDates: "MAY 4, 1998" -> true', (findDates('MAY 4, 1998') !== null), true);
 
 // A date that cannot exist is found, and marked so the cell holds.
 eq('findDates: "2020-13-45" is impossible', findDates('2020-13-45')[0].impossible, true);
@@ -614,30 +556,30 @@ const CLOCK_TIME_CASES = [
 ];
 
 for (const [input, granularity, expected, covers] of CLOCK_TIME_CASES) {
-  eq(`roundTimeText: ${input} at ${granularity} -> ${expected} (${covers})`,
-    roundTimeText(input, granularity), expected);
+  eq(`roundTimeCell: ${input} at ${granularity} -> ${expected} (${covers})`,
+    roundTimeCell(input, granularity), expected);
 }
 
-eq('roundTimeText: a time with no seconds is unchanged at minute',
-  roundTimeText('14:30', 'minute'), null);
-eq('roundTimeText: a twelve-hour time with no seconds is unchanged at minute',
-  roundTimeText('3:45 PM', 'minute'), null);
-eq('roundTimeText: a time already on the hour is unchanged at hour',
-  roundTimeText('14:00', 'hour'), null);
-eq('roundTimeText: invalid input -> null',
-  roundTimeText('not a time', 'hour'), null);
-eq('roundTimeText: an hour past 23 stays as written',
-  roundTimeText('25:30', 'hour'), null);
-eq('roundTimeText: a minute past 59 stays as written',
-  roundTimeText('14:75', 'hour'), null);
-eq('roundTimeText: a second past 59 stays as written',
-  roundTimeText('14:29:75', 'minute'), null);
-eq('roundTimeText: a twelve-hour hour of 0 stays as written',
-  roundTimeText('0:15 AM', 'hour'), null);
-eq('roundTimeText: a twelve-hour hour past 12 stays as written',
-  roundTimeText('13:15 PM', 'hour'), null);
-eq('roundTimeText: an ISO date-time with a second past 59 stays as written',
-  roundTimeText('2026-01-01T14:29:75', 'minute'), null);
+eq('roundTimeCell: a time with no seconds is unchanged at minute',
+  roundTimeCell('14:30', 'minute'), null);
+eq('roundTimeCell: a twelve-hour time with no seconds is unchanged at minute',
+  roundTimeCell('3:45 PM', 'minute'), null);
+eq('roundTimeCell: a time already on the hour is unchanged at hour',
+  roundTimeCell('14:00', 'hour'), null);
+eq('roundTimeCell: invalid input -> null',
+  roundTimeCell('not a time', 'hour'), null);
+eq('roundTimeCell: an hour past 23 stays as written',
+  roundTimeCell('25:30', 'hour'), null);
+eq('roundTimeCell: a minute past 59 stays as written',
+  roundTimeCell('14:75', 'hour'), null);
+eq('roundTimeCell: a second past 59 stays as written',
+  roundTimeCell('14:29:75', 'minute'), null);
+eq('roundTimeCell: a twelve-hour hour of 0 stays as written',
+  roundTimeCell('0:15 AM', 'hour'), null);
+eq('roundTimeCell: a twelve-hour hour past 12 stays as written',
+  roundTimeCell('13:15 PM', 'hour'), null);
+eq('roundTimeCell: an ISO date-time with a second past 59 stays as written',
+  roundTimeCell('2026-01-01T14:29:75', 'minute'), null);
 
 // No time passes midnight: every second of the last hour, at either
 // granularity, stays inside it.
@@ -650,16 +592,16 @@ eq('roundTimeText: an ISO date-time with a second past 59 stays as written',
         const text = `23:${pad(minute)}:${pad(second)}`;
         const twelve = `11:${pad(minute)}:${pad(second)} PM`;
         const iso = `2026-11-09T23:${pad(minute)}:${pad(second)}`;
-        const out24 = roundTimeText(text, granularity) || text;
-        const out12 = roundTimeText(twelve, granularity) || twelve;
-        const outIso = roundTimeText(iso, granularity) || iso;
+        const out24 = roundTimeCell(text, granularity) || text;
+        const out12 = roundTimeCell(twelve, granularity) || twelve;
+        const outIso = roundTimeCell(iso, granularity) || iso;
         if (!out24.startsWith('23:')) crossed.push(text + ' ' + granularity + ' -> ' + out24);
         if (!/^11:\d\d PM$/.test(out12)) crossed.push(twelve + ' ' + granularity + ' -> ' + out12);
         if (!outIso.startsWith('2026-11-09 23:')) crossed.push(iso + ' ' + granularity + ' -> ' + outIso);
       }
     }
   }
-  eq('roundTimeText: no time in the last hour passes midnight', crossed, []);
+  eq('roundTimeCell: no time in the last hour passes midnight', crossed, []);
 })();
 
 // roundClockTime: the one rounding rule both paths call. It takes the hour as
@@ -682,50 +624,18 @@ eq('roundClockTime: hour 23 on the twenty-four hour clock goes down',
   { hour: 23, minute: 0, isPm: null });
 
 // --- ISO 8601 date-time: follows the time rule, date preserved ---
-eq('parseISODateTime: full offset timestamp',
-  parseISODateTime('2025-11-26T16:16:00.000-05:00'),
-  { year: 2025, month: 11, day: 26, hour: 16, minute: 16, second: 0 });
-
-eq('parseISODateTime: Z suffix', parseISODateTime('2025-11-26T16:16:00Z'),
-  { year: 2025, month: 11, day: 26, hour: 16, minute: 16, second: 0 });
-
-eq('parseISODateTime: space separator', parseISODateTime('2025-11-26 16:16'),
-  { year: 2025, month: 11, day: 26, hour: 16, minute: 16, second: 0 });
-
-eq('parseISODateTime: seconds read', parseISODateTime('2026-01-01T14:29:30'),
-  { year: 2026, month: 1, day: 1, hour: 14, minute: 29, second: 30 });
-
-eq('parseISODateTime: not a datetime -> null',
-  parseISODateTime('2025-11-26'), null);
-
-eq('parseISODateTime: out-of-range hour -> null',
-  parseISODateTime('2025-11-26T25:16'), null);
-
 // The time part is the one clock-time shape, so a one-digit hour reads the
 // same as a two-digit hour.
-eq('parseISODateTime: one-digit hour, space separator', parseISODateTime('2025-11-26 9:30'),
-  { year: 2025, month: 11, day: 26, hour: 9, minute: 30, second: 0 });
-eq('parseISODateTime: one-digit hour, T separator', parseISODateTime('2025-11-26T9:30:15.5Z'),
-  { year: 2025, month: 11, day: 26, hour: 9, minute: 30, second: 15 });
-eq('parseISODateTime: a fraction with no seconds -> null',
-  parseISODateTime('2025-11-26 09:30.5'), null);
-eq('parseISODateTime: out-of-range seconds -> null',
-  parseISODateTime('2025-01-01T10:00:60'), null);
-eq('readTimeCell: a time with a part out of range is impossible',
-  ['24:00', '10:00:75', '13:00 PM', '2025-11-26T24:00'].map((t) => readTimeCell(t)),
-  [{ impossible: true }, { impossible: true }, { impossible: true }, { impossible: true }]);
-eq('readTimeCell: text in neither time shape -> null',
-  ['123:45', '2025-11-26', '2025-13-01T10:00'].map((t) => readTimeCell(t)), [null, null, null]);
-eq('roundTimeText: one-digit-hour date-time rounds like a two-digit one',
-  [roundTimeText('2025-11-26 9:30', 'hour'), roundTimeText('2025-11-26 09:30', 'hour')],
+eq('roundTimeCell: "2025-11-26 09:30.5" (a fraction with no seconds) stays as written',
+  roundTimeCell('2025-11-26 09:30.5', 'hour'), null);
+eq('roundTimeCell: "2025-01-01T10:00:60" (out-of-range seconds) stays as written',
+  roundTimeCell('2025-01-01T10:00:60', 'hour'), null);
+eq('roundTimeCell: a time with a part out of range stays as written',
+  ['24:00', '10:00:75', '13:00 PM', '2025-11-26T24:00'].map((t) => roundTimeCell(t, 'hour')),
+  [null, null, null, null]);
+eq('roundTimeCell: one-digit-hour date-time rounds like a two-digit one',
+  [roundTimeCell('2025-11-26 9:30', 'hour'), roundTimeCell('2025-11-26 09:30', 'hour')],
   ['2025-11-26 10:00', '2025-11-26 10:00']);
-
-eq('isDateTimeLike: ISO timestamp -> true',
-  isDateTimeLike('2025-11-26T16:16:00.000-05:00'), true);
-
-eq('isDateTimeLike: bare date -> false', isDateTimeLike('2025-11-26'), false);
-
-eq('isDateTimeLike: bare time -> false', isDateTimeLike('16:16'), false);
 
 const ISO_DATE_TIME_CASES = [
   // [input, granularity, expected, what the case covers]
@@ -749,12 +659,12 @@ const ISO_DATE_TIME_CASES = [
 ];
 
 for (const [input, granularity, expected, covers] of ISO_DATE_TIME_CASES) {
-  eq(`roundTimeText: ${input} at ${granularity} -> ${expected} (${covers})`,
-    roundTimeText(input, granularity), expected);
+  eq(`roundTimeCell: ${input} at ${granularity} -> ${expected} (${covers})`,
+    roundTimeCell(input, granularity), expected);
 }
 
-eq('roundTimeText: an ISO date-time already in the result form is unchanged',
-  roundTimeText('2025-11-26 16:16', 'minute'), null);
+eq('roundTimeCell: an ISO date-time already in the result form is unchanged',
+  roundTimeCell('2025-11-26 16:16', 'minute'), null);
 
 // --- Offsets and num_top read from a setting value ---
 
@@ -1010,9 +920,9 @@ eq('parseRangeExpr: "A5:A2" -> rows 1-4 of column A',
   const cellText = '+2.3%';
 
   // The visible text IS numeric (toNumber strips % via CLEAN_REGEX -> 2.3),
-  // but getExclusionReason excludes percent cells by default -> cell is skipped.
-  eq('percent cell excluded by default (regression guard: no spurious rounding)',
-    getExclusionReason(cellText, 1, {}), 'percent');
+  // but with the percent switch unset its percent sign holds the number.
+  eq('percent cell held with the percent switch unset (regression guard: no spurious rounding)',
+    classifyAt(cellText, {}).stretches, []);
 })();
 
 // via roundTable: confirm the cell is skipped, not rounded.
@@ -1330,14 +1240,14 @@ eq('pure cell write: whole negative in parens -> "(3)"',
 })();
 
 // ---------------------------------------------------------------------------
-// isDateLike accepts newly added shapes.
+// findDates accepts newly added shapes.
 // ---------------------------------------------------------------------------
 (function dateRoundIsDateLikeNewShapes() {
-  eq('isDateLike: "2020/07/21" (ISO slash) -> true',  isDateLike('2020/07/21'), true);
-  eq('isDateLike: "2020 June 21" (Year Month Day) -> true', isDateLike('2020 June 21'), true);
-  eq('isDateLike: "3/14/24" (two-digit year) -> true', isDateLike('3/14/24'), true);
-  eq('isDateLike: "06/21/2020" (MDY slash) -> true',  isDateLike('06/21/2020'), true);
-  eq('isDateLike: "21 June 2020" (DMY named) -> true', isDateLike('21 June 2020'), true);
+  eq('findDates: "2020/07/21" (ISO slash) -> true',  (findDates('2020/07/21') !== null), true);
+  eq('findDates: "2020 June 21" (Year Month Day) -> true', (findDates('2020 June 21') !== null), true);
+  eq('findDates: "3/14/24" (two-digit year) -> true', (findDates('3/14/24') !== null), true);
+  eq('findDates: "06/21/2020" (MDY slash) -> true',  (findDates('06/21/2020') !== null), true);
+  eq('findDates: "21 June 2020" (DMY named) -> true', (findDates('21 June 2020') !== null), true);
 })();
 
 // ---------------------------------------------------------------------------
@@ -1451,74 +1361,74 @@ eq('pure cell write: whole negative in parens -> "(3)"',
   // --- Positive cases ---
 
   // ISO date with trailing word
-  eq('date detection: isDateLike("2020-03-14 sales") -> true',
-    isDateLike('2020-03-14 sales'), true);
+  eq('date detection: findDates("2020-03-14 sales") -> true',
+    (findDates('2020-03-14 sales') !== null), true);
 
   // Named-month date with trailing superscript digit (footnote ref)
-  eq('date detection: isDateLike("March 14, 2024¹") -> true',
-    isDateLike('March 14, 2024¹'), true);
+  eq('date detection: findDates("March 14, 2024¹") -> true',
+    (findDates('March 14, 2024¹') !== null), true);
 
   // Ordinal day in standard month-day-year form
-  eq('date detection: isDateLike("Jun 1st, 2020") -> true',
-    isDateLike('Jun 1st, 2020'), true);
+  eq('date detection: findDates("Jun 1st, 2020") -> true',
+    (findDates('Jun 1st, 2020') !== null), true);
 
   // Day-month-year with ordinal day
-  eq('date detection: isDateLike("21st June 2020") -> true',
-    isDateLike('21st June 2020'), true);
+  eq('date detection: findDates("21st June 2020") -> true',
+    (findDates('21st June 2020') !== null), true);
 
   // --- Negative cases (false-positive guards) ---
 
   // "Sales: 2020" — label before bare year must NOT be a date
-  eq('date detection: isDateLike("Sales: 2020") -> false',
-    isDateLike('Sales: 2020'), false);
+  eq('date detection: findDates("Sales: 2020") -> false',
+    (findDates('Sales: 2020') !== null), false);
 
   // "$2,020.00" — currency amount containing a year-like number
-  eq('date detection: isDateLike("$2,020.00") -> false',
-    isDateLike('$2,020.00'), false);
+  eq('date detection: findDates("$2,020.00") -> false',
+    (findDates('$2,020.00') !== null), false);
 
   // "version 2020.1.3" — version string with year-like first component
-  eq('date detection: isDateLike("version 2020.1.3") -> false',
-    isDateLike('version 2020.1.3'), false);
+  eq('date detection: findDates("version 2020.1.3") -> false',
+    (findDates('version 2020.1.3') !== null), false);
 
   // --- Adversarial: multiple superscripts ---
   eq('dateTolerance: multiple superscripts "March 14, 2024¹²" -> true',
-    isDateLike('March 14, 2024¹²'), true);
+    (findDates('March 14, 2024¹²') !== null), true);
 
   // --- Adversarial: footnote markers ---
   eq('dateTolerance: footnote asterisk "March 14, 2024*" -> true',
-    isDateLike('March 14, 2024*'), true);
+    (findDates('March 14, 2024*') !== null), true);
 
   eq('dateTolerance: footnote dagger "March 14, 2024†" -> true',
-    isDateLike('March 14, 2024†'), true);
+    (findDates('March 14, 2024†') !== null), true);
 
   // --- Adversarial: leading label before full date ---
   eq('dateTolerance: leading label "Date: 2020-03-14" -> true',
-    isDateLike('Date: 2020-03-14'), true);
+    (findDates('Date: 2020-03-14') !== null), true);
 
   // --- Adversarial: ordinal in the middle (no comma) ---
   eq('dateTolerance: "June 1st 2020" -> true',
-    isDateLike('June 1st 2020'), true);
+    (findDates('June 1st 2020') !== null), true);
 
   // --- Adversarial: bare year remains strict ---
 
   // "Q4 2020" — adjacent non-date word; bare-year strict anchors must block this
   eq('dateTolerance: bare-year strict "Q4 2020" -> false',
-    isDateLike('Q4 2020'), false);
+    (findDates('Q4 2020') !== null), false);
 
   // "2020 revenue" — trailing word on bare year must also be blocked
   eq('dateTolerance: bare-year strict "2020 revenue" -> false',
-    isDateLike('2020 revenue'), false);
+    (findDates('2020 revenue') !== null), false);
 
   // --- Adversarial: empty / whitespace ---
   eq('dateTolerance: whitespace only "   " -> false',
-    isDateLike('   '), false);
+    (findDates('   ') !== null), false);
 
   // --- Regression: plain dates still work after the relaxation ---
-  eq('dateTolerance regression: isDateLike("2020-03-14") -> true',
-    isDateLike('2020-03-14'), true);
+  eq('dateTolerance regression: findDates("2020-03-14") -> true',
+    (findDates('2020-03-14') !== null), true);
 
-  eq('dateTolerance regression: isDateLike("2020") -> true',
-    isDateLike('2020'), true);
+  eq('dateTolerance regression: findDates("2020") -> true',
+    (findDates('2020') !== null), true);
 
 })();
 
@@ -1534,19 +1444,19 @@ eq('pure cell write: whole negative in parens -> "(3)"',
 
   // Case 1: flag true → col 0 IS simplified (not excluded)
   eq('simplifyFirstColumn: true + col 0 → null (col IS simplified)',
-    getExclusionReason('1,234', 0, { simplifyFirstColumn: true, simplifyFirstRow: true }, 1), null);
+    getExclusionReason(0, { simplifyFirstColumn: true, simplifyFirstRow: true }, 1), null);
 
   // Case 2: flag false → col 0 excluded
   eq('simplifyFirstColumn: false + col 0 → "first-column"',
-    getExclusionReason('1,234', 0, { simplifyFirstRow: true, simplifyFirstColumn: false }, 1), 'first-column');
+    getExclusionReason(0, { simplifyFirstRow: true, simplifyFirstColumn: false }, 1), 'first-column');
 
   // Case 3: flag unset → col 0 excluded (intentional default change)
   eq('simplifyFirstColumn: unset + col 0 → "first-column" (new default semantics)',
-    getExclusionReason('1,234', 0, { simplifyFirstRow: true }, 1), 'first-column');
+    getExclusionReason(0, { simplifyFirstRow: true }, 1), 'first-column');
 
   // Case 4: flag false but col 1 → null (only col 0 is affected)
   eq('simplifyFirstColumn: false + col 1 → null (non-first column unaffected)',
-    getExclusionReason('1,234', 1, { simplifyFirstRow: true, simplifyFirstColumn: false }, 1), null);
+    getExclusionReason(1, { simplifyFirstRow: true, simplifyFirstColumn: false }, 1), null);
 
   // -------------------------------------------------------------------------
   // DR_DEFAULTS snapshot — all six keys with exact default values.
@@ -2017,14 +1927,14 @@ const LADDER_OPTS = {
   }
 })();
 
-(function getExclusionReason_currencyCodes() {
+(function currencyCodes_holdANumberWithCurrencyOff() {
   const currencyOff = Object.assign({}, LADDER_OPTS, { simplifyMixedCurrency: false });
-  eq('getExclusionReason: a listed code counts as a currency sign',
-    getExclusionReason('CAD45.67m', 1, currencyOff, 1), 'currency');
-  eq('getExclusionReason: a code inside a longer word does not count',
-    getExclusionReason('CADENCE 12', 1, currencyOff, 1), null);
-  eq('getExclusionReason: a code in lower case does not count',
-    getExclusionReason('usd 12', 1, currencyOff, 1), null);
+  eq('currency code: "CAD45.67m" holds its number with currency off',
+    classifyAt('CAD45.67m', currencyOff).stretches, []);
+  eq('currency code: "CADENCE 12" rounds its number with currency off',
+    stretchTexts('CADENCE 12', classifyAt('CADENCE 12', currencyOff)), ['12']);
+  eq('currency code: "usd 12" rounds its number with currency off',
+    stretchTexts('usd 12', classifyAt('usd 12', currencyOff)), ['12']);
 })();
 
 // Every span pattern starts only where a shape can start and has no repeat
@@ -2561,13 +2471,13 @@ const LADDER_OPTS = {
     }
   }
 
-  // Every code the list names is a currency code, so the currency exclusion
-  // and the unit-number reader both admit it.
+  // Every code the list names is a currency code, so the currency switch and
+  // the unit-number reader both read it.
   const currencyOff = { simplifyFirstRow: true, simplifyFirstColumn: true,
     simplifyMixedPercent: true, simplifyMixedCurrency: false };
   for (const { name, code } of CURRENCIES) {
-    eq('currencies: the code ' + code + ' (' + name + ') excludes a cell with the currency setting off',
-      getExclusionReason('450 ' + code, 1, currencyOff, 1), 'currency');
+    eq('currencies: the code ' + code + ' (' + name + ') holds "450 ' + code + '" with the currency setting off',
+      classifyAt('450 ' + code, currencyOff).stretches, []);
   }
 
   // The data test reads a cell through the number reader, so a table whose
@@ -2623,16 +2533,16 @@ const LADDER_OPTS = {
   eq('currencies: a picture sign with a letter left beside it does not read ("a€45")',
     toNumber('a€45'), null);
 
-  // The currency exclusion must not fire on a capital R inside a word, so a
-  // plain text cell is not skipped as currency with the setting off.
+  // A capital R inside a word is no currency sign, so with the setting off
+  // the number beside it still rounds.
   const currencyOff = { simplifyFirstRow: true, simplifyFirstColumn: true,
     simplifyMixedPercent: true, simplifyMixedCurrency: false };
-  eq('currencies: "Revenue 45" is not a currency cell',
-    getExclusionReason('Revenue 45', 1, currencyOff, 1), null);
-  eq('currencies: "Fresh 45" is not a currency cell',
-    getExclusionReason('Fresh 45', 1, currencyOff, 1), null);
-  eq('currencies: "R 45" is a currency cell',
-    getExclusionReason('R 45', 1, currencyOff, 1), 'currency');
+  eq('currencies: "Revenue 45" rounds its number with currency off',
+    stretchTexts('Revenue 45', classifyAt('Revenue 45', currencyOff)), ['45']);
+  eq('currencies: "Fresh 45" rounds its number with currency off',
+    stretchTexts('Fresh 45', classifyAt('Fresh 45', currencyOff)), ['45']);
+  eq('currencies: "R 45" holds its number with currency off',
+    classifyAt('R 45', currencyOff).stretches, []);
 })();
 
 // --- Reading the sign ---

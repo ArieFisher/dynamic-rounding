@@ -34,8 +34,9 @@ function isAmbiguousDateClassification(classification) {
 // cannot split one column into two groups that read 7/4/99 as July in one row
 // and April in another. A month-first or day-first hint gives each ambiguous
 // date stretch its day and month. A mixed or ambiguous column cannot be read
-// safely, so the post-pass empties the stretch list of each of its cells,
-// and a cell never changes some of its dates and holds others.
+// safely, so the post-pass removes every date stretch of each of its cells,
+// and a cell never changes some of its dates and holds others. The cell's
+// numbers and times still change.
 function resolveAmbiguousDates(classifiedCells) {
   const ambiguousDatesByCol = new Map();
   for (const { classification, columnIndex } of classifiedCells) {
@@ -51,7 +52,7 @@ function resolveAmbiguousDates(classifiedCells) {
     const hint = hintByCol.get(columnIndex);
     const stretches = hint === 'month-first' || hint === 'day-first'
       ? classification.stretches.map((s) => (isAmbiguousDate(s) ? readAmbiguousDate(s, hint === 'month-first') : s))
-      : [];
+      : classification.stretches.filter((s) => s.kind !== 'date');
     return Object.assign({}, classifiedCell, { classification: Object.assign({}, classification, { stretches }) });
   });
 }
@@ -70,9 +71,14 @@ function datasetMaxMagnitude(classifiedCells, passedMaxMag) {
 
 // One stretch's new text: a number rounds against the max magnitude, and a
 // date or a time to its granularity. null for a time the step cannot round.
+// A date stretch that covers an ISO date-time's separator writes a space in
+// its place.
 function roundStretch(text, stretch, written, maxMag, settings) {
+  if (stretch.kind === 'date' && stretch.separator) {
+    return roundDate(text, { ...stretch, end: stretch.separator.start }, settings.dateGranularity) + ' ';
+  }
   if (stretch.kind === 'date') return roundDate(text, stretch, settings.dateGranularity);
-  if (stretch.kind === 'time') return roundTimeText(written, settings.timeGranularity);
+  if (stretch.kind === 'time') return roundTime(stretch, settings.timeGranularity);
   const { offsetTop, offsetOther, numTop } = settings;
   return formatNumber(roundValueSetAware(stretch.num, maxMag, offsetTop, offsetOther, numTop), written);
 }

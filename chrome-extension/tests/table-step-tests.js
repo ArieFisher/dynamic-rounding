@@ -344,5 +344,5 @@ function tableStepCells(api, rows) {
     TABLE_STEP_FUNCTIONS.map((name) => [name, ['chrome-extension/lib/dr-simplify/table.js']]));
   eq('table step source: content.js calls no column post-pass or max magnitude rule outside the table step',
     [...new Set((contentSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
-      .match(/\b(pickDateFormatHint|resolveAmbiguousDates|findMaxMagnitude|roundDate|roundTimeText|pureNumberSpan)\s*\(/g) || []))], []);
+      .match(/\b(pickDateFormatHint|resolveAmbiguousDates|findMaxMagnitude|roundDate|roundTime|pureNumberSpan)\s*\(/g) || []))], []);
 })();

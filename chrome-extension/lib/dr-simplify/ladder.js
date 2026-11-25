@@ -41,46 +41,124 @@ function blankRanges(text, ranges) {
 }
 
 /**
- * The dates findDates reads from the text, leaving out each date that
- * overlaps a markup range, and the spans of the dates left out. A date only
- * partly inside a link ("<a>Jan 15</a>, 2024") is left out whole. Each round
- * blanks the dates it leaves out, so a date beside them, a bare year
- * included, is read in the next round; every round blanks at least one date,
- * so the rounds end.
+ * Every date and time in the text. Each reader reads the text with the spans
+ * of the readers before it blanked, so a reader earlier in the list keeps
+ * the characters it reads: an ISO date-time first, because findDates reads no
+ * date followed by "T"; then findDates; then clock times, on the text with
+ * each superscript span blanked too, so a footnote marker right after a time
+ * ("18:30<sup>2</sup>") never joins its digits.
  */
-function readDatesOutsideMarkup(text, markupRanges) {
-  const heldSpans = [];
+function readDatesAndTimes(text, superscriptRanges) {
+  const isoPairs = findISODateTimes(text);
+  const dateText = blankRanges(text, isoPairs.map(({ date, time }) => ({ start: date.start, end: time.end })));
+  const dates = findDates(dateText) || [];
+  const times = findClockTimes(blankRanges(dateText, [...dates, ...superscriptRanges]));
+  return { isoPairs, dates, times };
+}
+
+const valuesRead = ({ isoPairs, dates, times }) =>
+  [...isoPairs.flatMap(({ date, time }) => [date, time]), ...dates, ...times];
+
+/**
+ * The dates and times the text holds outside every markup range, and the
+ * spans of the ones left out. A value only partly inside a link
+ * ("<a>Jan 15</a>, 2024") is left out whole. Each round blanks the values it
+ * leaves out, so a value beside them, a bare year included, is read in the
+ * next round. Every round blanks at least one value, so the rounds end within
+ * the cell's count of values.
+ */
+function readOutsideMarkup(text, superscriptRanges, markupRanges) {
+  let heldSpans = [];
   let readText = text;
   for (;;) {
-    const found = findDates(readText);
-    if (!found) return { dates: null, heldSpans };
-    const inside = found.filter((d) => overlapsMaskedRange(markupRanges, d.start, d.end));
-    if (inside.length === 0) return { dates: found, heldSpans };
-    const spans = inside.map((d) => ({ start: d.start, end: d.end }));
-    heldSpans.push(...spans);
+    const read = readDatesAndTimes(readText, superscriptRanges);
+    const inside = valuesRead(read).filter((v) => overlapsMaskedRange(markupRanges, v.start, v.end));
+    if (inside.length === 0) return { read, heldSpans };
+    const spans = inside.map((v) => ({ start: v.start, end: v.end }));
+    heldSpans = [...heldSpans, ...spans];
     readText = blankRanges(readText, spans);
   }
 }
 
 /**
- * The masked ranges are one list, so a new kind of text whose numbers stay as
- * written is one more source here. The identifier scan and the clock-time
- * scan read the text with each superscript span blanked, so a footnote marker
- * right after a phone number ("416-555-1234<sup>1</sup>") or a clock time
- * ("18:30<sup>2</sup>") never joins its digits.
+ * The date and time stretches among the values read, each under its own
+ * switch. An impossible date or time, a time followed by a decimal fraction,
+ * and a clock time with no AM/PM in a cell that holds a clock time with one
+ * ("12:45" in "12:45 - 1:30 PM") are held. When an ISO date-time's date
+ * changes and its time is held, the date stretch covers the separator too,
+ * and its separator field holds the separator's span, so the table step
+ * writes a space in its place.
  */
-function extractSimplifyMatches(text, superscriptRanges, markupRanges = []) {
+function dateTimeStretches({ isoPairs, dates, times }, options) {
+  const isDateChanged = (d) => options.simplifyDates && !d.impossible;
+  const isTimeChanged = (t) => options.simplifyTimes && !t.impossible && !t.hasFraction;
+  const hasMeridiemTime = times.some((t) => t.meridiem);
+  const isoStretches = isoPairs.flatMap(({ date, time }) => {
+    const timeStretches = isTimeChanged(time) ? [{ kind: 'time', ...time }] : [];
+    if (!isDateChanged(date)) return timeStretches;
+    if (timeStretches.length > 0) return [{ kind: 'date', ...date }, ...timeStretches];
+    const separator = { start: date.end, end: date.end + 1 };
+    return [{ kind: 'date', ...date, end: separator.end, separator }];
+  });
+  return [
+    ...isoStretches,
+    ...dates.filter(isDateChanged).map((d) => ({ kind: 'date', ...d })),
+    ...times.filter((t) => isTimeChanged(t) && (t.meridiem || !hasMeridiemTime)).map((t) => ({ kind: 'time', ...t })),
+  ];
+}
+
+/**
+ * The masked ranges are one list, so a new kind of text whose numbers stay as
+ * written is one more source here. The identifier scan reads the text with
+ * each superscript span blanked, so a footnote marker right after a phone
+ * number ("416-555-1234<sup>1</sup>") never joins its digits. heldRanges
+ * holds the markup ranges and the span of every date and time.
+ */
+function extractSimplifyMatches(text, superscriptRanges, heldRanges = []) {
   const shapeText = blankRanges(text, superscriptRanges);
   const masked = [
-    ...markupRanges,
+    ...heldRanges,
     ...getQuoteMaskedRanges(text),
     ...getIdentifierMaskedRanges(shapeText),
     ...superscriptRanges,
     ...getEraYearMaskedRanges(text),
-    ...getClockTimeMaskedRanges(shapeText),
   ];
   return extractNumbersInText(text)
     .filter((m) => !overlapsMaskedRange(masked, m.index, m.index + m.numStr.length));
+}
+
+/**
+ * The numbers of a cell that holds no date or time, read through the
+ * whole-cell shapes first. A cell that is one number (a pure cell, a
+ * bracketed number, or a unit number) gives one match over its digits alone,
+ * so the write-back leaves a sign, a bracket, a currency sign, a percent
+ * sign, a suffix, or a currency code where the page put it.
+ */
+function readNumberCell(text, input, heldRanges) {
+  const { superscriptRanges = [], hasSuperscript = false, digitsSpanPieces = false } = input;
+  // In a cell with a superscript, the text classifyCell reads joins base and
+  // exponent digits ("10<sup>12</sup>" reads "1012"), which is not the text
+  // the reader sees. So no whole-cell shape is tested against it, and
+  // extraction masks each superscript span.
+  if (hasSuperscript) return extractSimplifyMatches(text, superscriptRanges, heldRanges);
+
+  // An identifier shape reads as a code, not a quantity, so the whole cell
+  // stays as written. Checked before the number reader, which also reads a
+  // digit run with a leading zero ("0012345678", "(0012345678)") as a number.
+  if (matchIdentifierShape(text.trim(), digitsSpanPieces)) return [];
+
+  const num = toNumber(text);
+  if (num !== null) {
+    const span = pureNumberSpan(text);
+    return [{ numStr: span.numStr, num, index: span.index }];
+  }
+
+  // A unit number ("4.91tn", "CAD45.67") is one number with a suffix or a
+  // currency code.
+  const unit = matchUnitNumber(text);
+  if (unit) return [unit];
+
+  return extractSimplifyMatches(text, superscriptRanges, heldRanges);
 }
 
 function numberStretch(match) {
@@ -92,97 +170,44 @@ function numberStretch(match) {
  * cell's stretches in text order, each with its start and end in text:
  *
  *   { kind: 'number', start, end, num }
- *   { kind: 'date', start, end, ...the date findDates reads (lib/dr-number) }
- *   { kind: 'time', start, end, ...the time readTimeCell reads }
+ *   { kind: 'date', start, end, ...the date findDates or findISODateTimes
+ *     reads, and separator (see dateTimeStretches) }
+ *   { kind: 'time', start, end, ...the time findClockTimes or
+ *     findISODateTimes reads }
  *
- * A cell holds one kind. A cell that is one number (a pure cell, a bracketed
- * number, or a unit number) holds one number stretch over its digits. The
- * column post-pass settles the day and month of an ambiguous date stretch
- * (isAmbiguousDate).
+ * Every number, date, and time in a cell is its own stretch under its own
+ * switch. A value held stays as written and takes no stretch, and the
+ * readers after it never read its characters. The column post-pass settles
+ * the day and month of an ambiguous date stretch (isAmbiguousDate).
+ *
  * A cell holds no stretch when it is out of range, under an exclusion
- * (getExclusionReason), wholly quoted, an identifier shape, or a one-number
- * cell whose number sits in a markup range; when its date or time switch is
- * off; when it holds an impossible date or time; and when it holds no number.
- * The placement step adds split: true to a classification whose split
- * stretches it removes.
+ * (getExclusionReason), wholly quoted, or an identifier shape. A value is
+ * held when it overlaps a markup range or its switch is off. A date or time
+ * is also held when it is impossible (see dateTimeStretches), and a number
+ * when a currency or percent sign whose switch is off touches its digits
+ * (touchesSwitchedOffSign). The placement step adds split: true to a
+ * classification whose split stretches it removes.
  */
 function classifyCell(input, options) {
-  const {
-    text,
-    rowIndex,
-    columnIndex,
-    ranges,
-    markupRanges = [],
-    hasSuperscript = false,
-    superscriptRanges = [],
-    digitsSpanPieces = false,
-  } = input;
-  const trimmed = text.trim();
-  // The markup ranges, then each date or time that overlaps one: its digits
-  // stay as written too.
-  let held = markupRanges;
-  // A cell that is one number gets one number stretch over its digits alone,
-  // so the write-back leaves a sign, a bracket, a currency sign, a percent
-  // sign, a suffix, or a currency code where the page put it.
-  const oneNumber = (match) => (
-    overlapsMaskedRange(held, match.index, match.index + match.numStr.length)
-      ? { stretches: [] }
-      : { stretches: [numberStretch(match)] });
+  const { text, rowIndex, columnIndex, ranges, markupRanges = [], superscriptRanges = [] } = input;
 
   if (!isInRanges(rowIndex, columnIndex, ranges)) return { stretches: [] };
-  if (getExclusionReason(text, columnIndex, options, rowIndex)) return { stretches: [] };
-  if (isWholeCellQuoted(trimmed)) return { stretches: [] };
+  if (getExclusionReason(columnIndex, options, rowIndex)) return { stretches: [] };
+  if (isWholeCellQuoted(text.trim())) return { stretches: [] };
 
-  // A date or a time that overlaps a markup range stays as written, and its
-  // digits join the held ranges for the number steps. A clock time, or an
-  // ISO date-time with its date kept, follows the "times" switch. Checked
-  // before findDates, which would otherwise match the date of a
-  // space-separated date-time.
-  let dates = null;
-  const time = readTimeCell(trimmed);
-  if (time) {
-    const lead = text.length - text.trimStart().length;
-    const span = { start: lead, end: lead + trimmed.length };
-    if (!overlapsMaskedRange(markupRanges, span.start, span.end)) {
-      if (!options.simplifyTimes || time.impossible) return { stretches: [] };
-      return { stretches: [{ kind: 'time', ...time, ...span }] };
-    }
-    held = [...held, span];
-  } else {
-    const read = readDatesOutsideMarkup(text, markupRanges);
-    dates = read.dates;
-    held = [...held, ...read.heldSpans];
-  }
-  if (dates) {
-    if (!options.simplifyDates || dates.some((d) => d.impossible)) return { stretches: [] };
-    return { stretches: dates.map((d) => ({ kind: 'date', ...d })) };
-  }
-
-  // In a cell with a superscript, the text classifyCell reads joins base and
-  // exponent digits ("10<sup>12</sup>" reads "1012"), which is not the text
-  // the reader sees. So no whole-cell shape is tested against it, and
-  // extraction masks each superscript span.
-  if (hasSuperscript) {
-    return { stretches: extractSimplifyMatches(text, superscriptRanges, held).map(numberStretch) };
-  }
-
-  // An identifier shape reads as a code, not a quantity, so the whole cell
-  // stays as written. Checked before the number reader, which also reads a
-  // digit run with a leading zero ("0012345678", "(0012345678)") as a number.
-  if (matchIdentifierShape(trimmed, digitsSpanPieces)) return { stretches: [] };
-
-  const num = toNumber(text);
-  if (num !== null) {
-    const span = pureNumberSpan(text);
-    return oneNumber({ numStr: span.numStr, num, index: span.index });
-  }
-
-  // A unit number ("4.91tn", "CAD45.67") is one number with a suffix or a
-  // currency code.
-  const unit = matchUnitNumber(text);
-  if (unit) return oneNumber(unit);
-
-  return { stretches: extractSimplifyMatches(text, superscriptRanges, held).map(numberStretch) };
+  const { read, heldSpans } = readOutsideMarkup(text, superscriptRanges, markupRanges);
+  const dateTimeSpans = [...valuesRead(read), ...heldSpans];
+  const heldRanges = [...markupRanges, ...dateTimeSpans];
+  const numbers = dateTimeSpans.length > 0
+    ? extractSimplifyMatches(text, superscriptRanges, heldRanges)
+    : readNumberCell(text, input, heldRanges);
+  const numberStretches = numbers
+    .filter((m) => !overlapsMaskedRange(heldRanges, m.index, m.index + m.numStr.length))
+    .filter((m) => !touchesSwitchedOffSign(text, m, options))
+    .map(numberStretch);
+  const stretches = [...dateTimeStretches(read, options), ...numberStretches]
+    .sort((a, b) => a.start - b.start);
+  return { stretches };
 }
 
 /**

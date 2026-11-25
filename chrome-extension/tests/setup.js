@@ -174,7 +174,6 @@ globalThis.CURRENCIES = CURRENCIES;
 globalThis.CURRENCY_SIGNS = CURRENCY_SIGNS;
 globalThis.CLEAN_REGEX = CLEAN_REGEX;
 globalThis.getEraYearMaskedRanges = getEraYearMaskedRanges;
-globalThis.getClockTimeMaskedRanges = getClockTimeMaskedRanges;
 // Expose the table pillbox geometry constants (all are const, so direct assignment works)
 globalThis.TABLE_PILLBOX_DOT_PX = TABLE_PILLBOX_DOT_PX;
 globalThis.TABLE_PILLBOX_PILL_HEIGHT_PX = TABLE_PILLBOX_PILL_HEIGHT_PX;

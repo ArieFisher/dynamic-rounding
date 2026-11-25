@@ -39,6 +39,7 @@ const DR_NUMBER = {
   // numbers-in-text.js
   matchUnitNumber,
   getExclusionReason,
+  touchesSwitchedOffSign,
   getQuoteMaskedRanges,
   overlapsMaskedRange,
   extractNumbersInText,
@@ -51,16 +52,13 @@ const DR_NUMBER = {
   knownDate,
   findDates,
   isAmbiguousDate,
-  isDateLike,
-  isTimeLike,
-  getClockTimeMaskedRanges,
-  parseISODateTime,
-  isDateTimeLike,
   isClockTimeInRange,
-  readTimeCell,
+  readClockTime,
+  findClockTimes,
+  findISODateTimes,
   roundDate,
   roundClockTime,
-  roundTimeText,
+  roundTime,
   getEraYearMaskedRanges,
 
   // write-back.js

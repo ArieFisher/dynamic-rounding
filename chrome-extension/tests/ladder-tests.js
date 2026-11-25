@@ -52,7 +52,7 @@
 
 (function classifyCell_unknownExclusionFailsClosed() {
   // getExclusionReason today only ever returns 'first-row' | 'first-column' |
-  // 'percent' | 'currency' | null, but classifyCell's ladder must fail
+  // null, but classifyCell's ladder must fail
   // closed (no stretch) on any other non-null value a future exclusion rule
   // returns, instead of silently falling through and simplifying the cell.
   // classifyCell calls getExclusionReason as a bare same-scope identifier
@@ -104,17 +104,19 @@
     classifyCell({ text: '3:45 PM', rowIndex: 1, columnIndex: 1, ranges: null },
       Object.assign({}, LADDER_OPTS, { simplifyTimes: true })),
     { stretches: [{
-      kind: 'time', hourText: '3', hour: 3, minute: 45, second: 0, meridiem: ' PM', date: null, start: 0, end: 7 }] });
-  // A cell holding an impossible time stays as written, like a cell holding an
-  // impossible date, so a timestamp's date digits never round as plain numbers.
+      kind: 'time', start: 0, end: 7, hourText: '3', hour: 3, minute: 45, second: 0, meridiem: ' PM' }] });
+  // An impossible time stays as written, like an impossible date, so a
+  // timestamp's digits never round as plain numbers. Its date still follows
+  // the Dates switch.
   const timesOn = Object.assign({}, LADDER_OPTS, { simplifyTimes: true });
-  eq('classifyCell: a cell holding an impossible time holds no stretch',
+  eq('classifyCell: a cell holding an impossible time holds no time or number stretch',
     ['24:00', '10:00:75', '0:30 AM', '2025-01-01T10:00:60', '2025-11-26T24:00'].map((text) =>
-      classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, timesOn)),
-    [{ stretches: [] }, { stretches: [] }, { stretches: [] }, { stretches: [] }, { stretches: [] }]);
-  eq('classifyCell: "2025-11-26T24:00" holds no stretch when simplifyTimes is false',
+      classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, timesOn).stretches.map((s) => s.kind)),
+    [[], [], [], ['date'], ['date']]);
+  eq('classifyCell: "2025-11-26T24:00" holds one date stretch over the date and the "T" when simplifyTimes is false',
     classifyCell({ text: '2025-11-26T24:00', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-    { stretches: [] });
+    { stretches: [{ kind: 'date', year: 2025, month: 11, monthBeforeYear: false, start: 0, end: 11,
+      dayCut: { start: 7, end: 10 }, separator: { start: 10, end: 11 } }] });
 })();
 
 (function classifyCell_markup() {
@@ -441,9 +443,8 @@ const IDENTIFIER_SPAN_NEAR_MISSES = [
     extractNumbersInText('@2020vision has 1,613,245 fans').map((m) => m.numStr), ['1,613,245']);
 })();
 
-// A clock time inside text keeps its digits, whatever the Times setting
-// holds, and the cell's other numbers round. A cell holding one clock time
-// and nothing else follows the Times setting (see the time rows above).
+// A clock time inside text never rounds as a number, whatever the Times
+// setting holds, and the cell's other numbers round.
 const CLOCK_TIME_SPAN_CELLS = [
   ['9:45 - 11:45 AM', []],
   ['11:45 AM - 1:00 PM', []],
@@ -459,25 +460,22 @@ const CLOCK_TIME_SPAN_NEAR_MISSES = [
 ];
 
 (function clockTimes_holdTheirDigitsInsideText() {
-  const extractedNumbers = (text, opts) => {
-    const classification = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, opts);
-    return classification.stretches.every((s) => s.kind === 'number') ? stretchTexts(text, classification) : classification;
+  const extractedNumbers = (text, opts, extra) => {
+    const classification = classifyAt(text, opts, extra);
+    return stretchTexts(text, { stretches: classification.stretches.filter((s) => s.kind === 'number') });
   };
   const timesOn = Object.assign({}, LADDER_OPTS, { simplifyTimes: true });
   for (const [text, expected] of CLOCK_TIME_SPAN_CELLS) {
     eq(`clock time inside text: "${text}" rounds only its quantity`, extractedNumbers(text, LADDER_OPTS), expected);
-    eq(`clock time inside text: "${text}" rounds only its quantity with Times on`, extractedNumbers(text, timesOn), expected);
+    eq(`clock time inside text: "${text}" rounds the same numbers with Times on`, extractedNumbers(text, timesOn), expected);
   }
   for (const [text, expected] of CLOCK_TIME_SPAN_NEAR_MISSES) {
     eq(`clock time inside text: "${text}" rounds every number`, extractedNumbers(text, LADDER_OPTS), expected);
   }
   eq('clock time inside text: a footnote marker right after a clock time leaves the time whole',
-    extractSimplifyMatches('18:302 departs, 1,234 seats', [{ start: 5, end: 6 }]).map((m) => m.numStr),
+    extractedNumbers('18:302 departs, 1,234 seats', LADDER_OPTS,
+      { hasSuperscript: true, superscriptRanges: [{ start: 5, end: 6 }] }),
     ['1,234']);
-  eq('clock time inside text: ranges cover each time\'s digits and leave the AM/PM out',
-    getClockTimeMaskedRanges('9:45 - 11:45 AM'), [{ start: 0, end: 4 }, { start: 7, end: 12 }]);
-  eq('clock time inside text: a text with no clock time has no ranges',
-    getClockTimeMaskedRanges('About 1,613,245 people'), []);
 })();
 
 // =============================================================================

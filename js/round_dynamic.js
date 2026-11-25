@@ -123,7 +123,7 @@ function findMaxMagnitude(dataset) {
 // The one currency list. Each row gives a currency's written signs and its
 // ISO code, and the code for every currency rule reads this list: the signs
 // stripped before a text reads as a number, the signs and codes a unit
-// number may carry, the currency exclusion, and, through the format-mark
+// number may carry, the currency switch, and, through the format-mark
 // list below, the bracketed-number test and the number span. Nothing
 // restates it.
 //
@@ -180,8 +180,6 @@ const CURRENCY_SIGN_ALTERNATION = CURRENCY_SIGNS
     return before + escaped + after;
   })
   .join('|');
-// One currency sign, anywhere in a text.
-const CURRENCY_SIGN_RE = new RegExp(CURRENCY_SIGN_ALTERNATION);
 
 // The one format-mark list: a character that sits beside a number without
 // belonging to it — a currency sign, a percent sign, and whitespace. The
@@ -447,7 +445,7 @@ const NUMBER_IN_TEXT_REGEX_GLOBAL = new RegExp(NUMBER_IN_TEXT_PATTERN, 'g');
 // that list: the docs point here instead of restating it.
 const MAGNITUDE_SUFFIXES = ['bn', 'tn', 'k', 'm', 'b', 't'];
 const CURRENCY_CODE_ALTERNATION = CURRENCY_CODES.join('|');
-const CURRENCY_CODE_TOKEN_RE = new RegExp('(?<![A-Za-z])(?:' + CURRENCY_CODE_ALTERNATION + ')(?![A-Za-z])');
+const CURRENCY_CODE_TOKEN = '(?<![A-Za-z])(?:' + CURRENCY_CODE_ALTERNATION + ')(?![A-Za-z])';
 // Each suffix letter matches either case ("m", "M", "Bn", "TN").
 const MAGNITUDE_SUFFIX_ALTERNATION = MAGNITUDE_SUFFIXES
   .map((suffix) => suffix.split('').map((ch) => '[' + ch.toLowerCase() + ch.toUpperCase() + ']').join(''))
@@ -489,14 +487,34 @@ function matchUnitNumber(text) {
   return { numStr, num, index: lead + (pre || '').length };
 }
 
-function getExclusionReason(text, columnIndex, options, rowIndex) {
+function getExclusionReason(columnIndex, options, rowIndex) {
   if (!options.simplifyFirstRow && rowIndex === 0) return 'first-row';
   if (!options.simplifyFirstColumn && columnIndex === 0) return 'first-column';
-  if (typeof text !== 'string') return null;
-  if (!options.simplifyMixedPercent && /%/.test(text)) return 'percent';
-  if (!options.simplifyMixedCurrency &&
-    (CURRENCY_SIGN_RE.test(text) || CURRENCY_CODE_TOKEN_RE.test(text))) return 'currency';
   return null;
+}
+
+// A currency sign or code, or a percent sign, belongs to the number whose
+// digits it touches, with at most one whitespace character between: "$12,345",
+// "12,345 USD", "5%". One elsewhere in the cell belongs to no number, so
+// "Revenue (USD) 12,345" holds none. The side before the digits steps past an
+// opening bracket ("$(1,234)"), and the side after past a magnitude suffix
+// ("45.67m CAD") and a closing bracket.
+const CURRENCY_TOKEN = '(?:' + CURRENCY_SIGN_ALTERNATION + '|' + CURRENCY_CODE_TOKEN + ')';
+const CURRENCY_BEFORE_RE = new RegExp(CURRENCY_TOKEN + '\\s?\\(?$');
+const CURRENCY_AFTER_RE = new RegExp('^(?:' + MAGNITUDE_SUFFIX_ALTERNATION + ')?\\)?\\s?' + CURRENCY_TOKEN);
+const PERCENT_AFTER_RE = /^\s?%/;
+
+/**
+ * True when a currency sign or code touches the number's digits and the
+ * currency switch is off, or a percent sign touches them and the percent
+ * switch is off. `match` is a number in the shape extractNumbersInText
+ * returns, positioned in `text`.
+ */
+function touchesSwitchedOffSign(text, match, options) {
+  const before = text.slice(0, match.index);
+  const after = text.slice(match.index + match.numStr.length);
+  if (!options.simplifyMixedCurrency && (CURRENCY_BEFORE_RE.test(before) || CURRENCY_AFTER_RE.test(after))) return true;
+  return !options.simplifyMixedPercent && PERCENT_AFTER_RE.test(after);
 }
 
 // The {start, end} range of each match of a global regex in the text, or,
@@ -775,49 +793,23 @@ function isAmbiguousDate(date) {
   return date.n1 !== undefined;
 }
 
-function isDateLike(text) {
-  return findDates(text) !== null;
-}
-
-// The one clock-time shape: HH:MM or HH:MM:SS. A whole-cell time adds an
-// optional AM/PM; a time inside text is the same digits with no digit or
-// colon on either side, so "123:45" and "16:9" never read as times.
-const CLOCK_TIME_SOURCE = '(?<hour>\\d{1,2}):(?<minute>\\d{2})(?::(?<second>\\d{2}))?';
-const WHOLE_CELL_TIME_RE = new RegExp('^' + CLOCK_TIME_SOURCE + '(?<meridiem>\\s*[ap]\\.?m\\.?)?$', 'i');
-const CLOCK_TIME_IN_TEXT_RE = new RegExp('(?<![\\d:])' + CLOCK_TIME_SOURCE + '(?![\\d:])', 'g');
-
-function isTimeLike(text) {
-  const time = readTimeCell(text);
-  return Boolean(time && !time.impossible && !time.date);
-}
-
-/**
- * Return {start, end} ranges (offsets into `text`) of every clock time inside
- * the text ("9:45 - 11:45 AM" holds two). Each range covers the digits and
- * colons alone; an AM/PM holds no digit to mask.
- */
-function getClockTimeMaskedRanges(text) {
-  return matchRanges(text, CLOCK_TIME_IN_TEXT_RE);
-}
-
-// The time is the one clock-time shape. A fraction of a second follows the
-// seconds only.
-const ISO_DATE_TIME_RE = new RegExp('^(?<year>\\d{4})-(?<month>\\d{2})-(?<day>\\d{2})[T ]' + CLOCK_TIME_SOURCE +
-  '(?:(?<=:\\d{2}:\\d{2})\\.\\d{1,9})?(?:Z|[+-]\\d{2}:?\\d{2})?$');
-
-/**
- * Parse an ISO 8601 date-time string into its wall-clock components.
- * Accepts "YYYY-MM-DDTHH:MM[:SS[.fff]][Z|±HH[:]MM]", with an hour of one or
- * two digits; the date/time separator may be "T" or a single space. The
- * fraction of a second and the timezone offset are recognised but discarded.
- * @returns {{year:number, month:number, day:number, hour:number, minute:number, second:number}|null}
- */
-function parseISODateTime(text) {
-  const time = readTimeCell(text);
-  if (!time || time.impossible || !time.date) return null;
-  const { hour, minute, second } = time;
-  return { ...time.date, hour, minute, second };
-}
+// The one clock-time shape: HH:MM or HH:MM:SS, with no digit or colon on
+// either side, so "123:45" and "16:9" never read as times.
+const CLOCK_TIME_SOURCE = '(?<![\\d:])(?<hour>\\d{1,2}):(?<minute>\\d{2})(?::(?<second>\\d{2}))?(?![\\d:])';
+// An AM/PM, after optional whitespace, as its own token.
+const MERIDIEM_SOURCE = '\\s*[aApP]\\.?[mM]\\.?(?![A-Za-z])';
+// A clock time takes the AM/PM after it into its own characters.
+const CLOCK_TIME_RE = new RegExp(CLOCK_TIME_SOURCE + '(?<meridiem>' + MERIDIEM_SOURCE + ')?', 'g');
+// A clock time followed by a decimal fraction ("Lap 3:43.13") is a race time
+// or a duration in tenths, not a time of day.
+const FRACTION_AFTER_RE = /^\.\d/;
+// An ISO date-time: a date, "T" or one space, and a clock time, with a
+// fraction of a second after the seconds only and an optional time zone. A
+// date followed by a twelve-hour time ("2026-11-09 7:30 PM") is a date and a
+// clock time, not an ISO date-time.
+const ISO_DATE_TIME_RE = new RegExp('(?<!\\w)(?<year>\\d{4})-(?<month>\\d{2})-(?<day>\\d{2})[T ]' +
+  CLOCK_TIME_SOURCE + '(?:(?<=:\\d{2}:\\d{2})\\.\\d{1,9})?(?:Z|[+-]\\d{2}:?\\d{2})?' +
+  '(?![\\w:]|\\.\\d|' + MERIDIEM_SOURCE + ')', 'gd');
 
 // The one range check for a time's parts: an hour of 1 to 12 with an AM/PM or
 // 0 to 23 without, and minutes and seconds of 0 to 59.
@@ -826,35 +818,58 @@ function isClockTimeInRange(hour, minute, second, hasMeridiem) {
   return hourInRange && minute <= 59 && second <= 59;
 }
 
-/**
- * Read a cell's text as one whole-cell clock time or one ISO date-time.
- * Returns null for text in neither shape or an ISO date-time whose date
- * cannot exist, { impossible: true } for a time with a part out of range
- * ("24:00", "10:00:75"), and otherwise the time: its hour as written
- * (hourText), hour, minute, second, its AM/PM as written (meridiem, '' for
- * none), and, for an ISO date-time, its date { year, month, day }.
- */
-function readTimeCell(text) {
-  if (typeof text !== 'string') return null;
-  const trimmed = text.trim();
-  const iso = trimmed.match(ISO_DATE_TIME_RE);
-  const m = iso || trimmed.match(WHOLE_CELL_TIME_RE);
-  if (!m) return null;
-  const g = m.groups;
-  if (iso && (!isMonth(g.month) || !isDay(g.day))) return null;
+// One time from a match of a pattern holding CLOCK_TIME_SOURCE, over
+// [start, end): its hour as written (hourText), hour, minute, second, and its
+// AM/PM as written (meridiem, '' for none). A time with a part out of range
+// ("24:00", "10:00:75") is { impossible: true, start, end }.
+function readClockTime(groups, start, end, meridiem) {
   const time = {
-    hourText: g.hour,
-    hour: parseInt(g.hour, 10),
-    minute: parseInt(g.minute, 10),
-    second: g.second ? parseInt(g.second, 10) : 0,
-    meridiem: g.meridiem || '',
-    date: iso ? { year: parseInt(g.year, 10), month: parseInt(g.month, 10), day: parseInt(g.day, 10) } : null,
+    start,
+    end,
+    hourText: groups.hour,
+    hour: parseInt(groups.hour, 10),
+    minute: parseInt(groups.minute, 10),
+    second: groups.second ? parseInt(groups.second, 10) : 0,
+    meridiem,
   };
-  return isClockTimeInRange(time.hour, time.minute, time.second, time.meridiem !== '') ? time : { impossible: true };
+  return isClockTimeInRange(time.hour, time.minute, time.second, meridiem !== '')
+    ? time : { impossible: true, start, end };
 }
 
-function isDateTimeLike(text) {
-  return parseISODateTime(text) !== null;
+/**
+ * Find every clock time in the text, left to right ("9:45 - 11:45 AM" holds
+ * two). Each is a time (see readClockTime), an impossible time, or
+ * { hasFraction: true, start, end } for a time followed by a decimal
+ * fraction. Each span covers the time's digits and colons and its AM/PM.
+ */
+function findClockTimes(text) {
+  return Array.from(text.matchAll(CLOCK_TIME_RE), (m) => {
+    const start = m.index;
+    const end = start + m[0].length;
+    if (FRACTION_AFTER_RE.test(text.slice(end))) return { hasFraction: true, start, end };
+    return readClockTime(m.groups, start, end, m.groups.meridiem || '');
+  });
+}
+
+/**
+ * Find every ISO date-time in the text, left to right, as a date and a time.
+ * The date spans "YYYY-MM-DD" and is a date with a known reading (see
+ * knownDate) or an impossible date. The time spans the separator through the
+ * time zone and is a time (see readClockTime) on the twenty-four hour clock
+ * (isTwentyFourHour), or an impossible time.
+ * @returns {{date: object, time: object}[]}
+ */
+function findISODateTimes(text) {
+  return Array.from(text.matchAll(ISO_DATE_TIME_RE), (m) => {
+    const { year, month, day } = m.groups;
+    const dateEnd = endOf(m, 'day');
+    const date = isMonth(month) && isDay(day)
+      ? knownDate(parseInt(year, 10), parseInt(month, 10), false, m.index, dateEnd,
+        { start: endOf(m, 'month'), end: dateEnd })
+      : { impossible: true, start: m.index, end: dateEnd };
+    const time = readClockTime(m.groups, dateEnd, m.index + m[0].length, '');
+    return { date, time: time.impossible ? time : { ...time, isTwentyFourHour: true } };
+  });
 }
 
 /**
@@ -909,30 +924,24 @@ function roundClockTime({ hour, minute, second, isPm, isTwentyFourHour }, granul
 }
 
 /**
- * Simplify a cell holding one clock time or one ISO date-time per the time
- * granularity, through roundClockTime. A clock time keeps its AM/PM style and
- * its hour padding: "11:59:30 a.m." becomes "12:00 p.m." at minute. An ISO
- * date-time keeps its date and becomes "YYYY-MM-DD HH:MM". Returns null when
- * the text holds neither or the result equals the text.
+ * The new text of one time (see findClockTimes and findISODateTimes), rounded
+ * to the granularity through roundClockTime, or null when it cannot round. A
+ * clock time keeps its AM/PM style and its hour padding: "11:59:30 a.m."
+ * becomes "12:00 p.m." at minute. An ISO date-time's time spans its
+ * separator, so it becomes " HH:MM".
  */
-function roundTimeText(text, granularity) {
-  const time = readTimeCell(text);
-  if (!time || time.impossible) return null;
-  const trimmed = text.trim();
+function roundTime(time, granularity) {
   const pad = (n) => String(n).padStart(2, '0');
-  const changed = (result) => (result === trimmed ? null : result);
-  const { hourText, hour, minute, second, meridiem, date } = time;
-  if (date) {
-    const rounded = roundClockTime({ hour, minute, second, isTwentyFourHour: true }, granularity);
-    return rounded && changed(`${date.year}-${pad(date.month)}-${pad(date.day)} ${pad(rounded.hour)}:${pad(rounded.minute)}`);
-  }
-  const rounded = roundClockTime({ hour, minute, second, isPm: meridiem ? /p/i.test(meridiem) : undefined }, granularity);
+  const { hourText, hour, minute, second, meridiem, isTwentyFourHour } = time;
+  const isPm = meridiem ? /p/i.test(meridiem) : undefined;
+  const rounded = roundClockTime({ hour, minute, second, isPm, isTwentyFourHour }, granularity);
   if (!rounded) return null;
+  if (isTwentyFourHour) return ` ${pad(rounded.hour)}:${pad(rounded.minute)}`;
   const roundedHour = !meridiem && hourText.length === 2 ? pad(rounded.hour) : String(rounded.hour);
   // Swap the a/p letter alone, so the suffix keeps its case, dots, and spacing.
   const suffix = rounded.isPm ? meridiem.replace(/a/i, (c) => (c === 'A' ? 'P' : 'p'))
     : meridiem.replace(/p/i, (c) => (c === 'P' ? 'A' : 'a'));
-  return changed(`${roundedHour}:${pad(rounded.minute)}${suffix}`);
+  return `${roundedHour}:${pad(rounded.minute)}${suffix}`;
 }
 
 // --- Era-marked calendar years (e.g. "2898 AD", "500 BC", "AD 79", "1200 CE") ---
@@ -1323,46 +1332,124 @@ function blankRanges(text, ranges) {
 }
 
 /**
- * The dates findDates reads from the text, leaving out each date that
- * overlaps a markup range, and the spans of the dates left out. A date only
- * partly inside a link ("<a>Jan 15</a>, 2024") is left out whole. Each round
- * blanks the dates it leaves out, so a date beside them, a bare year
- * included, is read in the next round; every round blanks at least one date,
- * so the rounds end.
+ * Every date and time in the text. Each reader reads the text with the spans
+ * of the readers before it blanked, so a reader earlier in the list keeps
+ * the characters it reads: an ISO date-time first, because findDates reads no
+ * date followed by "T"; then findDates; then clock times, on the text with
+ * each superscript span blanked too, so a footnote marker right after a time
+ * ("18:30<sup>2</sup>") never joins its digits.
  */
-function readDatesOutsideMarkup(text, markupRanges) {
-  const heldSpans = [];
+function readDatesAndTimes(text, superscriptRanges) {
+  const isoPairs = findISODateTimes(text);
+  const dateText = blankRanges(text, isoPairs.map(({ date, time }) => ({ start: date.start, end: time.end })));
+  const dates = findDates(dateText) || [];
+  const times = findClockTimes(blankRanges(dateText, [...dates, ...superscriptRanges]));
+  return { isoPairs, dates, times };
+}
+
+const valuesRead = ({ isoPairs, dates, times }) =>
+  [...isoPairs.flatMap(({ date, time }) => [date, time]), ...dates, ...times];
+
+/**
+ * The dates and times the text holds outside every markup range, and the
+ * spans of the ones left out. A value only partly inside a link
+ * ("<a>Jan 15</a>, 2024") is left out whole. Each round blanks the values it
+ * leaves out, so a value beside them, a bare year included, is read in the
+ * next round. Every round blanks at least one value, so the rounds end within
+ * the cell's count of values.
+ */
+function readOutsideMarkup(text, superscriptRanges, markupRanges) {
+  let heldSpans = [];
   let readText = text;
   for (;;) {
-    const found = findDates(readText);
-    if (!found) return { dates: null, heldSpans };
-    const inside = found.filter((d) => overlapsMaskedRange(markupRanges, d.start, d.end));
-    if (inside.length === 0) return { dates: found, heldSpans };
-    const spans = inside.map((d) => ({ start: d.start, end: d.end }));
-    heldSpans.push(...spans);
+    const read = readDatesAndTimes(readText, superscriptRanges);
+    const inside = valuesRead(read).filter((v) => overlapsMaskedRange(markupRanges, v.start, v.end));
+    if (inside.length === 0) return { read, heldSpans };
+    const spans = inside.map((v) => ({ start: v.start, end: v.end }));
+    heldSpans = [...heldSpans, ...spans];
     readText = blankRanges(readText, spans);
   }
 }
 
 /**
- * The masked ranges are one list, so a new kind of text whose numbers stay as
- * written is one more source here. The identifier scan and the clock-time
- * scan read the text with each superscript span blanked, so a footnote marker
- * right after a phone number ("416-555-1234<sup>1</sup>") or a clock time
- * ("18:30<sup>2</sup>") never joins its digits.
+ * The date and time stretches among the values read, each under its own
+ * switch. An impossible date or time, a time followed by a decimal fraction,
+ * and a clock time with no AM/PM in a cell that holds a clock time with one
+ * ("12:45" in "12:45 - 1:30 PM") are held. When an ISO date-time's date
+ * changes and its time is held, the date stretch covers the separator too,
+ * and its separator field holds the separator's span, so the table step
+ * writes a space in its place.
  */
-function extractSimplifyMatches(text, superscriptRanges, markupRanges = []) {
+function dateTimeStretches({ isoPairs, dates, times }, options) {
+  const isDateChanged = (d) => options.simplifyDates && !d.impossible;
+  const isTimeChanged = (t) => options.simplifyTimes && !t.impossible && !t.hasFraction;
+  const hasMeridiemTime = times.some((t) => t.meridiem);
+  const isoStretches = isoPairs.flatMap(({ date, time }) => {
+    const timeStretches = isTimeChanged(time) ? [{ kind: 'time', ...time }] : [];
+    if (!isDateChanged(date)) return timeStretches;
+    if (timeStretches.length > 0) return [{ kind: 'date', ...date }, ...timeStretches];
+    const separator = { start: date.end, end: date.end + 1 };
+    return [{ kind: 'date', ...date, end: separator.end, separator }];
+  });
+  return [
+    ...isoStretches,
+    ...dates.filter(isDateChanged).map((d) => ({ kind: 'date', ...d })),
+    ...times.filter((t) => isTimeChanged(t) && (t.meridiem || !hasMeridiemTime)).map((t) => ({ kind: 'time', ...t })),
+  ];
+}
+
+/**
+ * The masked ranges are one list, so a new kind of text whose numbers stay as
+ * written is one more source here. The identifier scan reads the text with
+ * each superscript span blanked, so a footnote marker right after a phone
+ * number ("416-555-1234<sup>1</sup>") never joins its digits. heldRanges
+ * holds the markup ranges and the span of every date and time.
+ */
+function extractSimplifyMatches(text, superscriptRanges, heldRanges = []) {
   const shapeText = blankRanges(text, superscriptRanges);
   const masked = [
-    ...markupRanges,
+    ...heldRanges,
     ...getQuoteMaskedRanges(text),
     ...getIdentifierMaskedRanges(shapeText),
     ...superscriptRanges,
     ...getEraYearMaskedRanges(text),
-    ...getClockTimeMaskedRanges(shapeText),
   ];
   return extractNumbersInText(text)
     .filter((m) => !overlapsMaskedRange(masked, m.index, m.index + m.numStr.length));
+}
+
+/**
+ * The numbers of a cell that holds no date or time, read through the
+ * whole-cell shapes first. A cell that is one number (a pure cell, a
+ * bracketed number, or a unit number) gives one match over its digits alone,
+ * so the write-back leaves a sign, a bracket, a currency sign, a percent
+ * sign, a suffix, or a currency code where the page put it.
+ */
+function readNumberCell(text, input, heldRanges) {
+  const { superscriptRanges = [], hasSuperscript = false, digitsSpanPieces = false } = input;
+  // In a cell with a superscript, the text classifyCell reads joins base and
+  // exponent digits ("10<sup>12</sup>" reads "1012"), which is not the text
+  // the reader sees. So no whole-cell shape is tested against it, and
+  // extraction masks each superscript span.
+  if (hasSuperscript) return extractSimplifyMatches(text, superscriptRanges, heldRanges);
+
+  // An identifier shape reads as a code, not a quantity, so the whole cell
+  // stays as written. Checked before the number reader, which also reads a
+  // digit run with a leading zero ("0012345678", "(0012345678)") as a number.
+  if (matchIdentifierShape(text.trim(), digitsSpanPieces)) return [];
+
+  const num = toNumber(text);
+  if (num !== null) {
+    const span = pureNumberSpan(text);
+    return [{ numStr: span.numStr, num, index: span.index }];
+  }
+
+  // A unit number ("4.91tn", "CAD45.67") is one number with a suffix or a
+  // currency code.
+  const unit = matchUnitNumber(text);
+  if (unit) return [unit];
+
+  return extractSimplifyMatches(text, superscriptRanges, heldRanges);
 }
 
 function numberStretch(match) {
@@ -1374,97 +1461,44 @@ function numberStretch(match) {
  * cell's stretches in text order, each with its start and end in text:
  *
  *   { kind: 'number', start, end, num }
- *   { kind: 'date', start, end, ...the date findDates reads (lib/dr-number) }
- *   { kind: 'time', start, end, ...the time readTimeCell reads }
+ *   { kind: 'date', start, end, ...the date findDates or findISODateTimes
+ *     reads, and separator (see dateTimeStretches) }
+ *   { kind: 'time', start, end, ...the time findClockTimes or
+ *     findISODateTimes reads }
  *
- * A cell holds one kind. A cell that is one number (a pure cell, a bracketed
- * number, or a unit number) holds one number stretch over its digits. The
- * column post-pass settles the day and month of an ambiguous date stretch
- * (isAmbiguousDate).
+ * Every number, date, and time in a cell is its own stretch under its own
+ * switch. A value held stays as written and takes no stretch, and the
+ * readers after it never read its characters. The column post-pass settles
+ * the day and month of an ambiguous date stretch (isAmbiguousDate).
+ *
  * A cell holds no stretch when it is out of range, under an exclusion
- * (getExclusionReason), wholly quoted, an identifier shape, or a one-number
- * cell whose number sits in a markup range; when its date or time switch is
- * off; when it holds an impossible date or time; and when it holds no number.
- * The placement step adds split: true to a classification whose split
- * stretches it removes.
+ * (getExclusionReason), wholly quoted, or an identifier shape. A value is
+ * held when it overlaps a markup range or its switch is off. A date or time
+ * is also held when it is impossible (see dateTimeStretches), and a number
+ * when a currency or percent sign whose switch is off touches its digits
+ * (touchesSwitchedOffSign). The placement step adds split: true to a
+ * classification whose split stretches it removes.
  */
 function classifyCell(input, options) {
-  const {
-    text,
-    rowIndex,
-    columnIndex,
-    ranges,
-    markupRanges = [],
-    hasSuperscript = false,
-    superscriptRanges = [],
-    digitsSpanPieces = false,
-  } = input;
-  const trimmed = text.trim();
-  // The markup ranges, then each date or time that overlaps one: its digits
-  // stay as written too.
-  let held = markupRanges;
-  // A cell that is one number gets one number stretch over its digits alone,
-  // so the write-back leaves a sign, a bracket, a currency sign, a percent
-  // sign, a suffix, or a currency code where the page put it.
-  const oneNumber = (match) => (
-    overlapsMaskedRange(held, match.index, match.index + match.numStr.length)
-      ? { stretches: [] }
-      : { stretches: [numberStretch(match)] });
+  const { text, rowIndex, columnIndex, ranges, markupRanges = [], superscriptRanges = [] } = input;
 
   if (!isInRanges(rowIndex, columnIndex, ranges)) return { stretches: [] };
-  if (getExclusionReason(text, columnIndex, options, rowIndex)) return { stretches: [] };
-  if (isWholeCellQuoted(trimmed)) return { stretches: [] };
+  if (getExclusionReason(columnIndex, options, rowIndex)) return { stretches: [] };
+  if (isWholeCellQuoted(text.trim())) return { stretches: [] };
 
-  // A date or a time that overlaps a markup range stays as written, and its
-  // digits join the held ranges for the number steps. A clock time, or an
-  // ISO date-time with its date kept, follows the "times" switch. Checked
-  // before findDates, which would otherwise match the date of a
-  // space-separated date-time.
-  let dates = null;
-  const time = readTimeCell(trimmed);
-  if (time) {
-    const lead = text.length - text.trimStart().length;
-    const span = { start: lead, end: lead + trimmed.length };
-    if (!overlapsMaskedRange(markupRanges, span.start, span.end)) {
-      if (!options.simplifyTimes || time.impossible) return { stretches: [] };
-      return { stretches: [{ kind: 'time', ...time, ...span }] };
-    }
-    held = [...held, span];
-  } else {
-    const read = readDatesOutsideMarkup(text, markupRanges);
-    dates = read.dates;
-    held = [...held, ...read.heldSpans];
-  }
-  if (dates) {
-    if (!options.simplifyDates || dates.some((d) => d.impossible)) return { stretches: [] };
-    return { stretches: dates.map((d) => ({ kind: 'date', ...d })) };
-  }
-
-  // In a cell with a superscript, the text classifyCell reads joins base and
-  // exponent digits ("10<sup>12</sup>" reads "1012"), which is not the text
-  // the reader sees. So no whole-cell shape is tested against it, and
-  // extraction masks each superscript span.
-  if (hasSuperscript) {
-    return { stretches: extractSimplifyMatches(text, superscriptRanges, held).map(numberStretch) };
-  }
-
-  // An identifier shape reads as a code, not a quantity, so the whole cell
-  // stays as written. Checked before the number reader, which also reads a
-  // digit run with a leading zero ("0012345678", "(0012345678)") as a number.
-  if (matchIdentifierShape(trimmed, digitsSpanPieces)) return { stretches: [] };
-
-  const num = toNumber(text);
-  if (num !== null) {
-    const span = pureNumberSpan(text);
-    return oneNumber({ numStr: span.numStr, num, index: span.index });
-  }
-
-  // A unit number ("4.91tn", "CAD45.67") is one number with a suffix or a
-  // currency code.
-  const unit = matchUnitNumber(text);
-  if (unit) return oneNumber(unit);
-
-  return { stretches: extractSimplifyMatches(text, superscriptRanges, held).map(numberStretch) };
+  const { read, heldSpans } = readOutsideMarkup(text, superscriptRanges, markupRanges);
+  const dateTimeSpans = [...valuesRead(read), ...heldSpans];
+  const heldRanges = [...markupRanges, ...dateTimeSpans];
+  const numbers = dateTimeSpans.length > 0
+    ? extractSimplifyMatches(text, superscriptRanges, heldRanges)
+    : readNumberCell(text, input, heldRanges);
+  const numberStretches = numbers
+    .filter((m) => !overlapsMaskedRange(heldRanges, m.index, m.index + m.numStr.length))
+    .filter((m) => !touchesSwitchedOffSign(text, m, options))
+    .map(numberStretch);
+  const stretches = [...dateTimeStretches(read, options), ...numberStretches]
+    .sort((a, b) => a.start - b.start);
+  return { stretches };
 }
 
 /**
@@ -1526,8 +1560,9 @@ function isAmbiguousDateClassification(classification) {
 // cannot split one column into two groups that read 7/4/99 as July in one row
 // and April in another. A month-first or day-first hint gives each ambiguous
 // date stretch its day and month. A mixed or ambiguous column cannot be read
-// safely, so the post-pass empties the stretch list of each of its cells,
-// and a cell never changes some of its dates and holds others.
+// safely, so the post-pass removes every date stretch of each of its cells,
+// and a cell never changes some of its dates and holds others. The cell's
+// numbers and times still change.
 function resolveAmbiguousDates(classifiedCells) {
   const ambiguousDatesByCol = new Map();
   for (const { classification, columnIndex } of classifiedCells) {
@@ -1543,7 +1578,7 @@ function resolveAmbiguousDates(classifiedCells) {
     const hint = hintByCol.get(columnIndex);
     const stretches = hint === 'month-first' || hint === 'day-first'
       ? classification.stretches.map((s) => (isAmbiguousDate(s) ? readAmbiguousDate(s, hint === 'month-first') : s))
-      : [];
+      : classification.stretches.filter((s) => s.kind !== 'date');
     return Object.assign({}, classifiedCell, { classification: Object.assign({}, classification, { stretches }) });
   });
 }
@@ -1562,9 +1597,14 @@ function datasetMaxMagnitude(classifiedCells, passedMaxMag) {
 
 // One stretch's new text: a number rounds against the max magnitude, and a
 // date or a time to its granularity. null for a time the step cannot round.
+// A date stretch that covers an ISO date-time's separator writes a space in
+// its place.
 function roundStretch(text, stretch, written, maxMag, settings) {
+  if (stretch.kind === 'date' && stretch.separator) {
+    return roundDate(text, { ...stretch, end: stretch.separator.start }, settings.dateGranularity) + ' ';
+  }
   if (stretch.kind === 'date') return roundDate(text, stretch, settings.dateGranularity);
-  if (stretch.kind === 'time') return roundTimeText(written, settings.timeGranularity);
+  if (stretch.kind === 'time') return roundTime(stretch, settings.timeGranularity);
   const { offsetTop, offsetOther, numTop } = settings;
   return formatNumber(roundValueSetAware(stretch.num, maxMag, offsetTop, offsetOther, numTop), written);
 }
@@ -1633,7 +1673,7 @@ const RESULT_KIND = 'text';
 // The classification ladder's options, fixed: the Sheets function takes no
 // switches. Mixed currency and mixed percent round, as the extension's
 // defaults do. Dates and times stay as written, so the table
-// step never receives a date or a time cell. The first row and the first
+// step never receives a date or a time stretch. The first row and the first
 // column round, so the whole dataset rounds.
 const SHEETS_LADDER_OPTIONS = Object.freeze({
   simplifyFirstRow: true,

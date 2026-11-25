@@ -13,7 +13,7 @@
 // The one currency list. Each row gives a currency's written signs and its
 // ISO code, and the code for every currency rule reads this list: the signs
 // stripped before a text reads as a number, the signs and codes a unit
-// number may carry, the currency exclusion, and, through the format-mark
+// number may carry, the currency switch, and, through the format-mark
 // list below, the bracketed-number test and the number span. Nothing
 // restates it.
 //
@@ -70,8 +70,6 @@ const CURRENCY_SIGN_ALTERNATION = CURRENCY_SIGNS
     return before + escaped + after;
   })
   .join('|');
-// One currency sign, anywhere in a text.
-const CURRENCY_SIGN_RE = new RegExp(CURRENCY_SIGN_ALTERNATION);
 
 // The one format-mark list: a character that sits beside a number without
 // belonging to it — a currency sign, a percent sign, and whitespace. The

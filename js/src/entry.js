@@ -16,7 +16,7 @@ const RESULT_KIND = 'text';
 // The classification ladder's options, fixed: the Sheets function takes no
 // switches. Mixed currency and mixed percent round, as the extension's
 // defaults do. Dates and times stay as written, so the table
-// step never receives a date or a time cell. The first row and the first
+// step never receives a date or a time stretch. The first row and the first
 // column round, so the whole dataset rounds.
 const SHEETS_LADDER_OPTIONS = Object.freeze({
   simplifyFirstRow: true,

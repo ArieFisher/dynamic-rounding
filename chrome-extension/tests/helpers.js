@@ -29,6 +29,15 @@ function classifyAt(text, opts, extra) {
   return classifyCell(Object.assign({ text, rowIndex: 1, columnIndex: 1, ranges: null }, extra || {}), opts);
 }
 
+// A one-cell table's text after the ladder and the table step, with Times on
+// at timeGranularity and Dates off, or null when the text does not change.
+function roundTimeCell(text, timeGranularity) {
+  const settings = Object.assign({}, DR_DEFAULTS, { simplifyDates: false, simplifyTimes: true, timeGranularity });
+  const classifiedCell = { text, columnIndex: 1, classification: classifyAt(text, settings) };
+  const [{ patches }] = tablePatches([classifiedCell], settings).patchedCells;
+  return patches.length === 0 ? null : applyPatches(text, patches);
+}
+
 // A mock cell's one text piece, the way a page element holds its text: a
 // text node child whose value reads and writes the cell's text. The placement
 // step reads a native cell's text pieces, so a mock cell with no text node

@@ -1228,14 +1228,13 @@
     'lettersToColIndex', 'parseRangeEndpoint', 'parseRangeToken', 'parseRangeExpr',
     'isInRanges', 'resolveOffset', 'resolveNumTop',
     // numbers-in-text.js
-    'matchUnitNumber', 'getExclusionReason',
+    'matchUnitNumber', 'getExclusionReason', 'touchesSwitchedOffSign',
     'getQuoteMaskedRanges', 'overlapsMaskedRange', 'extractNumbersInText',
     'bracketSignSpan', 'isBracketedNegative', 'matchBracketedNumber', 'pureNumberSpan',
     // dates.js
     'knownDate', 'findDates', 'isAmbiguousDate',
-    'isDateLike', 'isTimeLike', 'getClockTimeMaskedRanges', 'parseISODateTime', 'isDateTimeLike',
-    'isClockTimeInRange', 'readTimeCell',
-    'roundDate', 'roundClockTime', 'roundTimeText', 'getEraYearMaskedRanges',
+    'isClockTimeInRange', 'readClockTime', 'findClockTimes', 'findISODateTimes',
+    'roundDate', 'roundClockTime', 'roundTime', 'getEraYearMaskedRanges',
     // write-back.js
     'formatNumber',
     // identifiers.js
