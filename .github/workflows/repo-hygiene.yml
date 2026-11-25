@@ -36,7 +36,7 @@ jobs:
       - name: Self-test the Sheets build
         run: node scripts/build-sheets-test.js
 
-      - name: Gate files added by this pull request
+      - name: Gate files changed by this pull request
         if: github.event_name == 'pull_request'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}

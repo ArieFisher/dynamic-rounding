@@ -249,13 +249,40 @@ git -C "$repo" commit -qm 'rename design document'
 head=$(git -C "$repo" rev-parse HEAD)
 assert_blocked '--range rejects a rename into a denied name' "$repo" 'docs/design-report.md' --range "$base" "$head"
 
-# A range that adds nothing passes.
+# A clean edit to a tracked file passes.
 repo=$(scratch_repo)
 base=$(git -C "$repo" rev-parse HEAD)
 printf '# design, revised\n' > "$repo/docs/design.md"
 git -C "$repo" commit -qam 'edit design document'
 head=$(git -C "$repo" rev-parse HEAD)
-assert_passes '--range passes when the range adds nothing' "$repo" --range "$base" "$head"
+assert_passes '--range passes a clean edit to a tracked file' "$repo" --range "$base" "$head"
+
+# A credential appended to a file that is already tracked is caught.
+repo=$(scratch_repo)
+planted_secret >> "$repo/README.md"
+git -C "$repo" add README.md
+assert_blocked 'credential appended to a tracked file rejected' "$repo" 'README.md' --staged
+
+repo=$(scratch_repo)
+base=$(git -C "$repo" rev-parse HEAD)
+planted_secret >> "$repo/README.md"
+git -C "$repo" commit -qam 'edit readme'
+head=$(git -C "$repo" rev-parse HEAD)
+assert_blocked '--range rejects a credential appended to a tracked file' "$repo" 'README.md' --range "$base" "$head"
+
+# An edit to a tracked file with a denied name is rejected.
+repo=$(scratch_repo)
+printf 'scan output\n' > "$repo/docs/old-report.md"
+git -C "$repo" add docs/old-report.md
+git -C "$repo" commit -qm 'add old report'
+printf 'more scan output\n' >> "$repo/docs/old-report.md"
+git -C "$repo" add docs/old-report.md
+assert_blocked 'edit to a tracked denied file rejected' "$repo" 'docs/old-report.md' --staged
+
+# A revision that does not resolve stops the gate instead of passing it.
+repo=$(scratch_repo)
+assert_usage '--range with an unresolvable base exits 2' "$repo" --range no-such-revision HEAD
+assert_usage '--range with an unresolvable head exits 2' "$repo" --range HEAD no-such-revision
 
 # --tracked finds a stray that is already committed.
 repo=$(scratch_repo)
@@ -267,6 +294,12 @@ assert_blocked '--tracked finds a committed stray' "$repo" 'leftover.md' --track
 # --tracked passes on a clean tree.
 repo=$(scratch_repo)
 assert_passes '--tracked passes on a clean tree' "$repo" --tracked
+
+# --tracked audits HEAD, so a clean file staged but not yet committed passes.
+repo=$(scratch_repo)
+printf '# new page\n' > "$repo/docs/new-page.md"
+git -C "$repo" add docs/new-page.md
+assert_passes '--tracked passes with a clean new file staged' "$repo" --tracked
 
 # Misuse exits 2, so a mistyped CI invocation cannot read as a pass.
 repo=$(scratch_repo)

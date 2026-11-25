@@ -20,7 +20,7 @@ set -uo pipefail
 # --------------------------------------------------------------------------
 
 # The policy is the Block pattern column of docs/vocabulary.md: every table
-# whose header row holds a cell named Block pattern contributes that column. The column is
+# contributes the column whose header cell is named Block pattern. The column is
 # the repository's only list of retired synonyms, and this script keeps no
 # second copy. A row whose Block pattern cell is not a backtick-wrapped expression
 # carries no pattern, and that row is left to the human sweep.
@@ -41,8 +41,10 @@ VOCAB_DOC="$repo_root/docs/vocabulary.md"
 # after it. A '\b' passes through untouched.
 #
 # The first row of a table is its header. The column whose header cell reads
-# Block pattern is the one this loader reads, in that table only; a table with no
-# such header contributes nothing.
+# Block pattern is the one this loader reads, in that table only. Every table in
+# the vocabulary is a term table, whatever its first header cell says, so a table
+# with no Block pattern header stops the loader: a renamed header would otherwise
+# drop that table's patterns while the other tables keep the preflight green.
 load_patterns() {
   awk '
     !/^\|/ { in_table = 0; next }
@@ -61,9 +63,13 @@ load_patterns() {
           sub(/[ \t]+$/, "", name)
           if (name == "Block pattern") column = i
         }
+        if (column == 0) {
+          printf "check-vocab: the table at line %d of %s has no Block pattern column\n", NR, FILENAME > "/dev/stderr"
+          exit 2
+        }
         next
       }
-      if (column == 0 || count <= column) next
+      if (count <= column) next
       pattern = cell[column]
       sub(/^[ \t]+/, "", pattern)
       sub(/[ \t]+$/, "", pattern)
@@ -106,8 +112,8 @@ EXEMPT_PATHS='^docs/sprint-logs/|^docs/sprint-plans/|^docs/research/|^js/CHANGEL
 # The pattern list is the whole policy, and an empty or broken list reports the
 # same silence as clean prose. These checks turn that silence into a failure,
 # on every run of the gate rather than only when the self-test runs in CI. The
-# list comes from markdown tables, so a renamed Block pattern header or a reshaped
-# row lands here too: it reads as an empty list, and the gate fails.
+# loader already stops on a table with no Block pattern header; tables that
+# yield no patterns at all still read as an empty list here, and the gate fails.
 
 # A sentence the gate must be able to see. It sits in an exempt file, so a
 # real change never carries it. When the pattern it matches retires, point the
