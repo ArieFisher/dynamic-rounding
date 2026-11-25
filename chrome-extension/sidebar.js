@@ -779,8 +779,8 @@ function takeCaptureScreenshot(tabsApi, windowId, done) {
 // or null when the pull failed), this page's half, and the screenshot take's
 // answer. CAPTURE_FORMAT comes from lib/dr-capture/state.js, loaded by this
 // page too, so the fallback carries the same version the serializer stamps.
-// The image passes to the renderer beside the state, never inside it: the
-// state holds the take's record alone, so the JSON island stays small.
+// The image passes to the renderer beside the state, never inside it (see
+// renderScreenshotSection in lib/dr-capture/render.js).
 const CAPTURE_SAVED_STATUS_MSG = 'Capture saved.';
 
 function assembleAndSaveCapture(mark, remarks, pageState, shot) {

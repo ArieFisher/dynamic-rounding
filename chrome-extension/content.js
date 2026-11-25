@@ -5,7 +5,7 @@
 // The capture marker: a saved capture (lib/dr-capture/render.js) stamps
 // data-dr-capture on its document element, because the capture is itself a
 // page with a real table and — with file access enabled — Chrome injects
-// this content script into it. On such a page the controller stands down:
+// this content script into it. On such a page the content script does nothing:
 // no right-click activation, no load-time scan, no observer, so no table in
 // a capture is ever registered, activated, or rounded. A capture must show
 // what was captured, never what this extension would do to it. Page rules
