@@ -628,11 +628,12 @@ const bracketOpts = Object.assign({}, DR_DEFAULTS, {
   const currencyOff = { simplifyMixedCurrency: false };
   const percentOff = { simplifyMixedPercent: false };
   for (const text of ['$-1,234', '$−1,234', '£-1,234', '$ -1,234', '$+1,234', '45.67 m CAD', '$12–18', '$12 to 18',
-    '₹615.71–623.33 crore']) {
+    '₹615.71–623.33 crore', '$12m–18m', '12m–18m USD', '$1.2bn–1.7bn', '€12k–18k', '12 – $18',
+    '1,234 €.', '1,234 kr.']) {
     eq(`sign beside a number: "${text}" with the currency switch off stays "${text}"`,
       simplifyColumn([text], currencyOff), [text]);
   }
-  for (const text of ['(12.3)%', '12–18%', '12-18%']) {
+  for (const text of ['(12.3)%', '12–18%', '12-18%', '-12 to -18%', '−12 to −18%', '(12) to (18)%', '45%.']) {
     eq(`sign beside a number: "${text}" with the percent switch off stays "${text}"`,
       simplifyColumn([text], percentOff), [text]);
   }
@@ -640,6 +641,10 @@ const bracketOpts = Object.assign({}, DR_DEFAULTS, {
     simplifyColumn(['12–18%'], {}), ['10–20%']);
   eq('sign beside a number: "₹615.71–623.33 crore" with the currency switch on becomes "₹600–600 crore"',
     simplifyColumn(['₹615.71–623.33 crore'], {}), ['₹600–600 crore']);
+  eq('sign beside a number: "$12m–18m" with the currency switch on becomes "$10m–20m"',
+    simplifyColumn(['$12m–18m'], {}), ['$10m–20m']);
+  eq('sign beside a number: "45%." with the percent switch on becomes "45"',
+    simplifyColumn(['45%.'], {}), ['45']);
 })();
 
 (function markupHoldsOneValueOfAPair() {

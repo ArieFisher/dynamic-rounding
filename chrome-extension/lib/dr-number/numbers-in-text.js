@@ -224,23 +224,33 @@ function pureNumberSpan(text) {
 
 // A currency sign or code, or a percent sign, belongs to the number whose
 // digits it touches: "$12,345", "12,345 USD", "5%". It touches when nothing
-// stands between it and the digits but what the readers of a one-number cell
-// step past: before the digits, the pure cell's leading run (format marks,
-// a plus or minus sign, an opening bracket: "$-1,234", "$(1,234)"); after
-// them, a magnitude suffix as a unit number carries it ("45.67 m CAD"), then
-// the pure cell's trailing run ("(12.3)%"). A range of two numbers shares
-// the sign on one of its ends, so the sign touches both: "12–18%",
-// "$12–18", "₹615.71–623.33 crore". A sign elsewhere in the cell belongs to
-// no number, so "Revenue (USD) 12,345" holds none.
+// stands between it and the digits but the marks a number carries: before
+// the digits, the pure cell's leading run (format marks, a plus or minus
+// sign, an opening bracket: "$-1,234", "$(1,234)"); after them, a magnitude
+// suffix as a unit number carries it ("45.67 m CAD"), then the pure cell's
+// trailing run ("(12.3)%"). A range of two numbers shares the sign on one of
+// its ends, so the sign touches both, and the far end carries the same marks:
+// "12–18%", "$12m–18m", "12 – $18", "(12) to (18)%". A sign elsewhere in the
+// cell belongs to no number, so "Revenue (USD) 12,345" holds none.
 const CURRENCY_TOKEN = '(?:' + CURRENCY_SIGN_ALTERNATION + '|' + CURRENCY_CODE_TOKEN + ')';
+const SUFFIX_AFTER_DIGITS = '(?: ?(?:' + MAGNITUDE_SUFFIX_ALTERNATION + '))?';
+// A number with the marks it carries on either side.
+const MARKED_NUMBER = PURE_LEAD_PATTERN + DIGIT_RUN_PATTERN + SUFFIX_AFTER_DIGITS + PURE_TRAIL_PATTERN;
 const RANGE_JOIN = '(?:\\s*(?:-|' + DASH_CLASS + ')\\s*|\\s+to\\s+)';
-const signBeforeDigitsRe = (sign) =>
-  new RegExp(sign + PURE_LEAD_PATTERN + '(?:' + DIGIT_RUN_PATTERN + RANGE_JOIN + ')?$');
-const signAfterDigitsRe = (sign) => new RegExp('^(?:' + RANGE_JOIN + DIGIT_RUN_PATTERN + ')?' +
-  '(?: ?(?:' + MAGNITUDE_SUFFIX_ALTERNATION + '))?' + PURE_TRAIL_PATTERN + sign);
+// The sign before the digits: in the number's own leading run, or before the
+// range's far end, or after it (that end's trailing run then holds the sign).
+const signBeforeDigitsRe = (sign) => new RegExp(sign +
+  '(?:(?:' + MARKED_NUMBER + '|' + PURE_TRAIL_PATTERN + ')' + RANGE_JOIN + ')?' + PURE_LEAD_PATTERN + '$');
+// The sign after the digits: in the number's own trailing run, or after the
+// range's far end, or before it (that end's leading run then holds the sign).
+const signAfterDigitsRe = (sign) => new RegExp('^' + SUFFIX_AFTER_DIGITS + PURE_TRAIL_PATTERN +
+  '(?:' + RANGE_JOIN + '(?:' + MARKED_NUMBER + '|' + PURE_LEAD_PATTERN + '))?' + sign);
 const CURRENCY_BEFORE_RE = signBeforeDigitsRe(CURRENCY_TOKEN);
 const CURRENCY_AFTER_RE = signAfterDigitsRe(CURRENCY_TOKEN);
 const PERCENT_AFTER_RE = signAfterDigitsRe('%');
+// A pure cell whose trailing run stops short of its end ("45%.", "1,234 kr.")
+// holds its sign inside its number span, so a sign there touches too.
+const CURRENCY_INSIDE_RE = new RegExp(CURRENCY_TOKEN);
 
 /**
  * True when a currency sign or code touches the number's digits and the
@@ -251,6 +261,7 @@ const PERCENT_AFTER_RE = signAfterDigitsRe('%');
 function touchesSwitchedOffSign(text, match, options) {
   const before = text.slice(0, match.index);
   const after = text.slice(match.index + match.numStr.length);
-  if (!options.simplifyMixedCurrency && (CURRENCY_BEFORE_RE.test(before) || CURRENCY_AFTER_RE.test(after))) return true;
-  return !options.simplifyMixedPercent && PERCENT_AFTER_RE.test(after);
+  if (!options.simplifyMixedCurrency && (CURRENCY_BEFORE_RE.test(before) || CURRENCY_AFTER_RE.test(after) ||
+    CURRENCY_INSIDE_RE.test(match.numStr))) return true;
+  return !options.simplifyMixedPercent && (PERCENT_AFTER_RE.test(after) || match.numStr.includes('%'));
 }
