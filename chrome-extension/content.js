@@ -312,21 +312,16 @@ function injectTablePillboxes(root = document) {
 // outcome and never in a caller. The step returns outcomes; this is where an
 // outcome becomes a registration or a watch.
 //
-// One nest's outcome:
-//   'selected'   register the element the step selected and drop any pending
-//                record the nest carried.
-//   'empty'      no element of the nest passes the data test, so hold the
-//                chain root as a pending table and re-test its subtree.
-//   'crowded'    a depth holds more than one data table and no shallower
-//                depth holds exactly one; the product decision in issue #373
-//                registers nothing for such a nest, so no watch holds it.
-//   'registered' the nest already holds a registered element, so a second
-//                registration would put a second table pillbox on one grid.
-//   'artifact'   the chain root is an accessibility artifact; the nest
-//                registers nothing and no watch holds it.
+// What this function does with each outcome (nominateNest, in
+// lib/dr-table/detect.js, holds what each outcome means):
+//   'selected'   register the selected element and drop any pending record
+//                the nest carried.
+//   'empty'      hold the chain root as a pending table and re-test its
+//                subtree.
+//   any other    drop any pending record the nest carried; no watch holds it.
 // A registration through another path (a right-click) leaves the pending
-// record standing until the next re-test returns
-// 'registered', which drops it here.
+// record standing until the next re-test returns 'registered', which drops it
+// here.
 function consumeNomination({ chainRoot, selected, outcome }) {
   if (outcome === 'selected') {
     dropPendingTable(chainRoot);

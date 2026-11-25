@@ -708,6 +708,9 @@ function makeGridContainer(rows, display, role, className) {
       if (attr === 'role') return role || null;
       return null;
     },
+    matches(selector) {
+      return !!role && selector.split(',').some((part) => part.trim() === `[role="${role}"]`);
+    },
     classList: {
       _c: [],
       add(c)      { this._c.push(c); },
@@ -1442,18 +1445,19 @@ function makePositionedAncestor(styleOverrides) {
 }
 
 // =============================================================================
-// Pass 1 guard skips accessibility artifacts
+// The load-time scan skips accessibility artifacts
 // =============================================================================
 //
-// injectTablePillboxes() Pass 1 calls document.querySelectorAll('table') and skips
-// any table for which isAccessibilityArtifact(table) is true, then calls
-// registerDataTable(table) only for the survivors.
+// injectTablePillboxes() runs scanTables, which runs the nomination step over
+// each table document.querySelectorAll('table') returns. The step reports an
+// accessibility artifact as 'artifact', and consumeNomination registers only
+// the table of a 'selected' outcome.
 //
 // A table pillbox was created iff tablePillboxes.has(table) becomes true afterwards.
 //
 // For each test we:
-//   1. Temporarily replace global.document.querySelectorAll so Pass 1 sees our
-//      fixture tables and Pass 2 (GRID_ARIA_SELECTOR) sees an empty list.
+//   1. Temporarily replace global.document.querySelectorAll so the scan sees our
+//      fixture tables and an empty list for GRID_ARIA_SELECTOR.
 //   2. Temporarily stub document.createElement + document.body.appendChild so
 //      createTablePillbox can run without errors.
 //   3. Reset tablePillboxes for each run by deleting entries we
@@ -1523,7 +1527,7 @@ function runPass1WithTables(tables) {
   const origBody     = global.document.body;
   const origDocEl    = global.document.documentElement;
 
-  // Stub querySelectorAll: Pass 1 → our tables; Pass 2 (GRID_ARIA_SELECTOR) → []
+  // Stub querySelectorAll: 'table' → our tables; GRID_ARIA_SELECTOR → []
   global.document.querySelectorAll = function(sel) {
     if (sel === 'table') return tables;
     return [];
@@ -1602,13 +1606,13 @@ function cleanupPass1Tables(tables) {
 }
 
 // ---------------------------------------------------------------------------
-// Pass 2 accessibility artifact guard in injectTablePillboxes
+// The load-time scan's accessibility artifact guard on grids
 // ---------------------------------------------------------------------------
 //
-// Pass 2 (the nomination step) skips an ARIA grid ONLY when it contains at
-// least one REAL <table>, one that is not an accessibility artifact. A grid
-// that contains only accessibility artifacts (aria-hidden, offscreen, or
-// svg-chart-wrapped) must be picked up by Pass 2 and get a table pillbox.
+// The nomination step skips an ARIA grid ONLY when it contains at least one
+// REAL <table>, one that is not an accessibility artifact. A grid that
+// contains only accessibility artifacts (aria-hidden or offscreen) must be
+// picked up by the scan and get a table pillbox.
 //
 // Helper: build a minimal ARIA grid element (div with role="grid" or role="table")
 // with a proper classList and the querySelectorAll('table') that returns a given

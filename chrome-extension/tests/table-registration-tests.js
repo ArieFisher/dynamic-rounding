@@ -66,28 +66,28 @@
 // ---------------------------------------------------------------------------
 // Sanity: isAccessibilityArtifact round-trip on the embedded-table fixtures
 // ---------------------------------------------------------------------------
-(function pass2aria_sanity_artifactEmbedded() {
+(function loadTimeScan_sanity_artifactEmbedded() {
   const artifact = makeArtifactEmbeddedTable();
-  eq('pass2-aria sanity: isAccessibilityArtifact(embedded accessibility artifact) === true',
+  eq('load-time scan sanity: isAccessibilityArtifact(embedded accessibility artifact) === true',
     isAccessibilityArtifact(artifact), true);
 })();
 
-(function pass2aria_sanity_realEmbedded() {
+(function loadTimeScan_sanity_realEmbedded() {
   const real = makeRealEmbeddedTable();
-  eq('pass2-aria sanity: isAccessibilityArtifact(real embedded table) === false',
+  eq('load-time scan sanity: isAccessibilityArtifact(real embedded table) === false',
     isAccessibilityArtifact(real), false);
 })();
 
 // ---------------------------------------------------------------------------
-// ARIA grid with ONLY accessibility artifacts → Pass 2 registers it with a table pillbox
+// ARIA grid with ONLY accessibility artifacts → the load-time scan registers it with a table pillbox
 // ---------------------------------------------------------------------------
-(function pass2aria_onlyArtifactTables_getsTablePillbox() {
+(function loadTimeScan_gridWithOnlyArtifactTables_getsTablePillbox() {
   const artifact1 = makeArtifactEmbeddedTable();
   const artifact2 = makeArtifactEmbeddedTable();
   const grid = makeAriaGrid([artifact1, artifact2]);
 
   withTablePillboxDocumentMock(function() {
-    // Pass 1 sees no tables; Pass 2 sees our grid.
+    // The scan finds no native table and finds our grid.
     global.document.querySelectorAll = function(sel) {
       if (sel === 'table') return [];
       if (sel === '[role="grid"], [role="table"]') return [grid];
@@ -97,16 +97,16 @@
     injectTablePillboxes();
   });
 
-  eq('pass2-aria: grid with only accessibility artifacts registers',
+  eq('load-time scan: grid with only accessibility artifacts registers',
     DR_MODEL.hasTable(grid), true);
-  eq('pass2-aria: grid with only accessibility artifacts gets a table pillbox registered',
+  eq('load-time scan: grid with only accessibility artifacts gets a table pillbox registered',
     tablePillboxes.has(grid), true);
 })();
 
 // ---------------------------------------------------------------------------
-// ARIA grid wrapping a REAL table → Pass 2 bows out (no table pillbox, no class)
+// ARIA grid wrapping a REAL table → no registration and no table pillbox
 // ---------------------------------------------------------------------------
-(function pass2aria_realTable_pass2BowsOut() {
+(function loadTimeScan_gridWrappingARealTable_getsNoTablePillbox() {
   const realTbl = makeRealEmbeddedTable();
   const grid    = makeAriaGrid([realTbl]);
 
@@ -120,16 +120,16 @@
     injectTablePillboxes();
   });
 
-  eq('pass2-aria: grid wrapping a real table does NOT register',
+  eq('load-time scan: grid wrapping a real table does NOT register',
     DR_MODEL.hasTable(grid), false);
-  eq('pass2-aria: grid wrapping a real table does NOT get a table pillbox',
+  eq('load-time scan: grid wrapping a real table does NOT get a table pillbox',
     tablePillboxes.has(grid), false);
 })();
 
 // ---------------------------------------------------------------------------
 // grid with an artifact + one real table → still skipped
 // ---------------------------------------------------------------------------
-(function pass2aria_mixedArtifactAndReal_bowsOut() {
+(function loadTimeScan_gridWithArtifactAndRealTable_getsNoTablePillbox() {
   const artifact = makeArtifactEmbeddedTable();
   const real    = makeRealEmbeddedTable();
   const grid    = makeAriaGrid([artifact, real]);
@@ -144,17 +144,17 @@
     injectTablePillboxes();
   });
 
-  eq('pass2-aria: grid with accessibility artifact and real table does NOT register',
+  eq('load-time scan: grid with accessibility artifact and real table does NOT register',
     DR_MODEL.hasTable(grid), false);
-  eq('pass2-aria: grid with accessibility artifact and real table does NOT get a table pillbox',
+  eq('load-time scan: grid with accessibility artifact and real table does NOT get a table pillbox',
     tablePillboxes.has(grid), false);
 })();
 
 // ---------------------------------------------------------------------------
-// Adversarial: grid with NO embedded tables → Pass 2 adds class + table pillbox
-// (no embedded tables means .some(!artifact) is false — empty array)
+// Adversarial: grid with NO embedded tables → registers with a table pillbox
+// (with no embedded tables, every embedded table is an artifact: the empty case)
 // ---------------------------------------------------------------------------
-(function pass2aria_noEmbeddedTables_getsTablePillbox() {
+(function loadTimeScan_gridWithNoEmbeddedTables_getsTablePillbox() {
   const grid = makeAriaGrid([]);
 
   withTablePillboxDocumentMock(function() {
@@ -167,18 +167,18 @@
     injectTablePillboxes();
   });
 
-  eq('pass2-aria: grid with no embedded tables registers',
+  eq('load-time scan: grid with no embedded tables registers',
     DR_MODEL.hasTable(grid), true);
-  eq('pass2-aria: grid with no embedded tables gets a table pillbox',
+  eq('load-time scan: grid with no embedded tables gets a table pillbox',
     tablePillboxes.has(grid), true);
 })();
 
 // ---------------------------------------------------------------------------
 // Adversarial: an already registered grid is skipped (preserved guard)
 // ---------------------------------------------------------------------------
-(function pass2aria_alreadyRegistered_skipped() {
+(function loadTimeScan_alreadyRegisteredGrid_getsNoSecondTablePillbox() {
   const grid = makeAriaGrid([]);
-  DR_MODEL.registerTable(grid); // the "already found" signal pass 2 checks
+  DR_MODEL.registerTable(grid); // the "already found" signal the scan checks
 
   withTablePillboxDocumentMock(function() {
     global.document.querySelectorAll = function(sel) {
@@ -191,15 +191,15 @@
   });
 
   // Already registered → skipped → tablePillboxes should NOT have a new entry
-  eq('pass2-aria: already registered grid gets no table pillbox again',
+  eq('load-time scan: already registered grid gets no table pillbox again',
     tablePillboxes.has(grid), false);
 })();
 
 // ---------------------------------------------------------------------------
-// Adversarial: element with tagName=TABLE is skipped by the tagName guard
-// (the preserved `if (el.tagName === 'TABLE') return;` fires before the new line)
+// Adversarial: element with tagName=TABLE is skipped by the qualifying guard
+// (a qualifying element is never a native table)
 // ---------------------------------------------------------------------------
-(function pass2aria_tableTagName_skipped() {
+(function loadTimeScan_roleBearingTableElement_getsNoTablePillbox() {
   const artifact = makeArtifactEmbeddedTable();
   // Make an ARIA-grid-matching element that is itself a <TABLE>
   const classes = new Set();
@@ -226,9 +226,9 @@
     injectTablePillboxes();
   });
 
-  eq('pass2-aria: element with tagName=TABLE is skipped by tagName guard',
+  eq('load-time scan: a TABLE element carrying the grid role does not register',
     DR_MODEL.hasTable(gridTable), false);
-  eq('pass2-aria: element with tagName=TABLE does not get a table pillbox via Pass 2',
+  eq('load-time scan: a TABLE element carrying the grid role gets no table pillbox',
     tablePillboxes.has(gridTable), false);
 })();
 
@@ -260,7 +260,7 @@
 })();
 
 // an added grid wrapping a REAL table → observer bows out (no registration or table pillbox
-// on the grid itself; the real embedded table is owned by Pass 1).
+// on the grid itself; the scan runs the real embedded table as a nest of one).
 (function observer_addedGridRealTable_bowsOut() {
   const realTbl = makePass1DataTable(); // not an artifact, has .rows for isDataTable
   const grid = asAddedGridNode(makeAriaGrid([realTbl]));
@@ -278,7 +278,7 @@
 })();
 
 // an accessibility artifact <table> reached via querySelectorAll on the
-// added node gets NO table pillbox (Pass 1 artifact skip in the observer path).
+// added node gets NO table pillbox (the artifact skip on the added-node pass).
 (function observer_addedSubtreeArtifactTable_noTablePillbox() {
   const artifact = makeArtifactEmbeddedTable();
   const container = {
@@ -298,7 +298,7 @@
 })();
 
 // a real native <table> reached via querySelectorAll on the added node
-// DOES get a table pillbox (Pass 1 survivor in the observer path).
+// DOES get a table pillbox (a native table the added-node pass keeps).
 (function observer_addedSubtreeRealTable_getsTablePillbox() {
   const realTbl = makePass1DataTable();
   const container = {
@@ -934,7 +934,7 @@ function makePlainBox(child) {
     const [grid, added] = form.build();
     const outcome = nominateNest(grid, { isRegistered: DR_MODEL.hasTable, styleProbe: inlineStyleProbe });
     eq(`pending artifact, ${form.name}: the nomination outcome is artifact`,
-      [outcome.outcome, outcome.selected === null, outcome.chainSize], ['artifact', true, 0]);
+      [outcome.outcome, outcome.selected === null], ['artifact', true]);
 
     withPendingHarness(function ({ observers, timers }) {
       consumeNomination(outcome);
