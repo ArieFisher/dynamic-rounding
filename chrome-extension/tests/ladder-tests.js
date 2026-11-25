@@ -623,3 +623,42 @@ const bracketOpts = Object.assign({}, DR_DEFAULTS, {
     simplifyColumn(['Jun 2020, 12,345 users'], {}, [{ pieces: ['Jun ', '2020, 12,345 users'] }]),
     ['Jun 2020, 10,000 users']);
 })();
+
+(function signsHoldTheirNumbers() {
+  const currencyOff = { simplifyMixedCurrency: false };
+  const percentOff = { simplifyMixedPercent: false };
+  for (const text of ['$-1,234', '$−1,234', '£-1,234', '$ -1,234', '$+1,234', '45.67 m CAD', '$12–18', '$12 to 18',
+    '₹615.71–623.33 crore']) {
+    eq(`sign beside a number: "${text}" with the currency switch off stays "${text}"`,
+      simplifyColumn([text], currencyOff), [text]);
+  }
+  for (const text of ['(12.3)%', '12–18%', '12-18%']) {
+    eq(`sign beside a number: "${text}" with the percent switch off stays "${text}"`,
+      simplifyColumn([text], percentOff), [text]);
+  }
+  eq('sign beside a number: "12–18%" with the percent switch on becomes "10–20%"',
+    simplifyColumn(['12–18%'], {}), ['10–20%']);
+  eq('sign beside a number: "₹615.71–623.33 crore" with the currency switch on becomes "₹600–600 crore"',
+    simplifyColumn(['₹615.71–623.33 crore'], {}), ['₹600–600 crore']);
+})();
+
+(function markupHoldsOneValueOfAPair() {
+  const link = (start, end) => [{ ladder: { markupRanges: [{ start, end }] } }];
+  eq('markup: "2026-11-09T11:45" with the date a link becomes "2026-11-09 12:00"',
+    simplifyColumn(['2026-11-09T11:45'], {}, link(0, 10)), ['2026-11-09 12:00']);
+  eq('markup: "2026-11-09 11:45" with the date a link becomes "2026-11-09 12:00"',
+    simplifyColumn(['2026-11-09 11:45'], {}, link(0, 10)), ['2026-11-09 12:00']);
+  eq('markup: "2026-11-09T11:45" with "11:45" a link becomes "2026 11:45"',
+    simplifyColumn(['2026-11-09T11:45'], {}, link(11, 16)), ['2026 11:45']);
+  eq('markup: "2026-11-09T11:45" with "11:45" a link and the times switch off becomes "2026 11:45"',
+    simplifyColumn(['2026-11-09T11:45'], { simplifyTimes: false }, link(11, 16)), ['2026 11:45']);
+  eq('markup: "12:45 - 1:30 PM" with "1:30 PM" a link stays "12:45 - 1:30 PM"',
+    simplifyColumn(['12:45 - 1:30 PM'], {}, link(8, 15)), ['12:45 - 1:30 PM']);
+})();
+
+(function webAddressCellsStay() {
+  for (const text of ['https://example.com/log?at=2026-11-09T19:54:00Z', 'https://example.com/watch?t=10:30',
+    'https://example.com/2020-07-21/post']) {
+    eq(`web address: "${text}" stays "${text}"`, simplifyColumn([text], {}), [text]);
+  }
+})();

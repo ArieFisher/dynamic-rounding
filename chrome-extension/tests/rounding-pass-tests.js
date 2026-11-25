@@ -3326,11 +3326,11 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 })();
 
 // ---------------------------------------------------------------------------
-// GV9: Exclusion-gate parity — re-apply HONORS percent / currency gates.
+// GV9: Held-sign parity — re-apply HONORS the percent and currency switches.
 //
 // Grid layout (2 rows × 2 cols):
-//   row 0:  '75%'        '50%'        ← % cells excluded by simplifyMixedPercent:false
-//   row 1:  '12345678'   '$9,999,999' ← col 1 currency excluded by simplifyMixedCurrency:false
+//   row 0:  '75%'        '50%'        ← % numbers held by simplifyMixedPercent:false
+//   row 1:  '12345678'   '$9,999,999' ← col 1 currency held by simplifyMixedCurrency:false
 //
 // Round with simplifyFirstRow:true, simplifyFirstColumn:true (skip those gates),
 // simplifyMixedPercent:false, simplifyMixedCurrency:false.
@@ -3347,7 +3347,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 //   - cellEls[3] still NOT rounded (currency switch honored)
 //   - cellEls[2] IS re-rounded (plain numeric, in-range)
 // ---------------------------------------------------------------------------
-(function gv9_reapply_honorsExclusionGates_percentCurrency() {
+(function gv9_reapply_honorsHeldSigns_percentCurrency() {
   let ctx;
   try {
     ctx = setupVirtGrid(
@@ -3398,7 +3398,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     obs.trigger([{ type: 'characterData', target: tn_r1c0 }]);
     flushTimers(pendingTimers);
 
-    // --- Post-conditions: excluded cells must NOT be rounded ---
+    // --- Post-conditions: held numbers must NOT be rounded ---
     eq('GV9: row-0 col-0 text unchanged after re-apply (percent switch honored)',
       cell_r0c0.childNodes[0].nodeValue, '75%');
 

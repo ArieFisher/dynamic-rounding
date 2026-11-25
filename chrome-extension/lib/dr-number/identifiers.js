@@ -225,11 +225,11 @@ const IDENTIFIER_SHAPES = [
  *   more than one text piece
  * @returns {{name: string, start: number, end: number, fillsCell: boolean, inText: boolean}[]}
  */
-function findIdentifiers(text, digitsSpanPieces = false) {
+function findIdentifiers(text, digitsSpanPieces = false, shapes = IDENTIFIER_SHAPES) {
   if (typeof text !== 'string') return [];
   const quantity = GROUPED_DIGITS_QUANTITY_RE.test(text);
   const codes = [];
-  for (const shape of IDENTIFIER_SHAPES) {
+  for (const shape of shapes) {
     for (const match of shape.span ? text.matchAll(shape.span) : []) {
       const start = match.index;
       const end = start + match[0].length;
@@ -257,6 +257,14 @@ function findIdentifiers(text, digitsSpanPieces = false) {
 function matchIdentifierShape(text, digitsSpanPieces = false) {
   const code = findIdentifiers(text, digitsSpanPieces).find((c) => c.fillsCell);
   return code ? code.name : null;
+}
+
+const WEB_OR_EMAIL_SHAPES = IDENTIFIER_SHAPES.filter((shape) => shape.name === 'web-or-email-address');
+
+// True when a web or email address fills the cell. It reads that one shape
+// alone, so the ladder can run it on every cell before any date or time.
+function isWebOrEmailAddressCell(text) {
+  return findIdentifiers(text, false, WEB_OR_EMAIL_SHAPES).some((code) => code.fillsCell);
 }
 
 /**

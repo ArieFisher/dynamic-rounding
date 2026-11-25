@@ -69,4 +69,5 @@ const DR_NUMBER = {
   matchIdentifierShape,
   getIdentifierMaskedRanges,
   findIdentifiers,
+  isWebOrEmailAddressCell,
 };

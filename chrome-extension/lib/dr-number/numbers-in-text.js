@@ -103,30 +103,6 @@ function getExclusionReason(columnIndex, options, rowIndex) {
   return null;
 }
 
-// A currency sign or code, or a percent sign, belongs to the number whose
-// digits it touches, with at most one whitespace character between: "$12,345",
-// "12,345 USD", "5%". One elsewhere in the cell belongs to no number, so
-// "Revenue (USD) 12,345" holds none. The side before the digits steps past an
-// opening bracket ("$(1,234)"), and the side after past a magnitude suffix
-// ("45.67m CAD") and a closing bracket.
-const CURRENCY_TOKEN = '(?:' + CURRENCY_SIGN_ALTERNATION + '|' + CURRENCY_CODE_TOKEN + ')';
-const CURRENCY_BEFORE_RE = new RegExp(CURRENCY_TOKEN + '\\s?\\(?$');
-const CURRENCY_AFTER_RE = new RegExp('^(?:' + MAGNITUDE_SUFFIX_ALTERNATION + ')?\\)?\\s?' + CURRENCY_TOKEN);
-const PERCENT_AFTER_RE = /^\s?%/;
-
-/**
- * True when a currency sign or code touches the number's digits and the
- * currency switch is off, or a percent sign touches them and the percent
- * switch is off. `match` is a number in the shape extractNumbersInText
- * returns, positioned in `text`.
- */
-function touchesSwitchedOffSign(text, match, options) {
-  const before = text.slice(0, match.index);
-  const after = text.slice(match.index + match.numStr.length);
-  if (!options.simplifyMixedCurrency && (CURRENCY_BEFORE_RE.test(before) || CURRENCY_AFTER_RE.test(after))) return true;
-  return !options.simplifyMixedPercent && PERCENT_AFTER_RE.test(after);
-}
-
 // The {start, end} range of each match of a global regex in the text, or,
 // given a group name, of that named group (the regex then needs the d flag).
 const matchRanges = (text, re, group) => (typeof text !== 'string' ? [] : Array.from(text.matchAll(re), (m) => {
@@ -244,4 +220,37 @@ function pureNumberSpan(text) {
   const rest = text.slice(index);
   const trail = PURE_TRAIL_RE.exec(rest)[0].length;
   return { numStr: rest.slice(0, rest.length - trail), index };
+}
+
+// A currency sign or code, or a percent sign, belongs to the number whose
+// digits it touches: "$12,345", "12,345 USD", "5%". It touches when nothing
+// stands between it and the digits but what the readers of a one-number cell
+// step past: before the digits, the pure cell's leading run (format marks,
+// a plus or minus sign, an opening bracket: "$-1,234", "$(1,234)"); after
+// them, a magnitude suffix as a unit number carries it ("45.67 m CAD"), then
+// the pure cell's trailing run ("(12.3)%"). A range of two numbers shares
+// the sign on one of its ends, so the sign touches both: "12–18%",
+// "$12–18", "₹615.71–623.33 crore". A sign elsewhere in the cell belongs to
+// no number, so "Revenue (USD) 12,345" holds none.
+const CURRENCY_TOKEN = '(?:' + CURRENCY_SIGN_ALTERNATION + '|' + CURRENCY_CODE_TOKEN + ')';
+const RANGE_JOIN = '(?:\\s*(?:-|' + DASH_CLASS + ')\\s*|\\s+to\\s+)';
+const signBeforeDigitsRe = (sign) =>
+  new RegExp(sign + PURE_LEAD_PATTERN + '(?:' + DIGIT_RUN_PATTERN + RANGE_JOIN + ')?$');
+const signAfterDigitsRe = (sign) => new RegExp('^(?:' + RANGE_JOIN + DIGIT_RUN_PATTERN + ')?' +
+  '(?: ?(?:' + MAGNITUDE_SUFFIX_ALTERNATION + '))?' + PURE_TRAIL_PATTERN + sign);
+const CURRENCY_BEFORE_RE = signBeforeDigitsRe(CURRENCY_TOKEN);
+const CURRENCY_AFTER_RE = signAfterDigitsRe(CURRENCY_TOKEN);
+const PERCENT_AFTER_RE = signAfterDigitsRe('%');
+
+/**
+ * True when a currency sign or code touches the number's digits and the
+ * currency switch is off, or a percent sign touches them and the percent
+ * switch is off. `match` is a number in the shape extractNumbersInText
+ * returns, positioned in `text`.
+ */
+function touchesSwitchedOffSign(text, match, options) {
+  const before = text.slice(0, match.index);
+  const after = text.slice(match.index + match.numStr.length);
+  if (!options.simplifyMixedCurrency && (CURRENCY_BEFORE_RE.test(before) || CURRENCY_AFTER_RE.test(after))) return true;
+  return !options.simplifyMixedPercent && PERCENT_AFTER_RE.test(after);
 }
