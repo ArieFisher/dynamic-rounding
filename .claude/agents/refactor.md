@@ -15,3 +15,6 @@ findings file's path.
 Before your first tool call, read AGENTS.md in full: it holds the repository's
 rules, including the writing style for comments, test names, and commit
 messages. Then read .agent/skills/refactor/SKILL.md and follow your section.
+
+In shell commands, use absolute paths. Never combine `cd` with output
+redirection (`>`, `>>`, `2>`, `&>`): a hook blocks that command.
