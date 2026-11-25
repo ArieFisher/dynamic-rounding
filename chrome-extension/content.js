@@ -423,10 +423,9 @@ function revalidateTableShape(table, opts = {}) {
   resetTable(table);
   teardownTableEntry(table);
 
-  // No qualifying element sits at or above a native table, so its root is
-  // the table itself, and findTables on a <table> root returns that table
-  // alone.
-  const root = chainRootOf(table) || table;
+  // findTables on a <table> root returns that table alone, so one call
+  // covers a native table and a grid alike.
+  const root = table.tagName === 'TABLE' ? table : (chainRootOf(table) || table);
   const handles = findTables(root, DETECT_OPTS);
   for (const handle of handles) registerDataTable(handle, true);
   const fresh = handles[0] || null;
