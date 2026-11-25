@@ -1323,7 +1323,7 @@ const SEAT_ROWS = [
 // ---------------------------------------------------------------------------
 
 // --- simplifyDates=true → date cell is rounded ---
-// Use a bare year "2018" with decade granularity: roundDateText("2018","decade")="2010",
+// Use a bare year "2018" with decade granularity: "2018" becomes "2010" at decade,
 // so the cell text must change and dr-ext-rounded must be added.
 (function dateTimeSwitches_simplifyDatesTrue() {
   withCreateTreeWalker(function() {
@@ -5901,5 +5901,25 @@ const datePlacementAfter = (build, cell, dateGranularity) => {
     roundTableUnder(alone.table, datePlacementOpts('month'));
     eq(`date placement (${kind}): a column of "3/4/2024" and "13/4/" with bold "2024" at month stays as written`,
       [alone.text(0, 0), lfPieces(alone, 1, 0)], ['3/4/2024', ['13/4/', '2024']]);
+  });
+})();
+
+(function datePlacement_aSplitAllNumericDateBesideAWholeDateInTheSameCell() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const numeric = datePlacementAfter(build,
+      [{ tag: 'b', text: '3/4/' }, { tag: 'b', text: '2024' }, ' to 5/6/2024'], 'year');
+    eq(`date placement (${kind}): bold "3/4/" and bold "2024" then " to 5/6/2024" at year stays as written and counts one split value`,
+      [numeric.pieces, numeric.splitValue], [['3/4/', '2024', ' to 5/6/2024'], 1]);
+    const written = datePlacementAfter(build,
+      [{ tag: 'b', text: '3/4/' }, { tag: 'b', text: '2024' }, ' to June 5, 2024'], 'year');
+    eq(`date placement (${kind}): bold "3/4/" and bold "2024" then " to June 5, 2024" at year reads "3/4/", "2024", " to 2024" and counts one split value`,
+      [written.pieces, written.splitValue], [['3/4/', '2024', ' to 2024'], 1]);
+    const t = build([
+      [[{ tag: 'b', text: '3/4/' }, { tag: 'b', text: '2024' }, ' to 5/6/2024'], '2,468'],
+      ['3/14/2024', '3,579'],
+    ]);
+    roundTableUnder(t.table, datePlacementOpts('month'));
+    eq(`date placement (${kind}): bold "3/4/" and bold "2024" then " to 5/6/2024" above "3/14/2024" at month reads "3/4/", "2024", " to 5/2024" and "3/2024"`,
+      [lfPieces(t, 0, 0), t.text(1, 0)], [['3/4/', '2024', ' to 5/2024'], '3/2024']);
   });
 })();

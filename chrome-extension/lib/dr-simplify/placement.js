@@ -65,9 +65,9 @@ function placeDates(classification, layout, lead) {
  * The patch writer edits one text piece per patch, so a number or a date
  * stands only when its characters sit in one text piece. A split number or a
  * split date leaves the classification and the cell's other values change; a
- * time cell holds one time, so a split time skips the cell. The pass reads
- * split: true to count the cell once under split value, however many it
- * holds. Dates index the cell's trimmed text, and text pieces the classified
+ * time cell holds one time, so the step drops the cell when its time is a
+ * split value. The pass reads split: true to count the cell once under split
+ * value, however many it holds. Dates index the cell's trimmed text, and text pieces the classified
  * text, so the date check adds the text's leading whitespace. This step runs
  * before the column post-pass, so a split all-numeric date takes no part in
  * its column's format hint.

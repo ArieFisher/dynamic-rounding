@@ -130,12 +130,12 @@ function tableStepCells(api, rows) {
     [{ index: 8, numStr: '1 034 567', newNum: '1,000,000' }]);
 })();
 
-(function tableStep_dateSpanIsTheTrimmedText() {
+(function tableStep_dateAfterLeadingSpaces() {
   const loaded = loadTableStepAlone();
   if (loaded === null) return;
   const { api } = loaded;
   const cells = tableStepCells(api, [['  2024-03-15 ']]);
-  eq('table step alone: a date cell\'s patch covers its trimmed text, at the end of its leading whitespace',
+  eq('table step alone: "  2024-03-15 " at month takes one patch at 2 that writes "2024-03"',
     api.tablePatches(cells, TABLE_STEP_SETTINGS).patchedCells[0].patches,
     [{ index: 2, numStr: '2024-03-15', newNum: '2024-03' }]);
 })();
