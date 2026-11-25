@@ -6,9 +6,9 @@
  *
  *   1. The column post-pass settles each ambiguous date against its
  *      column's format hint.
- *   2. The max magnitude comes from the numbers of the extracted cells
- *      passed in, since a date or time adds none, unless the caller passes
- *      one.
+ *   2. The max magnitude is the one the caller passes, or else the largest
+ *      order of magnitude among the extracted cells' numbers; the step
+ *      counts no date or time.
  *   3. Each cell's numbers, dates, and times round and become patches.
  *
  * Core layer: reads no page and calls no Chrome. It depends only on
@@ -17,10 +17,9 @@
  *
  * The step reads one classified cell per cell. A classified cell is any
  * object carrying:
- *   text            the classified text (a simplified cell's stored original)
+ *   text            the text the ladder classified
  *   classification  the ladder's classification (classifyCell)
- *   columnIndex     the cell's grid column, by which the column post-pass
- *                   groups cells
+ *   columnIndex     the cell's grid column
  * The step copies every other field through untouched, so a caller can carry
  * its own per-cell data beside them.
  */
@@ -29,10 +28,9 @@ function isAmbiguousDateClassification(classification) {
   return classification.pending === 'ambiguous-date';
 }
 
-// The column post-pass: resolve each ambiguous date against its column's
-// format hint. It groups cells by grid column, so a merged cell cannot split
-// one column into two groups that read 7/4/99 as July in one row and April in
-// another.
+// The column post-pass. It groups cells by grid column, so a merged cell
+// cannot split one column into two groups that read 7/4/99 as July in one row
+// and April in another.
 function resolveAmbiguousDates(classifiedCells) {
   const ambiguousDatesByCol = new Map();
   for (const { classification, columnIndex } of classifiedCells) {
@@ -50,9 +48,6 @@ function resolveAmbiguousDates(classifiedCells) {
   });
 }
 
-// passedMaxMag when the caller passes one, else the max magnitude over each
-// number of every extracted cell in classifiedCells; a date or time cell adds
-// none.
 function datasetMaxMagnitude(classifiedCells, passedMaxMag) {
   if (passedMaxMag != null) return passedMaxMag;
   const allNums = [];
@@ -95,22 +90,17 @@ function classifiedCellPatches(classifiedCell, maxMag, settings) {
 }
 
 /**
- * The table step (see the file header).
+ * The table step (see the file header). settings holds the resolved
+ * offsetTop, offsetOther, and numTop, and the dateGranularity and
+ * timeGranularity. When passedMaxMag is neither null nor undefined, the step
+ * rounds against it and computes none: the extension passes the table's
+ * magnitude freeze, and Sheets the max magnitude over the dataset, number
+ * cells included.
  *
- * @param {object[]} classifiedCells - One classified cell per cell, in page
- *   order, each carrying text, classification, and columnIndex.
- * @param {{offsetTop: number, offsetOther: number, numTop: number,
- *          dateGranularity: string, timeGranularity: string}} settings -
- *   Resolved offsets and num_top, and the date and time granularity.
- * @param {number|null} [passedMaxMag] - A max magnitude the caller holds:
- *   the table's magnitude freeze in the extension, or the max magnitude over
- *   the dataset in Sheets, number cells included. When given, the step
- *   rounds against it and computes none of its own.
  * @returns {{maxMag: number|null,
  *            patchedCells: Array<{classifiedCell: object, patches: object[]}>}}
- *   patchedCells holds one patched cell per classified cell, in input order:
- *   the classified cell after the column post-pass, and its patches in the
- *   classified text.
+ *   One patched cell per classified cell, in input order: the classified
+ *   cell after the column post-pass, and its patches in the classified text.
  */
 function tablePatches(classifiedCells, settings, passedMaxMag) {
   const resolved = resolveAmbiguousDates(classifiedCells);
@@ -120,9 +110,9 @@ function tablePatches(classifiedCells, settings, passedMaxMag) {
   return { maxMag, patchedCells };
 }
 
-// Apply patches to a text, last patch first, so each earlier patch's position
-// still counts into the text as passed in. For a caller with no page: the
-// extension writes through the patch writer, one text piece at a time.
+// Apply patches to a text, last patch first, so the positions of the earlier
+// patches stay valid. For a caller with no page: the extension writes through
+// the patch writer, one text piece at a time.
 function applyPatches(text, patches) {
   return patches
     .slice()

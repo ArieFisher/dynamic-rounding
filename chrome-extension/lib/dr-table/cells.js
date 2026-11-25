@@ -157,6 +157,19 @@ function pieceTexts(pieces) {
   return pieces.map((piece) => piece.nodeValue);
 }
 
+function pieceSpans(texts) {
+  let at = 0;
+  return texts.map((text, i) => {
+    const span = { i, start: at, text };
+    at += text.length;
+    return span;
+  });
+}
+
+function pieceAt(spans, at) {
+  return spans.find((span) => span.start <= at && at < span.start + span.text.length) || null;
+}
+
 /**
  * Where each character of a cell's rendered text sits in its flat text. The
  * browser collapses whitespace runs and adds line breaks at a <br> or block

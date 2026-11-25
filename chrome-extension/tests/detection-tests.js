@@ -522,7 +522,7 @@ const consistentCellCountStepPasses = (children) =>
     Object.assign(extracted(match('45', 4)), { split: true }));
   eq('placeClassification: a number in one piece stands',
     placeClassification(extracted(match('123', 0)), layout(['123'], null)), extracted(match('123', 0)));
-  eq('placeClassification: a rendered position converts through toFlat before the piece check',
+  eq('placeClassification: a number in its own piece between whitespace pieces stands',
     placeClassification(extracted(match('123', 0)), layout(['\n  ', '123', '\n'], [3, 4, 5])), extracted(match('123', 0)));
 })();
 
@@ -531,12 +531,6 @@ const consistentCellCountStepPasses = (children) =>
 // ---------------------------------------------------------------------------
 //
 // Helpers for building mock cells that contain <sup> children.
-//
-// The developer's getSuperscriptRanges(cell) walks document.createTreeWalker
-// text nodes and checks parentNode/parentElement upward for tagName === 'SUP'
-// or a computed vertical-align of 'super'. classifyTableCell treats a cell as
-// holding a superscript when those ranges are non-empty or
-// cell.querySelector('sup') finds one.
 //
 // makeSuperscriptCell(segments) builds a mock cell where each segment is
 //   { text: string, inSup: boolean, styledSup?: boolean }.
@@ -548,8 +542,8 @@ const consistentCellCountStepPasses = (children) =>
 //     parentNode === cell
 //   - cell.querySelector('sup'): returns a truthy object when any inSup:true
 //     segment exists; null otherwise
-//   - cell.querySelectorAll('a'): returns [] (no anchors, so getMarkupRanges
-//     holds nothing)
+//   - cell.querySelectorAll(...): returns [] (no <a> or <code>, so
+//     getMarkupRanges holds nothing)
 // ---------------------------------------------------------------------------
 
 // Standard opts for the exponent tests.
@@ -559,8 +553,6 @@ const supTestOpts = {
   simplifyMixedPercent: true,
   simplifyFirstRow: true,
   simplifyFirstColumn: true,
-  excludeDates: true,
-  excludeTimes: false,
   offsetTop: -0.5,
   offsetOther: -0.5,
   numTop: 1,
@@ -629,14 +621,14 @@ const supTestOpts = {
 })();
 
 // ---------------------------------------------------------------------------
-// Extra: getSuperscriptRanges returns [] when document.createTreeWalker is absent
+// Extra: a cell with no child nodes and no tree walker gives no superscript range
 // ---------------------------------------------------------------------------
 (function supExtra_noTreeWalker() {
   const savedWalker = global.document.createTreeWalker;
   delete global.document.createTreeWalker;
   const cell = makeSuperscriptCell([{ text: '10', inSup: false }, { text: '12', inSup: true }]);
   const ranges = getSuperscriptRanges(cell);
-  eq('sup extra: getSuperscriptRanges returns [] when createTreeWalker is unavailable',
+  eq('sup extra: a cell with no child nodes and no tree walker gives no superscript range',
     ranges, []);
   if (savedWalker !== undefined) global.document.createTreeWalker = savedWalker;
 })();
@@ -2646,10 +2638,9 @@ const detectionSandboxCode = [
 })();
 
 // The detection settings' expected values, written out as literals, so the
-// pin catches a change to any value. Key order matches constants.js's DR_DETECTION_SETTINGS
-// declaration, so the JSON.stringify-based eq() comparison below is not
-// order-sensitive noise.
-const PRE_MOVE_DETECTION_SETTINGS = {
+// pin catches a change to any value. Key order matches DR_DETECTION_SETTINGS's
+// declaration, because eq() compares through JSON.stringify.
+const EXPECTED_DETECTION_SETTINGS = {
   nestingDepth: 1,
   gridMinChildren: 5,
   gridWalkDepthCap: 15,
@@ -2683,12 +2674,12 @@ const PRE_MOVE_DETECTION_SETTINGS = {
 
 // jsdom-less criterion, extended: one vm sandbox with no
 // chrome/window/getComputedStyle evaluates the detection layer and the
-// files it reads (detectionSandboxCode above). The test pins DR_DETECTION_SETTINGS's values against PRE_MOVE_DETECTION_SETTINGS above and runs
+// files it reads (detectionSandboxCode above). The test pins DR_DETECTION_SETTINGS's values against EXPECTED_DETECTION_SETTINGS above and runs
 // looksLikeGrid, findTargetTable, isAccessibilityArtifact, and isDataTable against
-// fixtures whose expected outcome holds only when each moved value reads at
-// its pre-move value: a wrong read (a stale copy, a transposed value, a wrong
+// fixtures whose expected outcome holds only when each value reads at
+// its expected value: a wrong read (a stale copy, a transposed value, a wrong
 // sample size) flips at least one outcome below.
-(function detectionSettings_sandboxBehaviorMatchesPreMoveValues() {
+(function detectionSettings_sandboxBehaviorMatchesExpectedValues() {
   if (constantsCode === null || detectCode === null) {
     eq('detection settings: source files constants.js and lib/dr-table/detect.js present in manifest', false, true);
     return;
@@ -2754,9 +2745,9 @@ const PRE_MOVE_DETECTION_SETTINGS = {
       outcomes.displayInlineFlexPasses = looksLikeGrid(makeEl(uniformRows()), { styleProbe: probeForDisplay('inline-flex') });
       outcomes.displayBlockFails = looksLikeGrid(makeEl(uniformRows()), { styleProbe: probeForDisplay('block') });
 
-      // --- vendorProfiles (default, no opts override): a 'dg--' class
-      // short-circuits ACCEPT even when the width-agreement step would
-      // otherwise fail; the same rows with no vendor class do not ---
+      // --- vendorProfiles (default, no opts override): with the class
+      // 'dg--outer', looksLikeGrid accepts rows whose first cells differ in
+      // width; the same rows with no class fail ---
       const badWidthRows = [100, 200, 300, 400, 500].map(widthRow);
       outcomes.vendorClassShortCircuitsAccept = looksLikeGrid(
         Object.assign(makeEl(badWidthRows), { className: 'dg--outer' }), { styleProbe: gridStyleProbe });
@@ -2790,7 +2781,7 @@ const PRE_MOVE_DETECTION_SETTINGS = {
       outcomes.offscreenBeyondThresholdIsArtifact = isAccessibilityArtifact(offscreenTable(-10000), offscreenProbe);
       outcomes.offscreenInsideThresholdIsNotArtifact = isAccessibilityArtifact(offscreenTable(-9998), offscreenProbe);
 
-      // --- isDataTable: no collateral breakage from the load-order change ---
+      // --- isDataTable: a plain numeric table passes ---
       outcomes.isDataTableStillFindsANumericTable = isDataTable({
         tagName: 'TABLE',
         rows: [
@@ -2806,10 +2797,10 @@ const PRE_MOVE_DETECTION_SETTINGS = {
   );
 
   eq('detection settings: the combined sandbox does not throw', sandbox.threw, null);
-  eq('detection settings: DR_DETECTION_SETTINGS exposes exactly sixteen keys, the nine pre-move keys plus nestingDepth, dataTestCellBudget, pendingRetestCap, pendingTableCap, reapplyMaxWaitMs, reapplyCellCap, and passTargetMs',
-    sandbox.outcomes.settingsKeys, Object.keys(PRE_MOVE_DETECTION_SETTINGS).sort());
-  eq('detection settings: DR_DETECTION_SETTINGS carries every pre-move value unchanged, plus nestingDepth at 1, dataTestCellBudget at 1000, pendingRetestCap at 100, pendingTableCap at 50, reapplyMaxWaitMs at 1000, reapplyCellCap at 10000, and passTargetMs at 200',
-    sandbox.outcomes.settings, PRE_MOVE_DETECTION_SETTINGS);
+  eq('detection settings: DR_DETECTION_SETTINGS holds exactly the sixteen expected keys',
+    sandbox.outcomes.settingsKeys, Object.keys(EXPECTED_DETECTION_SETTINGS).sort());
+  eq('detection settings: DR_DETECTION_SETTINGS holds every expected value',
+    sandbox.outcomes.settings, EXPECTED_DETECTION_SETTINGS);
   eq('detection settings: looksLikeGrid rejects 4 children (below gridMinChildren)',
     sandbox.outcomes.minChildrenBelowFails, false);
   eq('detection settings: looksLikeGrid accepts 5 children (at gridMinChildren)',
@@ -2832,11 +2823,11 @@ const PRE_MOVE_DETECTION_SETTINGS = {
     sandbox.outcomes.displayInlineFlexPasses, true);
   eq('detection settings: looksLikeGrid rejects display:block (not in gridDisplayValues)',
     sandbox.outcomes.displayBlockFails, false);
-  eq('detection settings: looksLikeGrid short-circuits ACCEPT for the default databricks vendorProfiles class token',
+  eq('detection settings: looksLikeGrid accepts five rows of unequal first-cell widths with the class dg--outer',
     sandbox.outcomes.vendorClassShortCircuitsAccept, true);
-  eq('detection settings: looksLikeGrid still runs the width-agreement step with no vendor class',
+  eq('detection settings: looksLikeGrid rejects the same rows with no class',
     sandbox.outcomes.noVendorClassFailsWidthCheck, false);
-  eq('detection settings: findTargetTable bounds the ancestor walk to gridWalkDepthCap (15)',
+  eq('detection settings: findTargetTable over a 20-deep chain of grids returns the 15th ancestor',
     sandbox.outcomes.walkDepthCapLabel, 14);
   eq('detection settings: isAccessibilityArtifact treats offscreenLeftPx itself as off-screen',
     sandbox.outcomes.offscreenAtThresholdIsArtifact, true);
@@ -2844,7 +2835,7 @@ const PRE_MOVE_DETECTION_SETTINGS = {
     sandbox.outcomes.offscreenBeyondThresholdIsArtifact, true);
   eq('detection settings: isAccessibilityArtifact treats a value inside offscreenLeftPx as on-screen',
     sandbox.outcomes.offscreenInsideThresholdIsNotArtifact, false);
-  eq('detection settings: isDataTable still finds a plain 2x2 numeric table (no collateral breakage)',
+  eq('detection settings: isDataTable passes a 2x2 table holding 100 and 200',
     sandbox.outcomes.isDataTableStillFindsANumericTable, true);
 })();
 
@@ -4332,15 +4323,12 @@ function cnAdapterCellEls(tableEl) {
 
 // --- Placement: a bracket may hold its own text piece ---
 
-(function bracketInItsOwnPiecePlaces() {
+(function bracketInItsOwnPieceKeepsModeExtracted() {
   const pieces = ['(', '1,234', ')'];
   const text = pieces.join('');
-  const liveStarts = [];
-  let at = 0;
-  for (const piece of pieces) { liveStarts.push(at); at += piece.length; }
-  const layout = { original: pieces, liveStarts, toFlat: null };
+  const layout = { original: pieces, toFlat: null };
   const classification = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, bracketOpts);
-  eq('bracketed: a bracket in its own text piece still places',
+  eq('bracketed: "(1,234)" with each bracket in its own text piece keeps mode extracted',
     placeClassification(classification, layout).mode, 'extracted');
 })();
 
