@@ -2400,9 +2400,9 @@ const SETTINGS_CHANGE_ROWS = [[['6,7', { tag: 'b', text: '18,245' }],
       return rows;
     };
     const t = build(SETTINGS_CHANGE_ROWS);
-    eq(`settings change (${kind}): turning a table on writes one row with the split numbers counted`,
+    eq(`settings change (${kind}): turning a table on writes one row with the split values counted`,
       rowsOf(t.table, Object.assign({}, RW_OPTS, { enabled: true })),
-      ['Dynamic Rounding: settings change · on/off: on · left as written: split number 2']);
+      ['Dynamic Rounding: settings change · on/off: on · left as written: split value 2']);
     eq(`settings change (${kind}): turning a table off writes one row`,
       rowsOf(t.table, Object.assign({}, RW_OPTS, { enabled: false })),
       ['Dynamic Rounding: settings change · on/off: off']);

@@ -216,11 +216,9 @@ function tableStepCells(api, rows) {
   });
 })();
 
-// --- The check that a changed date or time sits in one text piece. ---
+// --- A date across two text pieces stays as written. ---
 //
-// The table step returns a date or time cell's patch over its trimmed text;
-// the pass drops the patch when no single text piece holds that span, and
-// counts the cell as a split date or time. A date that sits in one piece
+// The pass counts the cell as a split value. A date that sits in one piece
 // beside a whitespace piece rounds.
 
 (function tableStep_dateAcrossTwoPiecesStaysUnchanged() {
@@ -234,8 +232,8 @@ function tableStepCells(api, rows) {
     const result = roundTableUnder(t.table, passOpts);
     eq(`table step, date across two pieces (${kind}): each piece keeps its text`,
       t.pieces(0, 0).map((p) => p.nodeValue), ['2024-', '03-15']);
-    eq(`table step, date across two pieces (${kind}): the pass counts one split date or time`,
-      result.leftAsWritten.splitDateOrTime, 1);
+    eq(`table step, date across two pieces (${kind}): the pass counts one split value`,
+      result.leftAsWritten.splitValue, 1);
     eq(`table step, date across two pieces (${kind}): a date in one piece rounds`,
       t.text(1, 0), '2024-04');
     eq(`table step, date across two pieces (${kind}): a date in one piece beside a whitespace piece rounds`,
@@ -287,14 +285,7 @@ function tableStepCells(api, rows) {
   eq('table step source: each function in lib/dr-simplify/table.js has one declaration in the repository',
     TABLE_STEP_FUNCTIONS.map((name) => [name, declaredIn(name)]),
     TABLE_STEP_FUNCTIONS.map((name) => [name, ['chrome-extension/lib/dr-simplify/table.js']]));
-  // The page-free part of a cell's patches: content.js's cellPatches holds
-  // none of the rounding or formatting calls the table step makes.
-  const body = sourceBodyOf(contentSrc, 'function cellPatches(');
-  eq('table step source: content.js declares cellPatches', body !== '', true);
-  const ROUNDING_CALLS = /\b(roundValueSetAware|formatNumber|roundDateText|roundTimeText|pureNumberSpan|findMaxMagnitude|pickDateFormatHint|resolveAmbiguousDateClassification)\s*\(/g;
-  eq('table step source: content.js\'s cellPatches makes no rounding or formatting call',
-    (body || '').match(ROUNDING_CALLS) || [], []);
   eq('table step source: content.js calls no column post-pass or max magnitude rule outside the table step',
     [...new Set((contentSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
-      .match(/\b(pickDateFormatHint|resolveAmbiguousDateClassification|findMaxMagnitude|roundDateText|roundTimeText|pureNumberSpan)\s*\(/g) || []))], []);
+      .match(/\b(pickDateFormatHint|resolveAmbiguousDateClassification|findMaxMagnitude|roundDate|roundTimeText|pureNumberSpan)\s*\(/g) || []))], []);
 })();

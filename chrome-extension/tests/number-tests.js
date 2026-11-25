@@ -439,6 +439,16 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
 
 // --- Per-type granularity ---
 
+// A text with each date written in its place as roundDate returns it, the
+// way the table step's per-date patches write a date cell. A text holding an
+// all-numeric or impossible date comes back unchanged.
+function roundDateText(text, granularity, dates) {
+  const list = dates || findDates(text);
+  if (!list || list.some((d) => d.impossible || isAmbiguousDate(d))) return text;
+  return list.reduceRight(
+    (out, d) => out.slice(0, d.start) + roundDate(text, d, granularity) + out.slice(d.end), text);
+}
+
 // Date granularity
 // CONTRACT: roundDateText drops the parts of the date finer than the granularity
 // and changes only the date portion of the cell text. For mixed cells (label +

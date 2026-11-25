@@ -933,7 +933,7 @@ const SEAT_ROWS = [
       eq('native separate pieces: a number split after its grouping comma stays unchanged',
         d.map((seg) => seg.text), ['3,406,', '918']);
       eq('native separate pieces: the pass writes no row and counts each split number',
-        { rows: rows.length, splitNumber: result.leftAsWritten.splitNumber }, { rows: 0, splitNumber: 2 });
+        { rows: rows.length, splitValue: result.leftAsWritten.splitValue }, { rows: 0, splitValue: 2 });
     } finally {
       offRow();
       DR_MODEL.unregisterTable(table);
@@ -1109,7 +1109,7 @@ const SEAT_ROWS = [
       eq('native pure cell across pieces: the cell stores no original',
         DR_MODEL.getTableOriginal(table, cell), undefined);
       eq('native pure cell across pieces: the pass counts the cell as a split number',
-        result.leftAsWritten.splitNumber, 1);
+        result.leftAsWritten.splitValue, 1);
     } finally {
       DR_MODEL.unregisterTable(table);
     }
@@ -2006,7 +2006,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     eq('grid separate pieces: the max magnitude counts the numbers in separate pieces one by one',
       DR_MODEL.getTableMaxMagnitude(grid.wrapperEl), 2);
     eq('grid separate pieces: the pass counts the split number and the split date',
-      result.leftAsWritten, { splitNumber: 1, splitDateOrTime: 1, textMismatch: 0 });
+      result.leftAsWritten, { splitValue: 2, textMismatch: 0 });
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
   }
@@ -2114,7 +2114,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     eq('grid separate pieces: one number that inline styling splits stays unchanged, as on a native table',
       pieceTextsOf(c), ['6,7', '18,245']);
     eq('grid separate pieces: the pass counts the styled number as a split number',
-      result.leftAsWritten.splitNumber, 1);
+      result.leftAsWritten.splitValue, 1);
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
   }
@@ -3932,7 +3932,7 @@ function everyRowRead(kind, largeIn) {
         collectNumericCells(table, opts), []);
       eq('preview log rows: the preview writes no row', rows.length, 0);
       eq('preview log rows (control): the simplification pass counts the split number',
-        roundTable(table, opts).leftAsWritten.splitNumber, 1);
+        roundTable(table, opts).leftAsWritten.splitValue, 1);
     } finally {
       offRow();
       DR_MODEL.unregisterTable(table);
@@ -5756,7 +5756,7 @@ const placeCellAfter = (build, rows, opts) => {
     eachRewriteKind(RW_KINDS, (kind, page, build) => {
       const t = build(LF_ROWS(spec));
       eq(`placement split number (${kind}, ${name}): the pass counts one split number`,
-        roundTableUnder(t.table, RW_OPTS).leftAsWritten.splitNumber, 1);
+        roundTableUnder(t.table, RW_OPTS).leftAsWritten.splitValue, 1);
     });
   }
 })();
