@@ -60,9 +60,9 @@ DR_BUS.respond('request:applySettings', ({ settings }) => {
   return { ok: true };
 });
 
-// table-pillbox-view.js's click handler publishes every committed toggle activation
-// (an immediate mouse/keyboard click, or the second tap of a touch/pen
-// two-tap) as this one intent. The menu toggle publishes the same intent from
+// table-pillbox-view.js's click handler publishes every table pillbox press
+// as this one intent; the comment on that handler holds which clicks count
+// as a press. The menu toggle publishes the same intent from
 // its intent:menuClicked subscriber below. This is where that intent turns
 // into one controller action, and there is exactly one.
 //

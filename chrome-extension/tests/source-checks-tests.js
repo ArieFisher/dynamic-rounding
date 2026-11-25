@@ -1326,8 +1326,8 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 // lists have one home, the detection settings (DR_DETECTION_SETTINGS, in
 // the configuration file constants.js). The
 // table pillbox auto-collapse delay lives in the table pillbox view
-// (table-pillbox-view.js) as its own constant: the view alone reads it. Four groups
-// of tests:
+// (table-pillbox-view.js) as its own constant; the reason sits on that
+// constant. Four groups of tests:
 //   1. Source scan: none of the eight retired names carries a second
 //      const/let/var definition anywhere the manifest loads, and the two
 //      retired literal forms (the repetition-share division, the bare

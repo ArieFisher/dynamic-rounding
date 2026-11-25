@@ -185,15 +185,15 @@ globalThis.TABLE_PILLBOX_COLOR_ON = TABLE_PILLBOX_COLOR_ON;
 globalThis.TABLE_PILLBOX_AUTO_COLLAPSE_MS = TABLE_PILLBOX_AUTO_COLLAPSE_MS;
 globalThis.TABLE_PILLBOX_CLIP_WALK_CAP = TABLE_PILLBOX_CLIP_WALK_CAP;
 globalThis.ensureScrollResizeListeners = ensureScrollResizeListeners;
-// _globalTapCollapseAdded is a let; expose getter/setter so tests can reset it.
-Object.defineProperty(globalThis, '_globalTapCollapseAdded', {
-  get() { return _globalTapCollapseAdded; },
-  set(v) { _globalTapCollapseAdded = v; },
+// globalTapCollapseAdded is a let; expose getter/setter so tests can reset it.
+Object.defineProperty(globalThis, 'globalTapCollapseAdded', {
+  get() { return globalTapCollapseAdded; },
+  set(v) { globalTapCollapseAdded = v; },
   configurable: true,
 });
 // lastRightClickedTable proxies the active table onto DR_MODEL's
 // getter/setter pair, exactly like the tablePillboxStyleInjected/
-// _globalTapCollapseAdded shims above proxy onto their own file-level lets.
+// globalTapCollapseAdded shims above proxy onto their own file-level lets.
 Object.defineProperty(globalThis, 'lastRightClickedTable', {
   get() { return DR_MODEL.getActiveTable(); },
   set(v) { DR_MODEL.setActiveTable(v); },
