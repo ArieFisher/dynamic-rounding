@@ -2400,9 +2400,9 @@ const SETTINGS_CHANGE_ROWS = [[['6,7', { tag: 'b', text: '18,245' }],
       return rows;
     };
     const t = build(SETTINGS_CHANGE_ROWS);
-    eq(`settings change (${kind}): turning a table on writes one row with the split numbers counted`,
+    eq(`settings change (${kind}): turning a table on writes one row with the split values counted`,
       rowsOf(t.table, Object.assign({}, RW_OPTS, { enabled: true })),
-      ['Dynamic Rounding: settings change · on/off: on · left as written: split number 2']);
+      ['Dynamic Rounding: settings change · on/off: on · left as written: split value 2']);
     eq(`settings change (${kind}): turning a table off writes one row`,
       rowsOf(t.table, Object.assign({}, RW_OPTS, { enabled: false })),
       ['Dynamic Rounding: settings change · on/off: off']);
@@ -2416,5 +2416,23 @@ const SETTINGS_CHANGE_ROWS = [[['6,7', { tag: 'b', text: '18,245' }],
       wordRows.length === 1 &&
         /^Dynamic Rounding: settings change · on\/off: on( · left as written: [a-z ,0-9]+)?$/.test(wordRows[0]),
       true);
+  });
+})();
+
+(function settingsChange_aSplitDateBesideAWholeDate() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build([[[{ tag: 'b', text: '2024-' }, { tag: 'b', text: '03-15' }, ' and 2024-04-20'], '2,468']]);
+    const rows = [];
+    const offRow = DR_LOG.onRow((row) => rows.push(row.text));
+    try {
+      DR_MODEL.setTableSettings(t.table,
+        Object.assign({}, RW_OPTS, { enabled: true, simplifyDates: true, dateGranularity: 'month' }), 'page');
+      withTablePillboxDocumentMock(() => applySidebarRounding(t.table));
+    } finally {
+      offRow();
+    }
+    eq(`settings change (${kind}): bold "2024-" and bold "03-15" then " and 2024-04-20" at month writes one row with split value 1`,
+      rows, ['Dynamic Rounding: settings change · on/off: on · left as written: split value 1']);
+    eq(`settings change (${kind}): the same cell reads "2024-03-15 and 2024-04"`, t.text(0, 0), '2024-03-15 and 2024-04');
   });
 })();

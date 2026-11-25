@@ -267,12 +267,11 @@ function applySidebarRounding(table) {
 }
 
 // The settings change row's "left as written" value: each reason with a
-// non-zero count, e.g. "split number 2, text mismatch 1". counts is absent
+// non-zero count, e.g. "split value 2, text mismatch 1". counts is absent
 // when the pass did not run, and the value is empty when nothing was left as
 // written.
 function leftAsWrittenValue(counts = {}) {
-  return [['split number', counts.splitNumber], ['split date or time', counts.splitDateOrTime],
-    ['text mismatch', counts.textMismatch]]
+  return [['split value', counts.splitValue], ['text mismatch', counts.textMismatch]]
     .filter(([, count]) => count > 0)
     .map(([reason, count]) => reason + ' ' + count.toLocaleString('en-US'))
     .join(', ');
@@ -739,8 +738,7 @@ function buildCaptureStateResponse() {
 // placement step (placeClassification).
 // The table step (tablePatches in lib/dr-simplify/table.js) then resolves
 // ambiguous dates per column, finds the max magnitude over the dataset, and
-// builds each cell's patches. The pass drops a changed date or time that
-// crosses a piece boundary (cellPatches) and writes each cell through the
+// builds each cell's patches. The pass writes each cell through the
 // patch writer, cell by cell in page order. The writer gives every piece
 // whose live text differs from its target the target, so a held cell with
 // nothing changed takes no write, a piece redrawn to its original takes the
@@ -752,10 +750,10 @@ function buildCaptureStateResponse() {
 // both kinds, so the pass sees no difference between them before it starts.
 //
 // The pass writes no log row. It counts, by reason, the cells it left as
-// written: a split number (classification.split, after classification), a
-// changed date or time whose text crosses a piece boundary, and a cell whose
-// patch landed nothing because the text it shows differs from the text its
-// pieces hold. It returns the counts and its duration; the apply writes the counts
+// written: a split value (classification.split, after the placement step),
+// and a cell whose patch landed nothing because the text it shows differs
+// from the text its pieces hold. It returns the counts and its duration; the
+// apply writes the counts
 // in its one settings change row, and the re-apply observer writes the
 // duration when a pass runs over the pass target.
 //
@@ -825,21 +823,6 @@ function releaseRewrittenCells(table, dataCells) {
   }
 }
 
-// One cell's patches as the page takes them: the table step's patches
-// (tablePatches, lib/dr-simplify/table.js), less a changed date or time that
-// does not sit in one text piece, which stays as written.
-function cellPatches(patchedCell) {
-  return isSplitDateOrTime(patchedCell) ? [] : patchedCell.patches;
-}
-
-// A changed date or time whose one patch no single text piece holds.
-function isSplitDateOrTime({ classifiedCell, patches }) {
-  const { mode } = classifiedCell.classification;
-  const isDateOrTime = mode === 'date' || mode === 'time';
-  return isDateOrTime && patches.length > 0 &&
-    !layoutPieceHolding(classifiedCell.layout, patches[0].index, patches[0].numStr.length);
-}
-
 // The one simplification pass (see the section header above).
 function simplifyTableCells(table, adapterRows, opts, pass) {
   const startedAt = Date.now();
@@ -858,12 +841,11 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
   const { maxMag, patchedCells } = tablePatches(classified, settings, pass.frozenMaxMag);
   if (writes === 'first') DR_MODEL.setTableMaxMagnitude(table, maxMag);
 
-  const { cells, missedCells, splitDateOrTime } = writeTableCells(table, patchedCells, writes);
+  const { cells, missedCells } = writeTableCells(table, patchedCells, writes);
   return {
     cells, maxMag, cellCount: dataCells.length, overCap: false,
     leftAsWritten: {
-      splitNumber: classified.filter((classifiedCell) => classifiedCell.classification.split).length,
-      splitDateOrTime,
+      splitValue: classified.filter((classifiedCell) => classifiedCell.classification.split).length,
       textMismatch: missedCells,
     },
     ms: Date.now() - startedAt,
@@ -878,11 +860,8 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
 function writeTableCells(table, patchedCells, writes) {
   const cells = [];
   let missedCells = 0;
-  let splitDateOrTime = 0;
-  for (const patchedCell of patchedCells) {
-    const { classifiedCell } = patchedCell;
-    if (isSplitDateOrTime(patchedCell)) splitDateOrTime++;
-    const flat = flatPatches(cellPatches(patchedCell), classifiedCell.layout);
+  for (const { classifiedCell, patches } of patchedCells) {
+    const flat = flatPatches(patches, classifiedCell.layout);
     cells.push({ classifiedCell, patches: flat });
     if (writes === 'none') continue;
     const held = DR_MODEL.hasTableOriginal(table, classifiedCell.cellObj.el);
@@ -891,7 +870,7 @@ function writeTableCells(table, patchedCells, writes) {
     if (flat.length > 0 && landed === 0) missedCells++;
     if (landed === 0 && held) releaseCell(table, classifiedCell.cellObj.el);
   }
-  return { cells, missedCells, splitDateOrTime };
+  return { cells, missedCells };
 }
 
 // A table's adapter, reading and writing each cell's record through the

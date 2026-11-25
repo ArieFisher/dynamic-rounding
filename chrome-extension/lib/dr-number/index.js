@@ -58,7 +58,7 @@ const DR_NUMBER = {
   isDateTimeLike,
   isClockTimeInRange,
   readTimeCell,
-  roundDateText,
+  roundDate,
   roundClockTime,
   roundTimeText,
   getEraYearMaskedRanges,

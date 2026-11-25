@@ -236,31 +236,25 @@ function isDateTimeLike(text) {
 }
 
 /**
- * Simplify every date in a cell's trimmed text to the granularity; the text
- * around the dates stays. The dates are the classification's dates for this
- * text, each with a known reading, in text order. Without them, findDates
- * reads the text, and a text holding an all-numeric or impossible date comes
- * back unchanged.
+ * The new text of one date with a known reading (see knownDate), simplified
+ * to the granularity. The date's bounds and its dayCut index text, so the
+ * month granularity keeps the date's own characters around the cut. A date
+ * the granularity leaves alone (no day at month, no month at quarter) comes
+ * back as written.
  */
-function roundDateText(text, granularity, dates) {
-  const list = dates || findDates(text);
-  if (!list || list.some((d) => d.impossible || isAmbiguousDate(d))) return text;
-  let out = text;
-  // Right to left, so each edit leaves the positions of the dates before it.
-  for (let i = list.length - 1; i >= 0; i--) {
-    const d = list[i];
-    if (granularity === 'month') {
-      if (d.dayCut) out = out.slice(0, d.dayCut.start) + out.slice(d.dayCut.end);
-    } else if (granularity === 'quarter') {
-      if (!d.month) continue;
-      const q = 'Q' + Math.ceil(d.month / 3);
-      out = out.slice(0, d.start) + (d.monthBeforeYear ? q + ' ' + d.year : d.year + ' ' + q) + out.slice(d.end);
-    } else {
-      const step = granularity === 'century' ? 100 : granularity === 'decade' ? 10 : 1;
-      out = out.slice(0, d.start) + String(Math.floor(d.year / step) * step) + out.slice(d.end);
-    }
+function roundDate(text, date, granularity) {
+  const written = text.slice(date.start, date.end);
+  if (granularity === 'month') {
+    if (!date.dayCut) return written;
+    return text.slice(date.start, date.dayCut.start) + text.slice(date.dayCut.end, date.end);
   }
-  return out;
+  if (granularity === 'quarter') {
+    if (!date.month) return written;
+    const q = 'Q' + Math.ceil(date.month / 3);
+    return date.monthBeforeYear ? q + ' ' + date.year : date.year + ' ' + q;
+  }
+  const step = granularity === 'century' ? 100 : granularity === 'decade' ? 10 : 1;
+  return String(Math.floor(date.year / step) * step);
 }
 
 const SECONDS_PER_MINUTE = 60;

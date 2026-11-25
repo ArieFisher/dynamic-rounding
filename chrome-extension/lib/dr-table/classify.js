@@ -100,5 +100,5 @@ function classifyTableCell(cellObj, rowIndex, opts, ranges) {
     superscriptRanges,
     digitsSpanPieces,
   }, opts);
-  return classifiedCell(placeClassification(classified, layout));
+  return classifiedCell(placeClassification(classified, layout, text));
 }
