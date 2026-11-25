@@ -518,3 +518,108 @@ const bracketOpts = Object.assign({}, DR_DEFAULTS, {
     { stretches: [] });
 })();
 
+
+// =============================================================================
+// Each number, date, and time in a cell follows its own switch
+// =============================================================================
+//
+// Each row runs one column through the ladder, the placement step, and the
+// table step, with dates at year, times at hour, and the currency and percent
+// switches on, unless the row states other settings.
+
+(function mixedCells_eachValueFollowsItsOwnSwitch() {
+  const rows = [
+    ['Paid $12,345 on November 09 2026', {}, 'Paid $10,000 on 2026'],
+    ['Paid $12,345 on November 09 2026', { simplifyMixedCurrency: false }, 'Paid $12,345 on 2026'],
+    ['Paid $12,345 on November 09 2026', { simplifyDates: false }, 'Paid $10,000 on November 09 2026'],
+    ['Monday, November 09 2026 at 19:54 UTC', {}, 'Monday, 2026 at 20:00 UTC'],
+    ['Meeting at 19:54', {}, 'Meeting at 20:00'],
+    ['19:54 — 12,345 units', {}, '20:00 — 10,000 units'],
+    ['12:45 - 1:30 PM', {}, '12:45 - 2:00 PM'],
+    ['2026-11-09T19:54:00Z', {}, '2026 20:00'],
+    ['Deployed 2026-11-09T19:54:00Z, 12,345 users', {}, 'Deployed 2026 20:00, 10,000 users'],
+    ['03/04/2026: 12,345', {}, '03/04/2026: 10,000'],
+    ['1999-13-45 and Jun 2020, 12,345', {}, '1999-13-45 and 2020, 10,000'],
+    ['Sold 5% on Jun 2020', { simplifyMixedPercent: false }, 'Sold 5% on 2020'],
+    ['Revenue (USD) 12,345', { simplifyMixedCurrency: false }, 'Revenue (USD) 10,000'],
+    ['Lap 3:43.13', {}, 'Lap 3:43.13'],
+    ['Meeting at 24:00', {}, 'Meeting at 24:00'],
+  ];
+  for (const [text, settingsPatch, expected] of rows) {
+    const named = Object.keys(settingsPatch).length > 0 ? ` with ${JSON.stringify(settingsPatch)}` : '';
+    eq(`mixed cell: "${text}"${named} becomes "${expected}"`, simplifyColumn([text], settingsPatch), [expected]);
+  }
+})();
+
+(function mixedCells_isoDateTimeResults() {
+  // [Dates, Times, value, result]
+  const rows = [
+    ['year', 'hour', '2026-11-09T19:54:00Z', '2026 20:00'],
+    ['year', 'off', '2026-11-09T19:54:00Z', '2026 19:54:00Z'],
+    ['month', 'off', '2026-11-09T19:54:00Z', '2026-11 19:54:00Z'],
+    ['off', 'hour', '2026-11-09T19:54:00Z', '2026-11-09 20:00'],
+    ['off', 'off', '2026-11-09T19:54:00Z', '2026-11-09T19:54:00Z'],
+    ['month', 'hour', '2026-11-09T19:54:00Z', '2026-11 20:00'],
+    ['quarter', 'minute', '2026-11-09T19:54:00Z', '2026 Q4 19:54'],
+    ['decade', 'hour', '2026-11-09T19:54:00Z', '2020 20:00'],
+    ['year', 'hour', '2026-11-09T23:45', '2026 23:00'],
+    ['year', 'off', '2026-11-09 19:54', '2026 19:54'],
+  ];
+  for (const [dates, times, text, expected] of rows) {
+    const settingsPatch = Object.assign(
+      dates === 'off' ? { simplifyDates: false } : { dateGranularity: dates },
+      times === 'off' ? { simplifyTimes: false } : { timeGranularity: times });
+    eq(`ISO date-time: "${text}" with Dates ${dates} and Times ${times} becomes "${expected}"`,
+      simplifyColumn([text], settingsPatch), [expected]);
+  }
+})();
+
+(function mixedCells_unreadableColumnHoldsItsDates() {
+  eq('mixed cell: "03/04/2026: 12,345" and "05/06/2026: 23,456" in one column become "03/04/2026: 10,000" and "05/06/2026: 25,000"',
+    simplifyColumn(['03/04/2026: 12,345', '05/06/2026: 23,456'], {}),
+    ['03/04/2026: 10,000', '05/06/2026: 25,000']);
+  eq('mixed cell: "03/04/2026: 12,345" in a column with "13/04/2026" and "04/13/2026" becomes "03/04/2026: 10,000"',
+    simplifyColumn(['03/04/2026: 12,345', '13/04/2026', '04/13/2026'], {}),
+    ['03/04/2026: 10,000', '13/04/2026', '04/13/2026']);
+})();
+
+(function mixedCells_oneValueCellsGiveTheSameResult() {
+  const rows = [
+    ['Jun 2020 - Dec 2020', {}, '2020 - 2020'],
+    ['2020-07-21', { dateGranularity: 'month' }, '2020-07'],
+    ['02134', {}, '02134'],
+    ['$1,234', {}, '$1,000'],
+    ['Lap 3:43.13', {}, 'Lap 3:43.13'],
+    ['Meeting at 24:00', {}, 'Meeting at 24:00'],
+  ];
+  for (const [text, settingsPatch, expected] of rows) {
+    for (const timesPatch of [{}, { simplifyTimes: false }]) {
+      const patch = Object.assign({}, settingsPatch, timesPatch);
+      const named = Object.keys(patch).length > 0 ? ` with ${JSON.stringify(patch)}` : '';
+      eq(`one-value cell: "${text}"${named} becomes "${expected}"`, simplifyColumn([text], patch), [expected]);
+    }
+  }
+})();
+
+(function mixedCells_heldValuesLeaveTheOthers() {
+  eq('mixed cell: "9:15 and 12:45 - 1:30 PM, 12,345" becomes "9:15 and 12:45 - 2:00 PM, 10,000"',
+    simplifyColumn(['9:15 and 12:45 - 1:30 PM, 12,345'], {}), ['9:15 and 12:45 - 2:00 PM, 10,000']);
+  eq('mixed cell: "1999-13-45, 2020-07-21 and 12,345" becomes "1999-13-45, 2020 and 10,000"',
+    simplifyColumn(['1999-13-45, 2020-07-21 and 12,345'], {}), ['1999-13-45, 2020 and 10,000']);
+  const currencyOff = { simplifyMixedCurrency: false };
+  eq('mixed cell: "Paid USD12,345 on Jun 2020" with the currency switch off becomes "Paid USD12,345 on 2020"',
+    simplifyColumn(['Paid USD12,345 on Jun 2020'], currencyOff), ['Paid USD12,345 on 2020']);
+  eq('mixed cell: "Paid 12,345 USD on Jun 2020" with the currency switch off becomes "Paid 12,345 USD on 2020"',
+    simplifyColumn(['Paid 12,345 USD on Jun 2020'], currencyOff), ['Paid 12,345 USD on 2020']);
+  eq('mixed cell: "Paid 12,345 (USD) on Jun 2020" with the currency switch off becomes "Paid 10,000 (USD) on 2020"',
+    simplifyColumn(['Paid 12,345 (USD) on Jun 2020'], currencyOff), ['Paid 10,000 (USD) on 2020']);
+  eq('mixed cell: "See Jun 2020 report, 12,345 users" with "Jun 2020" a link becomes "See Jun 2020 report, 10,000 users"',
+    simplifyColumn(['See Jun 2020 report, 12,345 users'], {}, [{ ladder: { markupRanges: [{ start: 4, end: 12 }] } }]),
+    ['See Jun 2020 report, 10,000 users']);
+  eq('mixed cell: "Call at 19:54, 12,345 users" with "19:54" a link becomes "Call at 19:54, 10,000 users"',
+    simplifyColumn(['Call at 19:54, 12,345 users'], {}, [{ ladder: { markupRanges: [{ start: 8, end: 13 }] } }]),
+    ['Call at 19:54, 10,000 users']);
+  eq('mixed cell: "Jun 2020, 12,345 users" drawn as "Jun " and "2020, 12,345 users" becomes "Jun 2020, 10,000 users"',
+    simplifyColumn(['Jun 2020, 12,345 users'], {}, [{ pieces: ['Jun ', '2020, 12,345 users'] }]),
+    ['Jun 2020, 10,000 users']);
+})();

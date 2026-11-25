@@ -38,6 +38,24 @@ function roundTimeCell(text, timeGranularity) {
   return patches.length === 0 ? null : applyPatches(text, patches);
 }
 
+// The texts of a one-column table after the ladder, the placement step, and
+// the table step, the steps both table kinds run. The settings are the
+// defaults with Times on, then settingsPatch. cellInputs[i], when given,
+// holds cell i's extra ladder input (markup ranges, for example) as ladder,
+// and its text pieces as pieces.
+function simplifyColumn(texts, settingsPatch, cellInputs) {
+  const settings = Object.assign({}, DR_DEFAULTS, { simplifyTimes: true }, settingsPatch);
+  const classifiedCells = texts.map((text, i) => {
+    const { ladder, pieces } = (cellInputs || [])[i] || {};
+    const classification = classifyCell(
+      Object.assign({ text, rowIndex: 1 + i, columnIndex: 1, ranges: null }, ladder), settings);
+    const placed = pieces ? placeClassification(classification, { original: pieces, toFlat: null }) : classification;
+    return { text, columnIndex: 1, classification: placed };
+  });
+  return tablePatches(classifiedCells, settings).patchedCells
+    .map(({ classifiedCell, patches }) => applyPatches(classifiedCell.text, patches));
+}
+
 // A mock cell's one text piece, the way a page element holds its text: a
 // text node child whose value reads and writes the cell's text. The placement
 // step reads a native cell's text pieces, so a mock cell with no text node
