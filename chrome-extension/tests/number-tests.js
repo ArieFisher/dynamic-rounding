@@ -2,91 +2,90 @@
 
 // --- extractNumbersInText (multi-match) ---
 
-eq('extractAll: range with en-dash',
+eq('extractNumbersInText: range with en-dash',
   extractNumbersInText('₹615.71–623.33 crore'),
   [
     { numStr: '615.71', num: 615.71, index: 1 },
     { numStr: '623.33', num: 623.33, index: 8 }
   ]);
 
-eq('extractAll: two-number sentence',
+eq('extractNumbersInText: two-number sentence',
   extractNumbersInText('between 1,200 and 3,400 units'),
   [
     { numStr: '1,200', num: 1200, index: 8 },
     { numStr: '3,400', num: 3400, index: 18 }
   ]);
 
-eq('extractAll: single number still returns one-element array',
+eq('extractNumbersInText: "286k" yields one number',
   extractNumbersInText('286k'),
   [{ numStr: '286', num: 286, index: 0 }]);
 
-eq('extractAll: no digits returns empty array',
+eq('extractNumbersInText: text with no digits yields no numbers',
   extractNumbersInText('N/A'),
   []);
 
-// --- Boundary guard: digits welded to letters are identifiers, not quantities ---
-// Rounding them yields a value that still looks like a valid identifier, so the
-// corruption cannot be spotted by eye. The whole run must be skipped.
+// --- Digits joined to letters yield no number ---
+// NUMBER_IN_TEXT_PATTERN (numbers-in-text.js) holds the reason.
 
 const numStrs = text => extractNumbersInText(text).map(m => m.numStr);
 
-eq('guard: application number is not mined for digits',
+eq('extractNumbersInText: application number "XR47182913MKB07" yields no numbers',
   numStrs('XR47182913MKB07'),
   []);
 
-eq('guard: trailing zero-padded segment is not mined',
+eq('extractNumbersInText: zero-padded code "MKB07" yields no numbers',
   numStrs('MKB07'),
   []);
 
-eq('guard: short label+digit is not mined',
+eq('extractNumbersInText: label "Q3" yields no numbers',
   numStrs('Q3'),
   []);
 
-eq('guard: refusal does not let the scan re-enter mid-number',
+eq('extractNumbersInText: "abc1,200" yields no numbers',
   numStrs('abc1,200'),
   []);
 
-// --- Boundary guard: a hyphen after a digit is a separator, not a minus sign ---
+// --- A hyphen after a digit is a separator, not a minus sign ---
 
-eq('guard: phone number yields two positive numbers',
+eq('extractNumbersInText: phone number yields two positive numbers',
   numStrs('555-1234'),
   ['555', '1234']);
 
-eq('guard: ZIP+4 yields two positive numbers',
+eq('extractNumbersInText: ZIP+4 yields two positive numbers',
   numStrs('12345-6789'),
   ['12345', '6789']);
 
-eq('guard: hyphen range yields two positive numbers',
+eq('extractNumbersInText: hyphen range yields two positive numbers',
   numStrs('10-20'),
   ['10', '20']);
 
-eq('guard: hyphen-typed range now matches en-dash behaviour',
+eq('extractNumbersInText: hyphen range with a currency sign yields two positive numbers',
   numStrs('₹1,968-2,054 crore'),
   ['1,968', '2,054']);
 
-eq('guard: en-dash range is unchanged',
+eq('extractNumbersInText: en-dash range with a currency sign yields two positive numbers',
   numStrs('₹1,968–2,054 crore'),
   ['1,968', '2,054']);
 
-eq('guard: year-month is no longer read as a negative month',
+eq('extractNumbersInText: year-month yields two positive numbers',
   numStrs('2022-04'),
   ['2022', '04']);
 
-// --- Boundary guard: genuine negatives and ordinary quantities still match ---
+// --- Negatives and plain amounts yield their numbers ---
 
-eq('guard: negative after whitespace still signed',
+eq('extractNumbersInText: negative after whitespace keeps its minus sign',
   numStrs('down -1,200 units'),
   ['-1,200']);
 
-eq('guard: leading negative still signed',
+eq('extractNumbersInText: leading negative keeps its minus sign',
   numStrs('-5.2% change'),
   ['-5.2']);
 
-eq('guard: currency-prefixed amount unaffected',
+eq('extractNumbersInText: currency-prefixed amount yields its digits',
   numStrs('$48,090.00'),
   ['48,090.00']);
 
-eq('guard: caret exponent notation unaffected',
+eq('extractNumbersInText: caret exponent notation yields two numbers',
   numStrs('10^12'),
   ['10', '12']);
 
@@ -204,38 +203,36 @@ eq('toNumber: pure text -> null', toNumber('N/A'), null);
 
 // --- Additional extractNumbersInText cases ---
 
-eq('extractAll: three numbers in a sentence',
+eq('extractNumbersInText: three numbers in a sentence',
   extractNumbersInText('grew from 10 to 200 in 3,000 days').map(m => m.num),
   [10, 200, 3000]);
 
-eq('extractAll: decimal followed by integer',
+eq('extractNumbersInText: decimal followed by integer',
   extractNumbersInText('avg 4.5, peak 9'),
   [
     { numStr: '4.5', num: 4.5, index: 4 },
     { numStr: '9', num: 9, index: 14 }
   ]);
 
-eq('extractAll: indices are correct for splicing',
+eq('extractNumbersInText: "a 100 b 200 c" yields each number\'s index',
   extractNumbersInText('a 100 b 200 c').map(m => ({ s: m.numStr, i: m.index })),
   [{ s: '100', i: 2 }, { s: '200', i: 8 }]);
 
-eq('extractAll: zero is excluded',
+eq('extractNumbersInText: zero is excluded',
   extractNumbersInText('range 0 to 500').map(m => m.num),
   [500]);
 
 // --- A comma that ends a number is punctuation, not a separator ---
-// The match string must end in a digit. A trailing comma in numStr breaks
-// every step that searches the live text for that string: the patch step
-// finds "12" where it expects "12," and skips, and the cell logs a patch that
-// did not land.
-eq('extractAll: comma after a number is left out of the match',
+// The match string ends in a digit. DIGIT_RUN_PATTERN (numbers-in-text.js)
+// holds the reason.
+eq('extractNumbersInText: comma after a number is left out of the match',
   extractNumbersInText('See ref 12, total 9,850'),
   [
     { numStr: '12', num: 12, index: 8 },
     { numStr: '9,850', num: 9850, index: 18 }
   ]);
 
-eq('extractAll: a list of grouped numbers keeps each number\'s own separators',
+eq('extractNumbersInText: a list of grouped numbers keeps each number\'s own separators',
   extractNumbersInText('1,200, 3,400, and 5,600').map(m => m.numStr),
   ['1,200', '3,400', '5,600']);
 
@@ -262,7 +259,7 @@ eq('extractAll: a list of grouped numbers keeps each number\'s own separators',
     out, '50–5,000 range');
 })();
 
-// --- Splice safety: rounding does not affect later match indices because we go right-to-left ---
+// --- Two numbers in one text, one longer once rounded, both round in place ---
 (function spliceSafety() {
   // Numbers that change length when rounded: 8,584,629 (9 chars) -> 8,500,000 (9 chars, same).
   // Pick one that changes length: 286 (3) -> 300 (3) same. Use 9,876 -> 10,000 (length grows).
@@ -281,7 +278,7 @@ eq('extractAll: a list of grouped numbers keeps each number\'s own separators',
   }
 
   // Both magnitude 3. step = 500. 9876/500=19.75->20*500=10,000. 1234/500=2.47->2*500=1,000.
-  eq('splice safety: right-to-left replacement handles length-changing rounds',
+  eq('two numbers in place: "9,876 then 1,234" rounds to "10,000 then 1,000"',
     out, '10,000 then 1,000');
 })();
 
@@ -2675,7 +2672,7 @@ eq('bracketed: an unclosed bracket leaves the number positive',
 eq('bracketed: an unopened bracket leaves the number positive',
   extractNumbersInText('1,234)').map((m) => m.num), [1234]);
 
-eq('bracketed: the bracket test answers for the number it is given',
+eq('bracketed: "(1,234)" is a bracketed negative and "(see 4)" is not',
   [isBracketedNegative('(1,234)', 1, '1,234'), isBracketedNegative('(see 4)', 5, '4')],
   [true, false]);
 
