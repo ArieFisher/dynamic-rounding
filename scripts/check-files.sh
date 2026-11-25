@@ -31,6 +31,7 @@ ALLOWED_DIRS=(
   .githooks/
   .agent/rules/
   .agent/skills/
+  .claude/agents/
 )
 
 # Files that may sit at the repository root, where nothing else may.
