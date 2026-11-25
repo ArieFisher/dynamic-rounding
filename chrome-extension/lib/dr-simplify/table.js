@@ -70,8 +70,7 @@ function datasetMaxMagnitude(classifiedCells, passedMaxMag) {
 
 // One stretch's new text: a number rounds against the max magnitude, and a
 // date or a time to its granularity. null for a time the step cannot round.
-function roundStretch(text, stretch, maxMag, settings) {
-  const written = text.slice(stretch.start, stretch.end);
+function roundStretch(text, stretch, written, maxMag, settings) {
   if (stretch.kind === 'date') return roundDate(text, stretch, settings.dateGranularity);
   if (stretch.kind === 'time') return roundTimeText(written, settings.timeGranularity);
   const { offsetTop, offsetOther, numTop } = settings;
@@ -86,7 +85,7 @@ function classifiedCellPatches(classifiedCell, maxMag, settings) {
   const { text, classification } = classifiedCell;
   return classification.stretches.flatMap((stretch) => {
     const numStr = text.slice(stretch.start, stretch.end);
-    const newNum = roundStretch(text, stretch, maxMag, settings);
+    const newNum = roundStretch(text, stretch, numStr, maxMag, settings);
     return newNum === null || newNum === numStr ? [] : [{ index: stretch.start, numStr, newNum }];
   });
 }

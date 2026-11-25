@@ -635,8 +635,8 @@ const MONTH_NAMES = '(?:january|february|march|april|may|june|july|august|septem
 const MONTH_NUMBERS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 const monthNumber = (name) => MONTH_NUMBERS[name.slice(0, 3).toLowerCase()];
 
-// Date reading. findDates works on the cell's trimmed text as written, so
-// the positions it returns index that same text.
+// Date reading. findDates works on the cell's text as written, so the
+// positions it returns index that same text.
 const SUPERSCRIPT_DIGITS = '⁰¹²³⁴⁵⁶⁷⁸⁹';
 const FOOTNOTE_MARKERS = '*†‡';
 const DATE_NOISE_CLASS = `[\\s${SUPERSCRIPT_DIGITS}${FOOTNOTE_MARKERS}]`;
@@ -738,7 +738,7 @@ const DATE_SHAPES = [
 const BARE_YEAR_RE = new RegExp(`^${DATE_NOISE_CLASS}*${YEAR}${DATE_NOISE_CLASS}*$`, 'id');
 
 /**
- * Find every date in a trimmed cell text, left to right: each match of a shape
+ * Find every date in a cell's text, left to right: each match of a shape
  * in DATE_SHAPES, or else a bare year as the whole cell. Each date is a date
  * with a known reading (see knownDate; a bare year holds month null and no
  * monthBeforeYear), an all-numeric date (see the all-numeric shape), or an
@@ -1562,8 +1562,7 @@ function datasetMaxMagnitude(classifiedCells, passedMaxMag) {
 
 // One stretch's new text: a number rounds against the max magnitude, and a
 // date or a time to its granularity. null for a time the step cannot round.
-function roundStretch(text, stretch, maxMag, settings) {
-  const written = text.slice(stretch.start, stretch.end);
+function roundStretch(text, stretch, written, maxMag, settings) {
   if (stretch.kind === 'date') return roundDate(text, stretch, settings.dateGranularity);
   if (stretch.kind === 'time') return roundTimeText(written, settings.timeGranularity);
   const { offsetTop, offsetOther, numTop } = settings;
@@ -1578,7 +1577,7 @@ function classifiedCellPatches(classifiedCell, maxMag, settings) {
   const { text, classification } = classifiedCell;
   return classification.stretches.flatMap((stretch) => {
     const numStr = text.slice(stretch.start, stretch.end);
-    const newNum = roundStretch(text, stretch, maxMag, settings);
+    const newNum = roundStretch(text, stretch, numStr, maxMag, settings);
     return newNum === null || newNum === numStr ? [] : [{ index: stretch.start, numStr, newNum }];
   });
 }

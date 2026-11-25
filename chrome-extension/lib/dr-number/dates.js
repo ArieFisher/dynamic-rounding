@@ -13,8 +13,8 @@ const MONTH_NAMES = '(?:january|february|march|april|may|june|july|august|septem
 const MONTH_NUMBERS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 const monthNumber = (name) => MONTH_NUMBERS[name.slice(0, 3).toLowerCase()];
 
-// Date reading. findDates works on the cell's trimmed text as written, so
-// the positions it returns index that same text.
+// Date reading. findDates works on the cell's text as written, so the
+// positions it returns index that same text.
 const SUPERSCRIPT_DIGITS = '⁰¹²³⁴⁵⁶⁷⁸⁹';
 const FOOTNOTE_MARKERS = '*†‡';
 const DATE_NOISE_CLASS = `[\\s${SUPERSCRIPT_DIGITS}${FOOTNOTE_MARKERS}]`;
@@ -116,7 +116,7 @@ const DATE_SHAPES = [
 const BARE_YEAR_RE = new RegExp(`^${DATE_NOISE_CLASS}*${YEAR}${DATE_NOISE_CLASS}*$`, 'id');
 
 /**
- * Find every date in a trimmed cell text, left to right: each match of a shape
+ * Find every date in a cell's text, left to right: each match of a shape
  * in DATE_SHAPES, or else a bare year as the whole cell. Each date is a date
  * with a known reading (see knownDate; a bare year holds month null and no
  * monthBeforeYear), an all-numeric date (see the all-numeric shape), or an

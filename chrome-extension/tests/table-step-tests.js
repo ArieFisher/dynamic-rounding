@@ -85,7 +85,7 @@ function tableStepCells(api, rows) {
     { document: 'undefined', window: 'undefined', chrome: 'undefined', DR_MODEL: 'undefined', DR_LOG: 'undefined' });
 })();
 
-(function tableStep_patchesForEachMode() {
+(function tableStep_patchesForEachStretchKind() {
   const loaded = loadTableStepAlone();
   if (loaded === null) return;
   const { api } = loaded;

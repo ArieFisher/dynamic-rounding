@@ -58,7 +58,7 @@
   });
 })();
 
-// via roundTable: a pure-numeric whole-link cell is skipped (mode = 'skip'),
+// via roundTable: a pure-numeric whole-link cell holds no stretch,
 // so it never gets the dr-ext-rounded class.
 (function ac1_roundTable_wholeLinkCellNotRounded() {
   withLinkCreateTreeWalker(function() {
