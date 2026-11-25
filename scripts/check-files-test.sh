@@ -180,7 +180,7 @@ assert_blocked 'credential rejected from the staged blob' "$repo" 'docs/setup.md
 repo=$(scratch_repo)
 {
   planted_secret
-  awk 'BEGIN { for (i = 0; i < 2000; i++) print "filler line of ordinary prose for the scan to read" }'
+  awk 'BEGIN { for (i = 0; i < 20000; i++) print "filler line of ordinary prose for the scan to read" }'
 } > "$repo/docs/large.md"
 git -C "$repo" add docs/large.md
 assert_blocked 'credential on line 1 of a large file rejected' "$repo" 'docs/large.md' --staged
