@@ -164,6 +164,18 @@ expect_pass  "linked in its own sense passes"       docs/design.md   'The handle
 expect_block "collocation: tied as coupled"         docs/design.md   'The switch is tied together with the pillbox.'
 expect_pass  "tied in its own sense passes"         docs/design.md   'The release cadence is tied to the academic calendar.'
 
+# A run from a subfolder still sees the staged retired synonym.
+dir=$(scratch_repo)
+printf 'The table toggle turns rounding on.\n' > "$dir/docs/design.md"
+git -C "$dir" add docs/design.md
+(cd "$dir/docs" && bash ../scripts/check-vocab.sh --staged >/dev/null 2>&1)
+status=$?
+if [ "$status" -eq 1 ]; then
+  record pass "a retired synonym is caught from a subfolder"
+else
+  record fail "a retired synonym is caught from a subfolder (gate exited $status)"
+fi
+
 # Preflight. The Block pattern column is the one input nothing else checks,
 # so each way of breaking it must produce a failure, not a clean bill.
 #
@@ -185,8 +197,30 @@ expect_refusal "list that misses the canary refuses" \
                'no pattern matches the canary'
 expect_refusal "renamed Block pattern header refuses" \
                "$canary_row" \
-               'the retired-synonym list is empty' \
+               'has no Block pattern column' \
                '| Term | Meaning | Not | Example | Regex |'
+
+# A second table whose header lost its Block pattern cell must stop the gate,
+# even while the first table still yields patterns and the canary.
+dir=$(scratch_repo)
+write_vocab "$dir" "$canary_row"
+{
+  printf '\n## More terms\n\n'
+  printf '| Term | Meaning | Not | Example | Regex |\n'
+  printf '| --- | --- | --- | --- | --- |\n'
+  printf '%s\n' '| side panel | The panel beside the page. | drawer | The side panel opens. | `\bdrawer` |'
+} >> "$dir/docs/vocabulary.md"
+printf 'The drawer opens.\n' > "$dir/docs/design.md"
+git -C "$dir" add docs/design.md
+output=$( (cd "$dir" && bash scripts/check-vocab.sh --staged 2>&1 >/dev/null) )
+status=$?
+if [ "$status" -ne 2 ]; then
+  record fail "second table with a renamed header refuses (gate exited $status)"
+elif ! printf '%s' "$output" | grep -qF 'has no Block pattern column'; then
+  record fail "second table with a renamed header refuses (refused for another reason: $output)"
+else
+  record pass "second table with a renamed header refuses"
+fi
 
 # A missing vocabulary is the loudest way to lose the policy, and the gate must
 # not read it as nothing to enforce.

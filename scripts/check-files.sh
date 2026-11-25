@@ -8,8 +8,8 @@
 #
 # Modes:
 #   --staged            check what is staged for the next commit (pre-commit hook)
-#   --range BASE HEAD   check files added or renamed between two revisions (CI)
-#   --tracked           audit every tracked file (manual sweep)
+#   --range BASE HEAD   check files changed between two revisions (CI)
+#   --tracked           audit every file committed in HEAD (manual sweep)
 #
 set -uo pipefail
 
@@ -106,15 +106,25 @@ name_is_denied() {
   return 1
 }
 
+# A gate that cannot read what it checks must stop, not pass: exit 0 on a git
+# failure would look the same as a clean change.
+cannot_inspect() {
+  echo "check-files: $1 — refusing to pass without inspecting" >&2
+  exit 2
+}
+
+# The deny list and the credential scan apply to every file the change touches.
+# The path rule applies only to added, copied, and renamed files (status A, C,
+# or R), so an edit to a file that is already tracked does not need a move.
 check_file() {
-  local file=$1 rev=$2
+  local file=$1 rev=$2 status=$3
 
   if name_is_denied "$file"; then
     fail "$file" "name matches a denied pattern; this file class does not belong in the repo"
     return
   fi
 
-  if ! path_is_allowed "$file"; then
+  if [ "$status" != M ] && ! path_is_allowed "$file"; then
     fail "$file" "path is outside every project directory; move it under one, or add it to ALLOWED_DIRS / ALLOWED_ROOT_FILES in scripts/check-files.sh"
     return
   fi
@@ -124,7 +134,11 @@ check_file() {
     [ "$file" = "$exempt" ] && return
   done
 
-  if git show "$rev:$file" 2>/dev/null | grep -IqE "$SECRET_REGEX"; then
+  local blob="$rev:$file"
+  git -C "$repo_root" cat-file -e "$blob" 2>/dev/null || cannot_inspect "cannot read $blob"
+  # Process substitution, not a pipe: under pipefail, grep -q closing the pipe
+  # early would turn a match into a failed pipeline and hide the credential.
+  if grep -IqE "$SECRET_REGEX" < <(git -C "$repo_root" cat-file blob "$blob"); then
     fail "$file" "contents match a credential pattern"
   fi
 }
@@ -133,21 +147,34 @@ check_file() {
 # Entry
 # --------------------------------------------------------------------------
 
+repo_root=$(git rev-parse --show-toplevel) || cannot_inspect "not inside a git repository"
+
+# Each line of $entries is "<status><TAB><path>"; a rename's or copy's line also
+# holds the old path, and the last field is the new one. Every git call runs
+# from the repository root, so the paths do not depend on the current folder.
 case ${1:-} in
   --staged)
     rev=""
-    files=$(git diff --cached --name-only --diff-filter=ACR)
+    entries=$(git -C "$repo_root" diff --cached --name-status --diff-filter=ACMR) \
+      || cannot_inspect "git diff --cached failed"
     label="staged for commit"
     ;;
   --range)
     [ $# -eq 3 ] || { echo "usage: $0 --range BASE HEAD" >&2; exit 2; }
+    for revision in "$2" "$3"; do
+      git -C "$repo_root" rev-parse --verify --quiet "$revision^{commit}" > /dev/null \
+        || cannot_inspect "revision '$revision' does not resolve to a commit"
+    done
     rev=$3
-    files=$(git diff --name-only --diff-filter=ACR "$2" "$3")
-    label="added between $2 and $3"
+    entries=$(git -C "$repo_root" diff --name-status --diff-filter=ACMR "$2" "$3") \
+      || cannot_inspect "git diff $2 $3 failed"
+    label="changed between $2 and $3"
     ;;
   --tracked)
+    # List HEAD, not the index, because each file's contents are read from HEAD.
     rev="HEAD"
-    files=$(git ls-files)
+    entries=$(git -C "$repo_root" ls-tree -r --name-only HEAD | awk '{ print "A\t" $0 }') \
+      || cannot_inspect "git ls-tree HEAD failed"
     label="tracked in HEAD"
     ;;
   *)
@@ -156,11 +183,14 @@ case ${1:-} in
     ;;
 esac
 
-[ -z "$files" ] && exit 0
+[ -z "$entries" ] && exit 0
 
-while IFS= read -r file; do
-  [ -n "$file" ] && check_file "$file" "$rev"
-done <<< "$files"
+while IFS= read -r entry; do
+  [ -n "$entry" ] || continue
+  status=${entry:0:1}
+  file=${entry##*$'\t'}
+  check_file "$file" "$rev" "$status"
+done <<< "$entries"
 
 if [ "$failures" -gt 0 ]; then
   printf '\n%d file(s) %s did not pass the repository file gate.\n' "$failures" "$label" >&2

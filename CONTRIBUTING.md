@@ -14,7 +14,7 @@ Enable the repository hooks once per clone: `git config core.hooksPath .githooks
 
 ### Adding files
 
-`scripts/check-files.sh` rejects three things: a file name on its deny list, a path outside its allowed folders and root files, and contents that match a credential pattern. The policy block at the top of the script holds each list. Run it yourself any time with `scripts/check-files.sh --staged`, or audit the whole tree with `scripts/check-files.sh --tracked`.
+`scripts/check-files.sh` rejects three things: a file name on its deny list, a path outside its allowed folders and root files, and contents that match a credential pattern. An edit to a file that is already tracked gets the deny list and the credential scan; the path rule applies to added and renamed files. The check stops with exit 2 when git cannot list or read what it checks. The policy block at the top of the script holds each list. Run it yourself any time with `scripts/check-files.sh --staged`, or audit the whole tree with `scripts/check-files.sh --tracked`.
 
 A new root markdown file also needs a negation in `.gitignore`, which ignores every other markdown file at the root.
 
@@ -30,7 +30,7 @@ The policy block is the whole gate, so a bad edit there makes it pass everything
 
 A blocked commit prints the file, the pattern it matched, and the line. Replace the retired synonym with the term in the row whose pattern matched. Run the check yourself any time with `scripts/check-vocab.sh --staged`, or on a whole branch with `scripts/check-vocab.sh --range origin/main HEAD`. It exits 0 when every added line is clean, 1 when it blocks a line, and 2 when it cannot run the check at all. The vocabulary states how a new pattern takes effect and how to write one.
 
-The Block pattern column is the whole policy, so a damaged column would let every line through and look the same as clean prose. To stop that, the script tests its pattern list before it reads any change, and exits 2 when it cannot read the vocabulary, when the tables yield no patterns, when a pattern is not a valid expression, or when no pattern matches a fixed sentence that holds a known retired synonym. `bash scripts/check-vocab-test.sh` plants retired synonyms, clean prose, exempt files, and damaged tables in a scratch repository and requires the right result for each. Run it after any change to a pattern or the script; `Repo hygiene` runs it too.
+The Block pattern column is the whole policy, so a damaged column would let every line through and look the same as clean prose. To stop that, the script tests its pattern list before it reads any change, and exits 2 when it cannot read the vocabulary, when a table has no Block pattern column, when the tables yield no patterns, when a pattern is not a valid expression, or when no pattern matches a fixed sentence that holds a known retired synonym. `bash scripts/check-vocab-test.sh` plants retired synonyms, clean prose, exempt files, and damaged tables in a scratch repository and requires the right result for each. Run it after any change to a pattern or the script; `Repo hygiene` runs it too.
 
 ## Questions
 
