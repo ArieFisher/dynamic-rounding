@@ -5,7 +5,9 @@
 // The first sections load the number library and lib/dr-simplify alone, in a
 // fresh context that holds no page, no browser, no registry, and no log
 // buffer, and run the table step there. The later sections run the same cells
-// through the one simplification pass on a native table and compare.
+// through the one simplification pass on a native table and compare, check a
+// date across two text pieces on both table kinds, and check where the table
+// step's code lives.
 
 // The table step's settings for every case below: the offsets differ, so a
 // cell's band shows in its result.
@@ -52,7 +54,7 @@ function loadTableStepAlone(extraSource) {
   const context = vm.createContext({});
   const source = files.map((file) => sourceByName(file)).join('\n') + '\n' + (extraSource || '') + `
 ;({
-  tablePatches, classifyCell,
+  tablePatches, classifyCell, applyPatches,
   globals: {
     document: typeof document, window: typeof window, chrome: typeof chrome,
     DR_MODEL: typeof DR_MODEL, DR_LOG: typeof DR_LOG,
@@ -70,15 +72,6 @@ function tableStepCells(api, rows) {
     cells.push({ text, classification, columnIndex });
   }));
   return cells;
-}
-
-// A text with its patches applied, right to left so each patch keeps the
-// position of the ones before it.
-function applyTableStepPatches(text, patches) {
-  return patches.slice().sort((a, b) => b.index - a.index).reduce((out, p) =>
-    (out.slice(p.index, p.index + p.numStr.length) === p.numStr
-      ? out.slice(0, p.index) + p.newNum + out.slice(p.index + p.numStr.length)
-      : out + ' [patch missed at ' + p.index + ']'), text);
 }
 
 (function tableStep_loadsWithNoPage() {
@@ -122,7 +115,9 @@ function applyTableStepPatches(text, patches) {
   eq('table step alone: a time cell takes one patch over its trimmed text',
     at(2, 0).patches, [{ index: 0, numStr: '10:47', newNum: '11:00' }]);
   eq('table step alone: each cell\'s text with its patches applied',
-    result.patchedCells.map((cell) => applyTableStepPatches(cell.classifiedCell.text, cell.patches)),
+    result.patchedCells.map(({ classifiedCell: { text }, patches }) =>
+      (patches.every((p) => text.slice(p.index, p.index + p.numStr.length) === p.numStr)
+        ? api.applyPatches(text, patches) : 'patch missed')),
     TABLE_STEP_EXPECTED_ROWS.flat());
 })();
 
@@ -198,7 +193,7 @@ function applyTableStepPatches(text, patches) {
   const run = (frozenMaxMag) => {
     try { return api.tablePatches(cells, TABLE_STEP_SETTINGS, frozenMaxMag).maxMag; } catch (e) { return String(e.message); }
   };
-  eq('table step, frozen max magnitude: with no frozen value the step computes one (the stub runs)',
+  eq('table step, frozen max magnitude: with no frozen value the step computes one',
     run(null), 'the table step computed a max magnitude');
   eq('table step, frozen max magnitude: with a frozen value the step computes none', run(6), 6);
 })();
@@ -209,7 +204,7 @@ function applyTableStepPatches(text, patches) {
   const loaded = loadTableStepAlone();
   if (loaded === null) return;
   const step = loaded.api.tablePatches(tableStepCells(loaded.api, TABLE_STEP_ROWS), TABLE_STEP_SETTINGS);
-  const stepTexts = step.patchedCells.map((cell) => applyTableStepPatches(cell.classifiedCell.text, cell.patches));
+  const stepTexts = step.patchedCells.map((cell) => loaded.api.applyPatches(cell.classifiedCell.text, cell.patches));
   const passOpts = Object.assign({}, TABLE_STEP_LADDER_OPTS, TABLE_STEP_SETTINGS);
   eachRewriteKind(['native'], (kind, page, build) => {
     const t = build(TABLE_STEP_ROWS);
@@ -265,7 +260,7 @@ function applyTableStepPatches(text, patches) {
 (function tableStep_oneDefinitionOfEachRule() {
   const contentSrc = sourceByName('content.js');
   const DECL = (name) => new RegExp(`^\\s*function\\s+${name}\\s*\\(`, 'm');
-  const MOVED = ['isAmbiguousDateClassification', 'resolveAmbiguousDates', 'datasetMaxMagnitude',
+  const TABLE_STEP_FUNCTIONS = ['isAmbiguousDateClassification', 'resolveAmbiguousDates', 'datasetMaxMagnitude',
     'classifiedCellPatches', 'tablePatches', 'applyPatches'];
   // Every hand-written JavaScript file the extension and the Sheets library
   // ship, outside the tests. The Sheets library itself is skipped: the Sheets
@@ -290,8 +285,8 @@ function applyTableStepPatches(text, patches) {
   const declaredIn = (name) => files.filter((file) => DECL(name).test(fs.readFileSync(file, 'utf8')))
     .map((file) => path.relative(path.join(__dirname, '..'), file));
   eq('table step source: each function in lib/dr-simplify/table.js has one declaration in the repository',
-    MOVED.map((name) => [name, declaredIn(name)]),
-    MOVED.map((name) => [name, ['chrome-extension/lib/dr-simplify/table.js']]));
+    TABLE_STEP_FUNCTIONS.map((name) => [name, declaredIn(name)]),
+    TABLE_STEP_FUNCTIONS.map((name) => [name, ['chrome-extension/lib/dr-simplify/table.js']]));
   // The page-free part of a cell's patches: content.js's cellPatches holds
   // none of the rounding or formatting calls the table step makes.
   const body = sourceBodyOf(contentSrc, 'function cellPatches(');

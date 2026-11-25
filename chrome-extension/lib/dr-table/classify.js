@@ -54,8 +54,6 @@ function getSuperscriptRanges(cell, opts = {}) {
     }) !== null);
 }
 
-// A link or code element around the table itself holds no markup range: the
-// element must sit inside the cell.
 const MARKUP_SELECTORS = ['a', 'code'];
 
 /**
@@ -66,34 +64,32 @@ const MARKUP_SELECTORS = ['a', 'code'];
 function getMarkupRanges(cell, layout) {
   if (!cell || typeof cell.querySelectorAll !== 'function') return [];
   const selectors = MARKUP_SELECTORS.filter((selector) =>
-    (cell.querySelectorAll(selector) || []).length > 0);
+    cell.querySelectorAll(selector).length > 0);
   if (selectors.length === 0) return [];
-  return pieceRanges(cell, layout, (piece) => {
-    const parent = piece && piece.parentElement;
-    return !!parent && selectors.some((selector) => {
-      const element = parent.closest(selector);
-      return !!element && cell.contains(element);
-    });
-  });
+  return pieceRanges(cell, layout, (piece) => selectors.some((selector) => {
+    const element = piece.parentElement.closest(selector);
+    // closest() searches ancestors past the cell, so without this check every
+    // cell inside a link or code element around the table would hold a
+    // markup range.
+    return !!element && cell.contains(element);
+  }));
 }
 
-// classifyTableCell writes nothing: the pass counts a split number
-// (classifiedCell.split) afterward.
-//
-// For a simplified cell, the function classifies the stored original
-// rather than the written text; getSuperscriptRanges and getMarkupRanges
-// locate each text piece through the layout, so both work on the cell's
-// current text pieces too.
 function classifyTableCell(cellObj, rowIndex, opts, ranges) {
   const cell = cellObj.el;
   const text = cellObj.getText();
   const layout = cellObj.getPieceLayout();
-  const superscriptRanges = layout ? getSuperscriptRanges(cell, { layout }) : [];
-  const markupRanges = layout ? getMarkupRanges(cell, layout) : [];
+  const classifiedCell = (classification) =>
+    ({ cellObj, text, classification, layout, columnIndex: cellObj.columnIndex });
+  // A null layout means the cell's piece count no longer matches its record
+  // (see getPieceLayout in cells.js).
+  if (!layout) return classifiedCell({ mode: 'skip', reason: 'pieces-changed' });
+  const superscriptRanges = getSuperscriptRanges(cell, { layout });
+  const markupRanges = getMarkupRanges(cell, layout);
   const hasSuperscript = superscriptRanges.length > 0 || !!(cell.querySelector && cell.querySelector('sup'));
-  // The join of numbers that sit in separate pieces is not one spaced
-  // identifier (see matchIdentifierShape).
-  const digitsSpanPieces = !!layout && layout.original.filter((piece) => /\d/.test(piece)).length > 1;
+  // With digits in more than one text piece, matchIdentifierShape does not
+  // count the cell's digit groups as one identifier shape.
+  const digitsSpanPieces = layout.original.filter((piece) => /\d/.test(piece)).length > 1;
   const classified = classifyCell({
     text,
     rowIndex,
@@ -104,13 +100,5 @@ function classifyTableCell(cellObj, rowIndex, opts, ranges) {
     superscriptRanges,
     digitsSpanPieces,
   }, opts);
-  const placed = placeClassification(classified, layout);
-  return {
-    cellObj,
-    text,
-    classification: placed,
-    split: !!placed.split,
-    layout,
-    columnIndex: cellObj.columnIndex,
-  };
+  return classifiedCell(placeClassification(classified, layout));
 }

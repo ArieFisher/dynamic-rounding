@@ -298,8 +298,9 @@ function toNumber(value) {
 
 // Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 /**
- * Reading the setting values a user writes: the range expression, the
- * offsets, and num_top. Reads no page and calls no Chrome.
+ * Reading the setting values a user writes (the range expression, the
+ * offsets, and num_top) and testing whether a cell lies inside the range
+ * expression. Reads no page and calls no Chrome.
  */
 
 // The largest offset, either way, that a setting value may hold.
@@ -320,64 +321,50 @@ function parseRangeEndpoint(token) {
   const m = token.trim().match(/^([A-Za-z]+)?(\d+)?$/);
   if (!m || (!m[1] && !m[2])) return null;
   const col = m[1] ? lettersToColIndex(m[1]) : null;
-  if (m[1] && col === null) return null;
   const row = m[2] ? parseInt(m[2], 10) - 1 : null;
   if (m[2] && (row < 0 || !isFinite(row))) return null;
   return { col, row };
 }
 
 function parseRangeToken(token) {
-  const t = token.trim();
-  if (!t) return null;
-  if (t.includes(':')) {
-    const parts = t.split(':');
-    if (parts.length !== 2) return null;
-    const l = parseRangeEndpoint(parts[0]);
-    const r = parseRangeEndpoint(parts[1]);
-    if (!l || !r) return null;
-    // Open-ended semantics: left-null = unbounded below (0), right-null = unbounded above (Infinity).
-    const lcol = l.col === null ? 0 : l.col;
-    const rcol = r.col === null ? Infinity : r.col;
-    const lrow = l.row === null ? 0 : l.row;
-    const rrow = r.row === null ? Infinity : r.row;
-    return {
-      colMin: Math.min(lcol, rcol),
-      colMax: Math.max(lcol, rcol),
-      rowMin: Math.min(lrow, rrow),
-      rowMax: Math.max(lrow, rrow)
-    };
-  }
-  const e = parseRangeEndpoint(t);
-  if (!e) return null;
+  const parts = token.split(':');
+  if (parts.length > 2) return null;
+  const left = parseRangeEndpoint(parts[0]);
+  const right = parseRangeEndpoint(parts[parts.length - 1]);
+  if (!left || !right) return null;
+  // An endpoint with no column or no row leaves that side open: the left side
+  // from the first column or row, the right side to the last.
+  const leftCol = left.col ?? 0;
+  const rightCol = right.col ?? Infinity;
+  const leftRow = left.row ?? 0;
+  const rightRow = right.row ?? Infinity;
   return {
-    colMin: e.col ?? 0,
-    colMax: e.col ?? Infinity,
-    rowMin: e.row ?? 0,
-    rowMax: e.row ?? Infinity
+    colMin: Math.min(leftCol, rightCol),
+    colMax: Math.max(leftCol, rightCol),
+    rowMin: Math.min(leftRow, rightRow),
+    rowMax: Math.max(leftRow, rightRow)
   };
 }
 
 function parseRangeExpr(expr) {
   if (typeof expr !== 'string') return { ranges: null };
-  const trimmed = expr.trim();
-  if (!trimmed) return { ranges: null }; // null = whole table
-  const stripped = trimmed.replace(/^\{/, '').replace(/\}$/, '');
+  const stripped = expr.trim().replace(/^\{/, '').replace(/\}$/, '');
   const tokens = stripped.split(/[,;]/).map(t => t.trim()).filter(Boolean);
-  if (tokens.length === 0) return { ranges: null };
+  if (tokens.length === 0) return { ranges: null }; // null = whole table
   const ranges = [];
-  for (const tok of tokens) {
-    const r = parseRangeToken(tok);
-    if (!r) return { error: `Invalid range: "${tok}"` };
-    ranges.push(r);
+  for (const token of tokens) {
+    const range = parseRangeToken(token);
+    if (!range) return { error: `Invalid range: "${token}"` };
+    ranges.push(range);
   }
   return { ranges };
 }
 
-function isInRanges(r, c, ranges) {
+function isInRanges(rowIndex, columnIndex, ranges) {
   if (!ranges) return true;
   for (const range of ranges) {
-    if (r >= range.rowMin && r <= range.rowMax &&
-        c >= range.colMin && c <= range.colMax) {
+    if (rowIndex >= range.rowMin && rowIndex <= range.rowMax &&
+        columnIndex >= range.colMin && columnIndex <= range.colMax) {
       return true;
     }
   }
@@ -1368,9 +1355,8 @@ function getIdentifierMaskedRanges(text) {
  * markdown adapter in the plugin); whether the cell holds a superscript; the
  * superscript spans in the text classifyCell reads (getSuperscriptRanges);
  * and whether the cell's digits sit in more than one text piece (from the
- * piece layout), so the join of numbers in separate pieces never reads as one
- * spaced identifier. The bare names the ladder calls come from the
- * lib/dr-number files, loaded ahead of this file.
+ * piece layout). The bare names the ladder calls come from the lib/dr-number
+ * files, loaded ahead of this file.
  */
 
 /**
@@ -1603,9 +1589,9 @@ function resolveAmbiguousDateClassification(classification, hint) {
  *
  *   1. The column post-pass settles each ambiguous date against its
  *      column's format hint.
- *   2. The max magnitude comes from the numbers of the extracted cells
- *      passed in, since a date or time adds none, unless the caller passes
- *      one.
+ *   2. The max magnitude is the one the caller passes, or else the largest
+ *      order of magnitude among the extracted cells' numbers; the step
+ *      counts no date or time.
  *   3. Each cell's numbers, dates, and times round and become patches.
  *
  * Core layer: reads no page and calls no Chrome. It depends only on
@@ -1614,10 +1600,9 @@ function resolveAmbiguousDateClassification(classification, hint) {
  *
  * The step reads one classified cell per cell. A classified cell is any
  * object carrying:
- *   text            the classified text (a simplified cell's stored original)
+ *   text            the text the ladder classified
  *   classification  the ladder's classification (classifyCell)
- *   columnIndex     the cell's grid column, by which the column post-pass
- *                   groups cells
+ *   columnIndex     the cell's grid column
  * The step copies every other field through untouched, so a caller can carry
  * its own per-cell data beside them.
  */
@@ -1626,10 +1611,9 @@ function isAmbiguousDateClassification(classification) {
   return classification.pending === 'ambiguous-date';
 }
 
-// The column post-pass: resolve each ambiguous date against its column's
-// format hint. It groups cells by grid column, so a merged cell cannot split
-// one column into two groups that read 7/4/99 as July in one row and April in
-// another.
+// The column post-pass. It groups cells by grid column, so a merged cell
+// cannot split one column into two groups that read 7/4/99 as July in one row
+// and April in another.
 function resolveAmbiguousDates(classifiedCells) {
   const ambiguousDatesByCol = new Map();
   for (const { classification, columnIndex } of classifiedCells) {
@@ -1647,9 +1631,6 @@ function resolveAmbiguousDates(classifiedCells) {
   });
 }
 
-// passedMaxMag when the caller passes one, else the max magnitude over each
-// number of every extracted cell in classifiedCells; a date or time cell adds
-// none.
 function datasetMaxMagnitude(classifiedCells, passedMaxMag) {
   if (passedMaxMag != null) return passedMaxMag;
   const allNums = [];
@@ -1692,22 +1673,17 @@ function classifiedCellPatches(classifiedCell, maxMag, settings) {
 }
 
 /**
- * The table step (see the file header).
+ * The table step (see the file header). settings holds the resolved
+ * offsetTop, offsetOther, and numTop, and the dateGranularity and
+ * timeGranularity. When passedMaxMag is neither null nor undefined, the step
+ * rounds against it and computes none: the extension passes the table's
+ * magnitude freeze, and Sheets the max magnitude over the dataset, number
+ * cells included.
  *
- * @param {object[]} classifiedCells - One classified cell per cell, in page
- *   order, each carrying text, classification, and columnIndex.
- * @param {{offsetTop: number, offsetOther: number, numTop: number,
- *          dateGranularity: string, timeGranularity: string}} settings -
- *   Resolved offsets and num_top, and the date and time granularity.
- * @param {number|null} [passedMaxMag] - A max magnitude the caller holds:
- *   the table's magnitude freeze in the extension, or the max magnitude over
- *   the dataset in Sheets, number cells included. When given, the step
- *   rounds against it and computes none of its own.
  * @returns {{maxMag: number|null,
  *            patchedCells: Array<{classifiedCell: object, patches: object[]}>}}
- *   patchedCells holds one patched cell per classified cell, in input order:
- *   the classified cell after the column post-pass, and its patches in the
- *   classified text.
+ *   One patched cell per classified cell, in input order: the classified
+ *   cell after the column post-pass, and its patches in the classified text.
  */
 function tablePatches(classifiedCells, settings, passedMaxMag) {
   const resolved = resolveAmbiguousDates(classifiedCells);
@@ -1717,9 +1693,9 @@ function tablePatches(classifiedCells, settings, passedMaxMag) {
   return { maxMag, patchedCells };
 }
 
-// Apply patches to a text, last patch first, so each earlier patch's position
-// still counts into the text as passed in. For a caller with no page: the
-// extension writes through the patch writer, one text piece at a time.
+// Apply patches to a text, last patch first, so the positions of the earlier
+// patches stay valid. For a caller with no page: the extension writes through
+// the patch writer, one text piece at a time.
 function applyPatches(text, patches) {
   return patches
     .slice()
@@ -1735,17 +1711,17 @@ function applyPatches(text, patches) {
  *
  * The content script loads this file through the manifest's content_scripts,
  * and the sidebar page through a script tag. The service worker does not load
- * it. A constant that more than one component reads belongs here, whatever
- * kind of constant it is — a reader looks in one place.
+ * it. The Sheets build copies the whole file into the plugin library, and the
+ * plugin simplifies under DR_DEFAULTS. A constant that more than one component
+ * reads belongs here, whatever kind of constant it is — a reader looks in one
+ * place.
  *
  * DR_DEFAULTS is the settings contract: every option's name and its default.
- * The application model fills a table's missing settings from it, and the
- * sidebar draws its initial controls from it.
+ * Every key that starts with "simplify" is a switch: the data test turns each
+ * one on (lib/dr-table/detect.js), and sidebar.html holds one control for each.
  */
 const DR_DEFAULTS = {
-  // Off: a table no one has turned on shows the original. The table pillbox,
-  // the menu toggle, the menu toggle with sidebar, or the sidebar pillbox
-  // turns a table on.
+  // Off: a table no one has turned on shows the original.
   enabled: false,
   simplifyMixedCurrency: true,
   simplifyMixedPercent: true,
@@ -1755,7 +1731,6 @@ const DR_DEFAULTS = {
   simplifyTimes: false,
   dateGranularity: 'year',
   timeGranularity: 'hour',
-  // Concrete numbers, never null or blank. numTop has no sidebar control.
   offsetTop: -0.5,
   offsetOther: -0.5,
   numTop: 1,
@@ -1763,21 +1738,16 @@ const DR_DEFAULTS = {
 };
 
 /**
- * DR_DETECTION_SETTINGS holds the detection settings: every value that
- * shapes whether an element counts as a table or a grid, every value that
- * sets how soon and how far the extension acts on a page change (the settle
- * delay, the cell cap, the pass target), plus the two lookup lists detection
- * reads (the display values that mark a grid/flex layout, and the known
- * vendor grid profiles). The detection layer and the controller
- * (content.js) read it as a bare global, with no fallback copy.
+ * The detection settings. docs/vocabulary.md defines what they hold. Every
+ * reader reads DR_DETECTION_SETTINGS as a bare global, with no fallback copy.
  */
 const DR_DETECTION_SETTINGS = {
   // --- Nomination step ---
-  // 1 registers a vendor grid's scrolling pane and leaves the pinned pane,
-  // which holds the row-number column, outside the table. The first-column
-  // exclusion then reaches the first data column, and a range expression
-  // counts that column as column A. A pinned pane that holds real data drops
-  // out of the table at this depth.
+  // At 1, the nomination step registers a vendor grid's scrolling pane and
+  // leaves the pinned pane, which holds the row-number column, outside the
+  // table. The first-column exclusion then reaches the first data column, and
+  // a range expression counts that column as column A. A pinned pane that
+  // holds real data stays outside the table at this depth.
   nestingDepth: 1,
   // --- Grid detection ---
   gridMinChildren: 5,
@@ -1790,9 +1760,10 @@ const DR_DETECTION_SETTINGS = {
   // --- Data test ---
   dataTestCellBudget: 1000,
   // --- Vendor grids ---
-  // Known third-party grid libraries. `classToken` ends looksLikeGrid before
-  // its alignment step; `scrollContainerSelectors` and `pinnedPaneSelectors`
-  // locate GridAdapter's scroll container and pinned pane.
+  // Known third-party grid libraries. looksLikeGrid skips its alignment step
+  // for an element whose class holds a `classToken`. GridAdapter finds its
+  // scroll container and pinned pane through `scrollContainerSelectors` and
+  // `pinnedPaneSelectors`.
   vendorProfiles: [
     {
       name: 'databricks',
@@ -1817,24 +1788,25 @@ const DR_DETECTION_SETTINGS = {
   reapplyMaxWaitMs: 1000,
   // In Chrome on the test page, a pass over 10,000 cells took 44 to 57 ms.
   reapplyCellCap: 10000,
-  // A pass that runs longer than this writes a debug row with its duration.
-  // Such a pass is more than three times slower than the slowest pass
-  // measured at the cell cap.
+  // The re-apply observer writes a debug row with a pass's duration when the
+  // pass runs longer than this. Such a pass is more than three times slower
+  // than the slowest pass measured at the cell cap.
   passTargetMs: 200,
   // --- Pending tables ---
-  // Failed re-tests a pending table takes before its subtree observer drops.
-  // A re-test runs only after a subtree change and the settle delay, so the
-  // count grows only while the subtree keeps changing, and the data test
-  // budget bounds each re-test. At the fastest rate, 100 re-tests take about
-  // ten seconds and half a second of processing. A lower cap leaves a slow
-  // query unregistered when its loading state keeps changing the subtree.
+  // Failed re-tests a pending table takes before the content script drops its
+  // subtree observer. A re-test runs only after a subtree change and the
+  // settle delay, so the count grows only while the subtree keeps changing,
+  // and each re-test reads at most the data test's cell budget. At the fastest
+  // rate, 100 re-tests take about ten seconds and half a second of processing.
+  // Under a lower cap, a table whose query is slow stays unregistered when its
+  // loading state keeps changing the subtree.
   pendingRetestCap: 100,
   // The most pending tables of both kinds on one page at once. A page that
-  // draws its data tables before their rows holds a few; a page that lays
-  // itself out with tables, such as an email client, can hold hundreds that
-  // never pass the data test. 50 is an estimate between the two: it leaves
-  // room for the first and stops the extension watching every layout table on
-  // the second. Past it, a table that fails the data test is not watched.
+  // draws its data tables before their rows holds a few; a page laid out with
+  // tables, such as an email client, can hold hundreds that never pass the
+  // data test. 50 is an estimate between the two: room for the first, and no
+  // watch on every layout table of the second. Past it, a table that fails the
+  // data test is not watched.
   pendingTableCap: 50,
   // --- Accessibility artifact check ---
   offscreenLeftPx: -9999,

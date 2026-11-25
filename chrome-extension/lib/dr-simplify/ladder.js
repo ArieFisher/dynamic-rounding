@@ -17,9 +17,8 @@
  * markdown adapter in the plugin); whether the cell holds a superscript; the
  * superscript spans in the text classifyCell reads (getSuperscriptRanges);
  * and whether the cell's digits sit in more than one text piece (from the
- * piece layout), so the join of numbers in separate pieces never reads as one
- * spaced identifier. The bare names the ladder calls come from the
- * lib/dr-number files, loaded ahead of this file.
+ * piece layout). The bare names the ladder calls come from the lib/dr-number
+ * files, loaded ahead of this file.
  */
 
 /**
