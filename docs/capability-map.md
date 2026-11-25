@@ -40,7 +40,7 @@ What DynamicRounding does, grouped by kind, and how each platform does it. The [
 ## How a cell moves through the core
 
 1. **Input adapter.** Lists the table's cells. The core reads only that list, never a page, markdown, or a spreadsheet.
-2. **Classification ladder.** Reads one cell and gives it a mode: skip, date, time, or extracted. For an extracted cell it records each number's position and value.
+2. **Classification ladder.** Reads one cell and lists its stretches: each number, date, or time the cell holds, with its position in the cell. A cell left as written holds no stretch. For a number it records the value.
 3. **Table step.** Runs the column post-pass, finds the max magnitude, and builds each cell's patches.
 4. **Simplify.** A number goes to the rounding as a plain number (1234 in, 1000 out), then to the write-back, which writes "1,000". A date goes to one function that rounds it and rewrites its text. A time goes to the clock-time rule, then to a function that writes its text.
 5. **Output writer.** Applies each patch at its place in the source and leaves every other character as written.
