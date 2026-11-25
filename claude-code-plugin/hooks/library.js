@@ -208,7 +208,8 @@ const US_NUMBER_FORMAT = Object.freeze({ group: ',', decimal: '.' });
 /**
  * The number format function: the one place that states which marks a
  * number uses. The number shape test reads it for the shape to accept, and
- * the write-back reads it for the marks to write. It returns US style.
+ * the write-back and the lens preview read it for the marks to write. It
+ * returns US style.
  */
 function numberFormat() {
   return US_NUMBER_FORMAT;

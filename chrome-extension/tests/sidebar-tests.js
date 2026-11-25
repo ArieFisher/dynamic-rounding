@@ -80,7 +80,7 @@
   // sidebar.js: state:tableSwitched handler does NOT reset the controls to the
   // shipped defaults — that reset is what desynced the sidebar from the model.
   eq('rebind source: sidebar.js state:tableSwitched handler does NOT write the controls or read DR_DEFAULTS',
-    /applySettingsToUI\s*\(|DR_DEFAULTS/.test(switchHandlerBlock), false);
+    /drawControls\s*\(|DR_DEFAULTS/.test(switchHandlerBlock), false);
 
   // sidebar.js: state:tableSwitched handler does NOT auto-apply settings
   // (must NOT call applyNow() inside the handler)
@@ -89,73 +89,75 @@
 })();
 
 // ---------------------------------------------------------------------------
-// --- sidebar.js: formatOriginal ---
+// --- sidebar.js: formatSample ---
 //
 // Strategy: extract the real implementation from sidebar.js source via regex
-// and eval it in this scope (where toNumber is already available from the
-// evaled reader.js / content.js block above).
+// and eval it in this scope (where toNumber and numberFormat are already
+// available from the evaled reader.js / content.js block above).
 // This exercises the REAL implementation, not a reimplementation.
 // ---------------------------------------------------------------------------
 (function sidebarHelperTests() {
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
   // Extract the two constants and the function we need from sidebar.js.
-  // toNumber is already on globalThis from the content-script eval above.
+  // toNumber and numberFormat are already on globalThis from the
+  // content-script eval above.
   const constBlock = sidebarSrc.match(
     /const PREVIEW_DECIMAL_THRESHOLD\s*=.*?;\s*const PREVIEW_MAX_DECIMALS\s*=.*?;/
   );
-  const formatOriginalFn = sidebarSrc.match(
-    /function formatOriginal\([\s\S]*?\n\}/
+  const formatSampleFn = sidebarSrc.match(
+    /function formatSample\([\s\S]*?\n\}/
   );
 
-  if (!constBlock || !formatOriginalFn) {
+  if (!constBlock || !formatSampleFn) {
     // Signal extraction failure clearly — treat as a failed test so CI notices.
-    eq('sidebar-extract: able to extract formatOriginal from sidebar.js',
+    eq('sidebar-extract: able to extract formatSample from sidebar.js',
        false, true);
     return;
   }
 
   // Eval into a local object using an IIFE so the const declarations bind in
   // function scope (not global) and the compiled function body can hold them.
-  // toNumber is passed in from the content scripts the setup runs.
+  // toNumber and numberFormat are passed in from the content scripts the
+  // setup runs.
   // Note: string concatenation is used (not a template literal) to avoid any
   // back-tick/interpolation issues with the extracted source text.
   const helperSrc = '(function() {\n' +
     constBlock[0] + '\n' +
-    formatOriginalFn[0] + '\n' +
-    'return { formatOriginal: formatOriginal };\n' +
+    formatSampleFn[0] + '\n' +
+    'return { formatSample: formatSample };\n' +
     '})()';
   const helpers = (isolatedFunction(
-    'toNumber',
+    'toNumber', 'numberFormat',
     'return ' + helperSrc + ';'
-  ))(toNumber);
+  ))(toNumber, numberFormat);
 
-  const fmtOrig = helpers.formatOriginal;
+  const fmtSample = helpers.formatSample;
 
   // Verify we got a real function, not undefined.
-  eq('sidebar-extract: formatOriginal is a function',
-     typeof fmtOrig, 'function');
+  eq('sidebar-extract: formatSample is a function',
+     typeof fmtSample, 'function');
 
   // -----------------------------------------------------------------
   // original numbers display with thousands commas.
-  // formatOriginal converts numeric strings to comma-formatted numbers.
+  // formatSample converts numeric strings to comma-formatted numbers.
   // -----------------------------------------------------------------
-  eq('formatOriginal integer string gets commas (273233 -> "273,233")',
-     fmtOrig('273233'), '273,233');
-  eq('formatOriginal large integer number gets commas',
-     fmtOrig(1000000), '1,000,000');
-  eq('formatOriginal already-comma string parses and re-formats ("273,233")',
-     fmtOrig('273,233'), '273,233');
-  eq('formatOriginal negative large integer gets commas',
-     fmtOrig(-1234567), '-1,234,567');
+  eq('formatSample integer string gets commas (273233 -> "273,233")',
+     fmtSample('273233'), '273,233');
+  eq('formatSample large integer number gets commas',
+     fmtSample(1000000), '1,000,000');
+  eq('formatSample already-comma string parses and re-formats ("273,233")',
+     fmtSample('273,233'), '273,233');
+  eq('formatSample negative large integer gets commas',
+     fmtSample(-1234567), '-1,234,567');
 
   // -----------------------------------------------------------------
   // rounded numbers magnitude >= 100 → NO decimals.
   // -----------------------------------------------------------------
-  eq('formatOriginal("1234.56") -> "1,234" (magnitude >= 100, commas, no decimals)',
-     fmtOrig('1234.56'), '1,234');
-  eq('formatOriginal(100) -> "100" (exactly at boundary, no decimals)',
-     fmtOrig(100), '100');
+  eq('formatSample("1234.56") -> "1,234" (magnitude >= 100, commas, no decimals)',
+     fmtSample('1234.56'), '1,234');
+  eq('formatSample(100) -> "100" (exactly at boundary, no decimals)',
+     fmtSample(100), '100');
 
   // -----------------------------------------------------------------
   // magnitude < 100 → at most 4 decimals, TRUNCATED.
@@ -163,108 +165,108 @@
   // -----------------------------------------------------------------
 
   // Boundary: 99.99999 must NOT round to 100, and must stay < threshold, giving 4 dec.
-  eq('boundary-99.99999: formatOriginal("99.99999") -> "99.9999" (not rounded to 100)',
-     fmtOrig('99.99999'), '99.9999');
+  eq('boundary-99.99999: formatSample("99.99999") -> "99.9999" (not rounded to 100)',
+     fmtSample('99.99999'), '99.9999');
 
   // Negatives below threshold: trunc toward zero (not floor).
-  eq('negative: formatOriginal("-99.99999") -> "-99.9999" (negative, truncated, not -100)',
-     fmtOrig('-99.99999'), '-99.9999');
-  eq('negative: formatOriginal("-1.7999") -> "-1.7999" (toward zero)',
-     fmtOrig('-1.7999'), '-1.7999');
+  eq('negative: formatSample("-99.99999") -> "-99.9999" (negative, truncated, not -100)',
+     fmtSample('-99.99999'), '-99.9999');
+  eq('negative: formatSample("-1.7999") -> "-1.7999" (toward zero)',
+     fmtSample('-1.7999'), '-1.7999');
 
   // Negative boundary: -100 at threshold → no decimals.
-  eq('negative-100: formatOriginal("-100") -> "-100"',
-     fmtOrig('-100'), '-100');
+  eq('negative-100: formatSample("-100") -> "-100"',
+     fmtSample('-100'), '-100');
 
   // Numbers with fewer than 4 decimals are preserved as-is (no padding).
-  eq('fewer-decimals: formatOriginal("1.5") -> "1.5"',
-     fmtOrig('1.5'), '1.5');
+  eq('fewer-decimals: formatSample("1.5") -> "1.5"',
+     fmtSample('1.5'), '1.5');
 
   // -----------------------------------------------------------------
   // Comma parsing of original: string with commas should parse and reformat.
   // -----------------------------------------------------------------
-  eq('comma-parse: formatOriginal("273,233") -> "273,233" (toNumber strips commas)',
-     fmtOrig('273,233'), '273,233');
-  eq('comma-parse: formatOriginal("1,234.5678999") -> "1,234" (magnitude >= 100, trunc)',
-     fmtOrig('1,234.5678999'), '1,234');
-  eq('comma-parse: formatOriginal("99,999") -> "99,999" (magnitude >= 100, no decimals)',
-     fmtOrig('99,999'), '99,999');
+  eq('comma-parse: formatSample("273,233") -> "273,233"',
+     fmtSample('273,233'), '273,233');
+  eq('comma-parse: formatSample("1,234.5678999") -> "1,234" (magnitude >= 100, trunc)',
+     fmtSample('1,234.5678999'), '1,234');
+  eq('comma-parse: formatSample("99,999") -> "99,999" (magnitude >= 100, no decimals)',
+     fmtSample('99,999'), '99,999');
 
   // -----------------------------------------------------------------
   // NaN / unparseable fallback: should return the raw string, not "NaN".
   // -----------------------------------------------------------------
-  eq('NaN-fallback: formatOriginal("abc") -> "abc" (raw string passthrough)',
-     fmtOrig('abc'), 'abc');
-  eq('NaN-fallback: formatOriginal("") -> "" (empty string passthrough)',
-     fmtOrig(''), '');
-  eq('NaN-fallback: formatOriginal(null) -> "null" (null stringified)',
-     fmtOrig(null), 'null');
-  eq('NaN-fallback: formatOriginal("12abc") -> "12abc" (non-numeric string raw)',
-     fmtOrig('12abc'), '12abc');
+  eq('unparseable: formatSample("abc") -> "abc"',
+     fmtSample('abc'), 'abc');
+  eq('unparseable: formatSample("") -> ""',
+     fmtSample(''), '');
+  eq('unparseable: formatSample(null) -> "null"',
+     fmtSample(null), 'null');
+  eq('unparseable: formatSample("12abc") -> "12abc"',
+     fmtSample('12abc'), '12abc');
 
   // -----------------------------------------------------------------
   // Edge cases: zero, very small numbers, integers.
   // -----------------------------------------------------------------
-  eq('edge: formatOriginal("0") -> "0"',
-     fmtOrig('0'), '0');
-  eq('edge: formatOriginal(0.00001) -> "0" (truncated to 4 places, last digit gone)',
-     fmtOrig(0.00001), '0');
-  eq('edge: formatOriginal(0.00009999) -> "0" (below 4th decimal place)',
-     fmtOrig(0.00009999), '0');
-  eq('edge: formatOriginal(0.1234) -> "0.1234" (exactly 4 decimals)',
-     fmtOrig(0.1234), '0.1234');
-  eq('edge: formatOriginal(0.12345) -> "0.1234" (5th decimal truncated)',
-     fmtOrig(0.12345), '0.1234');
+  eq('edge: formatSample("0") -> "0"',
+     fmtSample('0'), '0');
+  eq('edge: formatSample(0.00001) -> "0" (truncated to 4 places, last digit gone)',
+     fmtSample(0.00001), '0');
+  eq('edge: formatSample(0.00009999) -> "0" (below 4th decimal place)',
+     fmtSample(0.00009999), '0');
+  eq('edge: formatSample(0.1234) -> "0.1234" (exactly 4 decimals)',
+     fmtSample(0.1234), '0.1234');
+  eq('edge: formatSample(0.12345) -> "0.1234" (5th decimal truncated)',
+     fmtSample(0.12345), '0.1234');
 
   // -----------------------------------------------------------------
-  // REGRESSION GUARD: formatOriginal must TRUNCATE, never ROUND.
+  // REGRESSION GUARD: formatSample must TRUNCATE, never ROUND.
   // A toFixed() implementation rounds, turning e.g. 1.7999999999 into '1.8'.
   // All cases below would fail under a rounding implementation.
   // -----------------------------------------------------------------
 
   // Canonical example: deep-9s value, must truncate not round.
-  eq('regression-trunc: formatOriginal(1.7999999999) -> "1.7999" (not "1.8")',
-     fmtOrig(1.7999999999), '1.7999');
+  eq('regression-trunc: formatSample(1.7999999999) -> "1.7999" (not "1.8")',
+     fmtSample(1.7999999999), '1.7999');
 
   // Near-integer truncation: 1.999999999 must NOT round up to 2.
-  eq('regression-trunc: formatOriginal(1.999999999) -> "1.9999" (not "2", not "1")',
-     fmtOrig(1.999999999), '1.9999');
+  eq('regression-trunc: formatSample(1.999999999) -> "1.9999" (not "2", not "1")',
+     fmtSample(1.999999999), '1.9999');
 
   // 5th decimal truncated, not rounded: 5.12349999999 must NOT become '5.1235'.
-  eq('regression-trunc: formatOriginal(5.12349999999) -> "5.1234" (not "5.1235")',
-     fmtOrig(5.12349999999), '5.1234');
+  eq('regression-trunc: formatSample(5.12349999999) -> "5.1234" (not "5.1235")',
+     fmtSample(5.12349999999), '5.1234');
 
   // Just below threshold: numeric (not string) 99.99999 must NOT round to 100.
-  eq('regression-trunc: formatOriginal(99.99999) -> "99.9999" (not "100")',
-     fmtOrig(99.99999), '99.9999');
+  eq('regression-trunc: formatSample(99.99999) -> "99.9999" (not "100")',
+     fmtSample(99.99999), '99.9999');
 
   // Negative near-integer: -1.999999999 must NOT round to -2.
-  eq('regression-trunc: formatOriginal(-1.999999999) -> "-1.9999" (not "-2")',
-     fmtOrig(-1.999999999), '-1.9999');
+  eq('regression-trunc: formatSample(-1.999999999) -> "-1.9999" (not "-2")',
+     fmtSample(-1.999999999), '-1.9999');
 
   // Negative just below threshold: numeric -99.99999 must NOT round to -100.
-  eq('regression-trunc: formatOriginal(-99.99999) -> "-99.9999" (not "-100")',
-     fmtOrig(-99.99999), '-99.9999');
+  eq('regression-trunc: formatSample(-99.99999) -> "-99.9999" (not "-100")',
+     fmtSample(-99.99999), '-99.9999');
 
   // Magnitude >= 100 with numeric (not string) input: 1234.56 -> "1,234".
-  eq('regression-trunc: formatOriginal(1234.56) -> "1,234" (numeric input, commas, no decimals)',
-     fmtOrig(1234.56), '1,234');
+  eq('regression-trunc: formatSample(1234.56) -> "1,234" (numeric input, commas, no decimals)',
+     fmtSample(1234.56), '1,234');
 
   // Numeric 1.5 (not string): trailing zeros stripped, no padding.
-  eq('regression-trunc: formatOriginal(1.5) -> "1.5" (numeric, no padding)',
-     fmtOrig(1.5), '1.5');
+  eq('regression-trunc: formatSample(1.5) -> "1.5" (numeric, no padding)',
+     fmtSample(1.5), '1.5');
 
   // Integer 2: no decimals, no commas.
-  eq('regression-trunc: formatOriginal(2) -> "2" (integer, no decimals)',
-     fmtOrig(2), '2');
+  eq('regression-trunc: formatSample(2) -> "2" (integer, no decimals)',
+     fmtSample(2), '2');
 
   // Negative tiny value: -0.00001 truncates to 0, must NOT produce "-0".
-  eq('regression-trunc: formatOriginal(-0.00001) -> "0" (no negative zero)',
-     fmtOrig(-0.00001), '0');
+  eq('regression-trunc: formatSample(-0.00001) -> "0" (no negative zero)',
+     fmtSample(-0.00001), '0');
 
   // Adversarial fp-noise: 49.99995 must NOT round to '50'.
-  eq('regression-trunc: formatOriginal(49.99995) -> "49.9999" (fp-noise, not "50")',
-     fmtOrig(49.99995), '49.9999');
+  eq('regression-trunc: formatSample(49.99995) -> "49.9999" (fp-noise, not "50")',
+     fmtSample(49.99995), '49.9999');
 })();
 
 // ---------------------------------------------------------------------------
@@ -362,12 +364,12 @@
       setTableBoundFnBody.length > 0, true);
     eq('unbound sidebar pillbox: sidebar.js setTableBound sets enabledEl.checked = false when unbound',
       /enabledEl\.checked\s*=\s*false/.test(setTableBoundFnBody), true);
-    eq('unbound sidebar pillbox: sidebar.js setTableBound calls updateDisabledState',
+    eq('unbound sidebar pillbox: an unbound sidebar shows its options disabled',
       /updateDisabledState\(\)/.test(setTableBoundFnBody), true);
     // The bound branch must not reset the switch to the shipped
     // default — the model (or the pull's explicit defaults fallback) is the
     // switch's only source once a table is bound.
-    eq('unbound sidebar pillbox: sidebar.js setTableBound no longer references DR_DEFAULTS anywhere (issue #251)',
+    eq('unbound sidebar pillbox: a bind does not reset the sidebar pillbox to the shipped default',
       /DR_DEFAULTS/.test(setTableBoundFnBody), false);
   })();
 })();
@@ -384,17 +386,19 @@
   // We locate the function body with a regex (same pattern used elsewhere for
   // source-level extraction) and wrap it in isolatedFunction so we can call it.
   const pctMatch = sidebarJsSrc.match(/function stopPosition\(v\)\s*\{([\s\S]*?)\n\}/);
-  if (!pctMatch) {
+  const stopsMatch = sidebarJsSrc.match(/const STOPS\s*=\s*\[([^\]]*)\]/);
+  const snapMatch = sidebarJsSrc.match(/function snap\(v\)\s*\{([\s\S]*?)\n\}/);
+  if (!pctMatch || !stopsMatch || !snapMatch) {
     failed++;
-    failures.push({ name: 'dots-tick: stopPosition() function found in sidebar.js', actual: false, expected: true });
+    failures.push({ name: 'dots-tick: stopPosition(), STOPS, and snap() found in sidebar.js', actual: false, expected: true });
   } else {
     passed++;
-    // The 9 stops in strategy-monotonic order (k=0..8), mirroring STOPS:
-    const stops = [-2, -1.5, -1, -0.25, -0.5, 0, 0.25, 0.5, 1];
+    // stopPosition() closes over STOPS and snap(); both come from sidebar.js
+    // so the extracted body runs standalone against the real stops.
+    const stops = stopsMatch[1].split(',').map((s) => parseFloat(s.trim()));
     const N = stops.length;
-    // stopPosition() closes over STOPS and snap(); supply both so the extracted body
-    // runs standalone. snap() is the nearest-stop fallback for non-stop inputs.
-    const snap = (v) => stops.reduce((b, s) => Math.abs(s - v) < Math.abs(b - v) ? s : b, stops[0]);
+    const snapRaw = isolatedFunction('STOPS', 'v', snapMatch[1]);
+    const snap = (v) => snapRaw(stops, v);
     const pctRaw = isolatedFunction('STOPS', 'snap', 'v', pctMatch[1]);
     const stopPosition = (v) => pctRaw(stops, snap, v);
     const TOL = 1e-6;
@@ -1099,7 +1103,7 @@ const SINGLE_READ_SAMPLES = {
 
   eq('capture-size: the form holds a hidden size note',
     /<div[^>]*id="captureSizeNote"[^>]*hidden/.test(sidebarHtmlSrc), true);
-  eq('capture-size: opening the form measures the pulled state through the package helper',
+  eq('capture-size: opening the form measures the pulled state',
     sidebarJsSrc.includes('DR_CAPTURE.sizeWarning(') &&
       sidebarJsSrc.includes('captureSizeNote'), true);
   eq('capture-size: a failed save reports on the status line',
@@ -1188,10 +1192,9 @@ const SINGLE_READ_SAMPLES = {
 
 // --- sidebar: the capture section and its glue ---
 //
-// The suite never executes sidebar.js (it is asserted as source text — the
-// established style for sidebar wiring), so these tests pin the markup and
-// the glue's load-bearing seams: the three mark buttons, the form that
-// nothing saves without, the one save path, and the state pull.
+// These tests pin the markup and the glue's load-bearing seams: the three
+// mark buttons, the form that nothing saves without, the one save path, and
+// the state pull.
 
 (function captureSidebarSection() {
   const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
@@ -1208,7 +1211,7 @@ const SINGLE_READ_SAMPLES = {
         .every((id) => sidebarHtmlSrc.includes(id)) &&
       !sidebarHtmlSrc.includes('id="captureExpected"'),
     true);
-  eq('capture-ui: the remarks preview text follows the mark',
+  eq('capture-ui: the remarks placeholder text follows the mark',
     ['Suggestions / questions / remarks', 'expected / observed / cause (if known)']
       .every((hint) => sidebarJsSrc.includes(hint)) &&
       /placeholder/.test(sidebarJsSrc),
@@ -1220,7 +1223,7 @@ const SINGLE_READ_SAMPLES = {
   eq('capture-ui: nothing saves without a pressed mark',
     /function saveCapture\(\)[\s\S]{0,200}if \(captureMark === null\) return;/.test(sidebarJsSrc),
     true);
-  eq('capture-ui: the filename comes from the package helper and carries the mark',
+  eq('capture-ui: the filename carries the mark',
     /DR_CAPTURE\.filenameFor\(\{[^}]*mark: mark/.test(sidebarJsSrc), true);
   eq('capture-ui: the sidebar\'s own log buffer copy travels beside the content script\'s',
     /sidebar: DR_LOG\.copyBuffer\(\)/.test(sidebarJsSrc), true);
@@ -1267,10 +1270,8 @@ const SINGLE_READ_SAMPLES = {
 
 // --- The sidebar serves one tab --------------------------------
 //
-// A content script reports by broadcast, and a broadcast reaches the sidebar
-// whatever tab it came from. The sidebar acted on every report it received,
-// so a background tab re-simplifying its rows redrew the sidebar against a
-// table the user could not see.
+// The comment on createBoundTab in sidebar.js holds the reason the sidebar
+// drops a message from any other tab.
 //
 // createBoundTab holds the whole concern and takes its tabs interface and its
 // bus as parameters, so this section drives the real source with stubs
@@ -1285,7 +1286,7 @@ const SINGLE_READ_SAMPLES = {
   const createBoundTab = (isolatedFunction('return ' + factory[0] + ';'))();
   eq('bound tab: createBoundTab is a function', typeof createBoundTab, 'function');
 
-  // A bus stub recording every subscription, so a test can deliver a report
+  // A bus stub recording every subscription, so a test can deliver a message
   // on a topic with any sending tab it likes.
   function makeBus() {
     const handlers = new Map();
@@ -1346,7 +1347,7 @@ const SINGLE_READ_SAMPLES = {
     const bus = makeBus();
     const boundTab = createBoundTab(tabs, bus);
     const seen = [];
-    boundTab.subscribe('state:rangeOk', () => { seen.push('report'); });
+    boundTab.subscribe('state:rangeOk', () => { seen.push('message'); });
     boundTab.resolve(() => { order.push('opening read'); });
 
     eq('bound tab: the opening read runs after the tab lookup',
@@ -1355,7 +1356,7 @@ const SINGLE_READ_SAMPLES = {
     // The recorded tab is read through the only thing that uses it.
     bus.deliver('state:rangeOk', {}, OWN_TAB);
     eq('bound tab: resolve records the tab the sidebar was opened for',
-      seen, ['report']);
+      seen, ['message']);
   })();
 
   // --- The window the bound tab sits in, for the screenshot ---
@@ -1387,7 +1388,7 @@ const SINGLE_READ_SAMPLES = {
     const calls = sidebarSrc.match(/DR_BUS\.request\('[^']+'[\s\S]*?\n  \}[^\n]*\);/g) || [];
     eq('bound tab: the sidebar sends at least one request (fails closed on a lost match)',
       calls.length > 0, true);
-    eq('bound tab: every sidebar request passes the bound tab\'s number',
+    eq('bound tab: every sidebar request passes the bound tab ID',
       calls.length === (sidebarSrc.match(/DR_BUS\.request\(/g) || []).length &&
         calls.every((call) => call.endsWith('}, { tabId: boundTab.tabId() });')), true);
   })();
@@ -1398,18 +1399,18 @@ const SINGLE_READ_SAMPLES = {
     const bus = makeBus();
     const boundTab = createBoundTab(makeTabs([]), bus);
     const seen = [];
-    boundTab.subscribe('state:rangeOk', () => { seen.push('report'); });
+    boundTab.subscribe('state:rangeOk', () => { seen.push('message'); });
     let ran = false;
     boundTab.resolve(() => { ran = true; });
 
     eq('bound tab: no active tab still runs the opening read', ran, true);
 
     bus.deliver('state:rangeOk', {}, OWN_TAB);
-    eq('bound tab: with no tab recorded every report is dropped', seen, []);
+    eq('bound tab: with no tab recorded every message is dropped', seen, []);
   })();
 
-  // --- A report is acted on only when it came from the bound tab ---
-  (function reportsAreFiltered() {
+  // --- A message is acted on only when it came from the bound tab ---
+  (function messagesAreFiltered() {
     const bus = makeBus();
     const boundTab = createBoundTab(makeTabs([{ id: OWN_TAB, windowId: OWN_WINDOW }]), bus);
     boundTab.resolve(() => {});
@@ -1418,36 +1419,36 @@ const SINGLE_READ_SAMPLES = {
     boundTab.subscribe('state:rangeError', (payload) => { seen.push(payload); });
 
     bus.deliver('state:rangeError', { from: 'own' }, OWN_TAB);
-    eq('bound tab: a report from the bound tab reaches its handler',
+    eq('bound tab: a message from the bound tab reaches its handler',
       seen, [{ from: 'own' }]);
 
     bus.deliver('state:rangeError', { from: 'other' }, OTHER_TAB);
-    eq('bound tab: a report from another tab is dropped',
+    eq('bound tab: a message from another tab is dropped',
       seen, [{ from: 'own' }]);
 
     // An extension page has no tab. Nothing a content script sends looks
-    // like this, and a report that does belongs to no tab at all.
+    // like this, and a message that does belongs to no tab at all.
     bus.deliver('state:rangeError', { from: 'an extension page' }, null);
-    eq('bound tab: a report carrying no tab is dropped',
+    eq('bound tab: a message carrying no tab is dropped',
       seen, [{ from: 'own' }]);
   })();
 
   // The window between the sidebar opening and its tab lookup answering.
   // Nothing can be compared yet, so nothing is acted on; the opening read
   // that follows carries the current truth.
-  (function reportsBeforeTheTabResolves() {
+  (function messagesBeforeTheTabResolves() {
     const bus = makeBus();
     const boundTab = createBoundTab(makeTabs([{ id: OWN_TAB, windowId: OWN_WINDOW }]), bus);
     const seen = [];
     boundTab.subscribe('state:previewSamplesChanged', (payload) => { seen.push(payload); });
 
     bus.deliver('state:previewSamplesChanged', { early: true }, OWN_TAB);
-    eq('bound tab: a report arriving before the tab lookup answers is dropped',
+    eq('bound tab: a message arriving before the tab lookup answers is dropped',
       seen, []);
 
     boundTab.resolve(() => {});
     bus.deliver('state:previewSamplesChanged', { early: false }, OWN_TAB);
-    eq('bound tab: reports are acted on once the tab lookup has answered',
+    eq('bound tab: messages are acted on once the tab lookup has answered',
       seen, [{ early: false }]);
   })();
 
@@ -1549,22 +1550,22 @@ const SINGLE_READ_SAMPLES = {
     try { boundTab.onLeave(() => {}); } catch (e) { threw = true; }
     eq('bound tab: a tabs interface with no activation event does not throw', threw, false);
 
-    // Reports still reach the sidebar; only the self-close is missing.
+    // Messages still reach the sidebar; only the self-close is missing.
     const seen = [];
-    boundTab.subscribe('state:rangeOk', () => { seen.push('report'); });
+    boundTab.subscribe('state:rangeOk', () => { seen.push('message'); });
     bus.deliver('state:rangeOk', {}, OWN_TAB);
-    eq('bound tab: reports still reach the sidebar with no activation event',
-      seen, ['report']);
+    eq('bound tab: messages still reach the sidebar with no activation event',
+      seen, ['message']);
   })();
 
-  // --- Every content-script report goes through the gate ---
+  // --- Every content-script message goes through the gate ---
   //
   // The list is derived, never restated: a topic qualifies when the bus lists
   // it, the content script publishes it, and the sidebar subscribes it. A
   // topic added later joins this check with no edit here. The count assertion
   // makes the scan fail closed, so a regex that matches nothing cannot read
   // as a pass.
-  (function everyContentReportIsGated() {
+  (function everyContentMessageIsGated() {
     const contentSrc = sourceByName('content.js');
     eq('bound tab: the content script source is readable (fails closed on a rename)',
       typeof contentSrc, 'string');
@@ -1573,13 +1574,13 @@ const SINGLE_READ_SAMPLES = {
     const gated = (src, topic) => new RegExp("boundTab\\.subscribe\\(\\s*'" + topic + "'").test(src);
     const ungated = (src, topic) => new RegExp("DR_BUS\\.subscribe\\(\\s*'" + topic + "'").test(src);
 
-    const contentReports = Object.keys(DR_BUS.TOPICS).filter((topic) =>
+    const contentMessages = Object.keys(DR_BUS.TOPICS).filter((topic) =>
       publishes(contentSrc, topic) && (gated(sidebarSrc, topic) || ungated(sidebarSrc, topic)));
 
-    eq('bound tab: the scan found content-script reports the sidebar subscribes (fails closed on an empty list)',
-      contentReports.length > 0, true);
-    eq('bound tab: every content-script report the sidebar subscribes goes through the bound-tab gate',
-      contentReports.filter((topic) => ungated(sidebarSrc, topic)), []);
+    eq('bound tab: the scan found content-script messages the sidebar subscribes (fails closed on an empty list)',
+      contentMessages.length > 0, true);
+    eq('bound tab: every content-script message the sidebar subscribes goes through the bound-tab gate',
+      contentMessages.filter((topic) => ungated(sidebarSrc, topic)), []);
   })();
 })();
 

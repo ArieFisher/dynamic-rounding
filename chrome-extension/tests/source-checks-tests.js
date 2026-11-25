@@ -87,7 +87,7 @@
   eq('sidebar-defaults: sidebar.html loads constants.js before sidebar.js',
     /constants\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
   eq('sidebar-defaults: sidebar.js fills every control unset by the settings from DR_DEFAULTS',
-    /function applySettingsToUI\(settings\)\s*\{\s*const s = Object\.assign\(\{\}, DR_DEFAULTS, settings \|\| \{\}\)/.test(sidebarJsSource), true);
+    /function drawControls\(settings\)\s*\{\s*const s = Object\.assign\(\{\}, DR_DEFAULTS, settings \|\| \{\}\)/.test(sidebarJsSource), true);
   eq('sidebar-defaults: manifest content_scripts load order is defaults, log buffer, dr-number package, dr-table package, dr-simplify package, dr-capture package, event bus, application model, table pillbox view, toast view, content',
     JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify([
       'constants.js',
@@ -1801,7 +1801,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 //
 // takeCaptureScreenshot takes its tabs interface as a parameter and answers
 // through one callback, so the suite drives the real source with a stub
-// that settles at once. Every route — a resolved take, a rejected one, a
+// that settles at once. Every path — a resolved take, a rejected one, a
 // throw before the promise exists, a tabs interface with no capture — calls
 // the callback exactly once, with the image or with a not-taken record that
 // holds the reason.
