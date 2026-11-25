@@ -7,13 +7,13 @@
  *   1. The column post-pass settles each ambiguous date against its
  *      column's format hint.
  *   2. The max magnitude is the one the caller passes, or else the largest
- *      order of magnitude among the extracted cells' numbers; the step
- *      counts no date or time.
+ *      order of magnitude among the number stretches; the step counts no
+ *      date or time.
  *   3. Each cell's numbers, dates, and times round and become patches.
  *
  * Core layer: reads no page and calls no Chrome. It depends only on
- * lib/dr-number's bare names and the ladder's pickDateFormatHint and
- * resolveAmbiguousDateClassification, loaded ahead of this file.
+ * lib/dr-number's bare names and the ladder's pickDateFormatHint, loaded
+ * ahead of this file.
  *
  * The step reads one classified cell per cell. A classified cell is any
  * object carrying:
@@ -24,75 +24,71 @@
  * its own per-cell data beside them.
  */
 
+// A classification that waits for the column post-pass: the data test reads
+// it too, to hold such a cell until the post-pass settles its column.
 function isAmbiguousDateClassification(classification) {
-  return classification.pending === 'ambiguous-date';
+  return classification.stretches.some((stretch) => stretch.kind === 'date' && isAmbiguousDate(stretch));
 }
 
 // The column post-pass. It groups cells by grid column, so a merged cell
 // cannot split one column into two groups that read 7/4/99 as July in one row
-// and April in another.
+// and April in another. A month-first or day-first hint gives each ambiguous
+// date stretch its day and month. A mixed or ambiguous column cannot be read
+// safely, so the post-pass empties the stretch list of each of its cells,
+// and a cell never changes some of its dates and holds others.
 function resolveAmbiguousDates(classifiedCells) {
   const ambiguousDatesByCol = new Map();
   for (const { classification, columnIndex } of classifiedCells) {
     if (!isAmbiguousDateClassification(classification)) continue;
     if (!ambiguousDatesByCol.has(columnIndex)) ambiguousDatesByCol.set(columnIndex, []);
-    ambiguousDatesByCol.get(columnIndex).push(...classification.value.dates.filter(isAmbiguousDate));
+    ambiguousDatesByCol.get(columnIndex).push(...classification.stretches.filter(isAmbiguousDate));
   }
   const hintByCol = new Map(Array.from(ambiguousDatesByCol,
     ([columnIndex, ambiguousDates]) => [columnIndex, pickDateFormatHint(ambiguousDates)]));
   return classifiedCells.map((classifiedCell) => {
-    if (!isAmbiguousDateClassification(classifiedCell.classification)) return classifiedCell;
-    const classification = resolveAmbiguousDateClassification(
-      classifiedCell.classification, hintByCol.get(classifiedCell.columnIndex));
-    return Object.assign({}, classifiedCell, { classification });
+    const { classification, columnIndex } = classifiedCell;
+    if (!isAmbiguousDateClassification(classification)) return classifiedCell;
+    const hint = hintByCol.get(columnIndex);
+    const stretches = hint === 'month-first' || hint === 'day-first'
+      ? classification.stretches.map((s) => (isAmbiguousDate(s) ? readAmbiguousDate(s, hint === 'month-first') : s))
+      : [];
+    return Object.assign({}, classifiedCell, { classification: Object.assign({}, classification, { stretches }) });
   });
+}
+
+function readAmbiguousDate(stretch, isMonthFirst) {
+  const { year, n1, n2, start, end, n1Cut, n2Cut } = stretch;
+  return { kind: 'date', ...knownDate(year, isMonthFirst ? n1 : n2, true, start, end, isMonthFirst ? n2Cut : n1Cut) };
 }
 
 function datasetMaxMagnitude(classifiedCells, passedMaxMag) {
   if (passedMaxMag != null) return passedMaxMag;
-  const allNums = [];
-  for (const { classification } of classifiedCells) {
-    if (classification.mode === 'extracted') {
-      for (const m of classification.value.matches) allNums.push(m.num);
-    }
-  }
+  const allNums = classifiedCells.flatMap(({ classification }) => classification.stretches
+    .filter((stretch) => stretch.kind === 'number').map((stretch) => stretch.num));
   return findMaxMagnitude([allNums]);
 }
 
-// One cell's patches, positioned in the classified text: empty for a skip
-// cell or an unchanged value. A date cell takes one patch per changed date,
-// and a time cell one patch over its trimmed text, so the text keeps its own
-// whitespace; the date bounds index the trimmed text. An extracted cell takes
-// one patch per number whose written digits differ from the match, which
-// catches a number that is unchanged but whose display simplifies (e.g.
-// "35.0" to "35").
+// One stretch's new text: a number rounds against the max magnitude, and a
+// date or a time to its granularity. null for a time the step cannot round.
+function roundStretch(text, stretch, maxMag, settings) {
+  const written = text.slice(stretch.start, stretch.end);
+  if (stretch.kind === 'date') return roundDate(text, stretch, settings.dateGranularity);
+  if (stretch.kind === 'time') return roundTimeText(written, settings.timeGranularity);
+  const { offsetTop, offsetOther, numTop } = settings;
+  return formatNumber(roundValueSetAware(stretch.num, maxMag, offsetTop, offsetOther, numTop), written);
+}
+
+// One cell's patches, positioned in the classified text: one patch per
+// stretch whose new text differs from its written text, so a cell with no
+// stretch takes none. The comparison also catches a number that is unchanged
+// but whose display simplifies (e.g. "35.0" to "35").
 function classifiedCellPatches(classifiedCell, maxMag, settings) {
   const { text, classification } = classifiedCell;
-  const { offsetTop, offsetOther, numTop } = settings;
-  const trimmed = text.trim();
-  const lead = text.length - text.trimStart().length;
-  if (classification.mode === 'date') {
-    return classification.value.dates.flatMap((date) => {
-      const numStr = trimmed.slice(date.start, date.end);
-      const newNum = roundDate(trimmed, date, settings.dateGranularity);
-      return newNum === numStr ? [] : [{ index: lead + date.start, numStr, newNum }];
-    });
-  }
-  if (classification.mode === 'time') {
-    const rounded = roundTimeText(trimmed, settings.timeGranularity);
-    if (rounded === null || rounded === trimmed) return [];
-    return [{ index: lead, numStr: trimmed, newNum: rounded }];
-  }
-  if (classification.mode === 'extracted') {
-    const patches = [];
-    for (const m of classification.value.matches) {
-      const rounded = roundValueSetAware(m.num, maxMag, offsetTop, offsetOther, numTop);
-      const newNum = formatNumber(rounded, m.numStr);
-      if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
-    }
-    return patches;
-  }
-  return [];
+  return classification.stretches.flatMap((stretch) => {
+    const numStr = text.slice(stretch.start, stretch.end);
+    const newNum = roundStretch(text, stretch, maxMag, settings);
+    return newNum === null || newNum === numStr ? [] : [{ index: stretch.start, numStr, newNum }];
+  });
 }
 
 /**

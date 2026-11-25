@@ -41,20 +41,20 @@ function blankRanges(text, ranges) {
 }
 
 /**
- * The dates findDates reads from the trimmed text, leaving out each date that
+ * The dates findDates reads from the text, leaving out each date that
  * overlaps a markup range, and the spans of the dates left out. A date only
  * partly inside a link ("<a>Jan 15</a>, 2024") is left out whole. Each round
  * blanks the dates it leaves out, so a date beside them, a bare year
  * included, is read in the next round; every round blanks at least one date,
  * so the rounds end.
  */
-function readDatesOutsideMarkup(trimmed, markupInTrimmed) {
+function readDatesOutsideMarkup(text, markupRanges) {
   const heldSpans = [];
-  let readText = trimmed;
+  let readText = text;
   for (;;) {
     const found = findDates(readText);
     if (!found) return { dates: null, heldSpans };
-    const inside = found.filter((d) => overlapsMaskedRange(markupInTrimmed, d.start, d.end));
+    const inside = found.filter((d) => overlapsMaskedRange(markupRanges, d.start, d.end));
     if (inside.length === 0) return { dates: found, heldSpans };
     const spans = inside.map((d) => ({ start: d.start, end: d.end }));
     heldSpans.push(...spans);
@@ -83,25 +83,28 @@ function extractSimplifyMatches(text, superscriptRanges, markupRanges = []) {
     .filter((m) => !overlapsMaskedRange(masked, m.index, m.index + m.numStr.length));
 }
 
+function numberStretch(match) {
+  return { kind: 'number', start: match.index, end: match.index + match.numStr.length, num: match.num };
+}
+
 /**
- * Classify a single cell and return a classification: { mode, reason, value?,
- * pending? }.
+ * Classify a single cell and return a classification: { stretches }, the
+ * cell's stretches in text order, each with its start and end in text:
  *
- *   mode: 'skip' | 'date' | 'time' | 'extracted'
- *   reason: the rule that gave the mode. For a skip: 'out-of-range', the
- *     exclusion getExclusionReason returns ('first-row', 'first-column',
- *     'percent', 'currency'), 'quoted', 'times-disabled', 'dates-disabled',
- *     'impossible-date', 'impossible-time', 'identifier', 'markup', or
- *     'no-number'. 'superscript' marks a cell with a superscript whose text
- *     the number reader reads as one number, skipped or extracted. 'unit'
- *     marks a unit number, and 'simplify' every other cell that simplifies.
- *   value: mode-specific payload —
- *     'date' (resolved) → { dates }, each date with a known reading — see
- *       findDates in lib/dr-number
- *     'date' (needs the column post-pass) → { dates }, at least one of them
- *       all-numeric (isAmbiguousDate), plus pending: 'ambiguous-date'
- *     'extracted' → { matches }. A cell that is one number (a pure cell, a
- *       bracketed number, or a unit number) holds one match.
+ *   { kind: 'number', start, end, num }
+ *   { kind: 'date', start, end, ...the date findDates reads (lib/dr-number) }
+ *   { kind: 'time', start, end, ...the time readTimeCell reads }
+ *
+ * A cell holds one kind. A cell that is one number (a pure cell, a bracketed
+ * number, or a unit number) holds one number stretch over its digits. The
+ * column post-pass settles the day and month of an ambiguous date stretch
+ * (isAmbiguousDate).
+ * A cell holds no stretch when it is out of range, under an exclusion
+ * (getExclusionReason), wholly quoted, an identifier shape, or a one-number
+ * cell whose number sits in a markup range; when its date or time switch is
+ * off; when it holds an impossible date or time; and when it holds no number.
+ * The placement step adds split: true to a classification whose split
+ * stretches it removes.
  */
 function classifyCell(input, options) {
   const {
@@ -118,55 +121,41 @@ function classifyCell(input, options) {
   // The markup ranges, then each date or time that overlaps one: its digits
   // stay as written too.
   let held = markupRanges;
-  // A cell that is one number gets one match over its digits alone, so the
-  // write-back leaves a sign, a bracket, a currency sign, a percent sign, a
-  // suffix, or a currency code where the page put it.
-  const oneNumber = (match, reason) => (
+  // A cell that is one number gets one number stretch over its digits alone,
+  // so the write-back leaves a sign, a bracket, a currency sign, a percent
+  // sign, a suffix, or a currency code where the page put it.
+  const oneNumber = (match) => (
     overlapsMaskedRange(held, match.index, match.index + match.numStr.length)
-      ? { mode: 'skip', reason: 'markup' }
-      : { mode: 'extracted', reason, value: { matches: [match] } });
+      ? { stretches: [] }
+      : { stretches: [numberStretch(match)] });
 
-  if (!isInRanges(rowIndex, columnIndex, ranges)) {
-    return { mode: 'skip', reason: 'out-of-range' };
-  }
-
-  const exclusion = getExclusionReason(text, columnIndex, options, rowIndex);
-  if (exclusion) return { mode: 'skip', reason: exclusion };
-
-  if (isWholeCellQuoted(trimmed)) {
-    return { mode: 'skip', reason: 'quoted' };
-  }
+  if (!isInRanges(rowIndex, columnIndex, ranges)) return { stretches: [] };
+  if (getExclusionReason(text, columnIndex, options, rowIndex)) return { stretches: [] };
+  if (isWholeCellQuoted(trimmed)) return { stretches: [] };
 
   // A date or a time that overlaps a markup range stays as written, and its
-  // digits join the held ranges for the number steps.
-  const lead = text.length - text.trimStart().length;
-  const markupInTrimmed = markupRanges.map((r) => ({ start: r.start - lead, end: r.end - lead }));
-  const fromTrimmed = (r) => ({ start: r.start + lead, end: r.end + lead });
-
-  // A clock time, or an ISO date-time with its date kept, follows the "times"
-  // switch. Checked before findDates, which would otherwise match the date of
-  // a space-separated date-time.
+  // digits join the held ranges for the number steps. A clock time, or an
+  // ISO date-time with its date kept, follows the "times" switch. Checked
+  // before findDates, which would otherwise match the date of a
+  // space-separated date-time.
   let dates = null;
   const time = readTimeCell(trimmed);
   if (time) {
-    if (!overlapsMaskedRange(markupInTrimmed, 0, trimmed.length)) {
-      if (!options.simplifyTimes) return { mode: 'skip', reason: 'times-disabled' };
-      if (time.impossible) return { mode: 'skip', reason: 'impossible-time' };
-      return { mode: 'time', reason: 'simplify' };
+    const lead = text.length - text.trimStart().length;
+    const span = { start: lead, end: lead + trimmed.length };
+    if (!overlapsMaskedRange(markupRanges, span.start, span.end)) {
+      if (!options.simplifyTimes || time.impossible) return { stretches: [] };
+      return { stretches: [{ kind: 'time', ...time, ...span }] };
     }
-    held = [...held, fromTrimmed({ start: 0, end: trimmed.length })];
+    held = [...held, span];
   } else {
-    const read = readDatesOutsideMarkup(trimmed, markupInTrimmed);
+    const read = readDatesOutsideMarkup(text, markupRanges);
     dates = read.dates;
-    held = [...held, ...read.heldSpans.map(fromTrimmed)];
+    held = [...held, ...read.heldSpans];
   }
   if (dates) {
-    if (!options.simplifyDates) return { mode: 'skip', reason: 'dates-disabled' };
-    if (dates.some((d) => d.impossible)) return { mode: 'skip', reason: 'impossible-date' };
-    if (dates.some(isAmbiguousDate)) {
-      return { mode: 'date', reason: 'simplify', pending: 'ambiguous-date', value: { dates } };
-    }
-    return { mode: 'date', reason: 'simplify', value: { dates } };
+    if (!options.simplifyDates || dates.some((d) => d.impossible)) return { stretches: [] };
+    return { stretches: dates.map((d) => ({ kind: 'date', ...d })) };
   }
 
   // In a cell with a superscript, the text classifyCell reads joins base and
@@ -174,33 +163,26 @@ function classifyCell(input, options) {
   // the reader sees. So no whole-cell shape is tested against it, and
   // extraction masks each superscript span.
   if (hasSuperscript) {
-    const isNumber = toNumber(text) !== null;
-    const matches = extractSimplifyMatches(text, superscriptRanges, held);
-    if (matches.length === 0) return { mode: 'skip', reason: isNumber ? 'superscript' : 'no-number' };
-    return { mode: 'extracted', reason: isNumber ? 'superscript' : 'simplify', value: { matches } };
+    return { stretches: extractSimplifyMatches(text, superscriptRanges, held).map(numberStretch) };
   }
 
   // An identifier shape reads as a code, not a quantity, so the whole cell
   // stays as written. Checked before the number reader, which also reads a
   // digit run with a leading zero ("0012345678", "(0012345678)") as a number.
-  if (matchIdentifierShape(trimmed, digitsSpanPieces)) {
-    return { mode: 'skip', reason: 'identifier' };
-  }
+  if (matchIdentifierShape(trimmed, digitsSpanPieces)) return { stretches: [] };
 
   const num = toNumber(text);
   if (num !== null) {
     const span = pureNumberSpan(text);
-    return oneNumber({ numStr: span.numStr, num, index: span.index }, 'simplify');
+    return oneNumber({ numStr: span.numStr, num, index: span.index });
   }
 
   // A unit number ("4.91tn", "CAD45.67") is one number with a suffix or a
   // currency code.
   const unit = matchUnitNumber(text);
-  if (unit) return oneNumber(unit, 'unit');
+  if (unit) return oneNumber(unit);
 
-  const matches = extractSimplifyMatches(text, superscriptRanges, held);
-  if (matches.length === 0) return { mode: 'skip', reason: 'no-number' };
-  return { mode: 'extracted', reason: 'simplify', value: { matches } };
+  return { stretches: extractSimplifyMatches(text, superscriptRanges, held).map(numberStretch) };
 }
 
 /**
@@ -222,21 +204,4 @@ function pickDateFormatHint(ambiguousList) {
   if (hasN2gt12 && !hasN1gt12) return 'month-first';
   if (hasN1gt12 && hasN2gt12) return 'mixed';
   return 'ambiguous';
-}
-
-/**
- * Turn a pending ambiguous-date classification (classifyCell's pending:
- * 'ambiguous-date') into its final classification, given the column's format
- * hint from pickDateFormatHint. month-first and day-first give each all-numeric
- * date of the cell its day and month; mixed and ambiguous cannot be read
- * safely and downgrade the whole cell to skip, so a cell never changes some
- * of its dates and holds others.
- */
-function resolveAmbiguousDateClassification(classification, hint) {
-  if (hint !== 'month-first' && hint !== 'day-first') return { mode: 'skip', reason: 'ambiguous-date' };
-  const isMonthFirst = hint === 'month-first';
-  const dates = classification.value.dates.map((d) => (isAmbiguousDate(d)
-    ? knownDate(d.year, isMonthFirst ? d.n1 : d.n2, true, d.start, d.end, isMonthFirst ? d.n2Cut : d.n1Cut)
-    : d));
-  return { mode: 'date', reason: 'simplify', value: { dates } };
 }
