@@ -153,49 +153,23 @@ function isAmbiguousDate(date) {
   return date.n1 !== undefined;
 }
 
-function isDateLike(text) {
-  return findDates(text) !== null;
-}
-
-// The one clock-time shape: HH:MM or HH:MM:SS. A whole-cell time adds an
-// optional AM/PM; a time inside text is the same digits with no digit or
-// colon on either side, so "123:45" and "16:9" never read as times.
-const CLOCK_TIME_SOURCE = '(?<hour>\\d{1,2}):(?<minute>\\d{2})(?::(?<second>\\d{2}))?';
-const WHOLE_CELL_TIME_RE = new RegExp('^' + CLOCK_TIME_SOURCE + '(?<meridiem>\\s*[ap]\\.?m\\.?)?$', 'i');
-const CLOCK_TIME_IN_TEXT_RE = new RegExp('(?<![\\d:])' + CLOCK_TIME_SOURCE + '(?![\\d:])', 'g');
-
-function isTimeLike(text) {
-  const time = readTimeCell(text);
-  return Boolean(time && !time.impossible && !time.date);
-}
-
-/**
- * Return {start, end} ranges (offsets into `text`) of every clock time inside
- * the text ("9:45 - 11:45 AM" holds two). Each range covers the digits and
- * colons alone; an AM/PM holds no digit to mask.
- */
-function getClockTimeMaskedRanges(text) {
-  return matchRanges(text, CLOCK_TIME_IN_TEXT_RE);
-}
-
-// The time is the one clock-time shape. A fraction of a second follows the
-// seconds only.
-const ISO_DATE_TIME_RE = new RegExp('^(?<year>\\d{4})-(?<month>\\d{2})-(?<day>\\d{2})[T ]' + CLOCK_TIME_SOURCE +
-  '(?:(?<=:\\d{2}:\\d{2})\\.\\d{1,9})?(?:Z|[+-]\\d{2}:?\\d{2})?$');
-
-/**
- * Parse an ISO 8601 date-time string into its wall-clock components.
- * Accepts "YYYY-MM-DDTHH:MM[:SS[.fff]][Z|±HH[:]MM]", with an hour of one or
- * two digits; the date/time separator may be "T" or a single space. The
- * fraction of a second and the timezone offset are recognised but discarded.
- * @returns {{year:number, month:number, day:number, hour:number, minute:number, second:number}|null}
- */
-function parseISODateTime(text) {
-  const time = readTimeCell(text);
-  if (!time || time.impossible || !time.date) return null;
-  const { hour, minute, second } = time;
-  return { ...time.date, hour, minute, second };
-}
+// The one clock-time shape: HH:MM or HH:MM:SS, with no digit or colon on
+// either side, so "123:45" and "16:9" never read as times.
+const CLOCK_TIME_SOURCE = '(?<![\\d:])(?<hour>\\d{1,2}):(?<minute>\\d{2})(?::(?<second>\\d{2}))?(?![\\d:])';
+// An AM/PM, after optional whitespace, as its own token.
+const MERIDIEM_SOURCE = '\\s*[aApP]\\.?[mM]\\.?(?![A-Za-z])';
+// A clock time takes the AM/PM after it into its own characters.
+const CLOCK_TIME_RE = new RegExp(CLOCK_TIME_SOURCE + '(?<meridiem>' + MERIDIEM_SOURCE + ')?', 'g');
+// A clock time followed by a decimal fraction ("Lap 3:43.13") is a race time
+// or a duration in tenths, not a time of day.
+const FRACTION_AFTER_RE = /^\.\d/;
+// An ISO date-time: a date, "T" or one space, and a clock time, with a
+// fraction of a second after the seconds only and an optional time zone. A
+// date followed by a twelve-hour time ("2026-11-09 7:30 PM") is a date and a
+// clock time, not an ISO date-time.
+const ISO_DATE_TIME_RE = new RegExp('(?<!\\w)(?<year>\\d{4})-(?<month>\\d{2})-(?<day>\\d{2})[T ]' +
+  CLOCK_TIME_SOURCE + '(?:(?<=:\\d{2}:\\d{2})\\.\\d{1,9})?(?:Z|[+-]\\d{2}:?\\d{2})?' +
+  '(?![\\w:]|\\.\\d|' + MERIDIEM_SOURCE + ')', 'gd');
 
 // The one range check for a time's parts: an hour of 1 to 12 with an AM/PM or
 // 0 to 23 without, and minutes and seconds of 0 to 59.
@@ -204,35 +178,58 @@ function isClockTimeInRange(hour, minute, second, hasMeridiem) {
   return hourInRange && minute <= 59 && second <= 59;
 }
 
-/**
- * Read a cell's text as one whole-cell clock time or one ISO date-time.
- * Returns null for text in neither shape or an ISO date-time whose date
- * cannot exist, { impossible: true } for a time with a part out of range
- * ("24:00", "10:00:75"), and otherwise the time: its hour as written
- * (hourText), hour, minute, second, its AM/PM as written (meridiem, '' for
- * none), and, for an ISO date-time, its date { year, month, day }.
- */
-function readTimeCell(text) {
-  if (typeof text !== 'string') return null;
-  const trimmed = text.trim();
-  const iso = trimmed.match(ISO_DATE_TIME_RE);
-  const m = iso || trimmed.match(WHOLE_CELL_TIME_RE);
-  if (!m) return null;
-  const g = m.groups;
-  if (iso && (!isMonth(g.month) || !isDay(g.day))) return null;
+// One time from a match of a pattern holding CLOCK_TIME_SOURCE, over
+// [start, end): its hour as written (hourText), hour, minute, second, and its
+// AM/PM as written (meridiem, '' for none). A time with a part out of range
+// ("24:00", "10:00:75") is { impossible: true, start, end }.
+function readClockTime(groups, start, end, meridiem) {
   const time = {
-    hourText: g.hour,
-    hour: parseInt(g.hour, 10),
-    minute: parseInt(g.minute, 10),
-    second: g.second ? parseInt(g.second, 10) : 0,
-    meridiem: g.meridiem || '',
-    date: iso ? { year: parseInt(g.year, 10), month: parseInt(g.month, 10), day: parseInt(g.day, 10) } : null,
+    start,
+    end,
+    hourText: groups.hour,
+    hour: parseInt(groups.hour, 10),
+    minute: parseInt(groups.minute, 10),
+    second: groups.second ? parseInt(groups.second, 10) : 0,
+    meridiem,
   };
-  return isClockTimeInRange(time.hour, time.minute, time.second, time.meridiem !== '') ? time : { impossible: true };
+  return isClockTimeInRange(time.hour, time.minute, time.second, meridiem !== '')
+    ? time : { impossible: true, start, end };
 }
 
-function isDateTimeLike(text) {
-  return parseISODateTime(text) !== null;
+/**
+ * Find every clock time in the text, left to right ("9:45 - 11:45 AM" holds
+ * two). Each is a time (see readClockTime), an impossible time, or
+ * { hasFraction: true, start, end } for a time followed by a decimal
+ * fraction. Each span covers the time's digits and colons and its AM/PM.
+ */
+function findClockTimes(text) {
+  return Array.from(text.matchAll(CLOCK_TIME_RE), (m) => {
+    const start = m.index;
+    const end = start + m[0].length;
+    if (FRACTION_AFTER_RE.test(text.slice(end))) return { hasFraction: true, start, end };
+    return readClockTime(m.groups, start, end, m.groups.meridiem || '');
+  });
+}
+
+/**
+ * Find every ISO date-time in the text, left to right, as a date and a time.
+ * The date spans "YYYY-MM-DD" and is a date with a known reading (see
+ * knownDate) or an impossible date. The time spans the separator through the
+ * time zone and is a time (see readClockTime) on the twenty-four hour clock
+ * (isTwentyFourHour), or an impossible time.
+ * @returns {{date: object, time: object}[]}
+ */
+function findISODateTimes(text) {
+  return Array.from(text.matchAll(ISO_DATE_TIME_RE), (m) => {
+    const { year, month, day } = m.groups;
+    const dateEnd = endOf(m, 'day');
+    const date = isMonth(month) && isDay(day)
+      ? knownDate(parseInt(year, 10), parseInt(month, 10), false, m.index, dateEnd,
+        { start: endOf(m, 'month'), end: dateEnd })
+      : { impossible: true, start: m.index, end: dateEnd };
+    const time = readClockTime(m.groups, dateEnd, m.index + m[0].length, '');
+    return { date, time: time.impossible ? time : { ...time, isTwentyFourHour: true } };
+  });
 }
 
 /**
@@ -287,30 +284,24 @@ function roundClockTime({ hour, minute, second, isPm, isTwentyFourHour }, granul
 }
 
 /**
- * Simplify a cell holding one clock time or one ISO date-time per the time
- * granularity, through roundClockTime. A clock time keeps its AM/PM style and
- * its hour padding: "11:59:30 a.m." becomes "12:00 p.m." at minute. An ISO
- * date-time keeps its date and becomes "YYYY-MM-DD HH:MM". Returns null when
- * the text holds neither or the result equals the text.
+ * The new text of one time (see findClockTimes and findISODateTimes), rounded
+ * to the granularity through roundClockTime, or null when it cannot round. A
+ * clock time keeps its AM/PM style and its hour padding: "11:59:30 a.m."
+ * becomes "12:00 p.m." at minute. An ISO date-time's time spans its
+ * separator, so it becomes " HH:MM".
  */
-function roundTimeText(text, granularity) {
-  const time = readTimeCell(text);
-  if (!time || time.impossible) return null;
-  const trimmed = text.trim();
+function roundTime(time, granularity) {
   const pad = (n) => String(n).padStart(2, '0');
-  const changed = (result) => (result === trimmed ? null : result);
-  const { hourText, hour, minute, second, meridiem, date } = time;
-  if (date) {
-    const rounded = roundClockTime({ hour, minute, second, isTwentyFourHour: true }, granularity);
-    return rounded && changed(`${date.year}-${pad(date.month)}-${pad(date.day)} ${pad(rounded.hour)}:${pad(rounded.minute)}`);
-  }
-  const rounded = roundClockTime({ hour, minute, second, isPm: meridiem ? /p/i.test(meridiem) : undefined }, granularity);
+  const { hourText, hour, minute, second, meridiem, isTwentyFourHour } = time;
+  const isPm = meridiem ? /p/i.test(meridiem) : undefined;
+  const rounded = roundClockTime({ hour, minute, second, isPm, isTwentyFourHour }, granularity);
   if (!rounded) return null;
+  if (isTwentyFourHour) return ` ${pad(rounded.hour)}:${pad(rounded.minute)}`;
   const roundedHour = !meridiem && hourText.length === 2 ? pad(rounded.hour) : String(rounded.hour);
   // Swap the a/p letter alone, so the suffix keeps its case, dots, and spacing.
   const suffix = rounded.isPm ? meridiem.replace(/a/i, (c) => (c === 'A' ? 'P' : 'p'))
     : meridiem.replace(/p/i, (c) => (c === 'P' ? 'A' : 'a'));
-  return changed(`${roundedHour}:${pad(rounded.minute)}${suffix}`);
+  return `${roundedHour}:${pad(rounded.minute)}${suffix}`;
 }
 
 // --- Era-marked calendar years (e.g. "2898 AD", "500 BC", "AD 79", "1200 CE") ---

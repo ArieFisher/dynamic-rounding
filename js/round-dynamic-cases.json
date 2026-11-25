@@ -1032,5 +1032,38 @@
         "expected_number": "2024-06-15T10:30:00"
       }
     ]
+  },
+  {
+    "description": "A number beside a date or a time: the number reader alone reads none, and Sheets rounds each number and keeps each date and time, because dates and times are off",
+    "cases": [
+      {
+        "input": "Paid $12,345 on November 09 2026",
+        "params": {},
+        "expected": "Paid $12,345 on November 09 2026",
+        "expected_text": "Paid $10,000 on November 09 2026",
+        "expected_number": "Paid $10,000 on November 09 2026"
+      },
+      {
+        "input": "19:54 — 12,345 units",
+        "params": {},
+        "expected": "19:54 — 12,345 units",
+        "expected_text": "19:54 — 10,000 units",
+        "expected_number": "19:54 — 10,000 units"
+      },
+      {
+        "input": "Deployed 2026-11-09T19:54:00Z, 12,345 users",
+        "params": {},
+        "expected": "Deployed 2026-11-09T19:54:00Z, 12,345 users",
+        "expected_text": "Deployed 2026-11-09T19:54:00Z, 10,000 users",
+        "expected_number": "Deployed 2026-11-09T19:54:00Z, 10,000 users"
+      },
+      {
+        "input": "1999-13-45 and Jun 2020, 12,345",
+        "params": {},
+        "expected": "1999-13-45 and Jun 2020, 12,345",
+        "expected_text": "1999-13-45 and Jun 2020, 10,000",
+        "expected_number": "1999-13-45 and Jun 2020, 10,000"
+      }
+    ]
   }
 ]

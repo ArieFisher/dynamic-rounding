@@ -1409,7 +1409,7 @@ const SEAT_ROWS = [
 })();
 
 // --- simplifyTimes=true → time cell IS simplified ---
-// "14:30" with hour granularity → roundTimeText returns "15:00" (half-hour rounds up).
+// "14:30" with hour granularity → roundTime returns "15:00" (half-hour rounds up).
 (function dateTimeSwitches_simplifyTimesTrue() {
   withCreateTreeWalker(function() {
     const table = makeMockTable([[
@@ -3326,28 +3326,28 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 })();
 
 // ---------------------------------------------------------------------------
-// GV9: Exclusion-gate parity — re-apply HONORS percent / currency gates.
+// GV9: Held-sign parity — re-apply HONORS the percent and currency switches.
 //
 // Grid layout (2 rows × 2 cols):
-//   row 0:  '75%'        '50%'        ← % cells excluded by simplifyMixedPercent:false
-//   row 1:  '12345678'   '$9,999,999' ← col 1 currency excluded by simplifyMixedCurrency:false
+//   row 0:  '75%'        '50%'        ← % numbers held by simplifyMixedPercent:false
+//   row 1:  '12345678'   '$9,999,999' ← col 1 currency held by simplifyMixedCurrency:false
 //
 // Round with simplifyFirstRow:true, simplifyFirstColumn:true (skip those gates),
 // simplifyMixedPercent:false, simplifyMixedCurrency:false.
 //
 // After initial roundTable:
-//   - cellEls[0] (row0,col0) = % excluded  → NOT rounded
-//   - cellEls[1] (row0,col1) = % excluded  → NOT rounded
+//   - cellEls[0] (row0,col0) = % held      → NOT rounded
+//   - cellEls[1] (row0,col1) = % held      → NOT rounded
 //   - cellEls[2] (row1,col0) = plain int   → IS rounded
-//   - cellEls[3] (row1,col1) = $ excluded  → NOT rounded
+//   - cellEls[3] (row1,col1) = $ held      → NOT rounded
 //
 // Simulate sort-revert on cellEls[2]; trigger observer + flush.
 // Assert:
-//   - cellEls[0] and cellEls[1] still NOT rounded (percent exclusion honored)
-//   - cellEls[3] still NOT rounded (currency exclusion honored)
+//   - cellEls[0] and cellEls[1] still NOT rounded (percent switch honored)
+//   - cellEls[3] still NOT rounded (currency switch honored)
 //   - cellEls[2] IS re-rounded (plain numeric, in-range)
 // ---------------------------------------------------------------------------
-(function gv9_reapply_honorsExclusionGates_percentCurrency() {
+(function gv9_reapply_honorsHeldSigns_percentCurrency() {
   let ctx;
   try {
     ctx = setupVirtGrid(
@@ -3364,22 +3364,22 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     );
     const { grid, pendingTimers } = ctx;
 
-    const cell_r0c0 = grid.cellEls[0];  // '75%'       — excluded percent
-    const cell_r0c1 = grid.cellEls[1];  // '50%'       — excluded percent
+    const cell_r0c0 = grid.cellEls[0];  // '75%'       — percent switch off
+    const cell_r0c1 = grid.cellEls[1];  // '50%'       — percent switch off
     const cell_r1c0 = grid.cellEls[2];  // '12345678'  — should be rounded
-    const cell_r1c1 = grid.cellEls[3];  // '$9999999'  — excluded currency
+    const cell_r1c1 = grid.cellEls[3];  // '$9999999'  — currency switch off
 
     // --- Pre-conditions after initial roundTable ---
-    eq('GV9 (pre): row-0 col-0 (75%) is NOT rounded by initial pass (percent excluded)',
+    eq('GV9 (pre): row-0 col-0 (75%) is NOT rounded by initial pass (percent switch off)',
       cell_r0c0.classList.contains('dr-ext-rounded'), false);
 
-    eq('GV9 (pre): row-0 col-1 (50%) is NOT rounded by initial pass (percent excluded)',
+    eq('GV9 (pre): row-0 col-1 (50%) is NOT rounded by initial pass (percent switch off)',
       cell_r0c1.classList.contains('dr-ext-rounded'), false);
 
     eq('GV9 (pre): row-1 col-0 IS rounded by initial pass (plain numeric)',
       cell_r1c0.classList.contains('dr-ext-rounded'), true);
 
-    eq('GV9 (pre): row-1 col-1 ($9999999) is NOT rounded by initial pass (currency excluded)',
+    eq('GV9 (pre): row-1 col-1 ($9999999) is NOT rounded by initial pass (currency switch off)',
       cell_r1c1.classList.contains('dr-ext-rounded'), false);
 
     // Capture the rounded value for re-apply verification.
@@ -3398,17 +3398,17 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     obs.trigger([{ type: 'characterData', target: tn_r1c0 }]);
     flushTimers(pendingTimers);
 
-    // --- Post-conditions: excluded cells must NOT be rounded ---
-    eq('GV9: row-0 col-0 text unchanged after re-apply (percent exclusion honored)',
+    // --- Post-conditions: held numbers must NOT be rounded ---
+    eq('GV9: row-0 col-0 text unchanged after re-apply (percent switch honored)',
       cell_r0c0.childNodes[0].nodeValue, '75%');
 
     eq('GV9: row-0 col-0 does NOT carry dr-ext-rounded after re-apply',
       cell_r0c0.classList.contains('dr-ext-rounded'), false);
 
-    eq('GV9: row-0 col-1 text unchanged after re-apply (percent exclusion honored)',
+    eq('GV9: row-0 col-1 text unchanged after re-apply (percent switch honored)',
       cell_r0c1.childNodes[0].nodeValue, '50%');
 
-    eq('GV9: row-1 col-1 text unchanged after re-apply (currency exclusion honored)',
+    eq('GV9: row-1 col-1 text unchanged after re-apply (currency switch honored)',
       cell_r1c1.childNodes[0].nodeValue, '$9999999');
 
     eq('GV9: row-1 col-1 does NOT carry dr-ext-rounded after re-apply',
@@ -4011,7 +4011,7 @@ function everyRowRead(kind, largeIn) {
 
 (function mergeLadderDivergence_percentGating() {
   // With the sidebar's percent switch off, a percent cell is not sampled: the
-  // merged ladder applies getExclusionReason's percent rule.
+  // merged ladder applies the percent switch to the number the sign touches.
   function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
   function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   const table = {

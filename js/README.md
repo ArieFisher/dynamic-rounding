@@ -101,6 +101,8 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 - `"Q3 2020"` → `"Q3 2,000"` (a year inside text rounds)
 - `"2020"` → `"2020"` (a bare year typed as text reads as a date, and dates stay)
 - `"2024-01-15"` → `"2024-01-15"` (dates and times stay)
+- `"Paid $12,345 on November 09 2026"` → `"Paid $10,000 on November 09 2026"` (a number beside a date rounds, and the date stays)
+- `"Deployed 2026-11-09T19:54:00Z, 12,345 users"` → `"Deployed 2026-11-09T19:54:00Z, 10,000 users"` (a date-time inside text stays, and the number beside it rounds)
 - `"416-555-1234"` → `"416-555-1234"` (an identifier shape stays)
 - `"Call 416-555-1234 about 1,613,245 units"` → `"Call 416-555-1234 about 1,500,000 units"` (inside text, the identifier shape keeps its digits)
 - `"0012345678"` → `"0012345678"` (a digit run with a leading zero is an identifier shape)
@@ -114,7 +116,7 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 
 **Result kind:** A text cell that holds one number returns text: a pure cell such as `"$1,011"` or `"12.5%"`, and a bracketed number such as `"(1,234)"`. The sign the user typed stays, as it does in the Chrome extension. A text result stays text in every cell format: `ISNUMBER` returns FALSE, and `SUM` over a range and charts skip it. The `+` operator and `VALUE` read `"$10,000"` when the sign matches the sheet's locale and return `#VALUE!` when it does not. To get a number back, enter the value as a number. The constant `RESULT_KIND` in the Sheets library holds this choice. Its other value, `'number'`, returns the rounded value (1000, 15, -1000) and drops the sign. A cell with words or a unit number returns text under both values.
 
-**Fixed settings:** Numbers inside text, currency, and percent round. Dates and times stay as written. The first row and the first column round, so the whole dataset rounds. No formula parameter changes these.
+**Fixed settings:** Numbers inside text, currency, and percent round. Dates and times stay as written, and a number beside one in the same text still rounds. The first row and the first column round, so the whole dataset rounds. No formula parameter changes these.
 
 **Dataset mode:** The max magnitude spans every number in the range: each number cell, and each number read inside a text cell.
 

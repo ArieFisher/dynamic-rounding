@@ -46,8 +46,8 @@ A unit number is a cell whose whole text is one number with a magnitude suffix a
 
 - The suffixes are k, m, b, t, bn, and tn, in any case, directly after the number or after one space.
 - A currency code counts only in upper case and only as its own word, so "CADENCE" and "usd" do not. A currency sign written in letters takes the same rule on whichever end carries the letter, so the rand's "R" counts in "R45" and not in "Revenue". A sign written as a picture counts wherever it sits.
-- Every currency the extension reads — its signs and its code together — is listed once, in `lib/dr-number/reader.js`. Reading a cell as a number, the unit number, the currency exclusion, the bracketed number, and the number span, which leaves the sign out of what the write-back replaces, all read that one list. The magnitude suffixes are listed once, in `lib/dr-number/numbers-in-text.js`.
-- With the currency setting off, a cell holding a listed code stays unchanged, the same as a cell holding "$".
+- Every currency the extension reads — its signs and its code together — is listed once, in `lib/dr-number/reader.js`. Reading a cell as a number, the unit number, the currency setting, the bracketed number, and the number span, which leaves the sign out of what the write-back replaces, all read that one list. The magnitude suffixes are listed once, in `lib/dr-number/numbers-in-text.js`.
+- With the currency setting off, a number stays unchanged when a listed code or a currency sign touches its digits, with nothing between them but whitespace, a plus or minus sign, a bracket, or a magnitude suffix: "$12,345", "$-1,234", "12,345 USD", "45.67 m CAD". The percent setting holds a number the same way when a percent sign follows its digits: "5%", "(12.3)%". A range of two numbers shares the sign on one of its ends, so both ends stay: "12–18%", "$12–18", "₹615.71–623.33 crore". The cell's other values still change, and a code that does not touch the digits holds nothing back: "Revenue (USD) 12,345" becomes "Revenue (USD) 10,000" with the currency setting off.
 - A unit number counts as its shown digits in the max magnitude: "4.91tn" counts as 4.91.
 - Letters that are neither a suffix nor a listed code make the cell something else: "DT1234" and "cust15" are identifiers and never round as unit numbers.
 
@@ -68,7 +68,7 @@ Some text names a thing instead of counting it. A cell whose whole text matches 
 - A phone number with dashes, dots, spaces, or a bracketed area code: "416-555-1234", "416.555.1234", "416 555 1234", "+1 416 555 1234", "(416) 555-1234", "(416)555-1234", "1-800-555-0199".
 - Digit groups split by spaces outside thousands grouping: "4165 5512", "44 20 7946 0958". Thousands grouping (a first group of one to three digits, then groups of exactly three) reads as one number for every shape, so "1 234 567" and "1 234 567 890" round. A comma groups thousands in the same shape, and only before the decimal dot; see [Commas and decimal marks](#commas-and-decimal-marks). A cell whose numbers sit in separate pieces of the markup ("1500" above "1600") rounds number by number, since its joined text is several numbers.
 - An IP address: "192.168.0.1", "2001:db8::1".
-- A web or email address: "https://example.com/item/123", "www.example.com/p/12", "sales@example.com".
+- A web or email address: "https://example.com/item/123", "www.example.com/p/12", "sales@example.com". A date or a time inside one stays as written too: "https://example.com/2020-07-21/post" and "https://example.com/watch?t=10:30" stay.
 - An ISBN: "ISBN 978-0-306-40615-7", "978-0-306-40615-7". Without the word "ISBN" the digits must carry a dash or a space, so a bare "1234567890" still rounds.
 - A postal code: Canadian "M5V 2T6", UK "SW1A 1AA", US nine-digit "90210-1234". A bare five-digit "90210" reads as a count; the range expression is the way to leave such a column out.
 - A digit run with a leading zero: "007", "02134", "0012345678". A quantity is not written with a leading zero, and an account number or a code often is. "0", "0.5" and "0.0625" still round, since a decimal mark follows their zero, and so do "0123.45" and "012,345".
@@ -76,6 +76,14 @@ Some text names a thing instead of counting it. A cell whose whole text matches 
 Inside a cell with words, a shape keeps its digits and every other number in the cell rounds: "Call 416-555-1234 about 1,613,245 units" becomes "Call 416-555-1234 about 1,500,000 units". Two shapes count only as a whole cell. Digit groups split by spaces alone never match inside text, since "in 2024 12 stores opened" holds two numbers side by side; "Call 416 555 1234" still rounds its three numbers, while "Call 416 555-1234" keeps them. An ISBN inside text needs the word "ISBN" before it.
 
 A number right after "@" belongs to an at-name or an address and never rounds, so "@2020vision" and "Follow @2020vision" stay as written. "@cherry1234" stays already, because digits joined to letters never read as a number. A cell with a superscript skips the whole-cell test, since its text joins base and exponent digits; the shapes inside its text still keep their digits, and a footnote marker right after one ("416-555-1234¹") leaves it whole. The shapes are listed once, in `lib/dr-number/identifiers.js`.
+
+## Dates, times, and numbers in one cell
+
+Every number, date, and time in a cell follows its own setting. "Paid $12,345 on November 09 2026" becomes "Paid $10,000 on 2026" under the defaults, "Paid $12,345 on 2026" with the currency setting off, and "Paid $10,000 on November 09 2026" with the dates setting off. The same holds on HTML tables and grids alike.
+
+- A clock time follows the times setting inside words too: with times on at hour, "Meeting at 19:54" becomes "Meeting at 20:00". A clock time with no AM/PM in a cell that holds one with an AM/PM stays as written, so "12:45 - 1:30 PM" becomes "12:45 - 2:00 PM". A time followed by a decimal fraction, such as the race time "Lap 3:43.13", is not a time of day and stays as written.
+- An ISO date-time is a date and a time, each under its own setting, as a whole cell or inside words. The "T" or space between them becomes a space when either part changes. With times on at hour, "Deployed 2026-11-09T19:54:00Z, 12,345 users" becomes "Deployed 2026 20:00, 10,000 users"; with times off, it becomes "Deployed 2026 19:54:00Z, 10,000 users".
+- An impossible date or time ("1999-13-45", "24:00") stays as written, and the cell's other values change. A cell whose ambiguous date ("03/04/2026") its column cannot settle keeps its dates as written and still rounds its numbers and times.
 
 ## Links and code
 
@@ -172,6 +180,6 @@ A `display: grid` / `flex` container is not necessarily a *data* grid — it mig
    - **at least one cell the data test counts** (a value the extension can round) — the decisive filter: nav menus, card grids, and galleries hold no such cell and are rejected here;
    - alignment of the sampled first cells unless short-circuited by an ARIA role or library class. The direction reader (`isColumnFirst`) first reads which way the children run, from the boxes of the first two children that draw a box: the same top with a larger left makes a column-first grid, and anything else, including too few boxes, makes a row-first grid. On a row-first grid the first cells of the rows must share a width; on a column-first grid the first cells of the columns must share a height. The grid adapter calls the same read and turns a column-first grid's children into rows, so row r holds the r-th item of every column.
 
-Even past detection, rounding only writes cells the classification ladder admits: cells whose text parses as a number, unit numbers, date cells (on by default, simplified to the year), time cells (opt-in), and cells where a number sits inside surrounding words, on native tables and grids alike. A non-numeric layout grid contains none of these, so it produces no changes regardless.
+Even past detection, rounding only writes values the classification ladder admits: cells whose text parses as a number, unit numbers, dates (on by default, simplified to the year), times (opt-in), and numbers inside surrounding words, on native tables and grids alike. A non-numeric layout grid contains none of these, so it produces no changes regardless.
 
 **Caveat (by design):** a CSS layout grid that genuinely contains aligned numeric columns *will* qualify — at that point it is functionally a data grid, which is exactly the content a user would want rounded.

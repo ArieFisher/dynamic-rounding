@@ -114,7 +114,7 @@ function tableStepCells(api, rows) {
   eq('table step alone: "pending", a cell with no stretch, takes no patch',
     { stretches: at(1, 0).classifiedCell.classification.stretches, patches: at(1, 0).patches },
     { stretches: [], patches: [] });
-  eq('table step alone: a time cell takes one patch over its trimmed text',
+  eq('table step alone: "10:47" takes one patch, "10:47" to "11:00"',
     at(2, 0).patches, [{ index: 0, numStr: '10:47', newNum: '11:00' }]);
   eq('table step alone: each cell\'s text with its patches applied',
     result.patchedCells.map(({ classifiedCell: { text }, patches }) =>
@@ -344,5 +344,5 @@ function tableStepCells(api, rows) {
     TABLE_STEP_FUNCTIONS.map((name) => [name, ['chrome-extension/lib/dr-simplify/table.js']]));
   eq('table step source: content.js calls no column post-pass or max magnitude rule outside the table step',
     [...new Set((contentSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
-      .match(/\b(pickDateFormatHint|resolveAmbiguousDates|findMaxMagnitude|roundDate|roundTimeText|pureNumberSpan)\s*\(/g) || []))], []);
+      .match(/\b(pickDateFormatHint|resolveAmbiguousDates|findMaxMagnitude|roundDate|roundTime|pureNumberSpan)\s*\(/g) || []))], []);
 })();

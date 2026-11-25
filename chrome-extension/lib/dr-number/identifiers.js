@@ -15,11 +15,14 @@
  * cells. A text in thousands
  * grouping ("1 234 567 890") is a quantity, and no code fills it.
  *
- * The ladder reads the one result two ways. matchIdentifierShape returns the
- * name of a code that fills the cell, and classifyCell
- * (lib/dr-simplify/ladder.js) gives that cell no stretch, after
- * the date and time checks, so a date the date parser reads ("21 June 2020")
- * stays a date, and before the number reader. getIdentifierMaskedRanges
+ * The ladder reads the result three ways. isWebOrEmailAddressCell runs the
+ * web-or-email shape alone, and classifyCell (lib/dr-simplify/ladder.js)
+ * gives a cell that address fills no stretch, before the date and time
+ * readers, so a date in an address's path stays as written.
+ * matchIdentifierShape returns the name of a code that fills the cell, and
+ * classifyCell gives that cell no stretch in a cell that holds no date or
+ * time, so a date the date parser reads ("21 June 2020") stays a date, and
+ * before the number reader. getIdentifierMaskedRanges
  * returns the codes that count inside a cell with words ("Call 416-555-1234
  * about 1,613,245 units"), and extractSimplifyMatches drops every number
  * inside one, so the code stays as written and the other numbers round.
@@ -225,11 +228,11 @@ const IDENTIFIER_SHAPES = [
  *   more than one text piece
  * @returns {{name: string, start: number, end: number, fillsCell: boolean, inText: boolean}[]}
  */
-function findIdentifiers(text, digitsSpanPieces = false) {
+function findIdentifiers(text, digitsSpanPieces = false, shapes = IDENTIFIER_SHAPES) {
   if (typeof text !== 'string') return [];
   const quantity = GROUPED_DIGITS_QUANTITY_RE.test(text);
   const codes = [];
-  for (const shape of IDENTIFIER_SHAPES) {
+  for (const shape of shapes) {
     for (const match of shape.span ? text.matchAll(shape.span) : []) {
       const start = match.index;
       const end = start + match[0].length;
@@ -257,6 +260,14 @@ function findIdentifiers(text, digitsSpanPieces = false) {
 function matchIdentifierShape(text, digitsSpanPieces = false) {
   const code = findIdentifiers(text, digitsSpanPieces).find((c) => c.fillsCell);
   return code ? code.name : null;
+}
+
+const WEB_OR_EMAIL_SHAPES = IDENTIFIER_SHAPES.filter((shape) => shape.name === 'web-or-email-address');
+
+// True when a web or email address fills the cell. It reads that one shape
+// alone, so the ladder can run it on every cell before any date or time.
+function isWebOrEmailAddressCell(text) {
+  return findIdentifiers(text, false, WEB_OR_EMAIL_SHAPES).some((code) => code.fillsCell);
 }
 
 /**

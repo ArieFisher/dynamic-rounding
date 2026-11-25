@@ -1146,8 +1146,22 @@
     <h2>2. Currency and percent cells</h2>
     <details class="tester-notes">
       <summary>Tester's notes</summary>
+      <p>The <span class="col">Mixed</span> row holds signs beside words: a
+        percent beside a plain number, a currency code that does not touch its
+        number, a currency amount beside a date, and a number with a currency
+        code after it. The <span class="col">Range</span> row holds ranges of
+        two numbers with a sign on one end.</p>
       <p class="expect">Expect: table pillbox at load. Each number rounds and keeps its
-        currency or percent sign. The first column stays as written.</p>
+        currency or percent sign. The first column stays as written. With the
+        currency switch off, the numbers a currency sign or code touches stay
+        as written ("$1000", "$1,234", "1,234 USD"), and "Revenue (USD) 1,234"
+        still shows 1,000. With the percent switch off, the numbers a percent
+        sign touches stay as written, and the 1,234 beside "53%" still shows
+        1,000. The date shows 2020 with either switch off. In the Range row,
+        both ends of a range stay as written when the switch for its sign is
+        off: "12–18%" with the percent switch off, the other three with the
+        currency switch off. With both switches on, the row shows "10–20%",
+        "$1,000–2,000", "₹600–600 crore", and "1,000 to 1,500 USD".</p>
     </details>
     <table>
       <thead>
@@ -1173,6 +1187,20 @@
           <td>53.00%</td>
           <td>-9.16%</td>
           <td>77% off</td>
+        </tr>
+        <tr>
+          <th scope="row">Mixed</th>
+          <td>53% of 1,234</td>
+          <td>Revenue (USD) 1,234</td>
+          <td>$1,234 on Jun 2020</td>
+          <td>1,234 USD</td>
+        </tr>
+        <tr>
+          <th scope="row">Range</th>
+          <td>12–18%</td>
+          <td>$1,230–1,870</td>
+          <td>₹615.71–623.33 crore</td>
+          <td>1,100 to 1,450 USD</td>
         </tr>
       </tbody>
     </table>
@@ -1276,15 +1304,18 @@
     <h2>4. Dates, times, timestamps</h2>
     <details class="tester-notes">
       <summary>Tester's notes</summary>
-      <p>Each row holds a date, a time, or a timestamp, apart from two rows
-        shaped like dates that are not. The <span class="col">Sidebar settings</span>
-        column holds the sidebar setting that covers the row.</p>
-      <p class="expect">Expect: table pillbox at load. Each date shows its own year. Each
-        time stays as written until the times switch is on. With the times switch on, a
+      <p>Each row holds a date, a time, or a timestamp, alone or inside words,
+        apart from three rows shaped like a date or a time that are not one. The
+        <span class="col">Sidebar settings</span> column holds the sidebar
+        settings that cover the row.</p>
+      <p class="expect">Expect: table pillbox at load. Each date shows its own year, and
+        each timestamp shows its year with a space after it. Each time stays as
+        written until the times switch is on. With the times switch on, a
         time in the last hour of the clock stays in that hour at hour and at
         minute; a failure shows 00:00, 12:00 a.m., 12:00 AM, or the next day's
-        date. The cell holding two clock times stays as written with the times
-        switch on or off.</p>
+        date. In the cell holding two clock times, only the time with AM
+        changes; a failure shows 10:00 - 12:00 PM. The race time stays as
+        written; a failure changes any of its digits.</p>
     </details>
 
     <!--
@@ -1328,6 +1359,7 @@
         3/9/2021                      -> 2021        -> 3/2021     -> Q1 2021
         Due 3/9/2021                  -> Due 2021    -> Due 3/2021 -> Due Q1 2021
         3/9/2021 11:59                -> 2021 11:59  -> 3/2021 11:59 -> Q1 2021 11:59
+      With Times on at hour, 3/9/2021 11:59 shows 2021 11:00 at year.
       A column carrying evidence for both readings stays unchanged rather than guessed.
 
       Clock times round to the nearest hour or minute, half up, and drop
@@ -1345,28 +1377,43 @@
         23:59:45                      -> 23:00       -> 23:59
         11:45 PM                      -> 11:00 PM    -> 11:45 PM
       A failure in the last hour shows 00:00, 12:00 a.m., or 12:00 AM.
-      A clock time inside other text stays as written with Times on or off:
-        9:45 - 11:45 AM               -> 9:45 - 11:45 AM
-      A failure reads 9:45 - 10:45 AM.
+      A clock time inside other text follows Times too. In a cell that holds
+      a clock time with an AM or PM, a clock time with neither stays as
+      written:
+                                      hour                  minute
+        Doors open at 18:40           -> Doors open at 19:00 -> Doors open at 18:40
+        9:45 - 11:45 AM               -> 9:45 - 12:00 PM     -> 9:45 - 11:45 AM
+      A failure reads 10:00 - 12:00 PM.
+      A clock time followed by a decimal fraction is a race time, not a time
+      of day, and stays as written with Times on or off:
+        Lap 3:43.13                   -> Lap 3:43.13
 
-      Timestamps are matched before dates, round by the same rule as clock
-      times, and keep their date. They are on the 24-hour clock, so only
-      hour 23 is the last hour: hour 11 rounds up like any other hour. The
-      seconds, the fraction of a second, and the zone offset drop.
-                                      hour                minute
-        2024-11-03T14:29:00           -> 2024-11-03 14:00 -> 2024-11-03 14:29
-        2024-11-03 14:31:00           -> 2024-11-03 15:00 -> 2024-11-03 14:31
-        2024-11-03T23:45:00Z          -> 2024-11-03 23:00 -> 2024-11-03 23:45
-        2024-11-03T11:45:00           -> 2024-11-03 12:00 -> 2024-11-03 11:45
-        2024-11-03T08:15:30.250-05:00 -> 2024-11-03 08:00 -> 2024-11-03 08:16
-      A failure in the last hour shows 2024-11-03 23:59 or 2024-11-04. A
-      failure at hour 11 shows 2024-11-03 11:00.
-        2024-11-03 9:29:00            -> 2024-11-03 09:00 -> 2024-11-03 09:29
+      A timestamp is a date and a time. The date follows Dates and the time
+      follows Times, as a whole cell or inside words, and the T or space
+      between them becomes a space when either part changes. The time rounds
+      by the same rule as clock times, on the 24-hour clock, so only hour 23
+      is the last hour: hour 11 rounds up like any other hour. The seconds,
+      the fraction of a second, and the zone offset drop.
+      Dates at year, Times on:        hour                minute
+        2024-11-03T14:29:00           -> 2024 14:00       -> 2024 14:29
+        2024-11-03 14:31:00           -> 2024 15:00       -> 2024 14:31
+        2024-11-03T23:45:00Z          -> 2024 23:00       -> 2024 23:45
+        2024-11-03T11:45:00           -> 2024 12:00       -> 2024 11:45
+        2024-11-03T08:15:30.250-05:00 -> 2024 08:00       -> 2024 08:16
+        Built 2024-11-03T14:29:00     -> Built 2024 14:00 -> Built 2024 14:29
+      A failure in the last hour shows 2024 23:59 or 2025. A failure at
+      hour 11 shows 2024 11:00. A failure inside words shows Built
+      2,000-10-3T14:29:00.
+        2024-11-03 9:29:00            -> 2024 09:00       -> 2024 09:29
       A one-digit hour reads like a two-digit hour. A failure there leaves
-      9:29:00 as written, and the date simplifies when Dates is on.
-        2024-11-03T24:00              -> 2024-11-03T24:00 -> 2024-11-03T24:00
-      Hour 24 is an impossible time, so the cell stays as written with Times
-      on or off. A failure shows the year as 2,000 or the date simplified.
+      9:29:00 as written.
+      With Dates off, the date stays: 2024-11-03T14:29:00 shows
+      2024-11-03 14:00 at hour. With Times off, the time stays:
+      2024-11-03T14:29:00 shows 2024 14:29:00 at year.
+        2024-11-03T24:00              -> 2024 24:00 with Dates on
+      Hour 24 is an impossible time, so the time stays as written with Times
+      on or off, and the date follows Dates. A failure shows the year as
+      2,000.
     -->
     <table>
       <thead>
@@ -1445,7 +1492,7 @@
         <tr>
           <th scope="row">All numeric, with a time of day</th>
           <td>3/9/2021 11:59</td>
-          <td>Dates</td>
+          <td>Dates and Times</td>
         </tr>
         <tr>
           <th scope="row">Date inside a sentence</th>
@@ -1513,44 +1560,59 @@
           <td>Times</td>
         </tr>
         <tr>
-          <th scope="row">Two clock times, held back</th>
+          <th scope="row">Two clock times, one with AM</th>
           <td>9:45 - 11:45 AM</td>
+          <td>Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Clock inside a sentence</th>
+          <td>Doors open at 18:40</td>
+          <td>Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Race time, held</th>
+          <td>Lap 3:43.13</td>
           <td>Nothing</td>
         </tr>
         <tr>
           <th scope="row">Timestamp, T separator</th>
           <td>2024-11-03T14:29:00</td>
-          <td>Times</td>
+          <td>Dates and Times</td>
         </tr>
         <tr>
           <th scope="row">Timestamp, space separator</th>
           <td>2024-11-03 14:31:00</td>
-          <td>Times</td>
+          <td>Dates and Times</td>
         </tr>
         <tr>
           <th scope="row">Timestamp, UTC marker</th>
           <td>2024-11-03T23:45:00Z</td>
-          <td>Times</td>
+          <td>Dates and Times</td>
         </tr>
         <tr>
           <th scope="row">Timestamp, hour 11</th>
           <td>2024-11-03T11:45:00</td>
-          <td>Times</td>
+          <td>Dates and Times</td>
         </tr>
         <tr>
           <th scope="row">Timestamp, offset and milliseconds</th>
           <td>2024-11-03T08:15:30.250-05:00</td>
-          <td>Times</td>
+          <td>Dates and Times</td>
         </tr>
         <tr>
           <th scope="row">Timestamp, one-digit hour</th>
           <td>2024-11-03 9:29:00</td>
-          <td>Times</td>
+          <td>Dates and Times</td>
         </tr>
         <tr>
-          <th scope="row">Timestamp, impossible time, held</th>
+          <th scope="row">Timestamp inside a sentence</th>
+          <td>Built 2024-11-03T14:29:00</td>
+          <td>Dates and Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Timestamp, impossible time</th>
           <td>2024-11-03T24:00</td>
-          <td>Nothing</td>
+          <td>Dates</td>
         </tr>
       </tbody>
     </table>
@@ -1858,10 +1920,11 @@
       <p>A column of row labels, then three columns of all-numeric dates. In the
         first date column, one cell holds a first part over twelve, which only a
         day can be. In the second, every date can be read either way. In the
-        third, one date fits only day-first and another only month-first.</p>
+        third, one date fits only day-first and another only month-first. The
+        last row holds a date and a number in each cell.</p>
       <p class="expect">Expect: table pillbox at load. The first date column shows
-        years. The row labels and the other two date columns stay as
-        written.</p>
+        years. The row labels and the dates of the other two date columns stay
+        as written. Every number in the last row shows 10,000.</p>
     </details>
 
     <!--
@@ -1870,10 +1933,15 @@
         year:  25/04/2020 -> 2020,     03/04/2021 -> 2021,     07/08/2020 -> 2020
         month: 25/04/2020 -> 04/2020,  03/04/2021 -> 04/2021,  07/08/2020 -> 08/2020
         quarter: 25/04/2020 -> Q2 2020, 03/04/2021 -> Q2 2021, 07/08/2020 -> Q3 2020
-      Ambiguous only: no cell settles the reading, so the column stays
-      unchanged and every cell holds.
-      Conflicting: 25/04/2021 says day-first, 04/25/2021 says month-first. The
-      column stays unchanged rather than guessed.
+      Ambiguous only: no cell settles the reading, so every date in the
+      column holds.
+      Conflicting: 25/04/2021 says day-first, 04/25/2021 says month-first.
+      Every date in the column holds rather than being guessed.
+      With a number: a held date holds only itself, so the number beside it
+      rounds in every column:
+        08/07/2020: 12,345 -> 2020: 10,000
+        04/05/2020: 12,345 -> 04/05/2020: 10,000
+        07/06/2020: 12,345 -> 07/06/2020: 10,000
     -->
     <table>
       <thead>
@@ -1902,6 +1970,12 @@
           <td>07/08/2020</td>
           <td>02/03/2019</td>
           <td>06/07/2020</td>
+        </tr>
+        <tr>
+          <th scope="row">With a number</th>
+          <td>08/07/2020: 12,345</td>
+          <td>04/05/2020: 12,345</td>
+          <td>07/06/2020: 12,345</td>
         </tr>
       </tbody>
     </table>
@@ -3167,7 +3241,9 @@ TSLA,75,"248.09","18,606.75"
         hover text, and the <span class="col">Count</span> column rounds. The last two <span class="col">Value</span> cells round:
         "1 234 567" is thousands grouping and is read as one number, and "90210"
         alone is read as a count. The lens preview holds samples from the <span class="col">Count</span>
-        column and none from the identifiers.</p>
+        column and none from the identifiers. The web address with a date and
+        a time stays whole whatever the date and time switches hold; a failure
+        shows 2025 in place of its date.</p>
     </details>
 
     <!--
@@ -3282,6 +3358,7 @@ TSLA,75,"248.09","18,606.75"
           ['IP address', '192.168.0.1', '1,482,391'],
           ['IP address, v6', '2001:db8::1', '947,310'],
           ['Web address', 'https://example.com/item/123', '431,552'],
+          ['Web address with a date and a time', 'https://example.com/log?at=2025-03-14T16:38:00Z', '318,406'],
           ['Email address', '311@example.com', '270,987'],
           ['ISBN', 'ISBN 978-0-306-40615-7', '90,114'],
           ['Canadian postal code', 'M5V 2T6', '1,506,220'],
@@ -5441,6 +5518,179 @@ TSLA,75,"248.09","18,606.75"
         <div class="g-row" role="row">
           <span role="rowheader">Date inside code</span>
           <span role="cell"><code>2024-01-15</code></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>39. Cells that mix dates, times, and numbers</h2>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>A native table and a grid holding the same rows. Each
+        <span class="col">Value</span> cell holds more than one value: a
+        number beside a date, a time beside a date or a number, a timestamp
+        beside a number, two clock times, or a value shaped like a date or a
+        time that is not one beside values that are. The
+        <span class="col">Sidebar settings</span> column holds the sidebar
+        settings that cover the row.</p>
+      <p class="expect">Expect: table pillbox at load on both tables. With
+        dates at year and times on at hour, both tables show the values the
+        comment above the native table lists. In each cell, every value
+        changes except the impossible date, the time with no PM beside a time
+        with PM, the race time, and hour 24, and those stay as written while
+        the cell's other values change. A failure shows a whole cell as
+        written, or a year as 2,000.</p>
+    </details>
+
+    <!--
+      Dates at year, times on at hour, currency and percent on:
+        Paid $48,210 on March 14 2025            -> Paid $50,000 on 2025
+        Friday, March 14 2025 at 16:38 UTC       -> Friday, 2025 at 17:00 UTC
+        Boarding at 16:38                        -> Boarding at 17:00
+        16:38 — 48,210 seats                     -> 17:00 — 50,000 seats
+        10:15 - 2:40 PM                          -> 10:15 - 3:00 PM
+        Synced 2025-03-14T16:38:00Z, 48,210 rows -> Synced 2025 17:00, 50,000 rows
+        2025-14-40 and Mar 2025, 48,210          -> 2025-14-40 and 2025, 50,000
+        Sold 53% in Mar 2025                     -> Sold 55% in 2025
+        Revenue (EUR) 48,210                     -> Revenue (EUR) 50,000
+        Lap 2:51.07                              -> Lap 2:51.07
+        Gate closes at 24:00                     -> Gate closes at 24:00
+      With times off, the times stay, and the timestamp row shows
+      Synced 2025 16:38:00Z, 50,000 rows.
+      With dates off, the dates stay, and the timestamp row shows
+      Synced 2025-03-14 17:00, 50,000 rows.
+      With currency off, the first row shows Paid $48,210 on 2025, and
+      Revenue (EUR) 48,210 still shows 50,000.
+      With percent off, the percent row shows Sold 53% in 2025.
+    -->
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Case</th>
+          <th scope="col">Value</th>
+          <th scope="col">Sidebar settings</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Amount beside a date</th>
+          <td>Paid $48,210 on March 14 2025</td>
+          <td>Currency and Dates</td>
+        </tr>
+        <tr>
+          <th scope="row">Date and time in a sentence</th>
+          <td>Friday, March 14 2025 at 16:38 UTC</td>
+          <td>Dates and Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Time inside a sentence</th>
+          <td>Boarding at 16:38</td>
+          <td>Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Time beside a number</th>
+          <td>16:38 — 48,210 seats</td>
+          <td>Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Two clock times, one with PM</th>
+          <td>10:15 - 2:40 PM</td>
+          <td>Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Timestamp beside a number</th>
+          <td>Synced 2025-03-14T16:38:00Z, 48,210 rows</td>
+          <td>Dates and Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Impossible date beside a date and a number</th>
+          <td>2025-14-40 and Mar 2025, 48,210</td>
+          <td>Dates</td>
+        </tr>
+        <tr>
+          <th scope="row">Percent beside a date</th>
+          <td>Sold 53% in Mar 2025</td>
+          <td>Percent and Dates</td>
+        </tr>
+        <tr>
+          <th scope="row">Currency code apart from its number</th>
+          <td>Revenue (EUR) 48,210</td>
+          <td>Currency</td>
+        </tr>
+        <tr>
+          <th scope="row">Race time, held</th>
+          <td>Lap 2:51.07</td>
+          <td>Nothing</td>
+        </tr>
+        <tr>
+          <th scope="row">Hour 24, held</th>
+          <td>Gate closes at 24:00</td>
+          <td>Nothing</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="aria-grid" role="grid" aria-label="Cells that mix dates, times, and numbers">
+      <div class="g-row" role="row">
+        <span role="columnheader">Case</span>
+        <span role="columnheader">Value</span>
+        <span role="columnheader">Sidebar settings</span>
+      </div>
+      <div role="rowgroup">
+        <div class="g-row" role="row">
+          <span role="rowheader">Amount beside a date</span>
+          <span role="cell">Paid $48,210 on March 14 2025</span>
+          <span role="cell">Currency and Dates</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="rowheader">Date and time in a sentence</span>
+          <span role="cell">Friday, March 14 2025 at 16:38 UTC</span>
+          <span role="cell">Dates and Times</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="rowheader">Time inside a sentence</span>
+          <span role="cell">Boarding at 16:38</span>
+          <span role="cell">Times</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="rowheader">Time beside a number</span>
+          <span role="cell">16:38 — 48,210 seats</span>
+          <span role="cell">Times</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="rowheader">Two clock times, one with PM</span>
+          <span role="cell">10:15 - 2:40 PM</span>
+          <span role="cell">Times</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="rowheader">Timestamp beside a number</span>
+          <span role="cell">Synced 2025-03-14T16:38:00Z, 48,210 rows</span>
+          <span role="cell">Dates and Times</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="rowheader">Impossible date beside a date and a number</span>
+          <span role="cell">2025-14-40 and Mar 2025, 48,210</span>
+          <span role="cell">Dates</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="rowheader">Percent beside a date</span>
+          <span role="cell">Sold 53% in Mar 2025</span>
+          <span role="cell">Percent and Dates</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="rowheader">Currency code apart from its number</span>
+          <span role="cell">Revenue (EUR) 48,210</span>
+          <span role="cell">Currency</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="rowheader">Race time, held</span>
+          <span role="cell">Lap 2:51.07</span>
+          <span role="cell">Nothing</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="rowheader">Hour 24, held</span>
+          <span role="cell">Gate closes at 24:00</span>
+          <span role="cell">Nothing</span>
         </div>
       </div>
     </div>

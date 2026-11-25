@@ -55,7 +55,7 @@ const NUMBER_IN_TEXT_REGEX_GLOBAL = new RegExp(NUMBER_IN_TEXT_PATTERN, 'g');
 // that list: the docs point here instead of restating it.
 const MAGNITUDE_SUFFIXES = ['bn', 'tn', 'k', 'm', 'b', 't'];
 const CURRENCY_CODE_ALTERNATION = CURRENCY_CODES.join('|');
-const CURRENCY_CODE_TOKEN_RE = new RegExp('(?<![A-Za-z])(?:' + CURRENCY_CODE_ALTERNATION + ')(?![A-Za-z])');
+const CURRENCY_CODE_TOKEN = '(?<![A-Za-z])(?:' + CURRENCY_CODE_ALTERNATION + ')(?![A-Za-z])';
 // Each suffix letter matches either case ("m", "M", "Bn", "TN").
 const MAGNITUDE_SUFFIX_ALTERNATION = MAGNITUDE_SUFFIXES
   .map((suffix) => suffix.split('').map((ch) => '[' + ch.toLowerCase() + ch.toUpperCase() + ']').join(''))
@@ -97,13 +97,9 @@ function matchUnitNumber(text) {
   return { numStr, num, index: lead + (pre || '').length };
 }
 
-function getExclusionReason(text, columnIndex, options, rowIndex) {
+function getExclusionReason(columnIndex, options, rowIndex) {
   if (!options.simplifyFirstRow && rowIndex === 0) return 'first-row';
   if (!options.simplifyFirstColumn && columnIndex === 0) return 'first-column';
-  if (typeof text !== 'string') return null;
-  if (!options.simplifyMixedPercent && /%/.test(text)) return 'percent';
-  if (!options.simplifyMixedCurrency &&
-    (CURRENCY_SIGN_RE.test(text) || CURRENCY_CODE_TOKEN_RE.test(text))) return 'currency';
   return null;
 }
 
@@ -224,4 +220,52 @@ function pureNumberSpan(text) {
   const rest = text.slice(index);
   const trail = PURE_TRAIL_RE.exec(rest)[0].length;
   return { numStr: rest.slice(0, rest.length - trail), index };
+}
+
+// A currency sign or code, or a percent sign, belongs to the number whose
+// digits it touches: "$12,345", "12,345 USD", "5%". It touches when nothing
+// stands between it and the digits but the marks a number carries: before
+// the digits, the pure cell's leading run (format marks, a plus or minus
+// sign, an opening bracket: "$-1,234", "$(1,234)"); after them, a magnitude
+// suffix as a unit number carries it ("45.67 m CAD"), then the pure cell's
+// trailing run ("(12.3)%"). A range of two numbers shares the sign on one of
+// its ends, so the sign touches both, and the far end carries the same marks:
+// "12–18%", "$12m–18m", "12 – $18", "(12) to (18)%". A sign elsewhere in the
+// cell belongs to no number, so "Revenue (USD) 12,345" holds none.
+const CURRENCY_TOKEN = '(?:' + CURRENCY_SIGN_ALTERNATION + '|' + CURRENCY_CODE_TOKEN + ')';
+const SUFFIX_AFTER_DIGITS = '(?: ?(?:' + MAGNITUDE_SUFFIX_ALTERNATION + '))?';
+// A number with the marks it carries on either side.
+const MARKED_NUMBER = PURE_LEAD_PATTERN + DIGIT_RUN_PATTERN + SUFFIX_AFTER_DIGITS + PURE_TRAIL_PATTERN;
+// The trailing and leading runs on either side already match whitespace, so
+// the join holds none of its own. With a second place for the same whitespace,
+// the regular expression engine tests every split of the run on a failed
+// match, in time that grows with the cube of the run's length.
+const RANGE_JOIN = '(?:-|' + DASH_CLASS + '|\\sto(?=\\s))';
+// The sign before the digits: in the number's own leading run, or before the
+// range's far end, or after it (that end's trailing run then holds the sign).
+const signBeforeDigitsRe = (sign) => new RegExp(sign +
+  '(?:(?:' + MARKED_NUMBER + '|' + PURE_TRAIL_PATTERN + ')' + RANGE_JOIN + ')?' + PURE_LEAD_PATTERN + '$');
+// The sign after the digits: in the number's own trailing run, or after the
+// range's far end, or before it (that end's leading run then holds the sign).
+const signAfterDigitsRe = (sign) => new RegExp('^' + SUFFIX_AFTER_DIGITS + PURE_TRAIL_PATTERN +
+  '(?:' + RANGE_JOIN + '(?:' + MARKED_NUMBER + '|' + PURE_LEAD_PATTERN + '))?' + sign);
+const CURRENCY_BEFORE_RE = signBeforeDigitsRe(CURRENCY_TOKEN);
+const CURRENCY_AFTER_RE = signAfterDigitsRe(CURRENCY_TOKEN);
+const PERCENT_AFTER_RE = signAfterDigitsRe('%');
+// A pure cell whose trailing run stops short of its end ("45%.", "1,234 kr.")
+// holds its sign inside its number span, so a sign there touches too.
+const CURRENCY_INSIDE_RE = new RegExp(CURRENCY_TOKEN);
+
+/**
+ * True when a currency sign or code touches the number's digits and the
+ * currency switch is off, or a percent sign touches them and the percent
+ * switch is off. `match` is a number in the shape extractNumbersInText
+ * returns, positioned in `text`.
+ */
+function touchesSwitchedOffSign(text, match, options) {
+  const before = text.slice(0, match.index);
+  const after = text.slice(match.index + match.numStr.length);
+  if (!options.simplifyMixedCurrency && (CURRENCY_BEFORE_RE.test(before) || CURRENCY_AFTER_RE.test(after) ||
+    CURRENCY_INSIDE_RE.test(match.numStr))) return true;
+  return !options.simplifyMixedPercent && (PERCENT_AFTER_RE.test(after) || match.numStr.includes('%'));
 }
