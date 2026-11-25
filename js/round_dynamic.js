@@ -626,7 +626,11 @@ const CURRENCY_TOKEN = '(?:' + CURRENCY_SIGN_ALTERNATION + '|' + CURRENCY_CODE_T
 const SUFFIX_AFTER_DIGITS = '(?: ?(?:' + MAGNITUDE_SUFFIX_ALTERNATION + '))?';
 // A number with the marks it carries on either side.
 const MARKED_NUMBER = PURE_LEAD_PATTERN + DIGIT_RUN_PATTERN + SUFFIX_AFTER_DIGITS + PURE_TRAIL_PATTERN;
-const RANGE_JOIN = '(?:\\s*(?:-|' + DASH_CLASS + ')\\s*|\\s+to\\s+)';
+// The trailing and leading runs on either side already match whitespace, so
+// the join holds none of its own. With a second place for the same whitespace,
+// the regular expression engine tests every split of the run on a failed
+// match, in time that grows with the cube of the run's length.
+const RANGE_JOIN = '(?:-|' + DASH_CLASS + '|\\sto(?=\\s))';
 // The sign before the digits: in the number's own leading run, or before the
 // range's far end, or after it (that end's trailing run then holds the sign).
 const signBeforeDigitsRe = (sign) => new RegExp(sign +

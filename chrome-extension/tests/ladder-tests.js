@@ -645,6 +645,12 @@ const bracketOpts = Object.assign({}, DR_DEFAULTS, {
     simplifyColumn(['$12m–18m'], {}), ['$10m–20m']);
   eq('sign beside a number: "45%." with the percent switch on becomes "45"',
     simplifyColumn(['45%.'], {}), ['45']);
+  const spaces = ' '.repeat(1000);
+  const longRange = '5' + spaces + 'to' + spaces + '18 pts';
+  const started = Date.now();
+  const longRangeResult = simplifyColumn([longRange], percentOff);
+  eq('sign beside a number: "5", 1,000 spaces, "to", 1,000 spaces, "18 pts" with the percent switch off becomes "… 20 pts" in under a second',
+    [longRangeResult[0].endsWith('to' + spaces + '20 pts'), Date.now() - started < 1000], [true, true]);
 })();
 
 (function markupHoldsOneValueOfAPair() {
