@@ -308,13 +308,9 @@
 
 // --- lib/dr-capture: the capture state serializer ---
 //
-// collectCaptureState() turns the registry into the plain-value capture
-// state: every registered table in full detail, plus the bound table's raw
-// markup as the fixture seed. Dependencies arrive as parameters with working
-// defaults (deps.model, deps.adapterFor), so these tests drive the function
-// with stand-ins and no DOM. Absence honesty is pinned here: a cell wearing
-// the rounded marker with no stored original serializes as original: null,
-// never a reconstructed value.
+// These tests drive collectCaptureState() with stand-in dependencies and no
+// DOM. A cell carrying the marker class with no stored original serializes
+// as original: null; the header of lib/dr-capture/state.js holds the rule.
 
 (function captureStateSerializer() {
   eq('capture-state: collectCaptureState loads in the content-script bundle',
@@ -390,12 +386,12 @@
   eq('capture-state: a table with no settings of its own carries the shipped defaults',
     state.tables[1].settings, Object.assign({}, DR_DEFAULTS));
   eq('capture-state: every registered table is serialized', state.tables.length, 2);
-  eq('capture-state: the bound table is found by index', state.activeTableIndex, 0);
+  eq('capture-state: with the first table active, activeTableIndex is 0', state.activeTableIndex, 0);
   eq('capture-state: the fixture seed is the bound table\'s markup at capture time, verbatim',
     state.fixtureSeed, '<table><tr><td>99,000</td></tr></table>');
 
   const recA = state.tables[0];
-  eq('capture-state: per-table detail (kind, settings, maxMagnitude, counts)',
+  eq('capture-state: a simplified native table of three rows and two columns serializes as kind native with its own settings and counts 3 and 2',
     {
       kind: recA.kind,
       settings: recA.settings, maxMagnitude: recA.maxMagnitude,
@@ -425,7 +421,7 @@
     recA.cells.filter((cell) => Object.prototype.hasOwnProperty.call(cell, 'isOutside')).length, 0);
 
   const recB = state.tables[1];
-  eq('capture-state: a virtualized grid serializes as kind grid with its frozen magnitude',
+  eq('capture-state: a virtualized grid serializes as kind grid with its frozen max magnitude',
     { kind: recB.kind, maxMagnitude: recB.maxMagnitude }, { kind: 'grid', maxMagnitude: 4 });
 
   // Empty registry: an honest nothing.
@@ -433,12 +429,10 @@
     model: makeFakeModel([], {}),
     adapterFor: fakeAdapterFor,
   });
-  eq('capture-state: an empty registry serializes as no tables, no focus, no seed',
+  eq('capture-state: an empty registry serializes as no tables, no active table index, no seed',
     { tables: emptyState.tables, activeTableIndex: emptyState.activeTableIndex, fixtureSeed: emptyState.fixtureSeed },
     { tables: [], activeTableIndex: null, fixtureSeed: null });
 
-  // A capture is a bug report: one table whose walk throws must not take
-  // the whole capture down. It serializes as an error record instead.
   const throwingAdapterFor = () => ({
     isGrid: () => false,
     getRows: () => { throw new Error('hostile walk'); },
@@ -458,10 +452,8 @@
     errState.tables[1].cells.length, 1);
 })();
 
-// The per-cell marker flag reaches the cell record. The serializer
-// reads the rounded marker per cell; the
-// renderer needs it per cell to tell a lost original (marker, original: null)
-// from a cell that was never rounded (no marker, original: null).
+// Each cell record carries its marker class flag. The comment beside the
+// wearsMarker field in lib/dr-capture/state.js holds the reason.
 (function captureStateCarriesMarkerFlag() {
   if (typeof globalThis.collectCaptureState !== 'function') return;
 
@@ -1065,9 +1057,9 @@
 // The capture state gains a detectionSettings field: a plain copy of DR_DETECTION_SETTINGS taken at
 // capture time, so a capture shows the detection values that were in force.
 
-// collectCaptureState carries every key of the detection settings,
-// the format version moves to 2, and the copy is plain and detached — a
-// mutation on the returned copy must never reach DR_DETECTION_SETTINGS itself.
+// collectCaptureState carries every key of the detection settings, and the
+// copy is plain and detached — a mutation on the returned copy must never
+// reach DR_DETECTION_SETTINGS itself.
 (function captureStateCarriesDetectionSettings() {
   eq('capture-settings: collectCaptureState loads in the content-script bundle',
     typeof globalThis.collectCaptureState, 'function');
@@ -1257,9 +1249,9 @@
 //
 // The capture state carries the model's error state, and each log row's
 // stack trace renders under the row, folded, so a reader opens the trace
-// only for the row in question. Format 3 marks both additions. The sidebar's
-// fallback state, used when the page half never arrives, carries the new
-// field as an absence, like every other page-side field.
+// only for the row in question. The sidebar's fallback state, used when the
+// page half never arrives, carries the error state as an absence, like every
+// other page-side field.
 
 (function captureCarriesErrorState() {
   if (typeof globalThis.collectCaptureState !== 'function' ||
