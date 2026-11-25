@@ -46,7 +46,7 @@ A unit number is a cell whose whole text is one number with a magnitude suffix a
 
 - The suffixes are k, m, b, t, bn, and tn, in any case, directly after the number or after one space.
 - A currency code counts only in upper case and only as its own word, so "CADENCE" and "usd" do not. A currency sign written in letters takes the same rule on whichever end carries the letter, so the rand's "R" counts in "R45" and not in "Revenue". A sign written as a picture counts wherever it sits.
-- Every currency the extension reads — its signs and its code together — is listed once, in `lib/dr-number/reader.js`. Reading a cell as a number, the currency exclusion, the sign-only piece test, and the number span, which leaves the sign out of what the write-back replaces, all read that one list. The magnitude suffixes are listed once, in `lib/dr-number/numbers-in-text.js`.
+- Every currency the extension reads — its signs and its code together — is listed once, in `lib/dr-number/reader.js`. Reading a cell as a number, the unit number, the currency exclusion, the bracketed number, and the number span, which leaves the sign out of what the write-back replaces, all read that one list. The magnitude suffixes are listed once, in `lib/dr-number/numbers-in-text.js`.
 - With the currency setting off, a cell holding a listed code stays unchanged, the same as a cell holding "$".
 - A unit number counts as its shown digits in the max magnitude: "4.91tn" counts as 4.91.
 - Letters that are neither a suffix nor a listed code make the cell something else: "DT1234" and "cust15" are identifiers and never round as unit numbers.
