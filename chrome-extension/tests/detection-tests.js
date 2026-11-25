@@ -858,7 +858,7 @@ const supTestOpts = {
   // All column-0 widths differ → the alignment step would reject; ARIA role must short-circuit before it.
   const container = makeGridContainer(rows, 'flex', 'grid', '');
   withGridComputedStyle(container, 'flex', function() {
-    eq('looksLikeGrid: pass — ARIA role="grid" short-circuits geometry probe (non-uniform widths still accepted)',
+    eq('looksLikeGrid: pass — ARIA role="grid" with non-uniform column-0 widths',
       looksLikeGrid(container), true);
   });
 })();
@@ -879,7 +879,7 @@ const supTestOpts = {
   ];
   const container = makeGridContainer(rows, 'flex', null, 'dg--table-wrapper');
   withGridComputedStyle(container, 'flex', function() {
-    eq('looksLikeGrid: pass — database query "dg--" class short-circuits geometry probe',
+    eq('looksLikeGrid: pass — database query "dg--" class with non-uniform column-0 widths',
       looksLikeGrid(container), true);
   });
 })();
@@ -968,7 +968,7 @@ const supTestOpts = {
   // No role, no library class → the alignment step runs and must reject.
   const container = makeGridContainer(rows, 'flex', null, '');
   withGridComputedStyle(container, 'flex', function() {
-    eq('looksLikeGrid: reject — non-uniform column-0 widths (alignment step)',
+    eq('looksLikeGrid: reject — non-uniform column-0 widths with no role or vendor class',
       looksLikeGrid(container), false);
   });
 })();
@@ -1371,7 +1371,7 @@ const supTestOpts = {
     styleProbe.layoutReads > 0, true);
 })();
 
-// --- a registered table resolves at the registry route ---
+// --- a click inside a registered table resolves it with isNew false ---
 //
 // The proof goes through the ports the resolver takes, not through the
 // source text: opts.isRegistered records the elements the resolver asked the
@@ -1381,7 +1381,7 @@ const supTestOpts = {
 // registered, so the isNew false above stands for the registry route rather
 // than for a resolver that never reports a new table.
 
-(function rightClickRegisters_aRegisteredTableResolvesAtTheRegistryRoute() {
+(function rightClickRegisters_aClickInsideARegisteredTableResolvesItWithIsNewFalse() {
   const grid = makeDatabaseQueryGrid();
   const cell = grid.scrollRowEls[3].children[1];
 
@@ -2049,11 +2049,11 @@ const supTestOpts = {
     isAccessibilityArtifact({}), false);
 })();
 
-// --- pass1-filter: accessibility artifacts (aria-hidden ancestor) get NO table pillbox ---
+// --- load-time scan: accessibility artifacts (aria-hidden ancestor) get NO table pillbox ---
 // Build N=3 accessibility artifacts (aria-hidden parent), all valid data tables.
-// After Pass 1 none of them should be in tablePillboxes.
+// After the load-time scan none of them should be in tablePillboxes.
 
-(function pass1Filter_ariaHiddenArtifacts_zeroTablePillboxes() {
+(function loadTimeScan_ariaHiddenArtifacts_zeroTablePillboxes() {
   function makeAriaHiddenArtifact() {
     const t = makePass1DataTable();
     // aria-hidden="true" on the immediate parent (Signal 1)
@@ -2072,25 +2072,25 @@ const supTestOpts = {
   const artifacts = [makeAriaHiddenArtifact(), makeAriaHiddenArtifact(), makeAriaHiddenArtifact()];
 
   // Sanity: each artifact is a valid data table (isDataTable guard is NOT the cause of skip)
-  eq('pass1-filter: aria-hidden accessibility artifact satisfies isDataTable (sanity)',
+  eq('load-time scan: aria-hidden accessibility artifact satisfies isDataTable (sanity)',
     isDataTable(artifacts[0]), true);
   // Sanity: each artifact is detected as an artifact
-  eq('pass1-filter: aria-hidden accessibility artifact isAccessibilityArtifact is true (sanity)',
+  eq('load-time scan: aria-hidden accessibility artifact isAccessibilityArtifact is true (sanity)',
     isAccessibilityArtifact(artifacts[0], { styleProbe: inlineStyleProbe }), true);
 
   runPass1WithTables(artifacts);
 
   const tablePillboxesCreated = artifacts.filter(t => tablePillboxes.has(t)).length;
-  eq('pass1-filter: 3 aria-hidden accessibility artifacts → ZERO table pillboxes created',
+  eq('load-time scan: 3 aria-hidden accessibility artifacts → ZERO table pillboxes created',
     tablePillboxesCreated, 0);
 
   cleanupPass1Tables(artifacts);
 })();
 
-// --- pass1-filter: accessibility artifacts (off-screen left) get NO table pillbox ---
+// --- load-time scan: accessibility artifacts (off-screen left) get NO table pillbox ---
 // Build N=2 accessibility artifacts with positioned ancestor left=-10000px.
 
-(function pass1Filter_offscreenLeftArtifacts_zeroTablePillboxes() {
+(function loadTimeScan_offscreenLeftArtifacts_zeroTablePillboxes() {
   function makeOffscreenArtifact() {
     const t = makePass1DataTable();
     // Positioned ancestor with extreme left (Signal 2)
@@ -2111,23 +2111,23 @@ const supTestOpts = {
   const artifacts = [makeOffscreenArtifact(), makeOffscreenArtifact()];
 
   // Sanity checks
-  eq('pass1-filter: off-screen accessibility artifact satisfies isDataTable (sanity)',
+  eq('load-time scan: off-screen accessibility artifact satisfies isDataTable (sanity)',
     isDataTable(artifacts[0]), true);
-  eq('pass1-filter: off-screen accessibility artifact isAccessibilityArtifact is true (sanity)',
+  eq('load-time scan: off-screen accessibility artifact isAccessibilityArtifact is true (sanity)',
     isAccessibilityArtifact(artifacts[0], { styleProbe: inlineStyleProbe }), true);
 
   runPass1WithTables(artifacts);
 
   const tablePillboxesCreated = artifacts.filter(t => tablePillboxes.has(t)).length;
-  eq('pass1-filter: 2 off-screen accessibility artifacts → ZERO table pillboxes created',
+  eq('load-time scan: 2 off-screen accessibility artifacts → ZERO table pillboxes created',
     tablePillboxesCreated, 0);
 
   cleanupPass1Tables(artifacts);
 })();
 
-// --- pass1-filter: a normal on-screen table still gets exactly ONE table pillbox ---
+// --- load-time scan: a normal on-screen table still gets exactly ONE table pillbox ---
 
-(function pass1Filter_realTable_getsOneTablePillbox() {
+(function loadTimeScan_realTable_getsOneTablePillbox() {
   const realTable = makePass1DataTable();
   // No aria-hidden, no positioned ancestor → isAccessibilityArtifact returns false
   const wrapper = {
@@ -2141,23 +2141,23 @@ const supTestOpts = {
   realTable.parentNode    = null;
 
   // Sanity checks
-  eq('pass1-filter: real on-screen table satisfies isDataTable (sanity)',
+  eq('load-time scan: real on-screen table satisfies isDataTable (sanity)',
     isDataTable(realTable), true);
-  eq('pass1-filter: real on-screen table isAccessibilityArtifact is false (sanity)',
+  eq('load-time scan: real on-screen table isAccessibilityArtifact is false (sanity)',
     isAccessibilityArtifact(realTable, { styleProbe: inlineStyleProbe }), false);
 
   runPass1WithTables([realTable]);
 
-  eq('pass1-filter: normal on-screen table → exactly ONE table pillbox created',
+  eq('load-time scan: normal on-screen table → exactly ONE table pillbox created',
     tablePillboxes.has(realTable), true);
 
   cleanupPass1Tables([realTable]);
 })();
 
-// --- pass1-filter adversarial: mix of artifacts + real tables in one Pass 1 run ---
+// --- load-time scan adversarial: mix of artifacts + real tables in one scan ---
 // Only the real tables should get table pillboxes; count equals exactly the number of real tables.
 
-(function pass1Filter_mixedFixture_onlyRealTablesGetTablePillboxes() {
+(function loadTimeScan_mixedFixture_onlyRealTablesGetTablePillboxes() {
   // Two accessibility artifacts (aria-hidden ancestor)
   function makeAriaHiddenArtifact() {
     const t = makePass1DataTable();
@@ -2211,7 +2211,7 @@ const supTestOpts = {
   const real1    = makeRealTable();
   const real2    = makeRealTable();
 
-  // Interleave so Pass 1 processes them in mixed order
+  // Interleave so the scan reads them in mixed order
   const allTables = [artifact1, real1, artifact2, real2, artifact3];
 
   runPass1WithTables(allTables);
@@ -2222,21 +2222,21 @@ const supTestOpts = {
   const artifactTablePillboxes = artifacts.filter(t => tablePillboxes.has(t)).length;
   const realTablePillboxes    = reals.filter(t => tablePillboxes.has(t)).length;
 
-  eq('pass1-filter (mix): accessibility artifacts get ZERO table pillboxes',
+  eq('load-time scan (mix): accessibility artifacts get ZERO table pillboxes',
     artifactTablePillboxes, 0);
-  eq('pass1-filter (mix): real tables each get a table pillbox — count equals 2',
+  eq('load-time scan (mix): real tables each get a table pillbox — count equals 2',
     realTablePillboxes, 2);
-  eq('pass1-filter (mix): total table pillboxes created equals number of real tables',
+  eq('load-time scan (mix): total table pillboxes created equals number of real tables',
     tablePillboxes.has(real1) && tablePillboxes.has(real2) && !tablePillboxes.has(artifact1) &&
     !tablePillboxes.has(artifact2) && !tablePillboxes.has(artifact3), true);
 
   cleanupPass1Tables(allTables);
 })();
 
-// --- pass1-filter: Pass 1 skips artifacts but does NOT skip a non-data real table ---
+// --- load-time scan: a non-data real table gets no table pillbox ---
 // (edge: if a real table fails isDataTable, no table pillbox either — confirm the skip
 // here is from isDataTable, not from isAccessibilityArtifact)
-(function pass1Filter_nonDataRealTable_noTablePillbox() {
+(function loadTimeScan_nonDataRealTable_noTablePillbox() {
   // 1-row table: fails isDataTable (< 2 rows)
   const nonDataTable = {
     tagName: 'TABLE',
@@ -2263,23 +2263,23 @@ const supTestOpts = {
   };
 
   // Confirm isAccessibilityArtifact is false (skip is NOT from the artifact guard)
-  eq('pass1-filter: non-data real table isAccessibilityArtifact is false (sanity)',
+  eq('load-time scan: non-data real table isAccessibilityArtifact is false (sanity)',
     isAccessibilityArtifact(nonDataTable), false);
   // Confirm isDataTable is false
-  eq('pass1-filter: non-data real table isDataTable is false (sanity)',
+  eq('load-time scan: non-data real table isDataTable is false (sanity)',
     isDataTable(nonDataTable), false);
 
   runPass1WithTables([nonDataTable]);
 
-  eq('pass1-filter: non-data real table gets no table pillbox (isDataTable gate)',
+  eq('load-time scan: non-data real table gets no table pillbox',
     tablePillboxes.has(nonDataTable), false);
 
   cleanupPass1Tables([nonDataTable]);
 })();
 
-// --- pass1-filter: duplicate Pass 1 call does NOT create a second table pillbox for a real table ---
+// --- load-time scan: a second scan does NOT create a second table pillbox for a real table ---
 // (regression guard: tablePillboxes.has check prevents double-insertion)
-(function pass1Filter_duplicateRun_noDoubleTablePillbox() {
+(function loadTimeScan_duplicateRun_noDoubleTablePillbox() {
   const realTable = makePass1DataTable();
   const wrapper = {
     tagName: 'DIV',
@@ -2295,16 +2295,16 @@ const supTestOpts = {
   runPass1WithTables([realTable]);
   const afterFirst = tablePillboxes.has(realTable);
 
-  // Second run — table already in tablePillboxes; Pass 1 should skip it.
+  // Second run — table already in tablePillboxes; the scan should skip it.
   // We verify the table pillbox is not re-inserted: since WeakMap.set overwrites,
   // a re-create would swap the button object, so we check its identity holds.
   const buttonAfterFirst = tablePillboxes.get(realTable);
   runPass1WithTables([realTable]);
   const buttonAfterSecond = tablePillboxes.get(realTable);
 
-  eq('pass1-filter: first Pass 1 run creates a table pillbox for the real table',
+  eq('load-time scan: a first scan creates a table pillbox for the real table',
     afterFirst, true);
-  eq('pass1-filter: second Pass 1 run does not replace the existing table pillbox (same object)',
+  eq('load-time scan: a second scan does not replace the existing table pillbox (same object)',
     buttonAfterFirst === buttonAfterSecond, true);
 
   cleanupPass1Tables([realTable]);
@@ -2868,7 +2868,7 @@ const EXPECTED_DETECTION_SETTINGS = {
 
 // findTables' isArtifact: default (isAccessibilityArtifact) drops an accessibility
 // artifact; a filter that drops nothing keeps it. Reuses makePass1DataTable / the
-// aria-hidden artifact shape from the pass1-filter suite above.
+// aria-hidden artifact shape from the load-time scan suite above.
 (function findTables_isArtifactDefaultVsDropsNothing() {
   const artifactTable = makePass1DataTable();
   const hiddenParent = {
@@ -2908,9 +2908,9 @@ const EXPECTED_DETECTION_SETTINGS = {
 //     under it that pass the data test, grouped by nesting depth; the root
 //     sits at depth 0.
 //   - The step selects the elements at the configured nesting depth. A depth
-//     holding more than one element falls back outward to the nearest
-//     shallower depth holding exactly one. A chain shorter than the configured
-//     depth clamps to its innermost element. An empty chain registers nothing.
+//     that does not hold exactly one element falls back outward to the
+//     nearest shallower depth holding exactly one. A chain shorter than the
+//     configured depth clamps to its innermost element. An empty chain registers nothing.
 //     A nest holding a registered element registers nothing more.
 //   - The step reports and registers nothing. Both live scanners run it.
 //
@@ -3177,9 +3177,9 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   eq('nesting: an empty wrapper reports no table', results && results.length, 0);
 })();
 
-// --- Adversarial: pass 1 is unchanged ---
+// --- Adversarial: a native table beside a nest reports first ---
 
-(function gridNesting_pass1StillReportsNativeTablesBesideTheNest() {
+(function gridNesting_nativeTableBesideANestReportsFirst() {
   const nativeTable = makePass1DataTable();
   const grid = makeDatabaseQueryGrid();
   const root = {
@@ -3198,9 +3198,9 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   const results = findTables(root);
   eq('nesting: a root holding one native table and one nest reports two tables',
     results.length, 2);
-  eq('nesting: pass 1 reports the native table first',
+  eq('nesting: a native table beside a nest reports first',
     results.length === 2 && results[0] === nativeTable, true);
-  eq('nesting: pass 2 reports the scrolling pane second',
+  eq('nesting: the nest\'s scrolling pane reports second',
     results.length === 2 && results[1] === grid.scrollPaneEl, true);
 })();
 
@@ -3574,8 +3574,6 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 //                  holds exactly one, so the nest registers nothing.
 //   - 'registered' the nest already holds an element the caller reports as
 //                  seen, which makes a rediscovery idempotent.
-// The chain size counts the nest elements that passed the data test and filed
-// at a depth; it is zero for 'empty' and for 'registered'.
 //
 // findTables keeps the 'selected' outcomes and drops the other three, so a
 // caller that acts on them reads them here.
@@ -3590,8 +3588,6 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
     result.selected === grid.scrollPaneEl, true);
   eq('nomination: the reported chain root is the wrapper',
     result.chainRoot === grid.wrapperEl, true);
-  eq('nomination: the chain holds the wrapper and the scrolling pane',
-    result.chainSize, 2);
 })();
 
 (function nominationStep_reportsEmptyForAGridWithNoRows() {
@@ -3602,7 +3598,6 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   eq('nomination: the empty outcome selects nothing', result.selected, null);
   eq('nomination: the empty outcome reports the wrapper as the chain root',
     result.chainRoot === grid.wrapperEl, true);
-  eq('nomination: the empty outcome reports a chain size of zero', result.chainSize, 0);
   eq('nomination: findTables on a grid with no rows reports nothing',
     findTables(grid.wrapperEl).length, 0);
 })();
@@ -3618,7 +3613,6 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   eq('nomination: two passing siblings with a failing root report the crowded outcome',
     result.outcome, 'crowded');
   eq('nomination: the crowded outcome selects nothing', result.selected, null);
-  eq('nomination: the crowded outcome counts both passing siblings', result.chainSize, 2);
   eq('nomination: findTables on the crowded shape reports nothing',
     findTables(nest.rootEl).length, 0);
 })();
@@ -3630,7 +3624,6 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   eq('nomination: a nest holding a seen element reports the registered outcome',
     result.outcome, 'registered');
   eq('nomination: the registered outcome selects nothing', result.selected, null);
-  eq('nomination: the registered outcome reports a chain size of zero', result.chainSize, 0);
 })();
 
 (function nominationStep_reportsOneResultPerNestInDocumentOrder() {
@@ -3755,10 +3748,8 @@ function cnAdapterCellEls(tableEl) {
 
   const outerResult = nominateNest(page.outer);
   eq('cell nest: the outer nest selects the outer grid', outerResult.selected === page.outer, true);
-  eq('cell nest: the outer nest\'s chain holds the outer grid alone', outerResult.chainSize, 1);
   const innerResult = nominateNest(page.inner);
   eq('cell nest: the inner nest selects the inner grid', innerResult.selected === page.inner, true);
-  eq('cell nest: the inner nest\'s chain holds the inner grid alone', innerResult.chainSize, 1);
 
   const results = scanTables(page.host);
   eq('cell nest: the nomination step reports one result per grid',
@@ -3886,8 +3877,8 @@ function cnAdapterCellEls(tableEl) {
   eq('cell nest: a cell role above the wrapper still selects the scrolling pane at the configured depth',
     findTables(strayCell).map((handle) => handle === grid.scrollPaneEl), [true]);
   const result = nominateNest(grid.wrapperEl);
-  eq('cell nest: the nest still holds the wrapper and the scrolling pane in its chain',
-    [result.outcome, result.chainSize], ['selected', 2]);
+  eq('cell nest: a cell role above the wrapper still reports the selected outcome',
+    result.outcome, 'selected');
   eq('cell nest: depth 0 still selects the wrapper',
     findTables(strayCell, { nestingDepth: 0 }).map((handle) => handle === grid.wrapperEl), [true]);
 

@@ -9,9 +9,10 @@
  * One check finds every code in a cell: findIdentifiers searches the cell's
  * text once for every shape and records, for each code it finds, whether the
  * code fills the cell. A code fills the cell when nothing stands around it
- * but the format marks, signs, and brackets the pure number span steps past
- * (PURE_LEAD_PATTERN and PURE_TRAIL_PATTERN in numbers-in-text.js), so "(416)
- * 555-1234" and "$ 416-555-1234" fill their cells. A text in thousands
+ * but the format marks, signs, and brackets the number span of a pure cell
+ * steps past (PURE_LEAD_PATTERN and PURE_TRAIL_PATTERN in
+ * numbers-in-text.js), so "(416) 555-1234" and "$ 416-555-1234" fill their
+ * cells. A text in thousands
  * grouping ("1 234 567 890") is a quantity, and no code fills it.
  *
  * The ladder reads the one result two ways. matchIdentifierShape returns the
@@ -174,9 +175,9 @@ const LEADING_ZERO_PATTERN = '0\\d+(?![.,]\\d)';
 /**
  * True when [start, end) sits inside a longer run the pattern that finds a
  * number inside text (numbers-in-text.js) takes as one number, so the characters
- * are one group of that number. That pattern is the one place that states
- * what one number spans, so a group of a space-grouped or comma-grouped
- * number is never read a second way here.
+ * are one group of that number. That pattern reads the one copy of a
+ * number's digit run (DIGIT_RUN_PATTERN), so a group of a space-grouped or
+ * comma-grouped number is never read a second way here.
  * @param {string} text
  * @param {number} start
  * @param {number} end

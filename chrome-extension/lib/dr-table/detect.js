@@ -9,41 +9,50 @@
  *
  * The style probe is the port for every computed style and box read, so
  * detection runs in a plain Node context with no Chrome globals. `document`
- * comes in as opts.doc.
- *
- * DETECTION_OPTIONS reads DR_DEFAULTS at the top level, so a missing object
- * fails at load, before any function here runs.
+ * comes in as opts.doc. opts.isArtifact, when the caller supplies it, replaces
+ * isAccessibilityArtifact as the artifact check.
  */
 
 const GRID_ARIA_SELECTOR = '[role="grid"], [role="table"]';
+
+// A node with no `matches`, such as the document, carries no role.
+function _carriesGridRole(el) {
+  return typeof el.matches === 'function' && el.matches(GRID_ARIA_SELECTOR);
+}
 
 // Node.ELEMENT_NODE, or its fixed DOM value where no `Node` global exists.
 const DR_TABLE_ELEMENT_NODE = (typeof Node !== 'undefined' && Node.ELEMENT_NODE) || 1;
 
 // Every "simplify" switch in the settings contract, on, so a table passes the
 // data test whatever its own switches hold, and a new switch reaches the test
-// with no edit here.
+// with no edit here. The read runs at load, so a missing DR_DEFAULTS fails
+// before any function here runs.
 const DETECTION_OPTIONS = Object.freeze(Object.fromEntries(
   Object.keys(DR_DEFAULTS).filter((key) => key.startsWith('simplify')).map((key) => [key, true])));
+
+function _artifactCheck(opts) {
+  return opts.isArtifact || isAccessibilityArtifact;
+}
+
+function _styleProbeOf(opts) {
+  return opts.styleProbe || DEFAULT_STYLE_PROBE;
+}
 
 /**
  * The geometry probe: does `el` look like a grid built from generic elements?
  * The checks run cheapest first; firstCellsAlign is the one that reads boxes.
  *
- * @param {Element} el
- * @param {{isArtifact?: (el: Element, opts: object) => boolean, styleProbe?: object, originalsPort?: object, vendorProfiles?: object[]}} [opts]
  * @returns {boolean}
  */
 function looksLikeGrid(el, opts = {}) {
   if (!el || typeof el.children === 'undefined') return false;
-  const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
+  const styleProbe = _styleProbeOf(opts);
   const children = Array.from(el.children);
   if (children.length < DR_DETECTION_SETTINGS.gridMinChildren) return false;
   const { modalFreq, candidates: candidateRows } = childCountCandidates(children);
   if (modalFreq < children.length * DR_DETECTION_SETTINGS.gridRepetitionShare) return false;
-  if ((opts.isArtifact || isAccessibilityArtifact)(el, opts)) return false;
-  const computedForDisplay = styleProbe.getComputedStyle(el);
-  const display = (computedForDisplay && computedForDisplay.display) || '';
+  if (_artifactCheck(opts)(el, opts)) return false;
+  const display = styleProbe.getComputedStyle(el)?.display || '';
   if (!DR_DETECTION_SETTINGS.gridDisplayValues.includes(display)) return false;
   if (!probeRowsHoldNumber(candidateRows, opts)) return false;
   return carriesGridMark(el, opts.vendorProfiles || GRID_VENDOR_PROFILES)
@@ -53,8 +62,6 @@ function looksLikeGrid(el, opts = {}) {
 /**
  * Whether the candidate rows hold a cell the data test counts, reading the
  * rows' children as grid cells.
- * @param {Element[]} candidateRows
- * @param {{originalsPort?: object}} opts
  * @returns {boolean}
  */
 function probeRowsHoldNumber(candidateRows, opts) {
@@ -68,13 +75,10 @@ function probeRowsHoldNumber(candidateRows, opts) {
 /**
  * Whether the page marks `el` as a grid: role="grid", role="table", or a
  * vendor classToken. A marked element skips the alignment check.
- * @param {Element} el
- * @param {{classToken: string}[]} vendorProfiles
  * @returns {boolean}
  */
 function carriesGridMark(el, vendorProfiles) {
-  const role = el.getAttribute && el.getAttribute('role');
-  if (role === 'grid' || role === 'table') return true;
+  if (_carriesGridRole(el)) return true;
   const elClass = (el.className && typeof el.className === 'string') ? el.className : '';
   return vendorProfiles.some(profile => elClass.includes(profile.classToken));
 }
@@ -83,9 +87,7 @@ function carriesGridMark(el, vendorProfiles) {
  * Whether the first cells of the candidates line up: widths on a row-first
  * grid (column A), heights on a column-first grid (the first row). Fewer than
  * two measurable candidates leave nothing to disagree, so the answer is true.
- * @param {Element[]} children - the element's children, which fix the direction
- * @param {Element[]} candidateRows
- * @param {object} styleProbe
+ * The grid element's children fix the direction.
  * @returns {boolean}
  */
 function firstCellsAlign(children, candidateRows, styleProbe) {
@@ -94,10 +96,10 @@ function firstCellsAlign(children, candidateRows, styleProbe) {
     ? (cell) => { const box = styleProbe.getBox(cell); return box ? box.height : -1; }
     : (cell) => styleProbe.getOffsetWidth(cell);
   const extents = sample.map(row => row.children[0] ? extentOf(row.children[0]) : -1)
-                        .filter(w => w > 0);
+                        .filter(extent => extent > 0);
   if (extents.length < 2) return true;
   const firstExtent = extents[0];
-  const matchCount = extents.filter(w => w === firstExtent).length;
+  const matchCount = extents.filter(extent => extent === firstExtent).length;
   return matchCount / extents.length >= DR_DETECTION_SETTINGS.gridAlignmentAgreement;
 }
 
@@ -110,44 +112,45 @@ function firstCellsAlign(children, candidateRows, styleProbe) {
  * accessibility artifact or fails the data test is passed over for the table
  * around it, the way a grid nest that selects nothing falls to the next route.
  *
- * `isNew` is true when the caller still has to mark the element and build its
- * table pillbox. Without opts.isRegistered every result reports isNew: true.
+ * `isNew` is true when the caller still has to register the element and build
+ * its table pillbox. Without opts.isRegistered every result reports isNew:
+ * true.
  * Returns null if nothing matches.
  *
- * @param {Element} el
- * @param {{styleProbe?: object, vendorProfiles?: object[], doc?: Document, isRegistered?: (handle: Element) => boolean}} [opts]
  * @returns {{handle: Element, isNew: boolean}|null}
  */
 function findTargetTable(el, opts = {}) {
   if (!el) return null;
-  const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
   const isRegistered = opts.isRegistered || (() => false);
-  const docBody = doc && doc.body;
+  const docBody = _documentBody(opts);
 
-  let tableAncestor = typeof el.closest === 'function' ? el.closest('table') : null;
-  while (tableAncestor) {
-    const { outcome } = nominateNest(tableAncestor, { ...opts, isRegistered });
+  for (let table = _tableAtOrAbove(el); table; table = _tableAtOrAbove(parentOf(table))) {
+    const { outcome } = nominateNest(table, opts);
     if (outcome === 'selected' || outcome === 'registered') {
-      return { handle: tableAncestor, isNew: outcome === 'selected' };
+      return { handle: table, isNew: outcome === 'selected' };
     }
-    const above = parentOf(tableAncestor);
-    tableAncestor = above && typeof above.closest === 'function' ? above.closest('table') : null;
   }
   const registered = registeredAncestor(el, docBody, isRegistered);
   if (registered) return { handle: registered, isNew: false };
-  const nominated = nominatedInNest(el, { ...opts, isRegistered });
+  const nominated = nominatedInNest(el, opts);
   if (nominated) return { handle: nominated, isNew: true };
   const outermost = outermostGridAbove(el, docBody, opts);
   return outermost && { handle: outermost, isNew: !isRegistered(outermost) };
 }
 
+function _tableAtOrAbove(node) {
+  return node && typeof node.closest === 'function' ? node.closest('table') : null;
+}
+
+function _documentBody(opts) {
+  const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
+  return doc && doc.body;
+}
+
 /**
  * The nearest ancestor of `el`, or `el` itself, that isRegistered reports as
  * registered. A walk up, not a closest() query, because isRegistered is an
- * arbitrary per-element check (typically a WeakMap-backed registry.has).
- * @param {Element} el
- * @param {Element|null|undefined} docBody
- * @param {(handle: Element) => boolean} isRegistered
+ * arbitrary per-element check.
  * @returns {Element|null}
  */
 function registeredAncestor(el, docBody, isRegistered) {
@@ -165,8 +168,6 @@ function registeredAncestor(el, docBody, isRegistered) {
  * selected in the first nest inside a cell under the chain root, if any; with
  * none, the result falls to the geometry probe (issue #382 records this for a
  * click in a sibling pane of a registered nest).
- * @param {Element} el
- * @param {object} opts - the options of findTables, with isRegistered set
  * @returns {Element|null}
  */
 function nominatedInNest(el, opts) {
@@ -177,9 +178,6 @@ function nominatedInNest(el, opts) {
 /**
  * The outermost element in an unbroken run of looksLikeGrid matches above
  * `el`, or null. The walk ends at the first non-match above a match.
- * @param {Element} el
- * @param {Element|null|undefined} docBody
- * @param {object} opts - the options of looksLikeGrid
  * @returns {Element|null}
  */
 function outermostGridAbove(el, docBody, opts) {
@@ -195,56 +193,41 @@ function outermostGridAbove(el, docBody, opts) {
   return outermost;
 }
 
+const POSITIONED_VALUES = new Set(['relative', 'absolute', 'fixed', 'sticky']);
+
 /**
  * The nearest positioned ancestor of `el`, or `el` itself when it is
- * positioned; null when none is. Positioned means a CSS position of relative,
- * absolute, fixed, or sticky, read through the style probe.
+ * positioned; null when none is. The CSS position reads through the style
+ * probe.
  *
- * @param {Element} el
- * @param {{styleProbe?: object}} [opts]
  * @returns {Element|null}
  */
 function _nearestPositionedAncestor(el, opts = {}) {
-  const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
-  const POSITIONED = new Set(['relative', 'absolute', 'fixed', 'sticky']);
+  const styleProbe = _styleProbeOf(opts);
   return walkUp(el, Infinity, null, (node) => {
     if (typeof node.getAttribute !== 'function') return false;
     const style = styleProbe.getComputedStyle(node);
-    return !!(style && POSITIONED.has(style.position));
+    return !!(style && POSITIONED_VALUES.has(style.position));
   });
 }
 
 /**
- * Parse a CSS length string (e.g. "-10000px") to a float.  Returns NaN when
- * the value is absent or non-numeric.
- *
- * @param {string} value
- * @returns {number}
- */
-function _parsePx(value) {
-  if (typeof value !== 'string' || value === '') return NaN;
-  return parseFloat(value);
-}
-
-/**
  * Whether an element, a native table or a grid, is an accessibility artifact:
- * an element that exists for screen readers. True when the element or an
- * ancestor carries aria-hidden="true", or when the element, or its nearest
- * positioned ancestor, sits offscreen.
+ * a copy for one audience. True when the element or an ancestor carries
+ * aria-hidden="true", which hides it from screen readers, or when the element,
+ * or its nearest positioned ancestor, sits offscreen, which leaves it to
+ * screen readers alone.
  *
- * @param {Element} el
- * @param {{styleProbe?: object}} [opts]
  * @returns {boolean}
  */
 function isAccessibilityArtifact(el, opts = {}) {
   if (!el || typeof el.getAttribute !== 'function') return false;
   if (carriesHiddenMark(el)) return true;
-  return sitsOffscreen(_nearestPositionedAncestor(el, opts) || el, opts.styleProbe || DEFAULT_STYLE_PROBE);
+  return sitsOffscreen(_nearestPositionedAncestor(el, opts) || el, _styleProbeOf(opts));
 }
 
 /**
  * Whether `el` or an ancestor carries aria-hidden="true".
- * @param {Element} el
  * @returns {boolean}
  */
 function carriesHiddenMark(el) {
@@ -253,35 +236,28 @@ function carriesHiddenMark(el) {
 }
 
 /**
- * @param {Element} el - the nearest positioned ancestor of the element, or the element
- * @param {object} styleProbe
+ * Whether `el` sits offscreen. The caller passes an element's nearest
+ * positioned ancestor, or the element itself when none is positioned.
  * @returns {boolean}
  */
 function sitsOffscreen(el, styleProbe) {
   const computed = styleProbe.getComputedStyle(el);
-  const left = computed ? _parsePx(computed.left) : NaN;
+  const left = parseFloat(computed && computed.left);
   return !isNaN(left) && left <= DR_DETECTION_SETTINGS.offscreenLeftPx;
 }
 
 /**
  * Whether the rows hold a cell the extension can round: the cell read of the
  * data test (isDataTable) and of the geometry probe's numeric step
- * (looksLikeGrid). Each cell goes through classifyTableCell, the function
- * the rounding pass calls for every cell, under DETECTION_OPTIONS (every
- * switch on) and no range expression. A cell counts when its mode is not
- * skip, so a cell holding only an identifier shape, a number inside a
- * markup range, and a number split across text pieces add nothing.
+ * (looksLikeGrid). classifyTableCell is the function the rounding pass calls
+ * for every cell.
  *
  * The walk spends one budget of DR_DETECTION_SETTINGS.dataTestCellBudget cell
- * reads, counted across every row and cell in order; an empty cell counts as
- * a read. It returns true at the first cell that counts. It keeps each
- * ambiguous date with its grid column, and once the rows end or the budget
- * runs out, the column post-pass (resolveAmbiguousDates) reads them, so an
- * ambiguous date counts only when the post-pass resolves it to a reading. The
- * post-pass reads the dates within the budget alone.
+ * reads across every row, and an empty cell counts as a read. Each ambiguous
+ * date waits for the column post-pass, which reads the dates within the
+ * budget alone. Each cell object in `rows` carries its grid column
+ * (columnIndex).
  *
- * @param {{getCells(): object[]}[]} rows - rows of cell objects, each
- *   carrying its grid column (columnIndex)
  * @returns {boolean}
  */
 function holdsRoundableCell(rows) {
@@ -304,22 +280,13 @@ function holdsRoundableCell(rows) {
  * The data test: whether `table` has at least two rows, a row with two or
  * more cells, and a cell the extension can round (see holdsRoundableCell).
  *
- * @param {Element} table
- * @param {{originalsPort?: object, vendorProfiles?: object[]}} [opts]
  * @returns {boolean}
  */
 function isDataTable(table, opts = {}) {
   const adapter = makeAdapter(table, opts);
   const rows = adapter.getRows();
   if (rows.length < 2) return false;
-  let hasMultipleColumns = false;
-  for (let i = 0; i < rows.length; i++) {
-    if (rows[i].getCells().length >= 2) {
-      hasMultipleColumns = true;
-      break;
-    }
-  }
-  if (!hasMultipleColumns) return false;
+  if (!rows.some((row) => row.getCells().length >= 2)) return false;
   return holdsRoundableCell(rows);
 }
 
@@ -334,8 +301,8 @@ function isDataTable(table, opts = {}) {
  * the same reason a grid that groups nothing has no header texts (see
  * _hasHeaderRow): its first row is a data row that a scroll redraws.
  *
- * opts.originalText, when the caller supplies it, reads a cell's stored
- * pre-simplification text and returns undefined for a cell with none. A
+ * opts.originalText, when the caller supplies it, reads a cell's text from
+ * the originals and returns undefined for a cell with none. A
  * fingerprint read through it stays the same while the extension simplifies
  * the table's header cells, so the extension's writes do not read as a page
  * change. Without it the read takes each cell's current text.
@@ -343,30 +310,19 @@ function isDataTable(table, opts = {}) {
  * The return holds plain values only, so a registry entry holding one stays
  * serializable.
  *
- * @param {Element} el
- * @param {{originalText?: (cellEl: Element) => (string|undefined),
- *          vendorProfiles?: object[], originalsPort?: object}} [opts]
  * @returns {{columnCount: number, headerTexts: string[]|null}}
  */
 function readTableFingerprint(el, opts = {}) {
-  const adapter = makeAdapter(el, opts);
-  const rows = adapter.getRows();
-  const readsHeader = rows.length > 0 && _hasHeaderRow(rows[0]);
-  let columnCount = 0;
-  let headerTexts = null;
-  for (let i = 0; i < rows.length; i++) {
-    const cells = rows[i].getCells();
-    if (cells.length > columnCount) columnCount = cells.length;
-    if (i === 0 && readsHeader) {
-      headerTexts = cells.map((cellObj) => _fingerprintCellText(cellObj, opts));
-    }
-  }
+  const rows = makeAdapter(el, opts).getRows();
+  const columnCount = rows.reduce((widest, row) => Math.max(widest, row.getCells().length), 0);
+  const headerTexts = rows.length > 0 && _hasHeaderRow(rows[0])
+    ? rows[0].getCells().map((cellObj) => _fingerprintCellText(cellObj, opts))
+    : null;
   return { columnCount, headerTexts };
 }
 
 /**
  * Whether the first row the adapter returns is a header row.
- * @param {{isOutside?: boolean, isGrouped?: boolean, getCells(): object[]}} firstRow
  * @returns {boolean}
  */
 function _hasHeaderRow(firstRow) {
@@ -379,11 +335,9 @@ function _hasHeaderRow(firstRow) {
 }
 
 /**
- * One header cell's text for the fingerprint: its stored pre-simplification
- * text where opts.originalText holds one, the cell's current text otherwise.
+ * One header cell's text for the fingerprint: its text from the originals
+ * where opts.originalText holds one, the cell's current text otherwise.
  *
- * @param {{getText(): string, el: Element}} cellObj
- * @param {{originalText?: (cellEl: Element) => (string|undefined)}} opts
  * @returns {string}
  */
 function _fingerprintCellText(cellObj, opts) {
@@ -398,12 +352,8 @@ function _fingerprintCellText(cellObj, opts) {
  * Whether two shape fingerprints describe the same shape: the same column
  * count, and the same header texts element by element.
  *
- * With a missing side the function returns false. The one caller reads a missing recorded
- * fingerprint as a separate case before it compares, so a false here always
- * means a read that returned nothing.
+ * A missing side compares different.
  *
- * @param {{columnCount: number, headerTexts: string[]|null}} a
- * @param {{columnCount: number, headerTexts: string[]|null}} b
  * @returns {boolean}
  */
 function sameTableFingerprint(a, b) {
@@ -415,11 +365,7 @@ function sameTableFingerprint(a, b) {
   // A reading that found one against a reading that did not is a difference:
   // the table gained or lost its header row.
   if (left === null || right === null) return left === right;
-  if (left.length !== right.length) return false;
-  for (let i = 0; i < left.length; i++) {
-    if (left[i] !== right[i]) return false;
-  }
-  return true;
+  return left.length === right.length && left.every((text, i) => text === right[i]);
 }
 
 /**
@@ -427,33 +373,15 @@ function sameTableFingerprint(a, b) {
  * not an accessibility artifact, and every native table it holds is one
  * isArtifact drops (the scan runs each of the others as a nest of one).
  *
- * @param {Element} el
- * @param {(table: Element, opts: object) => boolean} isArtifact
- * @param {object} opts
  * @returns {boolean}
  */
 function _passesAriaGuards(el, isArtifact, opts) {
   if (!el || el.tagName === 'TABLE' || isArtifact(el, opts)) return false;
-  return !_nativeTablesIn(el).some((t) => !isArtifact(t, opts));
+  return _nativeTablesIn(el).every((t) => isArtifact(t, opts));
 }
 
-/**
- * Whether an ancestor is a qualifying element. An ancestor carries no other
- * evidence of its role, so the role read goes through `matches`; an element
- * stub with no `matches` counts as not qualifying, which makes the
- * element below it a chain root.
- *
- * @param {Element} el
- * @param {(table: Element, opts: object) => boolean} isArtifact
- * @param {object} opts
- * @returns {boolean}
- */
-function _isQualifyingAncestor(el, isArtifact, opts) {
-  if (!el || typeof el.matches !== 'function') return false;
-  let carriesRole = false;
-  try { carriesRole = !!el.matches(GRID_ARIA_SELECTOR); } catch (e) { return false; }
-  if (!carriesRole) return false;
-  return _passesAriaGuards(el, isArtifact, opts);
+function _isQualifyingElement(el, isArtifact, opts) {
+  return !!el && _carriesGridRole(el) && _passesAriaGuards(el, isArtifact, opts);
 }
 
 /**
@@ -463,10 +391,6 @@ function _isQualifyingAncestor(el, isArtifact, opts) {
  * own), so the caller drops the element rather than filing it at a wrong
  * depth.
  *
- * @param {Element} el
- * @param {Element} chainRoot
- * @param {(table: Element, opts: object) => boolean} isArtifact
- * @param {object} opts
  * @returns {number}
  */
 function _depthInChain(el, chainRoot, isArtifact, opts) {
@@ -475,7 +399,7 @@ function _depthInChain(el, chainRoot, isArtifact, opts) {
   const reached = walkUp(parentOf(el), DR_DETECTION_SETTINGS.gridWalkDepthCap,
     (node) => node !== chainRoot && _isCellAncestor(node), (node) => {
       if (node === chainRoot) return true;
-      if (_isQualifyingAncestor(node, isArtifact, opts)) count++;
+      if (_isQualifyingElement(node, isArtifact, opts)) count++;
       return false;
     });
   return reached ? count + 1 : -1;
@@ -489,17 +413,14 @@ function _depthInChain(el, chainRoot, isArtifact, opts) {
  * qualifying elements that passed the data test, and those alone. Two edge
  * rules complete the selection:
  *   - A chain shorter than the configured depth clamps to its deepest depth.
- *   - A depth holding more than one element falls back outward to the nearest
- *     shallower depth holding exactly one.
+ *   - A depth that does not hold exactly one element falls back outward to
+ *     the nearest shallower depth holding exactly one.
  * A chain where no depth from the clamped one outward holds exactly one
  * element returns null, which registers nothing for that nest.
  *
- * @param {Map<number, Element[]>} byDepth
- * @param {number} configuredDepth
  * @returns {Element|null}
  */
 function _selectAtNestingDepth(byDepth, configuredDepth) {
-  if (byDepth.size === 0) return null;
   const deepest = Math.max(...byDepth.keys());
   for (let depth = Math.min(configuredDepth, deepest); depth >= 0; depth--) {
     const atDepth = byDepth.get(depth) || [];
@@ -519,20 +440,17 @@ function _selectAtNestingDepth(byDepth, configuredDepth) {
  * at the first cell-role ancestor and continues past a plain wrapper, because
  * a nest may put one between two qualifying elements.
  *
- * @param {Element} el
- * @param {{isArtifact?: (table: Element, opts: object) => boolean,
- *          doc?: Document, styleProbe?: object}} [opts]
- * @param {boolean} [isQualifying] - true when `el` is already a qualifying
- *   element, which skips the walk to the nearest one
+ * A caller that already holds `el` as a qualifying element passes
+ * `isQualifying` true, which skips the walk to the nearest one.
+ *
  * @returns {Element|null}
  */
 function chainRootOf(el, opts = {}, isQualifying = false) {
   if (!el) return null;
-  const isArtifact = opts.isArtifact || isAccessibilityArtifact;
-  const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
-  const docBody = doc && doc.body;
+  const isArtifact = _artifactCheck(opts);
+  const docBody = _documentBody(opts);
   const cap = DR_DETECTION_SETTINGS.gridWalkDepthCap;
-  const qualifies = (node) => _isQualifyingAncestor(node, isArtifact, opts);
+  const qualifies = (node) => _isQualifyingElement(node, isArtifact, opts);
   const nearest = isQualifying ? el : walkUp(el, cap, (node) => node === docBody, qualifies);
   let chainRoot = nearest;
   if (nearest) {
@@ -567,59 +485,48 @@ function chainRootOf(el, opts = {}, isQualifying = false) {
  *   - 'artifact'   — the chain root is an accessibility artifact, so the nest
  *                    registers nothing and a pending table for it stops.
  *   - 'registered' — the nest already holds an element opts.isRegistered
- *                    reports, so a second run over a registered nest registers
- *                    nothing.
- *
- * `chainSize` holds the chain's size: the nest elements that passed the data
- * test and filed at a nesting depth. It is 0 for 'empty', and 0 for
- * 'registered', which returns before the data test runs.
+ *                    reports, so the nest registers nothing: a second
+ *                    registration would put a second table pillbox on one
+ *                    grid.
  *
  * opts.nestingDepth, when the caller supplies it, replaces
  * DR_DETECTION_SETTINGS.nestingDepth. Zero is a legal depth, so the override
- * test is a nullish check. The function keeps no record of a nest it has
- * already run on.
+ * test is a nullish check.
  *
- * @param {Element} chainRoot
- * @param {{isArtifact?: (table: Element, opts: object) => boolean,
- *          isRegistered?: (handle: Element) => boolean, nestingDepth?: number,
- *          doc?: Document, styleProbe?: object, vendorProfiles?: object[]}} [opts]
- * @returns {{chainRoot: Element, selected: Element|null, outcome: string, chainSize: number}}
+ * @returns {{chainRoot: Element, selected: Element|null, outcome: string}}
  */
 function nominateNest(chainRoot, opts = {}) {
-  const isArtifact = opts.isArtifact || isAccessibilityArtifact;
+  const isArtifact = _artifactCheck(opts);
   const isRegistered = opts.isRegistered || (() => false);
   const configuredDepth = opts.nestingDepth ?? DR_DETECTION_SETTINGS.nestingDepth;
 
   if (isArtifact(chainRoot, opts)) {
-    return { chainRoot, selected: null, outcome: 'artifact', chainSize: 0 };
+    return { chainRoot, selected: null, outcome: 'artifact' };
   }
 
-  // A native table is a nest of one. An element nested in a cell is out of a
-  // grid's nest (_depthInChain returns -1), so a registered grid inside a cell
-  // never makes the grid around it read as registered.
+  // An element nested in a cell is out of a grid's nest (_depthInChain returns
+  // -1), so a registered grid inside a cell never makes the grid around it
+  // read as registered.
   const nest = chainRoot.tagName === 'TABLE' ? [{ el: chainRoot, depth: 0 }]
     : [chainRoot].concat(Array.from(chainRoot.querySelectorAll?.(GRID_ARIA_SELECTOR) || []))
       .filter((el) => _passesAriaGuards(el, isArtifact, opts))
       .map((el) => ({ el, depth: _depthInChain(el, chainRoot, isArtifact, opts) }))
       .filter((member) => member.depth >= 0);
 
-  // A second registration would put a second table pillbox on one grid.
   if (nest.some(({ el }) => isRegistered(el))) {
-    return { chainRoot, selected: null, outcome: 'registered', chainSize: 0 };
+    return { chainRoot, selected: null, outcome: 'registered' };
   }
 
   const byDepth = new Map();
-  let chainSize = 0;
   for (const { el, depth } of nest) {
     if (!isDataTable(el, opts)) continue;
-    chainSize++;
     if (!byDepth.has(depth)) byDepth.set(depth, []);
     byDepth.get(depth).push(el);
   }
 
   const selected = _selectAtNestingDepth(byDepth, configuredDepth);
-  if (selected) return { chainRoot, selected, outcome: 'selected', chainSize };
-  return { chainRoot, selected: null, outcome: chainSize === 0 ? 'empty' : 'crowded', chainSize };
+  if (selected) return { chainRoot, selected, outcome: 'selected' };
+  return { chainRoot, selected: null, outcome: byDepth.size === 0 ? 'empty' : 'crowded' };
 }
 
 /**
@@ -627,7 +534,6 @@ function nominateNest(chainRoot, opts = {}) {
  * descendant table, in document order. The one native-table query in the
  * extension.
  *
- * @param {Element|Document} root
  * @returns {Element[]}
  */
 function _nativeTablesIn(root) {
@@ -644,24 +550,20 @@ function _nativeTablesIn(root) {
  *
  * Each native table under `root`, `root` included, is a nest of one. For the
  * grids, this lists the qualifying elements: `root` itself when it carries the
- * role, plus every descendant carrying it, each past the two guards in
+ * role, plus every descendant carrying it, each past the three guards in
  * _passesAriaGuards. It walks each one up to its chain root and runs
  * nominateNest on every chain root once. A chain root can sit outside `root`
  * (an added node inside a wrapper already in the page), so a second run over
  * the same nest evaluates the whole nest again. No result checks the
  * registry beyond the step's own 'registered' outcome; the caller does.
  *
- * @param {Element|Document} root
- * @param {{isArtifact?: (table: Element, opts: object) => boolean,
- *          isRegistered?: (handle: Element) => boolean, nestingDepth?: number,
- *          doc?: Document, styleProbe?: object, vendorProfiles?: object[]}} [opts]
- * @returns {{chainRoot: Element, selected: Element|null, outcome: string, chainSize: number}[]}
+ * @returns {{chainRoot: Element, selected: Element|null, outcome: string}[]}
  */
 function scanTables(root, opts = {}) {
   if (!root || typeof root.querySelectorAll !== 'function') return [];
-  const isArtifact = opts.isArtifact || isAccessibilityArtifact;
+  const isArtifact = _artifactCheck(opts);
 
-  const rootCarriesRole = root.tagName !== 'TABLE' && typeof root.matches === 'function' && root.matches(GRID_ARIA_SELECTOR);
+  const rootCarriesRole = root.tagName !== 'TABLE' && _carriesGridRole(root);
   const roleBearing = (rootCarriesRole ? [root] : []).concat(Array.from(root.querySelectorAll(GRID_ARIA_SELECTOR)));
   const qualifying = roleBearing.filter((el) => _passesAriaGuards(el, isArtifact, opts));
 
@@ -675,23 +577,18 @@ function scanTables(root, opts = {}) {
 /**
  * The handles scanTables finds under `root`: the nests the nomination step
  * reports as 'selected', native tables first. A table root yields itself
- * alone among the native tables. A caller that acts on the other outcomes — the
+ * alone among the native tables, so a shape-change re-registration covers
+ * that one table. A caller that acts on the other outcomes — the
  * controller, which holds a pending table for an empty nest — reads
  * scanTables.
  *
  * The step reports a nest with a registered member as 'registered', so no
  * handle is one opts.isRegistered (e.g. DR_MODEL.hasTable) reports.
  *
- * @param {Element|Document} root
- * @param {{isArtifact?: (table: Element, opts: object) => boolean,
- *          isRegistered?: (handle: Element) => boolean, nestingDepth?: number,
- *          doc?: Document, styleProbe?: object, vendorProfiles?: object[]}} [opts]
  * @returns {Element[]}
  */
 function findTables(root, opts = {}) {
   const handles = scanTables(root, opts).filter(({ outcome }) => outcome === 'selected').map(({ selected }) => selected);
-  // A table root yields itself alone, so a shape-change re-registration covers
-  // that one table.
   const isTableRoot = root && root.tagName === 'TABLE';
   return handles.filter((handle) => !isTableRoot || handle === root || handle.tagName !== 'TABLE');
 }

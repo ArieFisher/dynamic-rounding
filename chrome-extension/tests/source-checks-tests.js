@@ -87,7 +87,7 @@
   eq('sidebar-defaults: sidebar.html loads constants.js before sidebar.js',
     /constants\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
   eq('sidebar-defaults: sidebar.js fills every control unset by the settings from DR_DEFAULTS',
-    /function applySettingsToUI\(settings\)\s*\{\s*const s = Object\.assign\(\{\}, DR_DEFAULTS, settings \|\| \{\}\)/.test(sidebarJsSource), true);
+    /function drawControls\(settings\)\s*\{\s*const s = Object\.assign\(\{\}, DR_DEFAULTS, settings \|\| \{\}\)/.test(sidebarJsSource), true);
   eq('sidebar-defaults: manifest content_scripts load order is defaults, log buffer, dr-number package, dr-table package, dr-simplify package, dr-capture package, event bus, application model, table pillbox view, toast view, content',
     JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify([
       'constants.js',
@@ -1326,8 +1326,8 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 // lists have one home, the detection settings (DR_DETECTION_SETTINGS, in
 // the configuration file constants.js). The
 // table pillbox auto-collapse delay lives in the table pillbox view
-// (table-pillbox-view.js) as its own constant: the view alone reads it. Four groups
-// of tests:
+// (table-pillbox-view.js) as its own constant; the reason sits on that
+// constant. Four groups of tests:
 //   1. Source scan: none of the eight retired names carries a second
 //      const/let/var definition anywhere the manifest loads, and the two
 //      retired literal forms (the repetition-share division, the bare
@@ -1619,13 +1619,14 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 // ---------------------------------------------------------------------------
 // Pin the exact state:rangeOk/state:rangeError message
 // sequence for one full apply (applySidebarRounding -> roundTable ->
-// sendRangeStatusMessage -> chrome.runtime.sendMessage).
+// publishRangeStatus -> the event bus, which sends through
+// chrome.runtime.sendMessage).
 //
 // The apply is the one path to roundTable, so it drives the flow here. It
 // sends the state:rangeOk/state:rangeError messages.
 //
-// The engine returns { applied, rangeStatus, error } and the controller
-// sends the message. The two expected sequences below (one per
+// roundTable returns { rangeStatus, error } and the controller publishes
+// the range status. The two expected sequences below (one per
 // range-validity branch) are literals, so a future change cannot silently
 // drop or duplicate a message.
 // ---------------------------------------------------------------------------
@@ -1801,7 +1802,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 //
 // takeCaptureScreenshot takes its tabs interface as a parameter and answers
 // through one callback, so the suite drives the real source with a stub
-// that settles at once. Every route — a resolved take, a rejected one, a
+// that settles at once. Every path — a resolved take, a rejected one, a
 // throw before the promise exists, a tabs interface with no capture — calls
 // the callback exactly once, with the image or with a not-taken record that
 // holds the reason.
@@ -1889,10 +1890,10 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 // A saved capture holds a real table; opened with file access enabled, the
 // content script runs on it like on any page. The renderer stamps
 // data-dr-capture on the document element, and the controller gates its two
-// entry points on that marker — the contextmenu handler (selection and the
+// entry points on that marker — the contextmenu handler (activation and the
 // menu path) and the load-time scan with its added-node observer (table pillboxes
 // and registration). With neither, no table on a capture page is ever
-// selected, registered, or rounded. Source-text assertions, matching the
+// activated, registered, or rounded. Source-text assertions, matching the
 // suite's style for load-time wiring the harness cannot re-run.
 
 (function captureMarkerStandDown() {

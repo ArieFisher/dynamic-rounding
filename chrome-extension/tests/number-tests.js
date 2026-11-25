@@ -2,91 +2,90 @@
 
 // --- extractNumbersInText (multi-match) ---
 
-eq('extractAll: range with en-dash',
+eq('extractNumbersInText: range with en-dash',
   extractNumbersInText('₹615.71–623.33 crore'),
   [
     { numStr: '615.71', num: 615.71, index: 1 },
     { numStr: '623.33', num: 623.33, index: 8 }
   ]);
 
-eq('extractAll: two-number sentence',
+eq('extractNumbersInText: two-number sentence',
   extractNumbersInText('between 1,200 and 3,400 units'),
   [
     { numStr: '1,200', num: 1200, index: 8 },
     { numStr: '3,400', num: 3400, index: 18 }
   ]);
 
-eq('extractAll: single number still returns one-element array',
+eq('extractNumbersInText: "286k" yields one number',
   extractNumbersInText('286k'),
   [{ numStr: '286', num: 286, index: 0 }]);
 
-eq('extractAll: no digits returns empty array',
+eq('extractNumbersInText: text with no digits yields no numbers',
   extractNumbersInText('N/A'),
   []);
 
-// --- Boundary guard: digits welded to letters are identifiers, not quantities ---
-// Rounding them yields a value that still looks like a valid identifier, so the
-// corruption cannot be spotted by eye. The whole run must be skipped.
+// --- Digits joined to letters yield no number ---
+// NUMBER_IN_TEXT_PATTERN (numbers-in-text.js) holds the reason.
 
 const numStrs = text => extractNumbersInText(text).map(m => m.numStr);
 
-eq('guard: application number is not mined for digits',
+eq('extractNumbersInText: application number "XR47182913MKB07" yields no numbers',
   numStrs('XR47182913MKB07'),
   []);
 
-eq('guard: trailing zero-padded segment is not mined',
+eq('extractNumbersInText: zero-padded code "MKB07" yields no numbers',
   numStrs('MKB07'),
   []);
 
-eq('guard: short label+digit is not mined',
+eq('extractNumbersInText: label "Q3" yields no numbers',
   numStrs('Q3'),
   []);
 
-eq('guard: refusal does not let the scan re-enter mid-number',
+eq('extractNumbersInText: "abc1,200" yields no numbers',
   numStrs('abc1,200'),
   []);
 
-// --- Boundary guard: a hyphen after a digit is a separator, not a minus sign ---
+// --- A hyphen after a digit is a separator, not a minus sign ---
 
-eq('guard: phone number yields two positive numbers',
+eq('extractNumbersInText: phone number yields two positive numbers',
   numStrs('555-1234'),
   ['555', '1234']);
 
-eq('guard: ZIP+4 yields two positive numbers',
+eq('extractNumbersInText: ZIP+4 yields two positive numbers',
   numStrs('12345-6789'),
   ['12345', '6789']);
 
-eq('guard: hyphen range yields two positive numbers',
+eq('extractNumbersInText: hyphen range yields two positive numbers',
   numStrs('10-20'),
   ['10', '20']);
 
-eq('guard: hyphen-typed range now matches en-dash behaviour',
+eq('extractNumbersInText: hyphen range with a currency sign yields two positive numbers',
   numStrs('₹1,968-2,054 crore'),
   ['1,968', '2,054']);
 
-eq('guard: en-dash range is unchanged',
+eq('extractNumbersInText: en-dash range with a currency sign yields two positive numbers',
   numStrs('₹1,968–2,054 crore'),
   ['1,968', '2,054']);
 
-eq('guard: year-month is no longer read as a negative month',
+eq('extractNumbersInText: year-month yields two positive numbers',
   numStrs('2022-04'),
   ['2022', '04']);
 
-// --- Boundary guard: genuine negatives and ordinary quantities still match ---
+// --- Negatives and plain amounts yield their numbers ---
 
-eq('guard: negative after whitespace still signed',
+eq('extractNumbersInText: negative after whitespace keeps its minus sign',
   numStrs('down -1,200 units'),
   ['-1,200']);
 
-eq('guard: leading negative still signed',
+eq('extractNumbersInText: leading negative keeps its minus sign',
   numStrs('-5.2% change'),
   ['-5.2']);
 
-eq('guard: currency-prefixed amount unaffected',
+eq('extractNumbersInText: currency-prefixed amount yields its digits',
   numStrs('$48,090.00'),
   ['48,090.00']);
 
-eq('guard: caret exponent notation unaffected',
+eq('extractNumbersInText: caret exponent notation yields two numbers',
   numStrs('10^12'),
   ['10', '12']);
 
@@ -204,38 +203,36 @@ eq('toNumber: pure text -> null', toNumber('N/A'), null);
 
 // --- Additional extractNumbersInText cases ---
 
-eq('extractAll: three numbers in a sentence',
+eq('extractNumbersInText: three numbers in a sentence',
   extractNumbersInText('grew from 10 to 200 in 3,000 days').map(m => m.num),
   [10, 200, 3000]);
 
-eq('extractAll: decimal followed by integer',
+eq('extractNumbersInText: decimal followed by integer',
   extractNumbersInText('avg 4.5, peak 9'),
   [
     { numStr: '4.5', num: 4.5, index: 4 },
     { numStr: '9', num: 9, index: 14 }
   ]);
 
-eq('extractAll: indices are correct for splicing',
+eq('extractNumbersInText: "a 100 b 200 c" yields each number\'s index',
   extractNumbersInText('a 100 b 200 c').map(m => ({ s: m.numStr, i: m.index })),
   [{ s: '100', i: 2 }, { s: '200', i: 8 }]);
 
-eq('extractAll: zero is excluded',
+eq('extractNumbersInText: zero is excluded',
   extractNumbersInText('range 0 to 500').map(m => m.num),
   [500]);
 
 // --- A comma that ends a number is punctuation, not a separator ---
-// The match string must end in a digit. A trailing comma in numStr breaks
-// every step that searches the live text for that string: the patch step
-// finds "12" where it expects "12," and skips, and the cell logs a patch that
-// did not land.
-eq('extractAll: comma after a number is left out of the match',
+// The match string ends in a digit. DIGIT_RUN_PATTERN (numbers-in-text.js)
+// holds the reason.
+eq('extractNumbersInText: comma after a number is left out of the match',
   extractNumbersInText('See ref 12, total 9,850'),
   [
     { numStr: '12', num: 12, index: 8 },
     { numStr: '9,850', num: 9850, index: 18 }
   ]);
 
-eq('extractAll: a list of grouped numbers keeps each number\'s own separators',
+eq('extractNumbersInText: a list of grouped numbers keeps each number\'s own separators',
   extractNumbersInText('1,200, 3,400, and 5,600').map(m => m.numStr),
   ['1,200', '3,400', '5,600']);
 
@@ -262,7 +259,7 @@ eq('extractAll: a list of grouped numbers keeps each number\'s own separators',
     out, '50–5,000 range');
 })();
 
-// --- Splice safety: rounding does not affect later match indices because we go right-to-left ---
+// --- Two numbers in one text, one longer once rounded, both round in place ---
 (function spliceSafety() {
   // Numbers that change length when rounded: 8,584,629 (9 chars) -> 8,500,000 (9 chars, same).
   // Pick one that changes length: 286 (3) -> 300 (3) same. Use 9,876 -> 10,000 (length grows).
@@ -281,7 +278,7 @@ eq('extractAll: a list of grouped numbers keeps each number\'s own separators',
   }
 
   // Both magnitude 3. step = 500. 9876/500=19.75->20*500=10,000. 1234/500=2.47->2*500=1,000.
-  eq('splice safety: right-to-left replacement handles length-changing rounds',
+  eq('two numbers in place: "9,876 then 1,234" rounds to "10,000 then 1,000"',
     out, '10,000 then 1,000');
 })();
 
@@ -795,7 +792,7 @@ eq('resolveNumTop: "2.7" -> 2',
   try {
     DR_DEFAULTS.offsetTop = -1.5;
     DR_DEFAULTS.numTop = 3;
-    eq('resolveRoundingSettings: blank settings fall back to DR_DEFAULTS',
+    eq('rounding settings with every value blank: the offsets and top-band count read DR_DEFAULTS',
       resolveRoundingSettings({}), { offsetTop: -1.5, offsetOther: -1.5, numTop: 3 });
   } finally {
     Object.assign(DR_DEFAULTS, saved);
@@ -1577,10 +1574,10 @@ eq('pure cell write: whole negative in parens -> "(3)"',
 
 // ---------------------------------------------------------------------------
 // Lens preview layout
-// formatOomLabel exhaustive suffix-boundary check
-// renderOtherPreview DESCENDING sort (real DOM-stub eval)
-// step-label CSS classes (step top / step bot)
-// Adversarial: sort-mutation side-effect check
+// order of magnitude labels at each suffix boundary
+// the other band's preview lists the largest order of magnitude first
+// step labels in both bands' previews
+// sorting leaves the samples list unchanged
 // ---------------------------------------------------------------------------
 (function advancedPreviewRedesignTests() {
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
@@ -1738,9 +1735,9 @@ eq('pure cell write: whole negative in parens -> "(3)"',
   // Extract the sidebar consts and render functions + their helpers.
   // We need: OOM_LABEL_CLASS, STEP_HEADER_CLASS, formatOomLabel, magnitudeOf,
   //          appendSampleRow, appendLabel, renderTopPreview, renderOtherPreview.
-  // External deps we pass in: formatOriginal, roundWithOffset, stepForOffset,
+  // External deps we pass in: formatSample, roundWithOffset, stepForOffset,
   //                            formatStep, cachedMaxMag (null = no step header).
-  const renderSrc = '(function(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, cachedMaxMag) {\n' +
+  const renderSrc = '(function(document, formatSample, roundWithOffset, stepForOffset, formatStep, cachedMaxMag) {\n' +
     constBlock[0] + '\n' +
     formatOomLabelFn[0] + '\n' +
     renderHelperFns.map((m) => m[0]).join('\n') + '\n' +
@@ -1750,28 +1747,28 @@ eq('pure cell write: whole negative in parens -> "(3)"',
     '})';
 
   let renderHelpers;
-  let realFormatOriginal;
+  let realFormatSample;
   try {
-    // We need formatOriginal from the already-evaled sidebar helpers.
-    // However, formatOriginal in sidebar.js depends on toNumber (from content.js,
-    // already on globalThis). Extract it from sidebar.js source.
+    // We need formatSample from the already-evaled sidebar helpers.
+    // However, formatSample in sidebar.js depends on toNumber and numberFormat
+    // (from content.js, already on globalThis). Extract it from sidebar.js source.
     const sidebarConstBlock2 = sidebarSrc.match(
       /const PREVIEW_DECIMAL_THRESHOLD\s*=.*?;\s*const PREVIEW_MAX_DECIMALS\s*=.*?;/
     );
-    const formatOriginalFn2 = sidebarSrc.match(/function formatOriginal\([\s\S]*?\n\}/);
+    const formatSampleFn2 = sidebarSrc.match(/function formatSample\([\s\S]*?\n\}/);
 
-    const fmtOrigSrc = '(function(toNumber) {\n' +
+    const fmtSampleSrc = '(function(toNumber, numberFormat) {\n' +
       sidebarConstBlock2[0] + '\n' +
-      formatOriginalFn2[0] + '\n' +
-      'return formatOriginal;\n' +
-      '})(toNumber)';
-    realFormatOriginal = (isolatedFunction('toNumber', 'return ' + fmtOrigSrc + ';'))(toNumber);
+      formatSampleFn2[0] + '\n' +
+      'return formatSample;\n' +
+      '})(toNumber, numberFormat)';
+    realFormatSample = (isolatedFunction('toNumber', 'numberFormat', 'return ' + fmtSampleSrc + ';'))(toNumber, numberFormat);
 
     renderHelpers = (isolatedFunction(
-      'document', 'formatOriginal', 'roundWithOffset', 'stepForOffset',
+      'document', 'formatSample', 'roundWithOffset', 'stepForOffset',
       'formatStep', 'cachedMaxMag',
-      'return ' + renderSrc + '(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, cachedMaxMag);'
-    ))(stubDocument, realFormatOriginal, roundWithOffset, stepForOffset, formatStep, null);
+      'return ' + renderSrc + '(document, formatSample, roundWithOffset, stepForOffset, formatStep, cachedMaxMag);'
+    ))(stubDocument, realFormatSample, roundWithOffset, stepForOffset, formatStep, null);
   } catch (e) {
     eq('sidebar-ap-extract: renderOtherPreview eval succeeded', String(e), '');
     return;
@@ -1793,15 +1790,15 @@ eq('pure cell write: whole negative in parens -> "(3)"',
   const bandEl = makeBandEl();
   realRenderOtherPreview(bandEl, rowsAscending, -0.5, 4);
 
-  // The band container should have 4 "pair" div children.
-  eq('sort: renderOtherPreview appended 4 pair elements', bandEl._appended.length, 4);
+  // The band container should have 4 "row" div children.
+  eq('sort: renderOtherPreview appended 4 row elements', bandEl._appended.length, 4);
 
-  // Each pair div contains children: from-span, arrow-span, num-span, step-span.
+  // Each row div contains children: from-span, arrow-span, num-span, step-span.
   // The from-span's textContent reflects the original number.
-  // We can extract the rendered order by reading from-span textContent on each pair.
-  function getFromText(pairEl) {
+  // We can extract the rendered order by reading from-span textContent on each row.
+  function getFromText(rowEl) {
     // first child is the "from" span
-    return pairEl._children[0] ? pairEl._children[0].textContent : '';
+    return rowEl._children[0] ? rowEl._children[0].textContent : '';
   }
 
   const renderedFromTexts = bandEl._appended.map(getFromText);
@@ -1831,45 +1828,43 @@ eq('pure cell write: whole negative in parens -> "(3)"',
     afterNums, originalNums);
 
   // -------------------------------------------------------------------------
-  // edge: zero rows and null el guard
+  // edge: zero rows
   // -------------------------------------------------------------------------
   const emptyEl = makeBandEl();
   realRenderOtherPreview(emptyEl, [], -0.5, 0);
   eq('edge: empty rows renders nothing', emptyEl._appended.length, 0);
 
-  realRenderOtherPreview(null, rowsAscending, -0.5, 4); // should not throw
-
   // -------------------------------------------------------------------------
   // other preview examples carry a brown trailing step label "(5k)" after
   // the rounded number, showing what the example rounds to the nearest of. The
-  // pair still has three cells (from, arrow, num); the step span lives INSIDE
+  // row still has three cells (from, arrow, num); the step span lives INSIDE
   // the num span (a 4th grid child would wrap to the next row). The top example
   // keeps its three cells and is prefixed "e.g.".
   // -------------------------------------------------------------------------
 
-  // other preview pair has 3 cells (from/arrow/num); the brown step label
+  // other preview row has 3 cells (from/arrow/num); the brown step label
   // is nested in the num span, not a 4th grid child.
   const otherPreviewEl2 = makeBandEl();
   realRenderOtherPreview(otherPreviewEl2, [{ num: 1000, original: '1,000' }], -0.5, 3);
-  eq('bot: bottom example pair has exactly 3 cells (from/arrow/num)',
+  eq('other band: a preview row has exactly 3 cells (from/arrow/num)',
     otherPreviewEl2._appended[0]._children.length, 3);
-  const botNumSpan = otherPreviewEl2._appended[0]._children[2];
-  eq('bot: num span has a nested step-label child',
-    botNumSpan._children.length, 1);
-  eq('bot: step-label child has class "step-label"',
-    botNumSpan._children[0] ? botNumSpan._children[0].className : '', 'step-label');
+  const otherNumSpan = otherPreviewEl2._appended[0]._children[2];
+  eq('other band: num span has a nested step-label child',
+    otherNumSpan._children.length, 1);
+  eq('other band: step-label child has class "step-label"',
+    otherNumSpan._children[0] ? otherNumSpan._children[0].className : '', 'step-label');
   // 1,000 at offset -0.5 rounds to the nearest 500 → label "(500)".
-  eq('bot: step-label text is " (500)"',
-    botNumSpan._children[0] ? botNumSpan._children[0].textContent : '', ' (500)');
+  eq('other band: step-label text is " (500)"',
+    otherNumSpan._children[0] ? otherNumSpan._children[0].textContent : '', ' (500)');
 
   // zero: a zero row gets no step label (avoids "(0)").
-  const botZeroEl = makeBandEl();
-  realRenderOtherPreview(botZeroEl, [{ num: 0, original: '0' }], -0.5, 3);
-  const zeroNumSpan = botZeroEl._appended[0]._children[2];
-  eq('bot-zero: zero row num span has no step-label child',
+  const otherZeroEl = makeBandEl();
+  realRenderOtherPreview(otherZeroEl, [{ num: 0, original: '0' }], -0.5, 3);
+  const zeroNumSpan = otherZeroEl._appended[0]._children[2];
+  eq('other band zero: zero row num span has no step-label child',
     zeroNumSpan._children.length, 0);
 
-  // top preview example pair is prefixed "e.g." and has no step label.
+  // top preview example row is prefixed "e.g." and has no step label.
   // renderTopPreview with cachedMaxMag=null skips the step header, so the only
   // appended element is the example.
   const topPreviewEl2 = makeBandEl();
@@ -1902,17 +1897,16 @@ eq('pure cell write: whole negative in parens -> "(3)"',
     /const STEP_LABEL_CLASS\s*=\s*['"]step-label['"]/.test(sidebarSrc), true);
 
   // when cachedMaxMag is set, the top preview renders the step header AND
-  // the example as two from|arrow|num pairs in the same band container (the
-  // #topPreview grid lays them on two lines with their "→" arrows aligned in the
-  // middle column). Rebuild the render helpers with a non-null cachedMaxMag to
-  // exercise the header path.
+  // the example as two from|arrow|num rows in the same band container.
+  // Rebuild the render helpers with a non-null cachedMaxMag to exercise the
+  // header path.
   let renderHelpersWithMag;
   try {
     renderHelpersWithMag = (isolatedFunction(
-      'document', 'formatOriginal', 'roundWithOffset', 'stepForOffset',
+      'document', 'formatSample', 'roundWithOffset', 'stepForOffset',
       'formatStep', 'cachedMaxMag',
-      'return ' + renderSrc + '(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, cachedMaxMag);'
-    ))(stubDocument, realFormatOriginal, roundWithOffset, stepForOffset, formatStep, 6);
+      'return ' + renderSrc + '(document, formatSample, roundWithOffset, stepForOffset, formatStep, cachedMaxMag);'
+    ))(stubDocument, realFormatSample, roundWithOffset, stepForOffset, formatStep, 6);
   } catch (e) {
     eq('renderTopPreview (cachedMaxMag=6) eval succeeded', String(e), '');
   }
@@ -1921,30 +1915,30 @@ eq('pure cell write: whole negative in parens -> "(3)"',
     renderHelpersWithMag.renderTopPreview(topWithHdr, [{ num: 8584629, original: '8,584,629' }], -0.5);
     eq('top preview appends 2 elements (step header + example)',
       topWithHdr._appended.length, 2);
-    const stratPair = topWithHdr._appended[0];
-    const examplePair = topWithHdr._appended[1];
-    eq('first appended element is the step header pair (class "pair step-header")',
-      stratPair.className, 'pair step-header');
-    eq('step header pair has 3 cells (from/arrow/num)',
-      stratPair._children.length, 3);
+    const stratRow = topWithHdr._appended[0];
+    const exampleRow = topWithHdr._appended[1];
+    eq('first appended element is the step header row (class "row step-header")',
+      stratRow.className, 'row step-header');
+    eq('step header row has 3 cells (from/arrow/num)',
+      stratRow._children.length, 3);
     eq('step header "from" is the OoM label "1M+" (maxMag=6)',
-      stratPair._children[0].textContent, '1M+');
+      stratRow._children[0].textContent, '1M+');
     eq('step header "num" starts "nearest "',
-      stratPair._children[2].textContent.indexOf('nearest ') === 0, true);
-    eq('second appended element is the example pair (class "pair example")',
-      examplePair.className, 'pair example');
-    eq('example pair has 3 cells (from/arrow/num)',
-      examplePair._children.length, 3);
+      stratRow._children[2].textContent.indexOf('nearest ') === 0, true);
+    eq('second appended element is the example row (class "row example")',
+      exampleRow.className, 'row example');
+    eq('example row has 3 cells (from/arrow/num)',
+      exampleRow._children.length, 3);
     // The two "→" arrows sit in the same (middle) grid column so they align.
     eq('step header arrow is in the middle cell ("→")',
-      stratPair._children[1].textContent, '→');
+      stratRow._children[1].textContent, '→');
     eq('example arrow is in the middle cell ("→")',
-      examplePair._children[1].textContent, '→');
+      exampleRow._children[1].textContent, '→');
   }
 
-  // sidebar.html lays the top preview out on the shared lens-preview grid
-  // (no flex override), so the step header and the example line stack and
-  // their "→" arrows align in the middle column. The step header cells are blue.
+  // sidebar.html lays the top preview out on the shared lens-preview grid,
+  // with no flex override. The lens preview comment in sidebar.html holds the
+  // reason.
   const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
   eq('#topPreview element carries the lens-preview grid class',
     /<div[^>]*id="topPreview"[^>]*class="lens-preview"|<div[^>]*class="lens-preview"[^>]*id="topPreview"/.test(sidebarHtmlSrc), true);
@@ -2246,11 +2240,11 @@ const LADDER_OPTS = {
 // ---------------------------------------------------------------------------
 // A pulled enabled:false must survive
 // sidebar reopen when the reopen lands on a TABLE THAT IS BOUND. This drives
-// sidebar.js's real redrawFromActiveTable() -> applySettingsToUI() ->
+// sidebar.js's real redrawFromActiveTable() -> drawControls() ->
 // setTableBound() path end to end (same eval harness shape as
 // appModelSettings_settingsPublish_deliveryFeedback_behavioral above).
 //
-// The pin: redrawFromActiveTable applies the answer's settings, then calls
+// The pin: redrawFromActiveTable draws the answer's settings, then calls
 // setTableBound(true) because the same answer holds a bound table's samples.
 // setTableBound's bound branch must not write the sidebar pillbox, so the
 // pulled false survives the reopen.
@@ -2675,7 +2669,7 @@ eq('bracketed: an unclosed bracket leaves the number positive',
 eq('bracketed: an unopened bracket leaves the number positive',
   extractNumbersInText('1,234)').map((m) => m.num), [1234]);
 
-eq('bracketed: the bracket test answers for the number it is given',
+eq('bracketed: "(1,234)" is a bracketed negative and "(see 4)" is not',
   [isBracketedNegative('(1,234)', 1, '1,234'), isBracketedNegative('(see 4)', 5, '4')],
   [true, false]);
 

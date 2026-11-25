@@ -198,6 +198,7 @@ class NativeTableAdapter {
   }
   getElement() { return this.el; }
   isGrid() { return false; }
+  getWatchedElement() { return this.el; }
   getRows() {
     const rows = Array.from(this.el.rows);
     return buildRows(rows.map((row) => Array.from(row.cells)), this.originalsPort,
@@ -272,6 +273,9 @@ class GridAdapter {
   }
   getElement() { return this.el; }
   isGrid() { return true; }
+  // The re-apply observer watches the scroll container, where a grid redraws
+  // its rows.
+  getWatchedElement() { return this._getScrollContainer(); }
 
   _getScrollContainer() {
     const selectors = [

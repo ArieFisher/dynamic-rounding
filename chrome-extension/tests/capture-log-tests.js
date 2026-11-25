@@ -502,14 +502,9 @@
 // --- lib/dr-capture: the capture file renderer ---
 //
 // buildCaptureDocument() is a pure string renderer: the whole capture state
-// in, one self-contained HTML document out. The safety doctrine (after the
-// model extension's, adapted for string assembly): every dynamic value
-// passes through one escape on its way in; the file declares a CSP that
-// forbids scripts and remote fetches; a hidden pre holds the full state as
-// escaped JSON (a script-typed island would let an end-tag in a payload
-// break out); and the capture carries the fixture seed twice — visible
-// escaped text for reading, JSON for byte-exact trust. These tests attack
-// the escaping with hostile payloads and round-trip the island.
+// in, one self-contained HTML document out. The safety doctrine sits in the
+// header of lib/dr-capture/render.js. These tests attack the escaping with
+// hostile payloads and round-trip the island.
 
 (function captureRenderer() {
   eq('capture-render: the DR_CAPTURE package loads in the content-script bundle',
@@ -682,7 +677,7 @@
   eq('capture-render: the registry section lists every table with the bound one marked',
     /<h2>Registry<\/h2>/.test(html) &&
       /native[\s\S]{0,120}bound/.test(html), true);
-  eq('capture-render: the retired word for the bound table never renders',
+  eq('capture-render: the bound table renders as bound, never as focused',
     /<b>focused<\/b>/.test(html) || /focused table/.test(html), false);
   eq('capture-render: the seed intro names the bound table and capture time',
     html.includes('bound table’s markup as it stood at capture time'), true);
@@ -779,9 +774,9 @@
 // mark and the remarks share the first section under it. The sidebar
 // likeness comes before the bound table, so the file reads in the order a
 // reader reconstructs the scene: what the controls said, then what the page
-// showed. A thin line separates every top-level section. A reader hint (a
-// note) is one size below the table text, italic, and opens with "Note: ",
-// so it never reads as content; the lens preview lines are content.
+// showed. A thin line separates every top-level section. A reader hint
+// renders as a note (see renderNote in lib/dr-capture/render.js); the lens
+// preview lines are content.
 (function captureLayout() {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
@@ -843,7 +838,7 @@
   const unbound = buildCaptureDocument({
     state: makeState({ activeTableIndex: null, tables: [], fixtureSeed: null }),
   });
-  eq('capture-render: an unbound capture carries the one note that always applies',
+  eq('capture-render: an unbound capture carries one note: service worker rows are not captured',
     (unbound.match(/<p class="cap-note">Note: /g) || []).length === 1 &&
       unbound.includes('Note: Service worker rows are not captured.'), true);
   eq('capture-render: lens preview lines are content, not notes',
@@ -856,7 +851,7 @@
 //
 // The sidebar takes a screenshot of the bound tab at finish and hands the
 // image to the renderer beside the state, never inside it: the state holds
-// a small record (taken, format, size) and the JSON island stays small. The
+// a small record (taken, format, chars) and the JSON island stays small. The
 // image reaches the file only as an image data URL; anything else, a failed
 // take, or no record at all renders as an absence with its reason.
 (function captureScreenshotSection() {
@@ -1025,11 +1020,9 @@
 
 // --- lib/dr-capture: the size warning ---
 //
-// A capture has no size bound — the full-detail default is deliberate — so
-// the form shows an estimate before the save when the pulled state is
-// large. The estimate reads the serialized state's length; the file runs
-// about four times that, because it carries the same content about four
-// times (two table renderings, the JSON island, the visible seed).
+// The form shows an estimate before the save when the pulled state is
+// large. The estimate's reasons sit beside CAPTURE_FILE_CHARS_PER_STATE_CHAR
+// and CAPTURE_SIZE_WARN_CHARS in lib/dr-capture/render.js.
 
 (function captureSizeWarningHelper() {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;

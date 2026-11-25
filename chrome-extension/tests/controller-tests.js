@@ -881,7 +881,7 @@
   forgetRegisteredTable(nativeTable);
 })();
 
-// --- The teardown both the removal observer and the
+// --- The teardown both the table observer and the
 // mismatch path run. One function discards a table's registration and every
 // per-table resource the extension holds beside it: the table pillbox, the resize
 // observer, a virtualized grid's re-apply observer and its pending timer, and

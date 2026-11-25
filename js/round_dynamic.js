@@ -214,7 +214,8 @@ const US_NUMBER_FORMAT = Object.freeze({ group: ',', decimal: '.' });
 /**
  * The number format function: the one place that states which marks a
  * number uses. The number shape test reads it for the shape to accept, and
- * the write-back reads it for the marks to write. It returns US style.
+ * the write-back and the lens preview read it for the marks to write. It
+ * returns US style.
  */
 function numberFormat() {
   return US_NUMBER_FORMAT;
@@ -399,76 +400,56 @@ function resolveNumTop(value, fallback) {
  * and group shape build the patterns here at load time.
  */
 
-// A digit run only counts as a quantity when it starts at a clean boundary: the
-// preceding character must not be a letter, digit, dot, comma, or "@".
-//
-// "@": a number right after it belongs to an at-name or an address
-// ("@2020vision", "name@123.example"), not a quantity.
-//
-// Letters: digits welded to letters belong to an identifier, not a measurement
-// ("XR47182913MKB07", "MKB07", "Q3"). Mining them produces a rounded value that
-// still looks like a valid identifier, so the corruption is undetectable.
-// Rejecting the leading digit is enough to drop the whole run, because every
-// later position inside it is itself preceded by a digit.
-//
-// Dot/comma: stops the scan re-entering a number it just rejected — without
-// them "abc1,200" would skip "1,200" and then match the bare "200".
-//
-// The guard also determines when a leading "-" is a minus sign rather than a
-// separator. In "2022-04", "555-1234" or "10-20" the hyphen follows a digit, so
-// it is rejected as a sign; the digits after it still match on their own and
-// stay positive. Genuine negatives ("down -1,200 units") are preceded by
-// whitespace or punctuation and are unaffected. En-dash ranges
-// ("₹615.71–623.33 crore") never reach this rule — "-?" matches an ASCII
-// hyphen alone — so hyphen-typed ranges behave like en-dash ones.
-//
-// The run takes every comma and dot that sits between digits, so the number
-// shape test in toNumber (reader.js) tests the whole run: "1.234,56" and
-// "12.03.2024" come through whole and read as no number, and the text stays
-// as written. A pattern that stopped at the first dot would take "1.234" and
-// round it.
-//
-// The run ends in a digit: "\d(?:[\d.,]*\d)?" takes "1,200" whole but stops
-// "12," at the "12" and "9,850." at the "9,850". A comma or period that ends
-// a number is sentence punctuation ("ref 12, total 9,850."), and every later
-// step searches the live text for the match string, so a trailing mark in it
-// makes the placement step and the patch step miss a number that is right
-// there.
-//
 // Whitespace between digit groups is a group mark only in the group shape
-// (groupShapePattern, reader.js, the one copy the number shape test reads
-// too), and only when the whole chain of spaced groups fits it: "1 034 567"
-// is one run, and so is "12 345", while "2024 12", "2024 12 345",
-// "416 555 1234" and "1 234 5678" stay several numbers, since a chain with a
-// group outside the shape is numbers side by side. The lookbehind rejects a
-// run that starts after a digit and whitespace, and the lookahead one that
-// ends before whitespace and a digit, so a spaced run is the whole chain or
-// nothing. A decimal part follows the last group ("1 234 567.50"). The
-// spaced run comes first in the alternation, so the first group of a spaced
-// run never matches as a plain run.
-//
-// DIGIT_RUN_PATTERN is the one copy of a number's digit run: the pattern
-// that finds a number inside text and the unit-number pattern both read it,
-// and the leading-zero identifier shape (identifiers.js) reads the in-text
-// pattern to tell a group of a spaced number from a code.
+// (groupShapePattern, reader.js, which the number shape test reads too), and
+// only when the whole chain of spaced groups fits it: "1 034 567" and
+// "12 345" are one run each, while "2024 12", "2024 12 345", "416 555 1234"
+// and "1 234 5678" stay several numbers side by side. The lookbehind and the
+// lookahead reject a run with a digit across whitespace on either side, so a
+// spaced run is the whole chain or nothing. A decimal part may follow the
+// last group ("1 234 567.50").
 const SPACED_DIGIT_RUN_PATTERN = '(?<!\\d' + GROUP_SPACE_PATTERN + ')' + groupShapePattern(GROUP_SPACE_PATTERN) +
   '(?!' + GROUP_SPACE_CLASS + '*\\d)(?:[.,]\\d+)?';
+// The one copy of a number's digit run: the pattern that finds a number
+// inside text and the unit-number pattern both read it, and the leading-zero
+// identifier shape (identifiers.js) reads the in-text pattern to tell a group
+// of a spaced number from a code.
+//
+// The spaced run comes first in the alternation, so the first group of a
+// spaced run never matches as a plain run. The plain run takes every comma
+// and dot between digits, so the number shape test in toNumber (reader.js)
+// tests the whole run: "1.234,56" and "12.03.2024" read as no number and
+// stay as written, where a run that stopped at the first dot would round
+// "1.234". The run ends in a digit, because a comma or period after a
+// number is sentence punctuation ("ref 12, total 9,850."). In the run, it
+// would make "12," read as no number, and the patch for "9,850." would
+// replace the period too.
 const DIGIT_RUN_PATTERN = '(?:' + SPACED_DIGIT_RUN_PATTERN + '|\\d(?:[\\d.,]*\\d)?)';
+// A number inside text starts at a clean boundary: the character before it
+// is not a letter, digit, underscore, dot, comma, or "@".
+//
+// After "@", the digits belong to an at-name or an address ("@2020vision",
+// "name@123.example"). After a letter, they belong to an identifier
+// ("XR47182913MKB07", "Q3"), and a rounded identifier still looks valid, so
+// the damage would go unseen. Every later digit of such a run follows a
+// digit, so the whole run drops. After a dot or comma, the scan would
+// re-enter a number it just rejected: "abc1,200" would match the "200".
+//
+// A hyphen after a digit ("2022-04", "555-1234", "10-20") is a separator,
+// not a minus sign: the digits after it match on their own and stay
+// positive. A minus sign after whitespace or punctuation ("down -1,200
+// units") reads as a sign. "-?" takes an ASCII hyphen alone, so a
+// hyphen range reads the same as an en-dash range ("₹615.71–623.33 crore").
 const NUMBER_IN_TEXT_PATTERN = '(?<![\\w.,@])-?' + DIGIT_RUN_PATTERN;
 const NUMBER_IN_TEXT_REGEX_GLOBAL = new RegExp(NUMBER_IN_TEXT_PATTERN, 'g');
 
 // The magnitude suffixes that may follow a number. This is the one copy of
-// that list: the docs point here instead of restating it. A suffix counts
-// in any case ("m", "M", "Bn", "TN"). The currency signs and codes come
-// from CURRENCIES in reader.js, which every currency rule reads.
+// that list: the docs point here instead of restating it.
 const MAGNITUDE_SUFFIXES = ['bn', 'tn', 'k', 'm', 'b', 't'];
 const CURRENCY_CODE_ALTERNATION = CURRENCY_CODES.join('|');
 const CURRENCY_CODE_TOKEN_RE = new RegExp('(?<![A-Za-z])(?:' + CURRENCY_CODE_ALTERNATION + ')(?![A-Za-z])');
-// Each suffix letter matches either case; longer suffixes come first so
-// "bn" wins over "b".
+// Each suffix letter matches either case ("m", "M", "Bn", "TN").
 const MAGNITUDE_SUFFIX_ALTERNATION = MAGNITUDE_SUFFIXES
-  .slice()
-  .sort((a, b) => b.length - a.length)
   .map((suffix) => suffix.split('').map((ch) => '[' + ch.toLowerCase() + ch.toUpperCase() + ']').join(''))
   .join('|');
 // A whole trimmed text of: an optional prefix (a code with a symbol on
@@ -493,8 +474,6 @@ const UNIT_NUMBER_RE = new RegExp(
  * and position in `text` as given, the same shape as extractNumbersInText's
  * matches, or null. An identifier such as "DT1234" is not a unit number,
  * because its letters are neither a listed code nor a suffix.
- * @param {string} text
- * @returns {{numStr: string, num: number, index: number}|null}
  */
 function matchUnitNumber(text) {
   if (typeof text !== 'string') return null;
@@ -514,10 +493,9 @@ function getExclusionReason(text, columnIndex, options, rowIndex) {
   if (!options.simplifyFirstRow && rowIndex === 0) return 'first-row';
   if (!options.simplifyFirstColumn && columnIndex === 0) return 'first-column';
   if (typeof text !== 'string') return null;
-  const t = text.trim();
-  if (!options.simplifyMixedPercent && /%/.test(t)) return 'percent';
+  if (!options.simplifyMixedPercent && /%/.test(text)) return 'percent';
   if (!options.simplifyMixedCurrency &&
-    (CURRENCY_SIGN_RE.test(t) || CURRENCY_CODE_TOKEN_RE.test(t))) return 'currency';
+    (CURRENCY_SIGN_RE.test(text) || CURRENCY_CODE_TOKEN_RE.test(text))) return 'currency';
   return null;
 }
 
@@ -531,40 +509,25 @@ const matchRanges = (text, re, group) => (typeof text !== 'string' ? [] : Array.
 /**
  * Returns an array of {start, end} ranges for all balanced ASCII double-quoted spans
  * in the given string. Unbalanced quotes produce no range for the unpaired quote.
- * @param {string} text
- * @returns {{start: number, end: number}[]}
  */
 function getQuoteMaskedRanges(text) {
   return matchRanges(text, /"[^"]*"/g);
 }
 
-/**
- * Returns true if [matchStart, matchEnd) overlaps any masked range.
- * @param {{start: number, end: number}[]} maskedRanges
- * @param {number} matchStart
- * @param {number} matchEnd
- * @returns {boolean}
- */
 function overlapsMaskedRange(maskedRanges, matchStart, matchEnd) {
-  for (const range of maskedRanges) {
-    if (matchStart < range.end && matchEnd > range.start) return true;
-  }
-  return false;
+  return maskedRanges.some((range) => matchStart < range.end && matchEnd > range.start);
 }
 
-// --- The accounting minus sign: a bracket pair around a number ---
-// A financial statement writes a negative as "(1,234)". The brackets are the
-// minus sign, so the number's own text stays its digits: only the digits
-// round, and the brackets stay where the page put them, as a currency sign
-// does. FORMAT_MARK_ALTERNATION (reader.js) is the one list of what may stand
-// between a bracket and the number — a currency sign, a percent sign,
-// whitespace — so "$(1,234)", "($1,234)" and "(12.3%)" all read as negatives
-// while "(see note 4)" does not.
+// --- The bracketed number: "(1,234)" is -1,234 ---
+// The brackets stand as the minus sign, so a match holds the digits alone
+// and the brackets stay where the page put them. Format marks
+// (FORMAT_MARK_ALTERNATION, reader.js) may stand between a bracket and the
+// number: "($1,234)" and "(12.3%)" are bracketed numbers.
 const BRACKET_OPEN_RE = new RegExp('\\(' + FORMAT_MARK_ALTERNATION + '*$');
 const BRACKET_CLOSE_RE = new RegExp('^' + FORMAT_MARK_ALTERNATION + '*\\)');
-// A digit right after the closing bracket, with at most one space or hyphen
-// between, marks a telephone number rather than an amount ("(416) 555-1234").
-// Such a bracket pair is not a minus sign.
+// A digit after the closing bracket, with at most one whitespace character
+// or hyphen between, marks a phone number rather than an amount
+// ("(416) 555-1234"), so the bracket pair is not a minus sign.
 const DIGIT_AFTER_BRACKET_RE = /^[\s-]?\d/;
 // A whole text made of format marks alone, or empty.
 const FORMAT_MARKS_ONLY_RE = new RegExp('^' + FORMAT_MARK_ALTERNATION + '*$');
@@ -576,10 +539,6 @@ const FORMAT_MARKS_ONLY_RE = new RegExp('^' + FORMAT_MARK_ALTERNATION + '*$');
  * pair must hold nothing but that number and its own format marks. A number
  * that already carries a written minus sign never takes one, so "(-1,234)" is
  * read once rather than twice.
- * @param {string} text
- * @param {number} index
- * @param {string} numStr
- * @returns {{start: number, end: number}|null}
  */
 function bracketSignSpan(text, index, numStr) {
   if (typeof text !== 'string' || typeof numStr !== 'string') return null;
@@ -596,10 +555,6 @@ function bracketSignSpan(text, index, numStr) {
 /**
  * True when the number at [index, index + numStr.length) in `text` sits in a
  * bracket pair standing as its minus sign.
- * @param {string} text
- * @param {number} index
- * @param {string} numStr
- * @returns {boolean}
  */
 function isBracketedNegative(text, index, numStr) {
   return bracketSignSpan(text, index, numStr) !== null;
@@ -608,9 +563,7 @@ function isBracketedNegative(text, index, numStr) {
 function extractNumbersInText(text) {
   if (typeof text !== 'string') return [];
   const matches = [];
-  const re = new RegExp(NUMBER_IN_TEXT_REGEX_GLOBAL.source, 'g');
-  let m;
-  while ((m = re.exec(text)) !== null) {
+  for (const m of text.matchAll(NUMBER_IN_TEXT_REGEX_GLOBAL)) {
     const num = toNumber(m[0]);
     if (num !== null && num !== 0) {
       const signed = isBracketedNegative(text, m.index, m[0]) ? -num : num;
@@ -627,11 +580,8 @@ function extractNumbersInText(text) {
  * its numStr the digits alone, or null. The text must hold exactly one
  * number, and nothing but format marks may stand outside the bracket pair, so
  * "(see note 4)", "(1,234) (5,678)" and "USD (1,234)" are not matches.
- * @param {string} text
- * @returns {{numStr: string, num: number, index: number}|null}
  */
 function matchBracketedNumber(text) {
-  if (typeof text !== 'string') return null;
   const matches = extractNumbersInText(text);
   if (matches.length !== 1) return null;
   const match = matches[0];
@@ -644,7 +594,7 @@ function matchBracketedNumber(text) {
 
 // A pure cell's leading run: format marks and sign characters, the ASCII
 // plus and minus, the dash class toNumber reads as a minus sign, and the
-// opening bracket of an accounting minus sign. The trailing run: format
+// opening bracket of a bracketed number. The trailing run: format
 // marks and the closing bracket. Both read the one format-mark list. The
 // identifier check (identifiers.js) reads the same two runs to test whether
 // a code fills its cell.
@@ -660,8 +610,6 @@ const PURE_TRAIL_RE = new RegExp(PURE_TRAIL_PATTERN + '$');
  * gap, a percent sign, and a plus stay where the page put them. The span
  * never starts with a minus sign (see formatNumber for why). index counts
  * into `text` as given, untrimmed.
- * @param {string} text
- * @returns {{numStr: string, index: number}}
  */
 function pureNumberSpan(text) {
   const index = PURE_LEAD_RE.exec(text)[0].length;
@@ -1076,9 +1024,10 @@ function formatNumber(rounded, originalNumStr) {
  * One check finds every code in a cell: findIdentifiers searches the cell's
  * text once for every shape and records, for each code it finds, whether the
  * code fills the cell. A code fills the cell when nothing stands around it
- * but the format marks, signs, and brackets the pure number span steps past
- * (PURE_LEAD_PATTERN and PURE_TRAIL_PATTERN in numbers-in-text.js), so "(416)
- * 555-1234" and "$ 416-555-1234" fill their cells. A text in thousands
+ * but the format marks, signs, and brackets the number span of a pure cell
+ * steps past (PURE_LEAD_PATTERN and PURE_TRAIL_PATTERN in
+ * numbers-in-text.js), so "(416) 555-1234" and "$ 416-555-1234" fill their
+ * cells. A text in thousands
  * grouping ("1 234 567 890") is a quantity, and no code fills it.
  *
  * The ladder reads the one result two ways. matchIdentifierShape returns the
@@ -1241,9 +1190,9 @@ const LEADING_ZERO_PATTERN = '0\\d+(?![.,]\\d)';
 /**
  * True when [start, end) sits inside a longer run the pattern that finds a
  * number inside text (numbers-in-text.js) takes as one number, so the characters
- * are one group of that number. That pattern is the one place that states
- * what one number spans, so a group of a space-grouped or comma-grouped
- * number is never read a second way here.
+ * are one group of that number. That pattern reads the one copy of a
+ * number's digit run (DIGIT_RUN_PATTERN), so a group of a space-grouped or
+ * comma-grouped number is never read a second way here.
  * @param {string} text
  * @param {number} start
  * @param {number} end
