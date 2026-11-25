@@ -1036,11 +1036,14 @@ function formatNumber(rounded, originalNumStr) {
  * cells. A text in thousands
  * grouping ("1 234 567 890") is a quantity, and no code fills it.
  *
- * The ladder reads the one result two ways. matchIdentifierShape returns the
- * name of a code that fills the cell, and classifyCell
- * (lib/dr-simplify/ladder.js) gives that cell no stretch, after
- * the date and time checks, so a date the date parser reads ("21 June 2020")
- * stays a date, and before the number reader. getIdentifierMaskedRanges
+ * The ladder reads the result three ways. isWebOrEmailAddressCell runs the
+ * web-or-email shape alone, and classifyCell (lib/dr-simplify/ladder.js)
+ * gives a cell that address fills no stretch, before the date and time
+ * readers, so a date in an address's path stays as written.
+ * matchIdentifierShape returns the name of a code that fills the cell, and
+ * classifyCell gives that cell no stretch in a cell that holds no date or
+ * time, so a date the date parser reads ("21 June 2020") stays a date, and
+ * before the number reader. getIdentifierMaskedRanges
  * returns the codes that count inside a cell with words ("Call 416-555-1234
  * about 1,613,245 units"), and extractSimplifyMatches drops every number
  * inside one, so the code stays as written and the other numbers round.
@@ -1378,7 +1381,7 @@ const valuesRead = ({ isoPairs, dates, times }) =>
  * values are blanked. That second read runs once: a bare year fills the text,
  * so no third value can follow it.
  */
-function readOutsideMarkup(text, superscriptRanges, markupRanges) {
+function readDatesAndTimesHoldingMarkup(text, superscriptRanges, markupRanges) {
   const isInMarkup = (v) => overlapsMaskedRange(markupRanges, v.start, v.end);
   const mark = (v) => (isInMarkup(v) ? { ...v, isHeld: true } : v);
   const read = readDatesAndTimes(text, superscriptRanges);
@@ -1514,7 +1517,7 @@ function classifyCell(input, options) {
   // post"), and a changed date or time breaks the address.
   if (isWebOrEmailAddressCell(text.trim())) return { stretches: [] };
 
-  const read = readOutsideMarkup(text, superscriptRanges, markupRanges);
+  const read = readDatesAndTimesHoldingMarkup(text, superscriptRanges, markupRanges);
   const dateTimeSpans = valuesRead(read);
   const heldRanges = [...markupRanges, ...dateTimeSpans];
   const numbers = dateTimeSpans.length > 0
