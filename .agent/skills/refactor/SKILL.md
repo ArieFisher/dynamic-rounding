@@ -8,7 +8,7 @@ description: Run a refactor pass over a file, a list of files, or a directory. F
 * Before the first file, create a branch from main named `refactor/asx-<YYYYMMDD>`.
 * If given a list of files, a directory, or a repository, run the two subagents below on the first file, one after the other. When the second one has finished, repeat for the next file on the list.
 * Skip `js/round_dynamic.js`.
-* Run the find and action subagents as the `refactor` agent type. That type runs them on Opus high and gives them only the tools they use. Run the review subagent on Opus high.
+* Run the find and action subagents with the `refactor` agent type. Put the subagent's section, the input file, and the findings file's path in its task message. Run the review subagent on Opus high.
 * After each file, reply in chat with one line giving that file's counts for groups A and B. After the last file, add one line with the totals across all files. No preamble and no summary of groups A and B.
 * The only exception is where the action subagents made judgement calls: describe those simply, in plain language for a product manager audience.
 * After the last file, run the review subagent below on the whole branch.
