@@ -792,7 +792,7 @@ eq('resolveNumTop: "2.7" -> 2',
   try {
     DR_DEFAULTS.offsetTop = -1.5;
     DR_DEFAULTS.numTop = 3;
-    eq('resolveRoundingSettings: blank settings fall back to DR_DEFAULTS',
+    eq('rounding settings with every value blank: the offsets and top-band count read DR_DEFAULTS',
       resolveRoundingSettings({}), { offsetTop: -1.5, offsetOther: -1.5, numTop: 3 });
   } finally {
     Object.assign(DR_DEFAULTS, saved);

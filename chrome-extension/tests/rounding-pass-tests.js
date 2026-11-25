@@ -604,14 +604,14 @@ const SEAT_ROWS = [
     ],
   };
   const result = extractPreviewSamples(table);
-  eq('extractPreviewSamples: maxMag is 7', result.maxMag, 7);
-  eq('extractPreviewSamples: top band has 2 rows', result.samples.top.length, 2);
-  eq('extractPreviewSamples: top[0] is 27M', result.samples.top[0].num, 27000000);
-  eq('extractPreviewSamples: top[1] is 18M', result.samples.top[1].num, 18000000);
-  eq('extractPreviewSamples: bottom band has 3 rows', result.samples.bottom.length, 3);
-  eq('extractPreviewSamples: bottom[0] is 4080', result.samples.bottom[0].num, 4080);
-  eq('extractPreviewSamples: bottom[1] is 312', result.samples.bottom[1].num, 312);
-  eq('extractPreviewSamples: bottom[2] is 56', result.samples.bottom[2].num, 56);
+  eq('lens preview of 27M, 18M, 4,080, 312, and 56: maxMag is 7', result.maxMag, 7);
+  eq('lens preview of 27M, 18M, 4,080, 312, and 56: the top band holds 2 samples', result.samples.top.length, 2);
+  eq('lens preview of 27M, 18M, 4,080, 312, and 56: the first top-band sample is 27M', result.samples.top[0].num, 27000000);
+  eq('lens preview of 27M, 18M, 4,080, 312, and 56: the second top-band sample is 18M', result.samples.top[1].num, 18000000);
+  eq('lens preview of 27M, 18M, 4,080, 312, and 56: the other band holds 3 samples', result.samples.bottom.length, 3);
+  eq('lens preview of 27M, 18M, 4,080, 312, and 56: the first other-band sample is 4,080', result.samples.bottom[0].num, 4080);
+  eq('lens preview of 27M, 18M, 4,080, 312, and 56: the second other-band sample is 312', result.samples.bottom[1].num, 312);
+  eq('lens preview of 27M, 18M, 4,080, 312, and 56: the third other-band sample is 56', result.samples.bottom[2].num, 56);
 })();
 
 (function lensPreview_extractPreviewSamples_onePerOrderOfMagnitude() {
@@ -678,9 +678,9 @@ const SEAT_ROWS = [
     ],
   };
   const result = extractPreviewSamples(table);
-  eq('extractPreviewSamples (demo): top[0] skips already-round 250M',
+  eq('lens preview of 250M then 269,690,569: the first top-band sample is 269,690,569',
     result.samples.top[0].num, 269690569);
-  eq('extractPreviewSamples (demo): bottom[0] skips already-round 350k',
+  eq('lens preview of 350,000 then 235,132: the first other-band sample is 235,132',
     result.samples.bottom[0].num, 235132);
 })();
 
@@ -700,7 +700,7 @@ const SEAT_ROWS = [
     ],
   };
   const result = extractPreviewSamples(table);
-  eq('extractPreviewSamples (all-round): top[0] is first cell',
+  eq('lens preview of 250M and 500,000, both already round: the first top-band sample is 250M',
     result.samples.top[0].num, 250000000);
 })();
 
@@ -719,8 +719,8 @@ const SEAT_ROWS = [
     ],
   };
   const result = extractPreviewSamples(table);
-  eq('extractPreviewSamples (all-top): top has 2 rows', result.samples.top.length, 2);
-  eq('extractPreviewSamples (all-top): bottom is empty', result.samples.bottom.length, 0);
+  eq('lens preview of 27M, 18M, and 45M: the top band holds 2 samples', result.samples.top.length, 2);
+  eq('lens preview of 27M, 18M, and 45M: the other band is empty', result.samples.bottom.length, 0);
 })();
 
 (function lensPreview_extractPreviewSamples_emptyTable() {
@@ -731,9 +731,9 @@ const SEAT_ROWS = [
     rows: [{ cells: [tdCell('hello'), tdCell('world')] }],
   };
   const result = extractPreviewSamples(table);
-  eq('extractPreviewSamples (empty): maxMag null', result.maxMag, null);
-  eq('extractPreviewSamples (empty): top length 0', result.samples.top.length, 0);
-  eq('extractPreviewSamples (empty): bottom length 0', result.samples.bottom.length, 0);
+  eq('lens preview of a table with no numbers: maxMag is null', result.maxMag, null);
+  eq('lens preview of a table with no numbers: the top band is empty', result.samples.top.length, 0);
+  eq('lens preview of a table with no numbers: the other band is empty', result.samples.bottom.length, 0);
 })();
 
 (function lensPreview_extractPreviewSamples_tableStepMaxMagnitude() {
@@ -763,14 +763,14 @@ const SEAT_ROWS = [
   } finally {
     datasetMaxMagnitude = realDatasetMaxMagnitude;
   }
-  eq('extractPreviewSamples (table step max magnitude): one call', passed.length, 1);
-  eq('extractPreviewSamples (table step max magnitude): the call reads the classified cells',
+  eq('lens preview of 27M, 4,080, and 312 under a max magnitude of 3: the max magnitude is read once', passed.length, 1);
+  eq('lens preview of 27M, 4,080, and 312 under a max magnitude of 3: the max magnitude reads 27M, 4,080, and 312',
     (passed[0] || []).filter((classifiedCell) => classifiedCell.classification.mode === 'extracted').flatMap((classifiedCell) => classifiedCell.classification.value.matches.map((m) => m.num)),
     [27000000, 4080, 312]);
-  eq('extractPreviewSamples (table step max magnitude): maxMag is the table step\'s', result.maxMag, 3);
-  eq('extractPreviewSamples (table step max magnitude): top band', result.samples.top.map((row) => row.num),
+  eq('lens preview of 27M, 4,080, and 312 under a max magnitude of 3: maxMag is 3', result.maxMag, 3);
+  eq('lens preview of 27M, 4,080, and 312 under a max magnitude of 3: the top band holds 27M and 4,080', result.samples.top.map((row) => row.num),
     [27000000, 4080]);
-  eq('extractPreviewSamples (table step max magnitude): other band', result.samples.bottom.map((row) => row.num),
+  eq('lens preview of 27M, 4,080, and 312 under a max magnitude of 3: the other band holds 312', result.samples.bottom.map((row) => row.num),
     [312]);
 })();
 
@@ -2480,16 +2480,16 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   const result = extractPreviewSamples(grid.wrapperEl);
 
   // Must return the correct shape: { samples: { top: [...], bottom: [...] }, maxMag: <number> }
-  eq('extractPreviewSamples returns an object with samples key',
+  eq('lens preview of a grid of 7M to 9M and 286 to 514: the result holds samples',
     typeof result.samples, 'object');
 
-  eq('extractPreviewSamples samples has top array',
+  eq('lens preview of a grid of 7M to 9M and 286 to 514: samples holds a top array',
     Array.isArray(result.samples.top), true);
 
-  eq('extractPreviewSamples samples has bottom array',
+  eq('lens preview of a grid of 7M to 9M and 286 to 514: samples holds a bottom array',
     Array.isArray(result.samples.bottom), true);
 
-  eq('extractPreviewSamples returns maxMag as a number',
+  eq('lens preview of a grid of 7M to 9M and 286 to 514: maxMag is a number',
     typeof result.maxMag, 'number');
 
   // The large-magnitude cells (8M, 9M, 7M) are magnitude 6; they go in top.
@@ -4408,8 +4408,6 @@ function everyRowRead(kind, largeIn) {
     callThrew, null);
   eq('no-chrome e2e: roundTable returns rangeStatus "ok"',
     result && result.rangeStatus, 'ok');
-  eq('no-chrome e2e: roundTable returns applied: true',
-    result && result.applied, true);
   eq('no-chrome e2e: roundTable actually rounded the fixture cell',
     table.rows[0].cells[0].classList.contains('dr-ext-rounded'), true);
 })();

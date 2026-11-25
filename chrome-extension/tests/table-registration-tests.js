@@ -12,11 +12,11 @@
 
     const handleReturned = registerIfNew({ handle: table, isNew: true });
 
-    eq('registerIfNew: returns found.handle',
+    eq('a new grid found on right-click: the found handle comes back',
       handleReturned, table);
-    eq('registerIfNew: registers a newly discovered grid',
+    eq('a new grid found on right-click: the grid registers',
       DR_MODEL.hasTable(table), true);
-    eq('registerIfNew: builds the table pillbox for a newly discovered grid',
+    eq('a new grid found on right-click: the grid gets a table pillbox',
       tablePillboxes.has(table), true);
 
     cleanupPass1Tables([table]);
@@ -30,9 +30,9 @@
 
     registerIfNew({ handle: table, isNew: false });
 
-    eq('registerIfNew: does not register an already-seen handle',
+    eq('a handle found as already registered: it does not register again',
       DR_MODEL.hasTable(table), false);
-    eq('registerIfNew: does not build a widget for an already-seen handle',
+    eq('a handle found as already registered: it gets no table pillbox',
       tablePillboxes.has(table), false);
   });
 })();
@@ -1116,7 +1116,7 @@ function makePlainBox(child) {
 // tells the sidebar to re-read, so the sidebar shows the no-table state
 // instead of describing a table that is gone. Removing any other table leaves
 // the active table where it is. Same fixture as the removal test above: the
-// real removal observer, from a fresh evaluation of the content script.
+// real table observer, from a fresh evaluation of the content script.
 (function issue506_removingTheActiveTableClearsIt() {
   const capturedInstances = [];
   class CapturingTableObserverMO {

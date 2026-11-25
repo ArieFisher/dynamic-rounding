@@ -1619,13 +1619,14 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 // ---------------------------------------------------------------------------
 // Pin the exact state:rangeOk/state:rangeError message
 // sequence for one full apply (applySidebarRounding -> roundTable ->
-// sendRangeStatusMessage -> chrome.runtime.sendMessage).
+// publishRangeStatus -> the event bus, which sends through
+// chrome.runtime.sendMessage).
 //
 // The apply is the one path to roundTable, so it drives the flow here. It
 // sends the state:rangeOk/state:rangeError messages.
 //
-// The engine returns { applied, rangeStatus, error } and the controller
-// sends the message. The two expected sequences below (one per
+// roundTable returns { rangeStatus, error } and the controller publishes
+// the range status. The two expected sequences below (one per
 // range-validity branch) are literals, so a future change cannot silently
 // drop or duplicate a message.
 // ---------------------------------------------------------------------------
@@ -1889,10 +1890,10 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 // A saved capture holds a real table; opened with file access enabled, the
 // content script runs on it like on any page. The renderer stamps
 // data-dr-capture on the document element, and the controller gates its two
-// entry points on that marker — the contextmenu handler (selection and the
+// entry points on that marker — the contextmenu handler (activation and the
 // menu path) and the load-time scan with its added-node observer (table pillboxes
 // and registration). With neither, no table on a capture page is ever
-// selected, registered, or rounded. Source-text assertions, matching the
+// activated, registered, or rounded. Source-text assertions, matching the
 // suite's style for load-time wiring the harness cannot re-run.
 
 (function captureMarkerStandDown() {

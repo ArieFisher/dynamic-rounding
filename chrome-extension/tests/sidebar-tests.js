@@ -58,10 +58,10 @@
     switchCount >= 1, true);
 
   // content.js: the intent:toggleTable handler's rebind branch publishes the
-  // select-table intent instead of assigning DR_MODEL's field directly. It
-  // stays a published intent rather than a
-  // direct DR_MODEL.setActiveTable() call, keeping one place ("select
-  // this table") for any caller of that concern, controller included.
+  // activate intent instead of assigning DR_MODEL's field directly. It stays
+  // a published intent rather than a direct DR_MODEL.setActiveTable() call,
+  // keeping one place ("activate this table") for any caller of that
+  // concern, controller included.
   eq('rebind source: intent:toggleTable publishes intent:activateTable in the rebind block instead of writing DR_MODEL directly',
     /DR_BUS\.publish\(\s*'intent:activateTable'/.test(contentSrc), true);
 

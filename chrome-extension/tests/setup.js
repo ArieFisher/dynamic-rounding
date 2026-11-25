@@ -165,7 +165,8 @@ globalThis.injectTablePillboxes = injectTablePillboxes;
 globalThis.isDataTable = isDataTable;
 // The lens preview's sample pool for one table, built from the two steps
 // extractPreviewSamples runs, so a test reads the pool without the bucketing.
-globalThis.collectNumericCells = (table, options) => numericPreviewCells(classifyPreviewCells(table, options));
+globalThis.collectNumericCells = (table, options) =>
+  numericPreviewCells(classifyPreviewCells(table, Object.assign({}, DR_DEFAULTS, options)));
 globalThis.extractPreviewSamples = extractPreviewSamples;
 // The one currency list and what it derives, so the currency suite reads the
 // canon rather than restating any part of it.

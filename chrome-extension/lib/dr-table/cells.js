@@ -118,6 +118,9 @@ function makeCellObj(cellEl, port) {
     // one. The caller drops the record.
     restore() {
       const record = recordOf();
+      // A cell with no record keeps its marker class, hover text, and text:
+      // clearing them would claim a recovery that did not happen and drop the
+      // original the hover text may still show.
       if (!record) return;
       restoreTextPieces(cellEl, record.pieces);
       if (cellEl.classList) cellEl.classList.remove(SIMPLIFIED_CLASS);
