@@ -933,7 +933,7 @@ const SEAT_ROWS = [
       eq('native separate pieces: a number split after its grouping comma stays unchanged',
         d.map((seg) => seg.text), ['3,406,', '918']);
       eq('native separate pieces: the pass writes no row and counts each split number',
-        { rows: rows.length, splitNumber: result.leftAsWritten.splitNumber }, { rows: 0, splitNumber: 2 });
+        { rows: rows.length, splitValue: result.leftAsWritten.splitValue }, { rows: 0, splitValue: 2 });
     } finally {
       offRow();
       DR_MODEL.unregisterTable(table);
@@ -1109,7 +1109,7 @@ const SEAT_ROWS = [
       eq('native pure cell across pieces: the cell stores no original',
         DR_MODEL.getTableOriginal(table, cell), undefined);
       eq('native pure cell across pieces: the pass counts the cell as a split number',
-        result.leftAsWritten.splitNumber, 1);
+        result.leftAsWritten.splitValue, 1);
     } finally {
       DR_MODEL.unregisterTable(table);
     }
@@ -1323,7 +1323,7 @@ const SEAT_ROWS = [
 // ---------------------------------------------------------------------------
 
 // --- simplifyDates=true → date cell is rounded ---
-// Use a bare year "2018" with decade granularity: roundDateText("2018","decade")="2010",
+// Use a bare year "2018" with decade granularity: "2018" becomes "2010" at decade,
 // so the cell text must change and dr-ext-rounded must be added.
 (function dateTimeSwitches_simplifyDatesTrue() {
   withCreateTreeWalker(function() {
@@ -2006,7 +2006,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     eq('grid separate pieces: the max magnitude counts the numbers in separate pieces one by one',
       DR_MODEL.getTableMaxMagnitude(grid.wrapperEl), 2);
     eq('grid separate pieces: the pass counts the split number and the split date',
-      result.leftAsWritten, { splitNumber: 1, splitDateOrTime: 1, textMismatch: 0 });
+      result.leftAsWritten, { splitValue: 2, textMismatch: 0 });
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
   }
@@ -2114,7 +2114,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     eq('grid separate pieces: one number that inline styling splits stays unchanged, as on a native table',
       pieceTextsOf(c), ['6,7', '18,245']);
     eq('grid separate pieces: the pass counts the styled number as a split number',
-      result.leftAsWritten.splitNumber, 1);
+      result.leftAsWritten.splitValue, 1);
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
   }
@@ -3932,7 +3932,7 @@ function everyRowRead(kind, largeIn) {
         collectNumericCells(table, opts), []);
       eq('preview log rows: the preview writes no row', rows.length, 0);
       eq('preview log rows (control): the simplification pass counts the split number',
-        roundTable(table, opts).leftAsWritten.splitNumber, 1);
+        roundTable(table, opts).leftAsWritten.splitValue, 1);
     } finally {
       offRow();
       DR_MODEL.unregisterTable(table);
@@ -5756,7 +5756,170 @@ const placeCellAfter = (build, rows, opts) => {
     eachRewriteKind(RW_KINDS, (kind, page, build) => {
       const t = build(LF_ROWS(spec));
       eq(`placement split number (${kind}, ${name}): the pass counts one split number`,
-        roundTableUnder(t.table, RW_OPTS).leftAsWritten.splitNumber, 1);
+        roundTableUnder(t.table, RW_OPTS).leftAsWritten.splitValue, 1);
     });
   }
+})();
+
+// =============================================================================
+// Placement of dates. Each date in a cell changes on its own, so a date whose
+// characters sit in one text piece changes, and a date whose characters sit in
+// two text pieces stays as written. Every case runs on a native table and on a
+// grid, with invented values; the table's other cells hold 2,468, 3,579 and
+// 4,321.
+// =============================================================================
+
+const datePlacementOpts = (dateGranularity) => Object.assign({}, RW_OPTS,
+  { simplifyDates: true, simplifyTimes: true, dateGranularity, timeGranularity: 'hour' });
+
+// The pieces of the cell at (0, 0) and the pass's result.
+const datePlacementAfter = (build, cell, dateGranularity) => {
+  const t = build(LF_ROWS(cell));
+  const result = roundTableUnder(t.table, datePlacementOpts(dateGranularity));
+  return { pieces: lfPieces(t, 0, 0), text: t.text(0, 0), splitValue: result.leftAsWritten.splitValue };
+};
+
+(function datePlacement_aSentenceWithALinkAndAnItalicWord() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const after = datePlacementAfter(build, ['In December 1965, the ', { tag: 'a', text: 'committee' },
+      ' met; it ', { tag: 'i', text: 'reported' }, ' in February 1966.'], 'year');
+    eq(`date placement (${kind}): "In December 1965, the committee met; it reported in February 1966." at year reads "In 1965, the committee met; it reported in 1966."`,
+      after.text, 'In 1965, the committee met; it reported in 1966.');
+    eq(`date placement (${kind}): in the same sentence at year, the link "committee" and the italic "reported" keep their text`,
+      after.pieces, ['In 1965, the ', 'committee', ' met; it ', 'reported', ' in 1966.']);
+    eq(`date placement (${kind}): the same sentence at year counts no split value`, after.splitValue, 0);
+  });
+})();
+
+(function datePlacement_aSplitDateBesideAWholeDate() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const splitFirst = datePlacementAfter(build,
+      [{ tag: 'b', text: '2024-' }, { tag: 'b', text: '03-15' }, ' and 2024-04-20'], 'month');
+    eq(`date placement (${kind}): bold "2024-" and bold "03-15" then " and 2024-04-20" at month reads "2024-03-15 and 2024-04"`,
+      splitFirst.pieces, ['2024-', '03-15', ' and 2024-04']);
+    eq(`date placement (${kind}): bold "2024-" and bold "03-15" then " and 2024-04-20" at month counts one split value`,
+      splitFirst.splitValue, 1);
+    const wholeFirst = datePlacementAfter(build,
+      ['2024-04-20 and ', { tag: 'b', text: '2024-' }, { tag: 'b', text: '03-15' }], 'month');
+    eq(`date placement (${kind}): "2024-04-20 and " then bold "2024-" and bold "03-15" at month reads "2024-04 and 2024-03-15"`,
+      wholeFirst.pieces, ['2024-04 and ', '2024-', '03-15']);
+    eq(`date placement (${kind}): "2024-04-20 and " then bold "2024-" and bold "03-15" at month counts one split value`,
+      wholeFirst.splitValue, 1);
+    const splitOnly = datePlacementAfter(build, ['Due ', { tag: 'b', text: '2024-' }, '03-15'], 'month');
+    eq(`date placement (${kind}): "Due " then bold "2024-" and "03-15" at month stays as written and counts one split value`,
+      [splitOnly.pieces, splitOnly.splitValue], [['Due ', '2024-', '03-15'], 1]);
+  });
+})();
+
+(function datePlacement_leadingSpaces() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    eq(`date placement (${kind}): "   Jun 2020 - Dec 2021" in one piece at year reads "   2020 - 2021"`,
+      datePlacementAfter(build, '   Jun 2020 - Dec 2021', 'year').pieces, ['   2020 - 2021']);
+    eq(`date placement (${kind}): "  " then "Jun 2020 - " then bold "Dec 2021" at year reads "  ", "2020 - ", "2021"`,
+      datePlacementAfter(build, ['  ', 'Jun 2020 - ', { tag: 'b', text: 'Dec 2021' }], 'year').pieces,
+      ['  ', '2020 - ', '2021']);
+    // The second date starts two characters after the piece boundary in the
+    // trimmed text, so a check that left out the leading spaces would find it
+    // split.
+    const boundaryBefore = datePlacementAfter(build, ['  Jun 2020 - ', { tag: 'b', text: 'Dec 2021' }], 'year');
+    eq(`date placement (${kind}): "  Jun 2020 - " then bold "Dec 2021" at year reads "  2020 - ", "2021" and counts no split value`,
+      [boundaryBefore.pieces, boundaryBefore.splitValue], [['  2020 - ', '2021'], 0]);
+    // The second date ends two characters after the piece boundary, so a
+    // check that left out the leading spaces would find it in one piece.
+    const boundaryInside = datePlacementAfter(build, ['  Jun 2020 - Dec 20', { tag: 'b', text: '21' }], 'year');
+    eq(`date placement (${kind}): "  Jun 2020 - Dec 20" then bold "21" at year reads "  2020 - Dec 20", "21" and counts one split value`,
+      [boundaryInside.pieces, boundaryInside.splitValue], [['  2020 - Dec 20', '21'], 1]);
+    eq(`date placement (${kind}): "  2024-03-15" in one piece at month reads "  2024-03"`,
+      datePlacementAfter(build, '  2024-03-15', 'month').pieces, ['  2024-03']);
+  });
+})();
+
+(function datePlacement_twoWholeDatesInOneCell() {
+  const CASES = [
+    ['Jun 2020 - Dec 2021', 'year', '2020 - 2021'],
+    ['Jun 2020 - Dec 2021', 'quarter', 'Q2 2020 - Q4 2021'],
+    ['Jun 2020 - Dec 2021', 'decade', '2020 - 2020'],
+    ['Jun 2020 - Dec 2021', 'month', 'Jun 2020 - Dec 2021'],
+    ['2020-06-15 to 2021-12-31', 'month', '2020-06 to 2021-12'],
+    ['2020-06-15 to 2021-12-31', 'quarter', '2020 Q2 to 2021 Q4'],
+    ['from 7 Jul 1999 until 9 Sep 2001', 'century', 'from 1900 until 2000'],
+  ];
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    for (const [cell, granularity, expected] of CASES) {
+      eq(`date placement (${kind}): "${cell}" at ${granularity} reads "${expected}"`,
+        datePlacementAfter(build, cell, granularity).pieces, [expected]);
+    }
+  });
+})();
+
+(function datePlacement_aDateFollowedByAFootnoteLink() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(LF_ROWS('placeholder'));
+    rwSetChildren(t.cell(0, 0), [rwText('Jun 2020 '), rwEl('sup', {}, [rwEl('a', { href: '#n1' }, [rwText('[1]')])])]);
+    roundTableUnder(t.table, datePlacementOpts('year'));
+    eq(`date placement (${kind}): "Jun 2020 " then a superscript link "[1]" at year reads "2020 ", "[1]"`,
+      lfPieces(t, 0, 0), ['2020 ', '[1]']);
+  });
+})();
+
+(function datePlacement_aSplitDateThatTheGranularityLeavesAlone() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const after = datePlacementAfter(build, [{ tag: 'b', text: 'Mar ' }, { tag: 'b', text: '2096' }], 'month');
+    eq(`date placement (${kind}): bold "Mar " and bold "2096" at month stays as written and counts one split value`,
+      [after.pieces, after.splitValue], [['Mar ', '2096'], 1]);
+  });
+})();
+
+(function datePlacement_aSplitTime() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const split = datePlacementAfter(build, [{ tag: 'b', text: '10:' }, { tag: 'b', text: '47' }], 'year');
+    eq(`date placement (${kind}): bold "10:" and bold "47" at hour stays as written and counts one split value`,
+      [split.pieces, split.splitValue], [['10:', '47'], 1]);
+    const whole = datePlacementAfter(build, ['  ', { tag: 'b', text: '10:47' }], 'year');
+    eq(`date placement (${kind}): "  " then bold "10:47" at hour reads "  ", "11:00" and counts no split value`,
+      [whole.pieces, whole.splitValue], [['  ', '11:00'], 0]);
+  });
+})();
+
+// A split all-numeric date beside whole ones in the same column. Read with the
+// split date, the column holds a day above 12 in both positions.
+(function datePlacement_aSplitAllNumericDateInAColumnOfWholeOnes() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build([
+      ['3/4/2024', '2,468'],
+      ['3/14/2024', '3,579'],
+      [['13/4/', { tag: 'b', text: '2024' }], '4,321'],
+    ]);
+    const result = roundTableUnder(t.table, datePlacementOpts('month'));
+    eq(`date placement (${kind}): a column of "3/4/2024", "3/14/2024", and "13/4/" with bold "2024" at month reads "3/2024", "3/2024", "13/4/2024"`,
+      [t.text(0, 0), t.text(1, 0), lfPieces(t, 2, 0)], ['3/2024', '3/2024', ['13/4/', '2024']]);
+    eq(`date placement (${kind}): the same column counts one split value`, result.leftAsWritten.splitValue, 1);
+    const alone = build([
+      ['3/4/2024', '2,468'],
+      [['13/4/', { tag: 'b', text: '2024' }], '3,579'],
+    ]);
+    roundTableUnder(alone.table, datePlacementOpts('month'));
+    eq(`date placement (${kind}): a column of "3/4/2024" and "13/4/" with bold "2024" at month stays as written`,
+      [alone.text(0, 0), lfPieces(alone, 1, 0)], ['3/4/2024', ['13/4/', '2024']]);
+  });
+})();
+
+(function datePlacement_aSplitAllNumericDateBesideAWholeDateInTheSameCell() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const numeric = datePlacementAfter(build,
+      [{ tag: 'b', text: '3/4/' }, { tag: 'b', text: '2024' }, ' to 5/6/2024'], 'year');
+    eq(`date placement (${kind}): bold "3/4/" and bold "2024" then " to 5/6/2024" at year stays as written and counts one split value`,
+      [numeric.pieces, numeric.splitValue], [['3/4/', '2024', ' to 5/6/2024'], 1]);
+    const written = datePlacementAfter(build,
+      [{ tag: 'b', text: '3/4/' }, { tag: 'b', text: '2024' }, ' to June 5, 2024'], 'year');
+    eq(`date placement (${kind}): bold "3/4/" and bold "2024" then " to June 5, 2024" at year reads "3/4/", "2024", " to 2024" and counts one split value`,
+      [written.pieces, written.splitValue], [['3/4/', '2024', ' to 2024'], 1]);
+    const t = build([
+      [[{ tag: 'b', text: '3/4/' }, { tag: 'b', text: '2024' }, ' to 5/6/2024'], '2,468'],
+      ['3/14/2024', '3,579'],
+    ]);
+    roundTableUnder(t.table, datePlacementOpts('month'));
+    eq(`date placement (${kind}): bold "3/4/" and bold "2024" then " to 5/6/2024" above "3/14/2024" at month reads "3/4/", "2024", " to 5/2024" and "3/2024"`,
+      [lfPieces(t, 0, 0), t.text(1, 0)], [['3/4/', '2024', ' to 5/2024'], '3/2024']);
+  });
 })();

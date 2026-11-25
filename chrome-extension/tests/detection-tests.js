@@ -360,6 +360,24 @@
   });
 })();
 
+// The data test on both table kinds: a table whose only date sits in two text
+// pieces, beside the same table with the date in one piece.
+(function isDataTable_aTableWhoseOnlyDateIsSplit() {
+  const rowsWith = (dateCell) => [['Opened', dateCell], ['Owner', 'Tami']];
+  for (const kind of ['native', 'grid']) {
+    withRewritePage(() => {
+      eq(`data test (${kind}): rows of words and one date "2024-03-15" pass`,
+        isDataTable(rwBuildTable(kind, rowsWith('2024-03-15')).table), true);
+      eq(`data test (${kind}): rows of words and one date split as bold "2024-" and bold "03-15" fail`,
+        isDataTable(rwBuildTable(kind, rowsWith([{ tag: 'b', text: '2024-' }, { tag: 'b', text: '03-15' }])).table), false);
+      eq(`data test (${kind}): rows of words and one date split as "Mar " and bold "2096" fail`,
+        isDataTable(rwBuildTable(kind, rowsWith(['Mar ', { tag: 'b', text: '2096' }])).table), false);
+      eq(`data test (${kind}): rows of words and one time split as bold "10:" and bold "47" fail`,
+        isDataTable(rwBuildTable(kind, rowsWith([{ tag: 'b', text: '10:' }, { tag: 'b', text: '47' }])).table), false);
+    });
+  }
+})();
+
 // The numeric step spends the data test's budget of cell reads, walked row
 // by row. Rows of ten cells each: a number at the budget-th cell passes, and
 // the same grid with its only number one cell past the budget fails.

@@ -858,31 +858,25 @@ function isDateTimeLike(text) {
 }
 
 /**
- * Simplify every date in a cell's trimmed text to the granularity; the text
- * around the dates stays. The dates are the classification's dates for this
- * text, each with a known reading, in text order. Without them, findDates
- * reads the text, and a text holding an all-numeric or impossible date comes
- * back unchanged.
+ * The new text of one date with a known reading (see knownDate), simplified
+ * to the granularity. The date's bounds and its dayCut index text, so the
+ * month granularity keeps the date's own characters around the cut. A date
+ * the granularity leaves alone (no day at month, no month at quarter) comes
+ * back as written.
  */
-function roundDateText(text, granularity, dates) {
-  const list = dates || findDates(text);
-  if (!list || list.some((d) => d.impossible || isAmbiguousDate(d))) return text;
-  let out = text;
-  // Right to left, so each edit leaves the positions of the dates before it.
-  for (let i = list.length - 1; i >= 0; i--) {
-    const d = list[i];
-    if (granularity === 'month') {
-      if (d.dayCut) out = out.slice(0, d.dayCut.start) + out.slice(d.dayCut.end);
-    } else if (granularity === 'quarter') {
-      if (!d.month) continue;
-      const q = 'Q' + Math.ceil(d.month / 3);
-      out = out.slice(0, d.start) + (d.monthBeforeYear ? q + ' ' + d.year : d.year + ' ' + q) + out.slice(d.end);
-    } else {
-      const step = granularity === 'century' ? 100 : granularity === 'decade' ? 10 : 1;
-      out = out.slice(0, d.start) + String(Math.floor(d.year / step) * step) + out.slice(d.end);
-    }
+function roundDate(text, date, granularity) {
+  const written = text.slice(date.start, date.end);
+  if (granularity === 'month') {
+    if (!date.dayCut) return written;
+    return text.slice(date.start, date.dayCut.start) + text.slice(date.dayCut.end, date.end);
   }
-  return out;
+  if (granularity === 'quarter') {
+    if (!date.month) return written;
+    const q = 'Q' + Math.ceil(date.month / 3);
+    return date.monthBeforeYear ? q + ' ' + date.year : date.year + ' ' + q;
+  }
+  const step = granularity === 'century' ? 100 : granularity === 'decade' ? 10 : 1;
+  return String(Math.floor(date.year / step) * step);
 }
 
 const SECONDS_PER_MINUTE = 60;
@@ -1593,20 +1587,26 @@ function datasetMaxMagnitude(classifiedCells, passedMaxMag) {
 }
 
 // One cell's patches, positioned in the classified text: empty for a skip
-// cell or an unchanged value. A date or time cell takes one patch over its
-// trimmed text, so the text keeps its own whitespace. An extracted cell takes
+// cell or an unchanged value. A date cell takes one patch per changed date,
+// and a time cell one patch over its trimmed text, so the text keeps its own
+// whitespace; the date bounds index the trimmed text. An extracted cell takes
 // one patch per number whose written digits differ from the match, which
 // catches a number that is unchanged but whose display simplifies (e.g.
 // "35.0" to "35").
 function classifiedCellPatches(classifiedCell, maxMag, settings) {
   const { text, classification } = classifiedCell;
   const { offsetTop, offsetOther, numTop } = settings;
-  if (classification.mode === 'date' || classification.mode === 'time') {
-    const trimmed = text.trim();
-    const lead = text.length - text.trimStart().length;
-    const rounded = classification.mode === 'date'
-      ? roundDateText(trimmed, settings.dateGranularity, classification.value.dates)
-      : roundTimeText(trimmed, settings.timeGranularity);
+  const trimmed = text.trim();
+  const lead = text.length - text.trimStart().length;
+  if (classification.mode === 'date') {
+    return classification.value.dates.flatMap((date) => {
+      const numStr = trimmed.slice(date.start, date.end);
+      const newNum = roundDate(trimmed, date, settings.dateGranularity);
+      return newNum === numStr ? [] : [{ index: lead + date.start, numStr, newNum }];
+    });
+  }
+  if (classification.mode === 'time') {
+    const rounded = roundTimeText(trimmed, settings.timeGranularity);
     if (rounded === null || rounded === trimmed) return [];
     return [{ index: lead, numStr: trimmed, newNum: rounded }];
   }
@@ -1689,7 +1689,7 @@ const SHEETS_LADDER_OPTIONS = Object.freeze({
  * [MODE 1] single value: =ROUND_DYNAMIC(value, [offset])
  * [MODE 2] dataset: =ROUND_DYNAMIC(range, [offset_top], [offset_other], [num_top])
  * [INSTRUCTIONS] HTTPS://github.com/ArieFisher/dynamic-rounding
- * [VERSION] 0.5.20
+ * [VERSION] 0.5.21
  *
  * @param {number|Array} values The value or range of values to round.
  * @param {number} offset_top The OoM offset for the single value, or, the numbers in the largest order of magnitude of a dataset (default -0.5).

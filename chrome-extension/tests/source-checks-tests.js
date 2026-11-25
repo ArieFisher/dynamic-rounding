@@ -1235,7 +1235,7 @@
     'knownDate', 'findDates', 'isAmbiguousDate',
     'isDateLike', 'isTimeLike', 'getClockTimeMaskedRanges', 'parseISODateTime', 'isDateTimeLike',
     'isClockTimeInRange', 'readTimeCell',
-    'roundDateText', 'roundClockTime', 'roundTimeText', 'getEraYearMaskedRanges',
+    'roundDate', 'roundClockTime', 'roundTimeText', 'getEraYearMaskedRanges',
     // write-back.js
     'formatNumber',
     // identifiers.js
@@ -1574,7 +1574,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 // ---------------------------------------------------------------------------
 // Static purity scan.
 // The simplification engine in content.js (roundTable, the one
-// simplification pass — simplifyTableCells, cellPatches — and
+// simplification pass — simplifyTableCells, writeTableCells — and
 // reapplyRounding) must never call chrome.* directly — it returns result
 // values instead, and the controller sends the messages. Mirrors the
 // detectionFunctions_sourceScan_noPageWrites pattern above.
@@ -1585,7 +1585,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
     eq('engine purity scan: source file content.js present in manifest', false, true);
     return;
   }
-  const ENGINE_FNS = ['roundTable', 'simplifyTableCells', 'cellPatches', 'reapplyRounding'];
+  const ENGINE_FNS = ['roundTable', 'simplifyTableCells', 'writeTableCells', 'reapplyRounding'];
 
   // Extract a top-level `function name(` body by brace-matching from the
   // opening brace to its balanced close (same approach as the detection

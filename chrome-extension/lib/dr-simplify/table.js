@@ -60,20 +60,26 @@ function datasetMaxMagnitude(classifiedCells, passedMaxMag) {
 }
 
 // One cell's patches, positioned in the classified text: empty for a skip
-// cell or an unchanged value. A date or time cell takes one patch over its
-// trimmed text, so the text keeps its own whitespace. An extracted cell takes
+// cell or an unchanged value. A date cell takes one patch per changed date,
+// and a time cell one patch over its trimmed text, so the text keeps its own
+// whitespace; the date bounds index the trimmed text. An extracted cell takes
 // one patch per number whose written digits differ from the match, which
 // catches a number that is unchanged but whose display simplifies (e.g.
 // "35.0" to "35").
 function classifiedCellPatches(classifiedCell, maxMag, settings) {
   const { text, classification } = classifiedCell;
   const { offsetTop, offsetOther, numTop } = settings;
-  if (classification.mode === 'date' || classification.mode === 'time') {
-    const trimmed = text.trim();
-    const lead = text.length - text.trimStart().length;
-    const rounded = classification.mode === 'date'
-      ? roundDateText(trimmed, settings.dateGranularity, classification.value.dates)
-      : roundTimeText(trimmed, settings.timeGranularity);
+  const trimmed = text.trim();
+  const lead = text.length - text.trimStart().length;
+  if (classification.mode === 'date') {
+    return classification.value.dates.flatMap((date) => {
+      const numStr = trimmed.slice(date.start, date.end);
+      const newNum = roundDate(trimmed, date, settings.dateGranularity);
+      return newNum === numStr ? [] : [{ index: lead + date.start, numStr, newNum }];
+    });
+  }
+  if (classification.mode === 'time') {
+    const rounded = roundTimeText(trimmed, settings.timeGranularity);
     if (rounded === null || rounded === trimmed) return [];
     return [{ index: lead, numStr: trimmed, newNum: rounded }];
   }
