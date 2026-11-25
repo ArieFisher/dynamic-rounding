@@ -90,6 +90,13 @@ module.exports = function runSheetsLadder(h) {
         kinds.number.ROUND_DYNAMIC([['$1,011', 'about 1,234 users', '(1,234)']]),
         [[1000, 'about 1,000 users', -1000]]);
 
+    // A number cell and a text cell holding the same one number round to the
+    // same value: a number under 'number', and the number's text under 'text'.
+    testArrayExact('[number] dataset mode: the number 1234 and the text "1,234" in one range both return 1000',
+        kinds.number.ROUND_DYNAMIC([[1234, '1,234']]), [[1000, 1000]]);
+    testArrayExact('[text] dataset mode: the number 1234 and the text "1,234" in one range return 1000 and "1,000"',
+        kinds.text.ROUND_DYNAMIC([[1234, '1,234']]), [[1000, '1,000']]);
+
     // --- values that are not text -----------------------------
     // A plain number rounds and returns a number. A date object, a
     // boolean, and an empty cell return unchanged.

@@ -492,15 +492,15 @@ const SEAT_ROWS = [
       heldResult[0][0], 'Jun 2020 - 03/04/2020');
 
     // --- Ambiguous column ---
-    // Column where ALL cells have both components <= 12. Cannot auto-detect → mode:'skip'.
-    // Cell text must be unchanged.
+    // Column where ALL cells have both components <= 12, so no reading of day
+    // and month holds for the column.
     const ambigResult = runDateTable([
       [{ tag: 'td', text: '03-04-2022' }],
       [{ tag: 'td', text: '05-06-2023' }],
     ], 'year');
-    eq('ambiguous column: 03-04-2022 left unchanged (mode:skip)',
+    eq('ambiguous column: 03-04-2022 left unchanged',
       ambigResult[0][0], '03-04-2022');
-    eq('ambiguous column: 05-06-2023 left unchanged (mode:skip)',
+    eq('ambiguous column: 05-06-2023 left unchanged',
       ambigResult[1][0], '05-06-2023');
   });
 })();
@@ -765,7 +765,8 @@ const SEAT_ROWS = [
   }
   eq('lens preview of 27M, 4,080, and 312 under a max magnitude of 3: the max magnitude is read once', passed.length, 1);
   eq('lens preview of 27M, 4,080, and 312 under a max magnitude of 3: the max magnitude reads 27M, 4,080, and 312',
-    (passed[0] || []).filter((classifiedCell) => classifiedCell.classification.mode === 'extracted').flatMap((classifiedCell) => classifiedCell.classification.value.matches.map((m) => m.num)),
+    (passed[0] || []).flatMap((classifiedCell) => classifiedCell.classification.stretches
+      .filter((stretch) => stretch.kind === 'number').map((stretch) => stretch.num)),
     [27000000, 4080, 312]);
   eq('lens preview of 27M, 4,080, and 312 under a max magnitude of 3: maxMag is 3', result.maxMag, 3);
   eq('lens preview of 27M, 4,080, and 312 under a max magnitude of 3: the top band holds 27M and 4,080', result.samples.top.map((row) => row.num),
@@ -2677,15 +2678,14 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 })();
 
 // ---------------------------------------------------------------------------
-// mode:'extracted' skip on grids — mixed-text cell is left unrounded;
-// pure-numeric cell IS rounded. Known limitation: grids skip extracted cells
-// (innerHTML incompatible with nodeValue-only write model).
+// A grid under the defaults: the first row and the first column stay as
+// written, and a number in the second column rounds.
 // ---------------------------------------------------------------------------
-(function e2e_gr4_extractedModeSkippedOnGrid() {
+(function e2e_gr4_firstColumnHeldOnGrid() {
   // Two rows so simplifyFirstRow:false (default) does not exclude everything.
-  // Row 0: skipped (simplifyFirstRow:false).
-  // Row 1: mixed-text cell → extracted mode → skipped on grid;
-  //        pure-numeric cell → pure mode → rounded.
+  // Row 0: excluded (simplifyFirstRow:false).
+  // Row 1: "abc 1234567 def" sits in the first column (simplifyFirstColumn:false);
+  //        "9876543" sits in the second column and rounds.
   const grid = makeE2EGridWrapper([
     ['placeholder', '0'],             // row 0: excluded by simplifyFirstRow:false
     ['abc 1234567 def', '9876543'],   // row 1: exercised
@@ -2702,8 +2702,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   const opts = Object.assign({}, DR_DEFAULTS);
   roundTable(grid.wrapperEl, opts);
 
-  // Mixed cell must be UNROUNDED (extracted path skipped on virtualized grid).
-  eq('mixed-text cell NOT rounded on grid (extracted mode skipped)',
+  eq('grid: "abc 1234567 def" in the first column is not rounded',
     mixedCell.classList.contains('dr-ext-rounded'), false);
 
   eq('mixed-text cell text node unchanged',
@@ -4147,8 +4146,8 @@ function everyRowRead(kind, largeIn) {
 
 (function mergeLadderParity_datesAndTimesStillExcludedFromPreview() {
   // Deliberate, UNCHANGED scope restriction (not a divergence fix): the
-  // lens preview is about numeric magnitude/offset, so mode:'date' and
-  // mode:'time' classifications from the ladder are excluded from the sample pool
+  // lens preview is about numeric magnitude/offset, so date and
+  // time stretches from the ladder are excluded from the sample pool
   // even though the ladder classifies them and the engine would simplify
   // them.
   function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }

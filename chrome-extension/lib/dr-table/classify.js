@@ -83,7 +83,7 @@ function classifyTableCell(cellObj, rowIndex, opts, ranges) {
     ({ cellObj, text, classification, layout, columnIndex: cellObj.columnIndex });
   // A null layout means the cell's piece count no longer matches its record
   // (see getPieceLayout in cells.js).
-  if (!layout) return classifiedCell({ mode: 'skip', reason: 'pieces-changed' });
+  if (!layout) return classifiedCell({ stretches: [] });
   const superscriptRanges = getSuperscriptRanges(cell, { layout });
   const markupRanges = getMarkupRanges(cell, layout);
   const hasSuperscript = superscriptRanges.length > 0 || !!(cell.querySelector && cell.querySelector('sup'));
@@ -100,5 +100,5 @@ function classifyTableCell(cellObj, rowIndex, opts, ranges) {
     superscriptRanges,
     digitsSpanPieces,
   }, opts);
-  return classifiedCell(placeClassification(classified, layout, text));
+  return classifiedCell(placeClassification(classified, layout));
 }

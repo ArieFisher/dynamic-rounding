@@ -593,16 +593,14 @@ function classifyPreviewCells(table, opts) {
 // The lens preview's sample pool: each number the table rounds in its
 // dataset, with its cell's trimmed text, so a cell appears here only if the
 // table rounds it. A zero never counts, because it has no order of
-// magnitude. Extracted results alone count: the lens preview is about orders
+// magnitude. Number stretches alone count: the lens preview is about orders
 // of magnitude and offsets, so dates and times stay out even though the
 // ladder classifies them.
 function numericPreviewCells(classifiedCells) {
   const out = [];
   for (const { text, classification } of classifiedCells) {
-    if (classification.mode === 'extracted') {
-      for (const { num } of classification.value.matches) {
-        if (num !== 0 && isFinite(num)) out.push({ text: text.trim(), num });
-      }
+    for (const { kind, num } of classification.stretches) {
+      if (kind === 'number' && num !== 0 && isFinite(num)) out.push({ text: text.trim(), num });
     }
   }
   return out;

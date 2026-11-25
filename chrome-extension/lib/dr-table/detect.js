@@ -261,7 +261,7 @@ function sitsOffscreen(el, styleProbe) {
  * @returns {boolean}
  */
 function holdsRoundableCell(rows) {
-  const pending = [];
+  const ambiguousCells = [];
   let cellsRead = 0;
   walk:
   for (let i = 0; i < rows.length; i++) {
@@ -269,11 +269,11 @@ function holdsRoundableCell(rows) {
       if (cellsRead >= DR_DETECTION_SETTINGS.dataTestCellBudget) break walk;
       cellsRead++;
       const { classification, columnIndex } = classifyTableCell(cellObj, i, DETECTION_OPTIONS, null);
-      if (isAmbiguousDateClassification(classification)) pending.push({ classification, columnIndex });
-      else if (classification.mode !== 'skip') return true;
+      if (isAmbiguousDateClassification(classification)) ambiguousCells.push({ classification, columnIndex });
+      else if (classification.stretches.length > 0) return true;
     }
   }
-  return resolveAmbiguousDates(pending).some((classifiedCell) => classifiedCell.classification.mode !== 'skip');
+  return resolveAmbiguousDates(ambiguousCells).some((classifiedCell) => classifiedCell.classification.stretches.length > 0);
 }
 
 /**

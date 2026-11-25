@@ -50,39 +50,18 @@ function flatPatches(patches, layout) {
   });
 }
 
-const splitSkip = () => ({ mode: 'skip', reason: 'split', split: true });
-
-function placeDates(classification, layout, lead) {
-  const { dates } = classification.value;
-  const inOnePiece = dates.filter((d) => layoutPieceHolding(layout, lead + d.start, d.end - d.start));
-  if (inOnePiece.length === dates.length) return classification;
-  if (inOnePiece.length === 0) return splitSkip();
-  const placed = { mode: 'date', reason: classification.reason, value: { dates: inOnePiece }, split: true };
-  return inOnePiece.some(isAmbiguousDate) ? Object.assign({}, placed, { pending: 'ambiguous-date' }) : placed;
-}
-
 /**
- * The patch writer edits one text piece per patch, so a number or a date
- * stands only when its characters sit in one text piece. A split number or a
- * split date leaves the classification and the cell's other values change; a
- * time cell holds one time, so the step drops the cell when its time is a
- * split value. The pass reads split: true to count the cell once under split
- * value, however many it holds. Dates index the cell's trimmed text, and text pieces the classified
- * text, so the date check adds the text's leading whitespace. This step runs
- * before the column post-pass, so a split all-numeric date takes no part in
- * its column's format hint.
+ * The patch writer edits one text piece per patch, so a stretch stands only
+ * when its characters sit in one text piece. A split stretch leaves the
+ * classification and the cell's other stretches change. The pass reads
+ * split: true to count the cell once under split value, however many split
+ * stretches it holds. This step runs before the column post-pass, so a split
+ * all-numeric date takes no part in its column's format hint.
  * @returns {object} the placed classification
  */
-function placeClassification(classification, layout, text) {
-  const { mode } = classification;
-  if (mode === 'date' || mode === 'time') {
-    const lead = text.length - text.trimStart().length;
-    if (mode === 'date') return placeDates(classification, layout, lead);
-    return layoutPieceHolding(layout, lead, text.trim().length) ? classification : splitSkip();
-  }
-  if (mode !== 'extracted') return classification;
-  const inOnePiece = classification.value.matches.filter((m) => layoutPieceHolding(layout, m.index, m.numStr.length));
-  if (inOnePiece.length === classification.value.matches.length) return classification;
-  if (inOnePiece.length === 0) return splitSkip();
-  return Object.assign({}, classification, { value: { matches: inOnePiece }, split: true });
+function placeClassification(classification, layout) {
+  const { stretches } = classification;
+  const inOnePiece = stretches.filter((s) => layoutPieceHolding(layout, s.start, s.end - s.start));
+  if (inOnePiece.length === stretches.length) return classification;
+  return Object.assign({}, classification, { stretches: inOnePiece, split: true });
 }

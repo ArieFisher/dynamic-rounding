@@ -97,7 +97,7 @@ function roundValues(dataset, settings) {
   const textCells = [];
   dataset.forEach((row, r) => row.forEach((value, c) => {
     if (typeof value === "number" && isFinite(value)) {
-      numberCells.push({ r, c, num: value, classification: { mode: "extracted", value: { matches: [{ num: value }] } } });
+      numberCells.push({ r, c, num: value, classification: { stretches: [{ kind: "number", num: value }] } });
     } else if (typeof value === "string" && value !== "") {
       const classification = classifyCell({ text: value, rowIndex: r, columnIndex: c, ranges: null },
         SHEETS_LADDER_OPTIONS);
@@ -121,7 +121,7 @@ function roundValues(dataset, settings) {
 
 // A text cell's result under the result kind (see RESULT_KIND).
 function textResult(classifiedCell, patches, roundNumber) {
-  if (RESULT_KIND === "number" && classifiedCell.classification.mode === "extracted") {
+  if (RESULT_KIND === "number" && classifiedCell.classification.stretches.some((stretch) => stretch.kind === "number")) {
     const bracketed = matchBracketedNumber(classifiedCell.text);
     const num = bracketed ? bracketed.num : toNumber(classifiedCell.text);
     if (num !== null) return roundNumber(num);

@@ -2,55 +2,58 @@
 
 (function classifyCell_outOfRange() {
   const ranges = [{ colMin: 5, colMax: 10, rowMin: 0, rowMax: 100 }];
-  eq('classifyCell: out-of-range cell is skipped',
+  eq('classifyCell: "100" outside the range expression holds no stretch',
     classifyCell({ text: '100', rowIndex: 1, columnIndex: 0, ranges }, LADDER_OPTS),
-    { mode: 'skip', reason: 'out-of-range' });
+    { stretches: [] });
+  eq('classifyCell: "100" inside the range expression holds one number stretch',
+    classifyCell({ text: '100', rowIndex: 1, columnIndex: 6, ranges }, LADDER_OPTS),
+    { stretches: [expectedNumberStretch(0, '100', 100)] });
 })();
 
 (function classifyCell_firstRow() {
-  eq('classifyCell: first-row cell is skipped when simplifyFirstRow is false',
+  eq('classifyCell: "100" in the first row holds no stretch when simplifyFirstRow is false',
     classifyCell({ text: '100', rowIndex: 0, columnIndex: 1, ranges: null }, LADDER_OPTS),
-    { mode: 'skip', reason: 'first-row' });
-  eq('classifyCell: first-row cell simplifies when simplifyFirstRow is true',
+    { stretches: [] });
+  eq('classifyCell: "100" in the first row holds one number stretch when simplifyFirstRow is true',
     classifyCell({ text: '100', rowIndex: 0, columnIndex: 1, ranges: null },
       Object.assign({}, LADDER_OPTS, { simplifyFirstRow: true })),
-    { mode: 'extracted', reason: 'simplify', value: { matches: [{ numStr: '100', num: 100, index: 0 }] } });
+    { stretches: [expectedNumberStretch(0, '100', 100)] });
 })();
 
 (function classifyCell_firstColumn() {
-  eq('classifyCell: first-column cell is skipped when simplifyFirstColumn is false',
+  eq('classifyCell: "100" in the first column holds no stretch when simplifyFirstColumn is false',
     classifyCell({ text: '100', rowIndex: 1, columnIndex: 0, ranges: null }, LADDER_OPTS),
-    { mode: 'skip', reason: 'first-column' });
-  eq('classifyCell: first-column cell simplifies when simplifyFirstColumn is true',
+    { stretches: [] });
+  eq('classifyCell: "100" in the first column holds one number stretch when simplifyFirstColumn is true',
     classifyCell({ text: '100', rowIndex: 1, columnIndex: 0, ranges: null },
       Object.assign({}, LADDER_OPTS, { simplifyFirstColumn: true })),
-    { mode: 'extracted', reason: 'simplify', value: { matches: [{ numStr: '100', num: 100, index: 0 }] } });
+    { stretches: [expectedNumberStretch(0, '100', 100)] });
 })();
 
 (function classifyCell_percent() {
-  eq('classifyCell: percent cell simplifies when simplifyMixedPercent is true',
+  eq('classifyCell: "50%" holds one number stretch over "50" when simplifyMixedPercent is true',
     classifyCell({ text: '50%', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-    { mode: 'extracted', reason: 'simplify', value: { matches: [{ numStr: '50', num: 50, index: 0 }] } });
-  eq('classifyCell: percent cell is skipped when simplifyMixedPercent is false',
+    { stretches: [expectedNumberStretch(0, '50', 50)] });
+  eq('classifyCell: "50%" holds no stretch when simplifyMixedPercent is false',
     classifyCell({ text: '50%', rowIndex: 1, columnIndex: 1, ranges: null },
       Object.assign({}, LADDER_OPTS, { simplifyMixedPercent: false })),
-    { mode: 'skip', reason: 'percent' });
+    { stretches: [] });
 })();
 
 (function classifyCell_currency() {
-  eq('classifyCell: currency cell simplifies when simplifyMixedCurrency is true',
+  eq('classifyCell: "$100" holds one number stretch over "100" when simplifyMixedCurrency is true',
     classifyCell({ text: '$100', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-    { mode: 'extracted', reason: 'simplify', value: { matches: [{ numStr: '100', num: 100, index: 1 }] } });
-  eq('classifyCell: currency cell is skipped when simplifyMixedCurrency is false',
+    { stretches: [expectedNumberStretch(1, '100', 100)] });
+  eq('classifyCell: "$100" holds no stretch when simplifyMixedCurrency is false',
     classifyCell({ text: '$100', rowIndex: 1, columnIndex: 1, ranges: null },
       Object.assign({}, LADDER_OPTS, { simplifyMixedCurrency: false })),
-    { mode: 'skip', reason: 'currency' });
+    { stretches: [] });
 })();
 
 (function classifyCell_unknownExclusionFailsClosed() {
   // getExclusionReason today only ever returns 'first-row' | 'first-column' |
   // 'percent' | 'currency' | null, but classifyCell's ladder must fail
-  // closed (skip) on any other non-null value a future exclusion rule
+  // closed (no stretch) on any other non-null value a future exclusion rule
   // returns, instead of silently falling through and simplifying the cell.
   // classifyCell calls getExclusionReason as a bare same-scope identifier
   // (not through an overridable namespace), so the override has to live in
@@ -61,188 +64,216 @@
     'function getExclusionReason() { return "someFutureReason"; }\n' +
     ladderCode + '\nreturn classifyCell;';
   const isolatedClassifyCell = isolatedFunction(isolatedSrc)();
-  eq('classifyCell: unrecognized non-null exclusion reason still skips the cell',
+  eq('classifyCell: "100" under an unrecognized exclusion holds no stretch',
     isolatedClassifyCell({ text: '100', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-    { mode: 'skip', reason: 'someFutureReason' });
+    { stretches: [] });
 })();
 
 (function classifyCell_quoted() {
-  eq('classifyCell: whole-cell-quoted cell is skipped regardless of content',
+  eq('classifyCell: "\\"12345\\"" holds no stretch',
     classifyCell({ text: '"12345"', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-    { mode: 'skip', reason: 'quoted' });
+    { stretches: [] });
+  eq('classifyCell: "12345" with no quotes holds one number stretch',
+    classifyCell({ text: '12345', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
+    { stretches: [expectedNumberStretch(0, '12345', 12345)] });
 })();
 
 (function classifyCell_dates() {
-  eq('classifyCell: date-like cell is skipped when simplifyDates is false',
+  eq('classifyCell: "2020-01-01" holds no stretch when simplifyDates is false',
     classifyCell({ text: '2020-01-01', rowIndex: 1, columnIndex: 1, ranges: null },
       Object.assign({}, LADDER_OPTS, { simplifyDates: false })),
-    { mode: 'skip', reason: 'dates-disabled' });
-  eq('classifyCell: unambiguous date-like cell resolves when simplifyDates is true',
+    { stretches: [] });
+  eq('classifyCell: "2020-01-01" holds one date stretch with its month and day when simplifyDates is true',
     classifyCell({ text: '2020-01-01', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-    { mode: 'date', reason: 'simplify', value: { dates: [{
-      year: 2020, month: 1, monthBeforeYear: false, start: 0, end: 10, dayCut: { start: 7, end: 10 } }] } });
-  eq('classifyCell: ambiguous numeric date returns a pending classification',
+    { stretches: [{
+      kind: 'date', year: 2020, month: 1, monthBeforeYear: false, start: 0, end: 10, dayCut: { start: 7, end: 10 } }] });
+  eq('classifyCell: "03/04/2020" holds one ambiguous date stretch with both numbers unread',
     classifyCell({ text: '03/04/2020', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-    { mode: 'date', reason: 'simplify', pending: 'ambiguous-date', value: { dates: [{
-      year: 2020, n1: 3, n2: 4, start: 0, end: 10, n1Cut: { start: 0, end: 3 }, n2Cut: { start: 3, end: 6 } }] } });
-  eq('classifyCell: a date that cannot exist holds the cell',
+    { stretches: [{
+      kind: 'date', year: 2020, n1: 3, n2: 4, start: 0, end: 10, n1Cut: { start: 0, end: 3 }, n2Cut: { start: 3, end: 6 } }] });
+  eq('classifyCell: "2020-13-45", a date that cannot exist, holds no stretch',
     classifyCell({ text: '2020-13-45', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-    { mode: 'skip', reason: 'impossible-date' });
+    { stretches: [] });
 })();
 
 (function classifyCell_times() {
-  eq('classifyCell: time-like cell is skipped when simplifyTimes is false',
+  eq('classifyCell: "3:45 PM" holds no stretch when simplifyTimes is false',
     classifyCell({ text: '3:45 PM', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-    { mode: 'skip', reason: 'times-disabled' });
-  eq('classifyCell: time-like cell simplifies when simplifyTimes is true',
+    { stretches: [] });
+  eq('classifyCell: "3:45 PM" holds one time stretch over the whole text when simplifyTimes is true',
     classifyCell({ text: '3:45 PM', rowIndex: 1, columnIndex: 1, ranges: null },
       Object.assign({}, LADDER_OPTS, { simplifyTimes: true })),
-    { mode: 'time', reason: 'simplify' });
+    { stretches: [{
+      kind: 'time', hourText: '3', hour: 3, minute: 45, second: 0, meridiem: ' PM', date: null, start: 0, end: 7 }] });
   // A cell holding an impossible time stays as written, like a cell holding an
   // impossible date, so a timestamp's date digits never round as plain numbers.
   const timesOn = Object.assign({}, LADDER_OPTS, { simplifyTimes: true });
-  eq('classifyCell: a cell holding an impossible time stays as written',
+  eq('classifyCell: a cell holding an impossible time holds no stretch',
     ['24:00', '10:00:75', '0:30 AM', '2025-01-01T10:00:60', '2025-11-26T24:00'].map((text) =>
-      classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, timesOn).reason),
-    ['impossible-time', 'impossible-time', 'impossible-time', 'impossible-time', 'impossible-time']);
-  eq('classifyCell: a time that cannot exist follows the times switch first',
+      classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, timesOn)),
+    [{ stretches: [] }, { stretches: [] }, { stretches: [] }, { stretches: [] }, { stretches: [] }]);
+  eq('classifyCell: "2025-11-26T24:00" holds no stretch when simplifyTimes is false',
     classifyCell({ text: '2025-11-26T24:00', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-    { mode: 'skip', reason: 'times-disabled' });
+    { stretches: [] });
 })();
 
 (function classifyCell_markup() {
   const whole = [{ start: 0, end: 2 }];
-  eq('classifyCell: a cell whose number is a markup range is skipped',
+  eq('classifyCell: "42" whose number is a markup range holds no stretch',
     classifyCell({ text: '42', rowIndex: 1, columnIndex: 1, ranges: null, markupRanges: whole }, LADDER_OPTS),
-    { mode: 'skip', reason: 'markup' });
-  eq('classifyCell: a number inside a markup range keeps its digits while the others round',
-    classifyCell({ text: 'see 9,876,543 and 4,236,000', rowIndex: 1, columnIndex: 1, ranges: null,
-      markupRanges: [{ start: 4, end: 13 }] }, LADDER_OPTS).value.matches.map((m) => m.numStr),
+    { stretches: [] });
+  eq('classifyCell: "42" with no markup range holds one number stretch',
+    classifyCell({ text: '42', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
+    { stretches: [expectedNumberStretch(0, '42', 42)] });
+  const twoNumbers = 'see 9,876,543 and 4,236,000';
+  eq('classifyCell: "see 9,876,543 and 4,236,000" with the first number in a markup range holds a stretch over the second alone',
+    stretchTexts(twoNumbers, classifyCell({ text: twoNumbers, rowIndex: 1, columnIndex: 1, ranges: null,
+      markupRanges: [{ start: 4, end: 13 }] }, LADDER_OPTS)),
     ['4,236,000']);
-  eq('classifyCell: a cell whose every number sits in markup ranges is skipped',
+  eq('classifyCell: a cell whose every number sits in markup ranges holds no stretch',
     classifyCell({ text: '[1,234,567](https://x.test)', rowIndex: 1, columnIndex: 1, ranges: null,
       markupRanges: [{ start: 0, end: 27 }] }, LADDER_OPTS),
-    { mode: 'skip', reason: 'no-number' });
+    { stretches: [] });
   const dateOpts = Object.assign({}, LADDER_OPTS, { simplifyDates: true, simplifyTimes: true });
-  eq('classifyCell: a date inside a markup range is no date',
+  eq('classifyCell: "2024-01-15" inside a markup range holds no stretch',
     classifyCell({ text: '2024-01-15', rowIndex: 1, columnIndex: 1, ranges: null,
-      markupRanges: [{ start: 0, end: 10 }] }, dateOpts).mode, 'skip');
-  eq('classifyCell: a time inside a markup range is no time',
+      markupRanges: [{ start: 0, end: 10 }] }, dateOpts), { stretches: [] });
+  eq('classifyCell: " 14:30 " with the time inside a markup range holds no stretch',
     classifyCell({ text: ' 14:30 ', rowIndex: 1, columnIndex: 1, ranges: null,
-      markupRanges: [{ start: 1, end: 6 }] }, dateOpts).mode, 'skip');
-  eq('classifyCell: a date outside the markup ranges keeps its trimmed position',
+      markupRanges: [{ start: 1, end: 6 }] }, dateOpts), { stretches: [] });
+  eq('classifyCell: " x 2023-01-01 then 2024-03-15" with the first date in a markup range holds one date stretch at 19 to 29',
     classifyCell({ text: ' x 2023-01-01 then 2024-03-15', rowIndex: 1, columnIndex: 1, ranges: null,
-      markupRanges: [{ start: 3, end: 13 }] }, dateOpts).value.dates.map((d) => [d.start, d.end]),
-    [[18, 28]]);
-  eq('classifyCell: a date partly inside a markup range stays as written whole',
+      markupRanges: [{ start: 3, end: 13 }] }, dateOpts).stretches.map((s) => [s.kind, s.start, s.end]),
+    [['date', 19, 29]]);
+  eq('classifyCell: "Jan 15, 2024" with "Jan 15" in a markup range holds no stretch',
     classifyCell({ text: 'Jan 15, 2024', rowIndex: 1, columnIndex: 1, ranges: null,
-      markupRanges: [{ start: 0, end: 6 }] }, dateOpts), { mode: 'skip', reason: 'no-number' });
-  eq('classifyCell: a bare year beside a date inside a markup range still reads as a date',
+      markupRanges: [{ start: 0, end: 6 }] }, dateOpts), { stretches: [] });
+  eq('classifyCell: "2023-01-01 2024" with the first date in a markup range holds one date stretch over the year 2024',
     classifyCell({ text: '2023-01-01 2024', rowIndex: 1, columnIndex: 1, ranges: null,
-      markupRanges: [{ start: 0, end: 10 }] }, dateOpts).value.dates.map((d) => [d.year, d.start]), [[2024, 11]]);
-  eq('classifyCell: a superscript cell inside a markup range keeps its digits',
+      markupRanges: [{ start: 0, end: 10 }] }, dateOpts).stretches.map((s) => [s.kind, s.year, s.start]),
+    [['date', 2024, 11]]);
+  eq('classifyCell: a superscript cell inside a markup range holds no stretch',
     classifyCell({ text: '1012', rowIndex: 1, columnIndex: 1, ranges: null, hasSuperscript: true,
       superscriptRanges: [{ start: 2, end: 4 }], markupRanges: [{ start: 0, end: 4 }] }, LADDER_OPTS),
-    { mode: 'skip', reason: 'superscript' });
+    { stretches: [] });
 })();
 
 (function classifyCell_superscript() {
   // "10<sup>12</sup>" flattens to "1012"; the sole match spans the whole
   // string and overlaps the superscript mask, so nothing survives.
-  eq('classifyCell: whole-cell exponent with no surviving match after masking is skipped',
+  eq('classifyCell: "1012" with "12" in a superscript holds no stretch',
     classifyCell({
       text: '1012', rowIndex: 1, columnIndex: 1, ranges: null,
       hasSuperscript: true, superscriptRanges: [{ start: 2, end: 4 }],
     }, LADDER_OPTS),
-    { mode: 'skip', reason: 'superscript' });
+    { stretches: [] });
 
   // "20 <sup>15</sup>" flattens to "20 1015": the standalone "20" survives
   // masking even though the sup-adjacent "1015" match does not. "20 1015" is
-  // not one number, since its spaced groups are outside the group shape, so
-  // the cell takes the words path, not the superscript path.
-  eq('classifyCell: a superscript-flagged cell keeps non-overlapping matches',
+  // not one number, since its spaced groups are outside the group shape.
+  eq('classifyCell: "20 1015" with "15" in a superscript holds one number stretch over "20"',
     classifyCell({
       text: '20 1015', rowIndex: 1, columnIndex: 1, ranges: null,
       hasSuperscript: true, superscriptRanges: [{ start: 5, end: 7 }],
     }, LADDER_OPTS),
-    { mode: 'extracted', reason: 'simplify', value: { matches: [{ numStr: '20', num: 20, index: 0 }] } });
+    { stretches: [expectedNumberStretch(0, '20', 20)] });
 
   // "5 %<sup>1</sup>" flattens to "5 %1", which the number reader reads as
-  // one number, so the cell takes the superscript path; the "5" survives the
-  // mask over the footnote marker.
-  eq('classifyCell: a cell that reads as a number with a <sup> rounds its surviving match on the superscript path',
+  // one number; the "5" survives the mask over the footnote marker.
+  eq('classifyCell: "5 %1" with "1" in a superscript holds one number stretch over "5"',
     classifyCell({
       text: '5 %1', rowIndex: 1, columnIndex: 1, ranges: null,
       hasSuperscript: true, superscriptRanges: [{ start: 3, end: 4 }],
     }, LADDER_OPTS),
-    { mode: 'extracted', reason: 'superscript', value: { matches: [{ numStr: '5', num: 5, index: 0 }] } });
+    { stretches: [expectedNumberStretch(0, '5', 5)] });
 })();
 
 (function classifyCell_mixedText() {
-  eq('classifyCell: mixed text with a numeric match simplifies',
-    classifyCell({ text: 'Revenue 500 units', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS).mode,
-    'extracted');
-  eq('classifyCell: mixed text drops era-marked years from extracted matches',
+  eq('classifyCell: "Revenue 500 units" holds one number stretch over "500"',
+    classifyCell({ text: 'Revenue 500 units', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
+    { stretches: [expectedNumberStretch(8, '500', 500)] });
+  eq('classifyCell: "Kalki 2898 AD and 500 more" holds a number stretch for 500 alone',
     classifyCell({ text: 'Kalki 2898 AD and 500 more', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS)
-      .value.matches.map((m) => m.num),
+      .stretches.map((s) => s.num),
     [500]);
-  eq('classifyCell: mixed text drops numbers inside a quoted span',
-    classifyCell({ text: 'Product "42" ships in 10 days', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS)
-      .value.matches.map((m) => m.numStr),
+  const quoted = 'Product "42" ships in 10 days';
+  eq('classifyCell: "Product \\"42\\" ships in 10 days" holds a number stretch over "10" alone',
+    stretchTexts(quoted, classifyCell({ text: quoted, rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS)),
     ['10']);
-  eq('classifyCell: mixed text with no numeric content is skipped',
+  eq('classifyCell: "hello world" holds no stretch',
     classifyCell({ text: 'hello world', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-    { mode: 'skip', reason: 'no-number' });
+    { stretches: [] });
 })();
 
 (function classifyCell_unitNumbers() {
   const currencyOff = Object.assign({}, LADDER_OPTS, { simplifyMixedCurrency: false });
   const at = (text, extra) => Object.assign({ text, rowIndex: 1, columnIndex: 1, ranges: null }, extra || {});
-  eq('classifyCell: a unit number simplifies',
+  eq('classifyCell: "4.91tn" holds one number stretch over "4.91"',
     classifyCell(at('4.91tn'), LADDER_OPTS),
-    { mode: 'extracted', reason: 'unit', value: { matches: [{ numStr: '4.91', num: 4.91, index: 0 }] } });
-  eq('classifyCell: a unit number with a currency code simplifies',
+    { stretches: [expectedNumberStretch(0, '4.91', 4.91)] });
+  eq('classifyCell: "CAD45.67" holds one number stretch over "45.67"',
     classifyCell(at('CAD45.67'), LADDER_OPTS),
-    { mode: 'extracted', reason: 'unit', value: { matches: [{ numStr: '45.67', num: 45.67, index: 3 }] } });
-  eq('classifyCell: a code before the number excludes the cell with the currency setting off',
-    classifyCell(at('CAD45.67'), currencyOff), { mode: 'skip', reason: 'currency' });
-  eq('classifyCell: a code after the number excludes the cell with the currency setting off',
-    classifyCell(at('45.67 USD'), currencyOff), { mode: 'skip', reason: 'currency' });
-  eq('classifyCell: a unit number inside a markup range is skipped',
-    classifyCell(at('7.5m', { markupRanges: [{ start: 0, end: 4 }] }), LADDER_OPTS), { mode: 'skip', reason: 'markup' });
-  eq('classifyCell: an identifier is not a unit number',
-    classifyCell(at('DT1234'), LADDER_OPTS), { mode: 'skip', reason: 'no-number' });
-  eq('classifyCell: a plain currency number holds its digits as one match',
-    classifyCell(at('$45.67'), LADDER_OPTS), { mode: 'extracted', reason: 'simplify', value: { matches: [{ numStr: '45.67', num: 45.67, index: 1 }] } });
+    { stretches: [expectedNumberStretch(3, '45.67', 45.67)] });
+  eq('classifyCell: "CAD45.67" holds no stretch with the currency setting off',
+    classifyCell(at('CAD45.67'), currencyOff), { stretches: [] });
+  eq('classifyCell: "45.67 USD" holds no stretch with the currency setting off',
+    classifyCell(at('45.67 USD'), currencyOff), { stretches: [] });
+  eq('classifyCell: "45.67 USD" holds one number stretch over "45.67" with the currency setting on',
+    classifyCell(at('45.67 USD'), LADDER_OPTS), { stretches: [expectedNumberStretch(0, '45.67', 45.67)] });
+  eq('classifyCell: "7.5m" inside a markup range holds no stretch',
+    classifyCell(at('7.5m', { markupRanges: [{ start: 0, end: 4 }] }), LADDER_OPTS), { stretches: [] });
+  eq('classifyCell: "7.5m" with no markup range holds one number stretch over "7.5"',
+    classifyCell(at('7.5m'), LADDER_OPTS), { stretches: [expectedNumberStretch(0, '7.5', 7.5)] });
+  eq('classifyCell: "DT1234" holds no stretch',
+    classifyCell(at('DT1234'), LADDER_OPTS), { stretches: [] });
+  eq('classifyCell: "$45.67" holds one number stretch over "45.67"',
+    classifyCell(at('$45.67'), LADDER_OPTS), { stretches: [expectedNumberStretch(1, '45.67', 45.67)] });
   // "4.91<sup>1</sup>tn" flattens to "4.911tn": the footnote digit must not
   // join the unit number.
-  eq('classifyCell: a cell with a <sup> is not a unit number',
+  eq('classifyCell: "4.911tn" with "1" in a superscript holds no stretch',
     classifyCell(at('4.911tn', { hasSuperscript: true, superscriptRanges: [{ start: 4, end: 5 }] }), LADDER_OPTS),
-    { mode: 'skip', reason: 'no-number' });
+    { stretches: [] });
 })();
 
-(function pickDateFormatHint_and_resolveAmbiguousDateClassification() {
+(function pickDateFormatHint_readsTheColumn() {
   eq('pickDateFormatHint: n1 > 12 only -> day-first', pickDateFormatHint([{ n1: 25, n2: 4 }]), 'day-first');
   eq('pickDateFormatHint: n2 > 12 only -> month-first', pickDateFormatHint([{ n1: 3, n2: 25 }]), 'month-first');
   eq('pickDateFormatHint: both > 12 across the column -> mixed',
     pickDateFormatHint([{ n1: 25, n2: 4 }, { n1: 3, n2: 25 }]), 'mixed');
   eq('pickDateFormatHint: neither > 12 -> ambiguous', pickDateFormatHint([{ n1: 3, n2: 4 }]), 'ambiguous');
+})();
 
-  const dates0304 = findDates('03/04/2020');
-  eq('resolveAmbiguousDateClassification: month-first resolves n1 as month, n2 as day',
-    resolveAmbiguousDateClassification({ value: { dates: dates0304 } }, 'month-first'),
-    { mode: 'date', reason: 'simplify', value: { dates: [{
-      year: 2020, month: 3, monthBeforeYear: true, start: 0, end: 10, dayCut: { start: 3, end: 6 } }] } });
-  eq('resolveAmbiguousDateClassification: day-first resolves n2 as month, n1 as day',
-    resolveAmbiguousDateClassification({ value: { dates: dates0304 } }, 'day-first'),
-    { mode: 'date', reason: 'simplify', value: { dates: [{
-      year: 2020, month: 4, monthBeforeYear: true, start: 0, end: 10, dayCut: { start: 0, end: 3 } }] } });
-  eq('resolveAmbiguousDateClassification: mixed downgrades to skip',
-    resolveAmbiguousDateClassification({ value: { dates: dates0304 } }, 'mixed'),
-    { mode: 'skip', reason: 'ambiguous-date' });
-  eq('resolveAmbiguousDateClassification: ambiguous downgrades to skip',
-    resolveAmbiguousDateClassification({ value: { dates: dates0304 } }, 'ambiguous'),
-    { mode: 'skip', reason: 'ambiguous-date' });
+// --- Stretch positions and order ---
+//
+// Each stretch's start and end index the text the ladder classified, leading
+// whitespace included, and the stretches come back in text order.
+
+(function classifyCell_stretchesIndexTheUntrimmedText() {
+  const dateTimeOpts = Object.assign({}, LADDER_OPTS, { simplifyTimes: true });
+  eq('stretch positions: "  12,345" holds one number stretch at 2 to 8',
+    classifyAt('  12,345', LADDER_OPTS), { stretches: [expectedNumberStretch(2, '12,345', 12345)] });
+  eq('stretch positions: "  Jun 2020" holds one date stretch at 2 to 10',
+    classifyAt('  Jun 2020', LADDER_OPTS).stretches.map((s) => [s.kind, s.start, s.end, s.year, s.month]),
+    [['date', 2, 10, 2020, 6]]);
+  eq('stretch positions: "  14:29" holds one time stretch at 2 to 7',
+    classifyAt('  14:29', dateTimeOpts).stretches.map((s) => [s.kind, s.start, s.end]),
+    [['time', 2, 7]]);
+  eq('stretch positions: " 14:29 " holds one time stretch over "14:29", the trimmed text',
+    stretchTexts(' 14:29 ', classifyAt(' 14:29 ', dateTimeOpts)), ['14:29']);
+  eq('stretch positions: "  03/04/2020" holds one date stretch whose two number cuts sit after the leading spaces',
+    classifyAt('  03/04/2020', LADDER_OPTS).stretches.map((s) => [s.kind, s.start, s.end, s.n1Cut, s.n2Cut]),
+    [['date', 2, 12, { start: 2, end: 5 }, { start: 5, end: 8 }]]);
+})();
+
+(function classifyCell_stretchesComeInTextOrder() {
+  const numbers = '  9 then 1,234 and 56.7 and 8';
+  eq('stretch order: "  9 then 1,234 and 56.7 and 8" holds four number stretches in text order',
+    classifyAt(numbers, LADDER_OPTS).stretches.map((s) => [s.kind, numbers.slice(s.start, s.end), s.num]),
+    [['number', '9', 9], ['number', '1,234', 1234], ['number', '56.7', 56.7], ['number', '8', 8]]);
+  const dates = ' 2021-06-30, then 2020-01-15 and Mar 2019';
+  eq('stretch order: " 2021-06-30, then 2020-01-15 and Mar 2019" holds three date stretches in text order',
+    classifyAt(dates, LADDER_OPTS).stretches.map((s) => [s.kind, dates.slice(s.start, s.end), s.year]),
+    [['date', '2021-06-30', 2021], ['date', '2020-01-15', 2020], ['date', 'Mar 2019', 2019]]);
 })();
 
 // --- Identifier shapes ---
@@ -308,20 +339,21 @@ const IDENTIFIER_NEAR_MISSES = [
 (function identifierShapes_matchTheWholeCell() {
   for (const [text, name] of IDENTIFIER_SHAPE_CELLS) {
     eq(`identifier shape: "${text}" matches ${name}`, matchIdentifierShape(text), name);
-    eq(`identifier shape: "${text}" is a skipped cell`,
+    eq(`identifier shape: "${text}" holds no stretch`,
       classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-      { mode: 'skip', reason: 'identifier' });
+      { stretches: [] });
   }
   for (const text of IDENTIFIER_NEAR_MISSES) {
     eq(`identifier shape: "${text}" matches no shape`, matchIdentifierShape(text), null);
     eq(`identifier shape: "${text}" still rounds`,
-      classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS).mode !== 'skip', true);
+      classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS).stretches.length > 0, true);
   }
-  eq('identifier shape: "DT1234" keeps its no-number reason',
-    classifyCell({ text: 'DT1234', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-    { mode: 'skip', reason: 'no-number' });
-  eq('identifier shape: a date written with spaces still reads as a date',
-    classifyCell({ text: '21 June 2020', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS).mode, 'date');
+  eq('identifier shape: "DT1234" matches no shape and holds no stretch',
+    [matchIdentifierShape('DT1234'), classifyCell({ text: 'DT1234', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS)],
+    [null, { stretches: [] }]);
+  eq('identifier shape: "21 June 2020" holds one date stretch',
+    classifyCell({ text: '21 June 2020', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS)
+      .stretches.map((s) => s.kind), ['date']);
 })();
 
 // --- Identifier shapes inside text ---
@@ -372,7 +404,7 @@ const IDENTIFIER_SPAN_NEAR_MISSES = [
 (function identifierShapes_holdTheirDigitsInsideText() {
   const extractedNumbers = (text) => {
     const classification = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS);
-    return classification.mode === 'extracted' ? classification.value.matches.map((m) => m.numStr) : classification;
+    return classification.stretches.every((s) => s.kind === 'number') ? stretchTexts(text, classification) : classification;
   };
   for (const [text, expected] of IDENTIFIER_SPAN_CELLS) {
     eq(`identifier shape inside text: "${text}" rounds only its quantity`, extractedNumbers(text), expected);
@@ -382,9 +414,9 @@ const IDENTIFIER_SPAN_NEAR_MISSES = [
   }
   eq('identifier shape inside text: "Call 416-555-1234" matches no whole-cell shape',
     matchIdentifierShape('Call 416-555-1234'), null);
-  eq('identifier shape inside text: "Call 416-555-1234" holds no number to round',
+  eq('identifier shape inside text: "Call 416-555-1234" holds no stretch',
     classifyCell({ text: 'Call 416-555-1234', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-    { mode: 'skip', reason: 'no-number' });
+    { stretches: [] });
   eq('identifier shape inside text: a footnote cell holds its phone number and rounds its quantity',
     extractSimplifyMatches('Call 416-555-1234 about 1,613,245 units1', [{ start: 39, end: 40 }]).map((m) => m.numStr),
     ['1,613,245']);
@@ -401,9 +433,9 @@ const IDENTIFIER_SPAN_NEAR_MISSES = [
 // A number right after "@" belongs to an at-name or an address, in any cell.
 (function atNameNumbersNeverRound() {
   for (const text of ['@1234', '@2020vision', '@cherry1234', 'Follow @2020vision on X']) {
-    eq(`at-name: "${text}" holds no number to round`,
+    eq(`at-name: "${text}" holds no stretch`,
       classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-      { mode: 'skip', reason: 'no-number' });
+      { stretches: [] });
   }
   eq('at-name: a count beside an at-name still rounds, and the at-name stays',
     extractNumbersInText('@2020vision has 1,613,245 fans').map((m) => m.numStr), ['1,613,245']);
@@ -429,8 +461,7 @@ const CLOCK_TIME_SPAN_NEAR_MISSES = [
 (function clockTimes_holdTheirDigitsInsideText() {
   const extractedNumbers = (text, opts) => {
     const classification = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, opts);
-    if (classification.mode === 'extracted') return classification.value.matches.map((m) => m.numStr);
-    return classification.reason === 'no-number' ? [] : classification;
+    return classification.stretches.every((s) => s.kind === 'number') ? stretchTexts(text, classification) : classification;
   };
   const timesOn = Object.assign({}, LADDER_OPTS, { simplifyTimes: true });
   for (const [text, expected] of CLOCK_TIME_SPAN_CELLS) {
@@ -466,26 +497,26 @@ const bracketOpts = Object.assign({}, DR_DEFAULTS, {
 // --- Classification ---
 
 (function bracketedCellClassifiesAsExtracted() {
-  eq('bracketed: a whole-cell bracketed number classifies as extracted',
+  eq('bracketed: "(1,234)" holds one number stretch over "1,234" with the value -1234',
     classifyCell({ text: '(1,234)', rowIndex: 1, columnIndex: 1, ranges: null }, bracketOpts),
-    { mode: 'extracted', reason: 'simplify', value: { matches: [{ numStr: '1,234', num: -1234, index: 1 }] } });
+    { stretches: [expectedNumberStretch(1, '1,234', -1234)] });
 })();
 
 (function plainNumberKeepsItsSign() {
-  eq('bracketed: a plain number classifies as a positive match',
-    classifyCell({ text: '1,234', rowIndex: 1, columnIndex: 1, ranges: null }, bracketOpts).value.matches,
-    [{ numStr: '1,234', num: 1234, index: 0 }]);
+  eq('bracketed: "1,234" holds one number stretch with the value 1234',
+    classifyCell({ text: '1,234', rowIndex: 1, columnIndex: 1, ranges: null }, bracketOpts).stretches,
+    [expectedNumberStretch(0, '1,234', 1234)]);
 })();
 
 (function bracketedWholeLinkStaysUnchanged() {
-  eq('bracketed: a bracketed cell that is one markup range stays unchanged',
+  eq('bracketed: "(1,234)" that is one markup range holds no stretch',
     classifyCell({ text: '(1,234)', rowIndex: 1, columnIndex: 1, ranges: null, markupRanges: [{ start: 0, end: 7 }] }, bracketOpts),
-    { mode: 'skip', reason: 'markup' });
+    { stretches: [] });
 })();
 
 (function bracketedQuotedCellStaysUnchanged() {
-  eq('bracketed: a quoted bracketed number stays unchanged',
+  eq('bracketed: "\\"(1,234)\\"" holds no stretch',
     classifyCell({ text: '"(1,234)"', rowIndex: 1, columnIndex: 1, ranges: null }, bracketOpts),
-    { mode: 'skip', reason: 'quoted' });
+    { stretches: [] });
 })();
 

@@ -2582,8 +2582,8 @@ const LADDER_OPTS = {
   for (const sign of CURRENCY_SIGNS) {
     const classification = classifyCell({ text: sign + '450', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS);
     eq('currencies: a cell drawn as "' + sign + '" beside "450" keeps its number',
-      placeClassification(classification, { original: [sign, '450'], toFlat: null }).value.matches,
-      [{ numStr: '450', num: 450, index: sign.length }]);
+      placeClassification(classification, { original: [sign, '450'], toFlat: null }).stretches,
+      [expectedNumberStretch(sign.length, '450', 450)]);
   }
 })();
 
@@ -2771,12 +2771,13 @@ eq('decimal comma: "1,234.56 EUR" is a unit number',
 (function decimalComma_ladderLeavesTheCellAsWritten() {
   const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
   const decide = (text) => classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, opts);
-  eq('decimal comma: the ladder skips every European-style cell',
+  eq('decimal comma: every European-style cell holds no stretch',
     ['13,63€', '5,16 €', '1.234,56 €', '0,75', '987,5',
-      '14,37€ (includes 2,49€ VAT)'].map((text) => decide(text).mode),
-    ['skip', 'skip', 'skip', 'skip', 'skip', 'skip']);
-  eq('decimal comma: the ladder gives "1,234.56" and "0.125" the mode extracted',
-    ['1,234.56', '0.125'].map((text) => decide(text).mode), ['extracted', 'extracted']);
+      '14,37€ (includes 2,49€ VAT)'].map((text) => decide(text).stretches),
+    [[], [], [], [], [], []]);
+  eq('decimal comma: "1,234.56" and "0.125" each hold one number stretch',
+    ['1,234.56', '0.125'].map((text) => decide(text).stretches),
+    [[expectedNumberStretch(0, '1,234.56', 1234.56)], [expectedNumberStretch(0, '0.125', 0.125)]]);
 })();
 
 // --- Whitespace as a group mark ---
@@ -2861,16 +2862,17 @@ eq('group space: "1 234 USD" is a unit number',
 (function groupSpace_cellReadsAlikeAloneAndInsideWords() {
   const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
   const decide = (text) => classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, opts);
+  const texts = (text) => stretchTexts(text, decide(text));
   eq('group space: a pure cell "1 034 567" reads as one number',
-    decide('1 034 567'), { mode: 'extracted', reason: 'simplify', value: { matches: [{ numStr: '1 034 567', num: 1034567, index: 0 }] } });
+    decide('1 034 567'), { stretches: [expectedNumberStretch(0, '1 034 567', 1034567)] });
   eq('group space: "Revenue 1 034 567 units" rounds the same one number',
-    decide('Revenue 1 034 567 units').value.matches.map((m) => m.num), [1034567]);
+    decide('Revenue 1 034 567 units').stretches.map((s) => s.num), [1034567]);
   eq('group space: a three-digit group with a leading zero is a group, not a code',
-    decide('Revenue 1 034 567 units').value.matches.map((m) => m.numStr), ['1 034 567']);
+    texts('Revenue 1 034 567 units'), ['1 034 567']);
   eq('group space: a leading-zero run after a lone digit is still a code',
-    decide('Form 1 0345 holds 918,554 units').value.matches.map((m) => m.numStr), ['1', '918,554']);
+    texts('Form 1 0345 holds 918,554 units'), ['1', '918,554']);
   eq('group space: a leading-zero code alone in text still holds',
-    decide('Ship to 02134, 440,193 parcels').value.matches.map((m) => m.numStr), ['440,193']);
+    texts('Ship to 02134, 440,193 parcels'), ['440,193']);
 })();
 
 // A line break is no group mark: the digits sit on two lines, which read as

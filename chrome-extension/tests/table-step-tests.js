@@ -85,7 +85,7 @@ function tableStepCells(api, rows) {
     { document: 'undefined', window: 'undefined', chrome: 'undefined', DR_MODEL: 'undefined', DR_LOG: 'undefined' });
 })();
 
-(function tableStep_patchesForEachMode() {
+(function tableStep_patchesForEachStretchKind() {
   const loaded = loadTableStepAlone();
   if (loaded === null) return;
   const { api } = loaded;
@@ -107,11 +107,13 @@ function tableStepCells(api, rows) {
   eq('table step alone: the column post-pass reads the same date month-first in a month-first column',
     [at(0, 3).patches, at(2, 3).patches],
     [[{ index: 0, numStr: '3/4/2024', newNum: '3/2024' }], [{ index: 0, numStr: '3/4/2024', newNum: '3/2024' }]]);
-  eq('table step alone: the column post-pass settles the ambiguous dates in the classified cell',
-    [at(0, 2).classifiedCell.classification.pending, at(0, 3).classifiedCell.classification.pending].map((p) => p === 'ambiguous-date'), [false, false]);
-  eq('table step alone: a skip cell takes no patch',
-    { mode: at(1, 0).classifiedCell.classification.mode, patches: at(1, 0).patches },
-    { mode: 'skip', patches: [] });
+  eq('table step alone: the column post-pass gives each ambiguous date in the classified cell its month',
+    [at(0, 2).classifiedCell.classification.stretches.map((s) => [s.month, 'n1' in s]),
+      at(0, 3).classifiedCell.classification.stretches.map((s) => [s.month, 'n1' in s])],
+    [[[4, false]], [[3, false]]]);
+  eq('table step alone: "pending", a cell with no stretch, takes no patch',
+    { stretches: at(1, 0).classifiedCell.classification.stretches, patches: at(1, 0).patches },
+    { stretches: [], patches: [] });
   eq('table step alone: a time cell takes one patch over its trimmed text',
     at(2, 0).patches, [{ index: 0, numStr: '10:47', newNum: '11:00' }]);
   eq('table step alone: each cell\'s text with its patches applied',
@@ -138,6 +140,61 @@ function tableStepCells(api, rows) {
   eq('table step alone: "  2024-03-15 " at month takes one patch at 2 that writes "2024-03"',
     api.tablePatches(cells, TABLE_STEP_SETTINGS).patchedCells[0].patches,
     [{ index: 2, numStr: '2024-03-15', newNum: '2024-03' }]);
+})();
+
+(function tableStep_leadingWhitespaceStaysAsWritten() {
+  const loaded = loadTableStepAlone();
+  if (loaded === null) return;
+  const { api } = loaded;
+  const row = ['  12,345', '  Jun 15, 2020', '  14:29'];
+  const result = api.tablePatches(tableStepCells(api, [row]), TABLE_STEP_SETTINGS);
+  eq('table step alone: "  12,345", "  Jun 15, 2020", and "  14:29" each take one patch at 2',
+    result.patchedCells.map((cell) => cell.patches),
+    [[{ index: 2, numStr: '12,345', newNum: '10,000' }],
+      [{ index: 2, numStr: 'Jun 15, 2020', newNum: 'Jun 2020' }],
+      [{ index: 2, numStr: '14:29', newNum: '14:00' }]]);
+  eq('table step alone: "  12,345", "  Jun 15, 2020", and "  14:29" read "  10,000", "  Jun 2020", and "  14:00"',
+    result.patchedCells.map((cell) => api.applyPatches(cell.classifiedCell.text, cell.patches)),
+    ['  10,000', '  Jun 2020', '  14:00']);
+})();
+
+// --- The column post-pass ---
+//
+// A column of all-numeric dates reads month-first when one date's second
+// number is above 12, and day-first when one date's first number is.
+
+(function columnPostPass_settlesEachAmbiguousDate() {
+  const column = (texts) => texts.map((text, rowIndex) => ({
+    text, columnIndex: 0, classification: classifyCell({ text, rowIndex, columnIndex: 0, ranges: null }, TABLE_STEP_LADDER_OPTS),
+  }));
+  const stretchesOf = (cells) => cells.map((cell) => cell.classification.stretches);
+  eq('column post-pass: "03/04/2020" above "03/14/2020" reads as 4 March',
+    stretchesOf(resolveAmbiguousDates(column(['03/04/2020', '03/14/2020'])))[0],
+    [{ kind: 'date', year: 2020, month: 3, monthBeforeYear: true, start: 0, end: 10, dayCut: { start: 3, end: 6 } }]);
+  eq('column post-pass: "03/04/2020" above "13/04/2020" reads as 3 April',
+    stretchesOf(resolveAmbiguousDates(column(['03/04/2020', '13/04/2020'])))[0],
+    [{ kind: 'date', year: 2020, month: 4, monthBeforeYear: true, start: 0, end: 10, dayCut: { start: 0, end: 3 } }]);
+  eq('column post-pass: "03/04/2020", "13/04/2020", and "03/14/2020" in one column each hold no stretch',
+    stretchesOf(resolveAmbiguousDates(column(['03/04/2020', '13/04/2020', '03/14/2020']))), [[], [], []]);
+  eq('column post-pass: "03/04/2020" above "05/06/2021" each hold no stretch',
+    stretchesOf(resolveAmbiguousDates(column(['03/04/2020', '05/06/2021']))), [[], []]);
+
+  const withDateText = column(['03/04/2020 and 2021-05-06', '03/14/2020']);
+  const isoDate = withDateText[0].classification.stretches[1];
+  const settled = resolveAmbiguousDates(withDateText)[0].classification.stretches;
+  eq('column post-pass: "03/04/2020 and 2021-05-06" above "03/14/2020" reads the first date as March and keeps the second as read',
+    [settled.map((s) => [s.kind, s.month, s.start, s.end]), settled[1]],
+    [[['date', 3, 0, 10], ['date', 5, 15, 25]], isoDate]);
+
+  const split = column(['03/04/2020 and 7/8/2021', '13/04/2020', '03/14/2020']).map((cell, k) => (k === 0
+    ? Object.assign({}, cell, { classification: Object.assign({}, cell.classification, { split: true }) }) : cell));
+  eq('column post-pass: a split cell in a column whose dates read both ways holds no stretch and stays split',
+    resolveAmbiguousDates(split)[0].classification, { stretches: [], split: true });
+
+  const numberCell = { text: '1,234', columnIndex: 0,
+    classification: classifyCell({ text: '1,234', rowIndex: 1, columnIndex: 0, ranges: null }, TABLE_STEP_LADDER_OPTS) };
+  eq('column post-pass: "1,234" in a column of dates that read both ways keeps its number stretch',
+    resolveAmbiguousDates(column(['03/04/2020', '13/04/2020', '03/14/2020']).concat([numberCell]))[3], numberCell);
 })();
 
 (function tableStep_unchangedValuesTakeNoPatch() {
@@ -287,5 +344,5 @@ function tableStepCells(api, rows) {
     TABLE_STEP_FUNCTIONS.map((name) => [name, ['chrome-extension/lib/dr-simplify/table.js']]));
   eq('table step source: content.js calls no column post-pass or max magnitude rule outside the table step',
     [...new Set((contentSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
-      .match(/\b(pickDateFormatHint|resolveAmbiguousDateClassification|findMaxMagnitude|roundDate|roundTimeText|pureNumberSpan)\s*\(/g) || []))], []);
+      .match(/\b(pickDateFormatHint|resolveAmbiguousDates|findMaxMagnitude|roundDate|roundTimeText|pureNumberSpan)\s*\(/g) || []))], []);
 })();

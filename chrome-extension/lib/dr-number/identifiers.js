@@ -17,7 +17,7 @@
  *
  * The ladder reads the one result two ways. matchIdentifierShape returns the
  * name of a code that fills the cell, and classifyCell
- * (lib/dr-simplify/ladder.js) skips that cell (reason: 'identifier'), after
+ * (lib/dr-simplify/ladder.js) gives that cell no stretch, after
  * the date and time checks, so a date the date parser reads ("21 June 2020")
  * stays a date, and before the number reader. getIdentifierMaskedRanges
  * returns the codes that count inside a cell with words ("Call 416-555-1234
