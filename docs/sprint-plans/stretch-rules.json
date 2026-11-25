@@ -1,0 +1,78 @@
+{
+  "title": "Each value in a cell takes its own rule",
+  "base_branch": "main",
+  "created": "2026-11-25",
+  "source_markdown": "docs/sprint-plans/stretch-rules.md",
+  "repo_conventions": {
+    "version_files": [
+      {"path": "chrome-extension/manifest.json", "format": "semver in `version` key"},
+      {"path": "claude-code-plugin/.claude-plugin/plugin.json", "format": "semver in `version` key"},
+      {"path": "js/src/entry.js", "format": "` * [VERSION] x.y.z` comment line, carried into js/round_dynamic.js by the build"},
+      {"path": "python/pyproject.toml", "format": "`version = \"x.y.z\"`"}
+    ],
+    "version_bump_policy": "merge-workflow",
+    "test_command": "node chrome-extension/tests.js && node js/tests.js && node js/doc-tests.js && node claude-code-plugin/tests.js && node scripts/build-sheets.js --check",
+    "gate_command": "scripts/check-files.sh --staged && scripts/check-vocab.sh --staged",
+    "build_command": "node scripts/build-sheets.js",
+    "branch_naming": "<type>/<label>, type one of feature, fix, refactor, docs, chore, plan; each sprint names its branch",
+    "dependent_policy": "after-merge",
+    "base_branch_writes": "pull-request",
+    "commit_convention": "Conventional Commits",
+    "pr_template": "AGENTS.md, section \"Pull requests\""
+  },
+  "sprints": [
+    {
+      "label": "date-placement",
+      "branch": "fix/date-placement",
+      "goal": "Each date in a cell takes its own patch and its own text-piece check.",
+      "scope": "See source_markdown section 5, Sprint 1. dates.js: move the body of the roundDateText loop (:250-262) into roundDate(date, granularity), which returns one date's new text; roundDateText loses its last production reader and goes; the number tests keep their expected strings through one helper in the test file. table.js classifiedCellPatches (:68): a date cell gives one patch per changed date, at lead + date.start; a time cell keeps its one patch. placement.js placeClassification (:63): keep only the dates that sit in one text piece; a time cell's trimmed text gets the same check; a cell left with no date skips. content.js: remove cellPatches and isSplitDateOrTime (:831-841), and merge the 'split number' and 'split date or time' counts into one count of split values (:273-279, :865, :884). Rebuild js/round_dynamic.js and claude-code-plugin/hooks/library.js. Docs: vocabulary 'placement step' and 'left as written' (docs: commit); docs/design.md placement text; test page section 25 gains the two split-date rows and the footnote-link row.",
+      "out_of_scope": "A second kind of value in a cell; any change to which cells hold a date.",
+      "acceptance_criteria": [
+        "A synthetic sentence with a link piece and an italic piece, holding 'December 1965' and 'February 1966' each in one piece, becomes 'In 1965, … in 1966.' on both table kinds.",
+        "A date split across two tags beside a whole date at month: the split date stays, the whole date becomes '2024-04', and the debug row counts one split value.",
+        "A cell with leading spaces patches at the right position.",
+        "The data test returns false for a table whose only date is split.",
+        "Sheets, doc-example, and plugin suites pass with no edits."
+      ],
+      "depends_on": [],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "Output changes only in cells with a split date or time; per-date patches add up to the old whole-cell patch elsewhere because dates never overlap and patches apply from the end of the text. 'Jun 2020' followed by a footnote link now becomes '2020 [1]'. Date bounds index the trimmed text; placement and patches count in the classified text, so add the leading whitespace length. Placement runs before the column post-pass, so a split ambiguous date takes no part in its column's reading with no extra code (decision 10). Regression fixtures are synthetic; the capture in docs/private never enters the repository."
+    },
+    {
+      "label": "stretch-list",
+      "branch": "refactor/stretch-list",
+      "goal": "The ladder returns a list of stretches in place of one mode, with every result unchanged.",
+      "scope": "See source_markdown sections 3.1 and 5, Sprint 2. classifyCell returns { stretches: Stretch[], split?: true }, where Stretch is { kind: 'number', start, end, num } | { kind: 'date', start, end, ...date reader fields } | { kind: 'time', start, end, ...time reader fields }, in text order, positions in the classified text; a skipped cell holds []. mode, reason, and pending go. The early returns stay. Move the 13 readers: resolveAmbiguousDates (table.js:34) maps over date stretches, with isAmbiguousDateClassification (table.js:27) and resolveAmbiguousDateClassification (ladder.js:235) folded in; datasetMaxMagnitude (table.js:51) and numericPreviewCells (content.js:600) read number stretches only; holdsRoundableCell (detect.js:263) any stretch; placeClassification one filter over every stretch; classifiedCellPatches one loop with one branch per kind; classifyTableCell (classify.js:78) 'pieces-changed' returns an empty list; Sheets input step (js/src/entry.js:100, :124) makes the number-cell classification one number stretch and textResult checks for a number stretch; plugin text table step unchanged. Docs (docs: commit): add 'stretch' to the vocabulary; retire 'mode'; restate 'classification', 'classified cell', 'pure cell', 'extracted cell'; docs/design.md:27; docs/capability-map.md.",
+      "out_of_scope": "Any change to what a cell becomes.",
+      "acceptance_criteria": [
+        "No expected output changes in any suite or the build check.",
+        "Assertions on mode or reason become assertions on stretches or on output (about 50 in the ladder tests, 15 in detection, 8 in the table step, 4 in the rounding pass).",
+        "No reader of mode, reason, or pending is left in chrome-extension/, js/src/, or claude-code-plugin/hooks/.",
+        "js/round_dynamic.js and claude-code-plugin/hooks/library.js match the build."
+      ],
+      "depends_on": ["date-placement"],
+      "version_bump": "patch",
+      "complexity": "L",
+      "dev_notes": "Every skip reason a debug row prints keeps its text; if a debug row reads reason, derive the text from the stretch list or the placement result, not from a stored field. A held value is never stored; the ladder still covers its characters so no other reader takes them."
+    },
+    {
+      "label": "mixed-cell-stretches",
+      "branch": "feature/mixed-cell-stretches",
+      "goal": "Every number, date, and time in a cell takes its own rule and switch.",
+      "scope": "See source_markdown sections 3.2, 3.3, and 5, Sprint 3, and decisions 1 to 12 in section 6. The ladder runs the readers in section 3.2's order in place of the early returns: cell gate; ISO date-time inside words or whole cell; findDates on text with ISO spans blanked; clock times inside words with superscripts blanked; whole-cell number shapes only in a cell with no date or time stretch; the number reader with every date and time span masked; a number held when a touching currency or percent sign meets an off switch. ISO separator per section 3.3, one 'separator' field on the date stretch. Remove with exports and tests: readTimeCell, the whole-cell time and ISO patterns, roundTimeText (replaced by one per-stretch time step on roundClockTime), getClockTimeMaskedRanges, parseISODateTime, isTimeLike, isDateTimeLike, isDateLike, the early returns, and the currency and percent branches of getExclusionReason. js/round-dynamic-cases.json gains mixed rows. Docs: vocabulary 'clock time', 'masked range', 'exclusion', 'impossible date', 'granularity' (docs: commit); docs/design.md:29, :53; docs/capability-map.md; chrome-extension/README.md; js/README.md and js/tests-googlesheets-tab.md; the plugin test prompt's table gains a cell with a date beside a number. Test page: sections 2, 4, 9, 35, and a new section 'Cells that mix dates, times, and numbers' unless section 34a already holds those shapes.",
+      "out_of_scope": "The weekday left beside a simplified written date; the quarter's year that reads as a number; the Outlook table swap; Python dates and times.",
+      "acceptance_criteria": [
+        "Every row of the acceptance table in source_markdown section 5, Sprint 3, passes (dates at year, times at hour, currency and percent on unless stated), e.g. 'Paid $12,345 on November 09 2026' becomes 'Paid $10,000 on 2026' and 'Monday, November 09 2026 at 19:54 UTC' becomes 'Monday, 2026 at 20:00 UTC'.",
+        "Every row of the ISO date-time results table in source_markdown section 6 passes.",
+        "'Deployed 2026-11-09T19:54:00Z, 12,345 users' becomes 'Deployed 2026 20:00, 10,000 users' in the extension and 'Deployed 2026-11-09T19:54:00Z, 10,000 users' in Sheets.",
+        "Single-value cells ('Jun 2020 - Dec 2020', '2020-07-21' at month, '02134', '$1,234', 'Lap 3:43.13', 'Meeting at 24:00') give today's result.",
+        "js/round-dynamic-cases.json holds mixed rows and the Sheets, extension, and Python suites run them."
+      ],
+      "depends_on": ["stretch-list"],
+      "version_bump": "minor",
+      "complexity": "L",
+      "dev_notes": "The PR states the changes a reader sees beyond the named examples: with default settings an ISO date-time now changes its date; a number beside a date counts toward the largest value and joins the lens preview pool; in Sheets a number beside a date now rounds; a duration inside words rounds with Times on. Kept as today: a date inside a quoted span inside words still changes; a race time stays; a quoted cell, an identifier shape, the first row and column, and the range expression hold the whole cell. findDates finds no date in '2026-11-09T19:54' because its end test rejects 'T', so the ISO reader runs first and blanks its span. Identifier masks must not run before dates: getIdentifierMaskedRanges('2020-07-21') returns 5 to 7. Add the minor label to the PR before merge."
+    }
+  ]
+}
