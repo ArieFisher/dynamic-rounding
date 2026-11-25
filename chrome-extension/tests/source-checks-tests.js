@@ -1908,7 +1908,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 // --- lib/dr-log: the log buffer ---
 //
 // DR_LOG holds the last 50 rows the extension records, one instance per
-// context (content script and sidebar each evaluate the file separately).
+// context; the header comment in lib/dr-log/index.js lists the contexts.
 // Every capture carries a copy of this buffer, so these tests pin the
 // row shape, the limit, the drop counter, the console forwarding, and the
 // copy semantics. The buffer is a singleton shared with every
@@ -1956,9 +1956,9 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
   eq('dr-log: non-string text is stored as a string',
     LOG.copyBuffer().rows.slice(-1)[0].text, '42');
 
-  // Forwarding: a row still reaches the console (devtools behavior is
-  // unchanged). The harness mutes console.debug/console.warn globally; this
-  // test installs its own spy and puts the mute back.
+  // Forwarding: each row also goes to the console. The harness mutes
+  // console.debug/console.warn globally; this test installs its own spy and
+  // puts the mute back.
   const origDebug = console.debug;
   let forwarded = null;
   console.debug = (msg) => { forwarded = msg; };
@@ -1991,10 +1991,9 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 //
 // A warn or error row carries the stack trace at the moment it was recorded,
 // the same trace the extension error page shows, so a capture holds it and
-// the application model can store it. Debug and info rows carry none: they
-// are frequent, and a trace costs a stack walk per row. The row listener is
-// how the controller learns that a row landed without the log module reaching
-// up to the application model or the bus, both of which load after it.
+// the application model can store it. Debug and info rows carry none. The
+// comments in lib/dr-log/index.js hold the reasons for both the levels and the
+// row listener.
 
 (function drLogStackTraceAndListener() {
   if (typeof globalThis.DR_LOG !== 'object') return;
@@ -2034,8 +2033,8 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
     eq('dr-log: an info row carries no stack trace',
       LOG.copyBuffer().rows.slice(-1)[0].stack, null);
 
-    // One list: the levels that carry a trace are the levels the controller
-    // records as extension errors, read from here and held nowhere else.
+    // The ERROR_LEVELS comment in lib/dr-log/index.js holds the reason for
+    // one list.
     eq('dr-log: the error levels are warn and error', LOG.ERROR_LEVELS, ['warn', 'error']);
     eq('dr-log: the controller reads the error levels from the log module',
       /DR_LOG\.ERROR_LEVELS/.test(sourceByName('content.js') || '') &&

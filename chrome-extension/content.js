@@ -40,10 +40,9 @@ function writeTableSettings(table, patch, source) {
 // Every row at one of the log module's error levels (warn and error) is an
 // extension error: it lands in the model's error state, whose state change
 // the toast view (toast-view.js) draws and the capture carries. Debug and info
-// rows stay out. The level list lives in the log module, which uses the same
-// list to determine which rows carry a stack trace. The listener lives here and
-// not in the log module because the log module loads before the model and
-// the bus and reaches neither.
+// rows stay out. The log module (lib/dr-log/index.js) holds the level list,
+// with the reason for one list, and its header comment holds the reason for
+// the listener.
 DR_LOG.onRow((row) => {
   if (DR_LOG.ERROR_LEVELS.includes(row.level)) DR_MODEL.recordError(row);
 });

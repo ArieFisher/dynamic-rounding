@@ -84,7 +84,7 @@ The extension's folder names predate the groups. The library folder holds core, 
 
 ## Errors and the capture
 
-- **The user sees every extension error.** The log buffer passes each warn or error row to the controller's row listener, the model records it, and the toast view shows it. The row listener exists because the log buffer loads before the event bus and the model. An uncaught exception stays outside this path.
+- **The user sees every extension error.** The log buffer passes each warn or error row to the controller's row listener, the model records it, and the toast view shows it. The header comment in `chrome-extension/lib/dr-log/index.js` holds the reason for the row listener. An uncaught exception stays outside this path.
 - **A capture is one inert file.** The browser runs no script and fetches nothing remote in the file, under the file's own content policy, so the file is safe to attach anywhere. The file records an absence as an absence, never as a rebuilt value. Why: a capture is evidence, and a rebuilt value would hide the defect.
 - **The content script does nothing on a capture.** The capture carries the capture marker, and the content script does nothing on a page that carries it. Why: Chrome does not apply a page's own content policy to an extension's injected code, so without the marker the extension would round the capture's own table.
 
