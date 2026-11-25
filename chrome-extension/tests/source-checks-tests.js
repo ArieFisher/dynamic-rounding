@@ -1,36 +1,22 @@
 // Checks that read source files, the manifest, bundles, or the living documents as text.
 
-// --- Manifest + background invariants ---
+// --- Manifest invariants ---
 // NOTE: These are static-analysis proxies only. Whether Chrome grants the tab
 // permission on a toolbar icon click, and whether the context menu visually
 // works, cannot be verified in this Node harness — those require a live browser.
 
 (function toolbarIconOpensSidebar() {
   const manifestPath = path.join(__dirname, 'manifest.json');
-  const bgPath = path.join(__dirname, 'background.js');
-
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  const bgSource = fs.readFileSync(bgPath, 'utf8');
 
-  // 1. "action" key must be present — without it Chrome sends no toolbar icon
-  // click to the service worker.
   eq('manifest: "action" key present (the toolbar icon click reaches the service worker)',
     Object.prototype.hasOwnProperty.call(manifest, 'action'), true);
 
-  // 2. "side_panel" must still be present — the sidebar itself must remain registered.
-  eq('manifest: "side_panel" key still present',
+  eq('manifest: "side_panel" key present',
     Object.prototype.hasOwnProperty.call(manifest, 'side_panel'), true);
 
-  // 3. "contextMenus" must still be in permissions — right-click menu requires it.
-  eq('manifest: "contextMenus" still in permissions',
+  eq('manifest: "contextMenus" in permissions (the right-click menu needs it)',
     Array.isArray(manifest.permissions) && manifest.permissions.includes('contextMenus'), true);
-
-  // 4. background.js must still wire up contextMenus.create and sidePanel.open.
-  eq('background.js: contextMenus.create still present',
-    bgSource.includes('contextMenus.create'), true);
-
-  eq('background.js: sidePanel.open still present',
-    bgSource.includes('sidePanel.open'), true);
 })();
 
 // --- manifest.json has a valid N.N.N version string ---
@@ -596,17 +582,6 @@
     statesBudget(vocabularyMd), true);
 })();
 
-// ---------------------------------------------------------------------------
-// background.js does NOT relay the settings notice.
-//
-// background.js runs in a service-worker context without the DOM and module
-// system our harness uses, so we cannot eval() it directly alongside the content
-// scripts. Instead we test the guard at two levels:
-//   (a) Static analysis: the source contains the null-guard exactly as specced.
-//   (b) Extracted-logic test: inline a minimal reproduction of the guard and
-//       verify its branching behaviour, confirming the written code is correct.
-// ---------------------------------------------------------------------------
-
 // --- The settings notice reaches the sidebar exactly once ---
 //
 // The content script broadcasts the settings notice to every extension page,
@@ -615,7 +590,7 @@
 // delivery.
 (function onOffReportDeliveredOnce() {
   const bgSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
-  eq('one delivery: the worker makes no wire send of its own for anything',
+  eq('one delivery: the worker source holds no send of its own to extension pages',
     bgSrc.includes('chrome.runtime.sendMessage'), false);
 })();
 
@@ -822,55 +797,6 @@
   global.window   = savedWindow;
 })();
 
-// the worker relays no activation topic into a tab, whether or
-// not it holds a sidebar tab ID. The worker holds no message listener of
-// its own, so the listener under test is the bus's, and the worker's own
-// subscriptions are the only thing that could act on an arriving topic. It
-// subscribes to no activation topic, so nothing does.
-(function tableContextmenuActivation_backgroundRelay() {
-  const sentTabMessages = [];
-  let capturedBgHandler = null;
-  let capturedClickHandler = null;
-
-  const captureChromeBg = {
-    runtime: {
-      lastError: null,
-      onInstalled: { addListener: () => {} },
-      onMessage:   { addListener: (fn) => { capturedBgHandler = fn; } },
-      sendMessage: (msg, cb) => { if (cb) cb(undefined); },
-    },
-    contextMenus: {
-      create: () => {},
-      update: () => {},
-      onClicked: { addListener: (fn) => { capturedClickHandler = fn; } },
-    },
-    action: { onClicked: { addListener: () => {} } },
-    tabs: {
-      query(q, cb) { cb([{ id: 1 }]); },
-      sendMessage(tabId, msg, cb) { sentTabMessages.push({ tabId, msg }); if (cb) cb(undefined); },
-    },
-    sidePanel: { open: () => Promise.resolve() },
-  };
-
-  const PANEL_TAB = 99;
-  isolatedFunction('chrome', 'importScripts', busCode + '\n' +
-    fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'))(captureChromeBg, importScripts);
-  eq('active table runtime: the bus listener is the worker\'s only message listener',
-    typeof capturedBgHandler, 'function');
-  if (typeof capturedBgHandler !== 'function') return;
-
-  sentTabMessages.length = 0;
-  capturedBgHandler({ topic: 'state:tableActivated' }, {}, () => {});
-  eq('active table runtime: no relay before the sidebar opens',
-    sentTabMessages.length, 0);
-
-  capturedClickHandler({ menuItemId: 'dr-menu-toggle-sidebar' }, { id: PANEL_TAB });
-  sentTabMessages.length = 0;
-  capturedBgHandler({ topic: 'state:tableActivated' }, {}, () => {});
-  eq('active table runtime: still no relay after the sidebar opens',
-    sentTabMessages.length, 0);
-})();
-
 // ---------------------------------------------------------------------------
 // END right-click activation tests
 // ---------------------------------------------------------------------------
@@ -1035,10 +961,10 @@
 // such as the side panel, and never reaches content scripts. A content script
 // is reachable only through chrome.tabs.sendMessage(tabId, ...). One rule
 // follows, asserted at runtime rather than by source regex:
-// state:tableActivated must not be relayed into the tab. content.js already
-// sends it with runtime.sendMessage, which the sidebar receives directly.
+// state:tableActivated must not be relayed into the tab. content.js publishes
+// it on the extension-pages route, which the sidebar receives directly.
 // Relaying it into the tab delivers it to a content script that has no
-// handler for that action.
+// subscriber for that topic.
 // ---------------------------------------------------------------------------
 
 (function backgroundMessageRouting() {
@@ -1067,7 +993,6 @@
       },
       contextMenus: {
         create: () => {},
-        update: () => {},
         onClicked: { addListener: (fn) => { listeners.menuClicked = fn; } },
       },
       action: { onClicked: { addListener: (fn) => { listeners.iconClicked = fn; } } },
@@ -1126,7 +1051,6 @@
         { id: 'dr-menu-toggle', title: 'Simplify' },
         { id: 'dr-menu-toggle-sidebar', title: 'Simplify and open sidebar' },
       ]);
-    // In the toolbar icon's menu no table sits under the pointer.
     eq('menu items: neither item appears in the toolbar icon menu',
       created.filter((item) => !Array.isArray(item.contexts) ||
         item.contexts.includes('all') || item.contexts.includes('action')).map((item) => item.id),
@@ -1142,8 +1066,7 @@
       ctx.tabSends.map((s) => s.msg.topic), []);
   })();
 
-  // Chrome accepts the open only as a direct response to the click, so each
-  // handler must call it before the first await.
+  // The comment on openSidebarOnTab in background.js holds the reason.
   (function clicksOpenBeforeAwaiting() {
     function opensFor(click) {
       const opens = [];

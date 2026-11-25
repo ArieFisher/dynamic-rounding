@@ -736,8 +736,8 @@ const CAPTURE_SCREENSHOT_QUALITY = 85;
 // The bound tab's visible area as one image data URL, for the capture. The
 // tabs interface arrives as a parameter so the suite drives this with a
 // stub. chrome.tabs.captureVisibleTab needs the activeTab grant, which the
-// right-click menu item that opened the sidebar gives for that tab and a
-// navigation takes away; it runs from extension pages, and Chrome settles
+// right-click menu item or the toolbar icon click that opened the sidebar
+// gives for that tab and a navigation takes away; it runs from extension pages, and Chrome settles
 // its promise on every documented failure (no grant, quota, protected
 // page), so no timer guards it. Every route calls done exactly once: with
 // the image and a taken record, or with no image and a record that holds the
