@@ -277,12 +277,23 @@ In a GitHub issue this section goes on top, with the original engineering findin
 
 ### GitHub access model
 
-- The `origin` remote is a proxy mirror of GitHub and can lag or diverge. github.com is the source of truth for branch, pull request, and `main` state.
-- The HTTPS and git proxies authenticate through the connected GitHub App and ignore pasted tokens. A token in a command changes nothing, so an invalid token can appear to work.
-- `gh` succeeds for issues, pull requests, and API reads under App auth. Use it first, and ask for a personal access token only after `gh` itself fails.
-- Verify a token before first use: `curl --noproxy '*' -H "Authorization: Bearer <token>" https://api.github.com/user` must return the right login.
-- The GitHub MCP server and raw proxy `curl` still fail on writes with `403 Resource not accessible by integration`.
+github.com is the source of truth for branch, pull request, and `main` state. How a session reaches it depends on where the session runs.
+
+**Cloud session.**
+- The `origin` remote is a proxy mirror of GitHub and can lag or diverge.
+- The HTTPS and git proxies authenticate through the connected GitHub App and ignore pasted tokens. A token in a command has no effect, so an invalid token can appear to work.
+- The GitHub MCP server and raw proxy `curl` fail on writes with `403 Resource not accessible by integration`.
 - Anonymous `curl --noproxy '*' https://api.github.com/repos/<owner>/<repo>/branches` reaches real GitHub directly and is fine for branches, pull requests, commits, compare, and events. It omits repository merge settings entirely, so read those with `gh api`.
+
+**Local checkout.**
+- The `origin` remote is GitHub itself. `git` and `gh` use the stored login of the person at the machine.
+- When that login has expired (`gh` returns 401, or `git push` reports "could not read Username"), ask me for a personal access token. A pasted token works here. Pass it to each command through the `GH_TOKEN` environment variable, and push through the `gh` credential helper: `GH_TOKEN=<token> git -c credential.helper= -c 'credential.helper=!gh auth git-credential' push -u origin <branch>`.
+
+**Both.**
+- Use `gh` first for issues, pull requests, and API reads. Ask for a personal access token only after `gh` itself fails.
+- Verify a token before first use: `GH_TOKEN=<token> gh api user --jq .login` must print the right login.
+- Open a pull request through the REST endpoint: `gh api repos/<owner>/<repo>/pulls -X POST -f base=main -f head=<branch> -f "title=..." -F body=@<file>`. `gh pr create` calls the GraphQL endpoint, which can return `HTTP 403 Forbidden` for a fine-grained token that holds pull request write permission.
+- A 403 whose body is an HTML "Access Denied" page comes from a network security layer, not from GitHub. Stop and ask me before trying another route.
 - Diagnose which layer gates a blocked call before re-sending anything.
 
 **Token hygiene.** A personal access token lives in session memory only. Never write it to `.git/config`, `~/.git-credentials`, a commit message, a git URL, or any tracked file. `git push -u <token-URL> <branch>` stores the token as the branch upstream. After any push involving one, check `.git/config` for it and unset the upstream if it landed.
