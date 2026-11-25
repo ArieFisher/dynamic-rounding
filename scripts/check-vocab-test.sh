@@ -164,6 +164,18 @@ expect_pass  "linked in its own sense passes"       docs/design.md   'The handle
 expect_block "collocation: tied as coupled"         docs/design.md   'The switch is tied together with the pillbox.'
 expect_pass  "tied in its own sense passes"         docs/design.md   'The release cadence is tied to the academic calendar.'
 
+# A run from a subfolder still sees the staged retired synonym.
+dir=$(scratch_repo)
+printf 'The table toggle turns rounding on.\n' > "$dir/docs/design.md"
+git -C "$dir" add docs/design.md
+(cd "$dir/docs" && bash ../scripts/check-vocab.sh --staged >/dev/null 2>&1)
+status=$?
+if [ "$status" -eq 1 ]; then
+  record pass "a retired synonym is caught from a subfolder"
+else
+  record fail "a retired synonym is caught from a subfolder (gate exited $status)"
+fi
+
 # Preflight. The Block pattern column is the one input nothing else checks,
 # so each way of breaking it must produce a failure, not a clean bill.
 #

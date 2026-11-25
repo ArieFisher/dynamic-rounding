@@ -174,6 +174,25 @@ git -C "$repo" add docs/setup.md
 printf 'clean now\n' > "$repo/docs/setup.md"
 assert_blocked 'credential rejected from the staged blob' "$repo" 'docs/setup.md' --staged
 
+# A credential on the first line of a large file is caught. The scan stops
+# reading at the first match, so the file is large enough that the read stops
+# early.
+repo=$(scratch_repo)
+{
+  planted_secret
+  awk 'BEGIN { for (i = 0; i < 2000; i++) print "filler line of ordinary prose for the scan to read" }'
+} > "$repo/docs/large.md"
+git -C "$repo" add docs/large.md
+assert_blocked 'credential on line 1 of a large file rejected' "$repo" 'docs/large.md' --staged
+
+# A staged file whose contents git cannot read stops the gate instead of passing.
+repo=$(scratch_repo)
+printf 'unreadable\n' > "$repo/docs/lost.md"
+git -C "$repo" add docs/lost.md
+blob=$(git -C "$repo" rev-parse :docs/lost.md)
+rm -f "$repo/.git/objects/${blob:0:2}/${blob:2}"
+assert_usage 'unreadable staged contents exit 2' "$repo" --staged
+
 # The exemption covers the gate itself, which carries the patterns by trade.
 repo=$(scratch_repo)
 git -C "$repo" -c core.fileMode=false add scripts/check-files.sh
@@ -300,6 +319,16 @@ repo=$(scratch_repo)
 printf '# new page\n' > "$repo/docs/new-page.md"
 git -C "$repo" add docs/new-page.md
 assert_passes '--tracked passes with a clean new file staged' "$repo" --tracked
+
+# The paths the gate lists do not depend on the folder it runs from.
+repo=$(scratch_repo)
+out=$( cd "$repo/docs" && bash ../scripts/check-files.sh --tracked 2>&1 )
+status=$?
+if [ "$status" -eq 0 ]; then
+  record_pass '--tracked passes on a clean tree when run from a subfolder'
+else
+  record_fail '--tracked passes on a clean tree when run from a subfolder' "gate exited $status; output: $out"
+fi
 
 # Misuse exits 2, so a mistyped CI invocation cannot read as a pass.
 repo=$(scratch_repo)

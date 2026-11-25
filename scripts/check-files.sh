@@ -9,7 +9,7 @@
 # Modes:
 #   --staged            check what is staged for the next commit (pre-commit hook)
 #   --range BASE HEAD   check files changed between two revisions (CI)
-#   --tracked           audit every tracked file (manual sweep)
+#   --tracked           audit every file committed in HEAD (manual sweep)
 #
 set -uo pipefail
 

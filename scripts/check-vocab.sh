@@ -222,7 +222,9 @@ case "$mode" in
     ;;
 esac
 
-changed=$(git diff --name-status -M --diff-filter=ACMR "${diff_args[@]}") || {
+# Every diff runs from the repository root: the listed paths are root-relative,
+# and a pathspec read from a subfolder would match nothing and pass the change.
+changed=$(git -C "$repo_root" diff --name-status -M --diff-filter=ACMR "${diff_args[@]}") || {
   echo "check-vocab: git diff failed for '${diff_args[*]}' — refusing to pass without inspecting" >&2
   exit 2
 }
@@ -236,7 +238,7 @@ while IFS=$'\t' read -r status path destination; do
   else
     file="$path" source=""
   fi
-  check_added_lines "$file" "$source" git diff -M --unified=0 --src-prefix=a/ --dst-prefix=b/ "${diff_args[@]}"
+  check_added_lines "$file" "$source" git -C "$repo_root" diff -M --unified=0 --src-prefix=a/ --dst-prefix=b/ "${diff_args[@]}"
 done <<< "$changed"
 
 if (( failures > 0 )); then
