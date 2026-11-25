@@ -150,7 +150,7 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 
 ## Building
 
-`round_dynamic.js` is generated: do not edit it by hand. The Sheets build joins three sources into it: the license header and the Sheets entry source in [`src/`](./src/), and the shared library files the build script lists, which live in the Chrome extension's library: the rounding arithmetic, the number reader, the classification ladder, and the table step. The entry source holds `ROUND_DYNAMIC`, its help card text, the `[VERSION]` line, the fixed settings, the result kind, and the step that sorts each value by its type. Edit a source, then rebuild from the repository root and commit the rebuilt file:
+`round_dynamic.js` is generated: do not edit it by hand. The Sheets build joins three sources into it: the license header and the Sheets entry source in [`src/`](./src/), and the shared library files the build script lists, which live in the Chrome extension's library: the rounding arithmetic, the number reader, the classification ladder, and the table step. The entry source holds `ROUND_DYNAMIC`, its help card text, the `[VERSION]` line, the default offsets, the fixed settings, the result kind, and the Sheets input step. Edit a source, then rebuild from the repository root and commit the rebuilt file:
 
 ```bash
 node scripts/build-sheets.js
