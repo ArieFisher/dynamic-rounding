@@ -163,8 +163,8 @@
     /function\s+positionTablePillbox\b/.test(src), true);
   eq('table-pillbox: defines createTablePillbox',
     /function\s+createTablePillbox\b/.test(src), true);
-  eq('table-pillbox: defines injectTablePillboxes',
-    /function\s+injectTablePillboxes\b/.test(src), true);
+  eq('table-pillbox: defines scanAndRegisterTables',
+    /function\s+scanAndRegisterTables\b/.test(src), true);
   // The table pillbox must use the new dr-ext-table-pillbox CSS class
   eq('table-pillbox: the table pillbox uses dr-ext-table-pillbox CSS class',
     src.includes('dr-ext-table-pillbox'), true);
@@ -1477,7 +1477,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
   eq('nesting: the load-time scan calls the table scan',
     controllerSrc !== null && /scanTables\s*\(/.test(controllerSrc), true);
   eq('nesting: the added-node pass passes each added element to the load-time scan function',
-    controllerSrc !== null && /injectTablePillboxes\s*\(\s*node\s*\)/.test(controllerSrc), true);
+    controllerSrc !== null && /scanAndRegisterTables\s*\(\s*node\s*\)/.test(controllerSrc), true);
 })();
 
 // --- the living documents and the test page state the rule ---
@@ -1619,7 +1619,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 
 // ---------------------------------------------------------------------------
 // Pin the exact state:rangeOk/state:rangeError message
-// sequence for one full apply (applySidebarRounding -> roundTable ->
+// sequence for one full apply (applyTableSettings -> roundTable ->
 // publishRangeStatus -> the event bus, which sends through
 // chrome.runtime.sendMessage).
 //
@@ -1687,7 +1687,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
       .map((file) => (file === 'content.js' ? contentSrc : contentScriptSources.get(file)))
       .join('\n');
     vm.runInContext(
-      bundle + '\nthis.__applySidebarRounding = applySidebarRounding; this.__DR_DEFAULTS = DR_DEFAULTS; this.__DR_MODEL = DR_MODEL;',
+      bundle + '\nthis.__applyTableSettings = applyTableSettings; this.__DR_DEFAULTS = DR_DEFAULTS; this.__DR_MODEL = DR_MODEL;',
       ctx
     );
 
@@ -1725,7 +1725,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
         Object.assign({}, sandbox.__DR_DEFAULTS, { enabled: true }), 'page');
       // The settings notice above belongs to the write, not the apply.
       sentMessages.length = 0;
-      sandbox.__applySidebarRounding(table);
+      sandbox.__applyTableSettings(table);
     } catch (e) {
       threw = e.message;
     }
@@ -1773,8 +1773,8 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
     eq('table-pillbox-split: table-pillbox-view.js is present in the manifest', false, true);
     return;
   }
-  const FORBIDDEN_CONTROLLER_CALLS = ['applySidebarRounding', 'resetTable', 'roundTable',
-    'registerDataTable', 'injectTablePillboxes', 'consumeNomination'];
+  const FORBIDDEN_CONTROLLER_CALLS = ['applyTableSettings', 'resetTable', 'roundTable',
+    'registerDataTable', 'scanAndRegisterTables', 'consumeNomination'];
   // Sanity check on the scan itself: every forbidden name is a real function
   // in the content-script stack, so the filter below tests something.
   const missingFromController = FORBIDDEN_CONTROLLER_CALLS.filter(

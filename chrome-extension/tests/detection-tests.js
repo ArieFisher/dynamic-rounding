@@ -3132,7 +3132,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
       }
       return [];
     };
-    injectTablePillboxes();
+    scanAndRegisterTables();
   });
 
   const added = DR_MODEL.getRegisteredTables().slice(before);
@@ -3152,7 +3152,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   const before = DR_MODEL.getRegisteredTables().length;
 
   withTablePillboxDocumentMock(function () {
-    injectTablePillboxes(grid.wrapperEl);
+    scanAndRegisterTables(grid.wrapperEl);
   });
 
   const added = DR_MODEL.getRegisteredTables().slice(before);
@@ -3170,7 +3170,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   // no second registration.
   const beforeRediscovery = DR_MODEL.getRegisteredTables().length;
   withTablePillboxDocumentMock(function () {
-    injectTablePillboxes(grid.scrollPaneEl);
+    scanAndRegisterTables(grid.scrollPaneEl);
   });
   eq('nesting: a node added inside a registered nest adds no registry entry',
     DR_MODEL.getRegisteredTables().length, beforeRediscovery);
@@ -3849,7 +3849,7 @@ function cnAdapterCellEls(tableEl) {
       if (sel === GRID_ARIA_SELECTOR_TEXT) return page.host.querySelectorAll(sel);
       return [];
     };
-    injectTablePillboxes();
+    scanAndRegisterTables();
   });
 
   try {

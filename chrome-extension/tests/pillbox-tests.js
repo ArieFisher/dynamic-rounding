@@ -485,7 +485,7 @@
     DR_MODEL.setActiveTable(table);
     try {
       DR_MODEL.setTableSettings(table, { enabled: true }, 'page');
-      applySidebarRounding(table);
+      applyTableSettings(table);
     } finally {
       DR_MODEL.setActiveTable(savedActive);
     }
@@ -523,7 +523,7 @@
     // The press path's write of off, then the controller's apply, which
     // resets the table.
     DR_MODEL.setTableSettings(table, { enabled: false }, 'page');
-    applySidebarRounding(table);
+    applyTableSettings(table);
   } finally {
     DR_MODEL.setActiveTable(savedActive);
   }
@@ -2385,7 +2385,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   const gridEl = {
     nodeType: 1, tagName: 'DIV', className: 'grid-wrapper', children: rows,
     classList: gridClassList, parentElement: null, parentNode: null,
-    // applySidebarRounding calls table.querySelector(...) directly, with no `&&`
+    // applyTableSettings calls table.querySelector(...) directly, with no `&&`
     // guard, so this must exist (returning "not already rounded"), and
     // the restore scans querySelectorAll the same way
     // (returning "no rounded cells").

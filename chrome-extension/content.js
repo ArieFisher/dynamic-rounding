@@ -1,16 +1,10 @@
 // Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 
-// DR_DEFAULTS is loaded from constants.js (declared first in manifest content_scripts).
-
-// The capture marker: a saved capture (lib/dr-capture/render.js) stamps
-// data-dr-capture on its document element, because the capture is itself a
-// page with a real table and — with file access enabled — Chrome injects
-// this content script into it. On such a page the content script does nothing:
-// no right-click activation, no load-time scan, no observer, so no table in
-// a capture is ever registered, activated, or rounded. A capture must show
-// what was captured, never what this extension would do to it. Page rules
-// cannot enforce this (a page's Content-Security-Policy does not apply to
-// an extension's injected code), so the guard sits here.
+// The capture marker: lib/dr-capture/render.js stamps data-dr-capture on a
+// saved capture's document element, because the capture is itself a page
+// with a real table and, with file access on, Chrome injects this content
+// script into it. docs/design.md ("The content script does nothing on a
+// capture") holds the reason the guard sits here.
 const IS_CAPTURE_PAGE = !!(typeof document !== 'undefined' && document.documentElement &&
   document.documentElement.dataset && document.documentElement.dataset.drCapture !== undefined);
 
@@ -21,10 +15,8 @@ const DETECT_OPTS = { isRegistered: DR_MODEL.hasTable };
 
 let lastRightClickedElement = null;
 
-// The controller is the sole subscriber to intent topics. This is where the
-// activate intent turns into a model change. The active table can be a
-// <table> element or a div-based grid root (any element findTargetTable
-// returns as its .handle), so every reader of it must accept any Element.
+// The active table can be any registered element, of either table kind, so
+// every reader of it accepts any Element.
 DR_BUS.subscribe('intent:activateTable', ({ table }) => {
   DR_MODEL.setActiveTable(table);
 });
@@ -37,33 +29,25 @@ function activateSwitchedTable(table) {
 }
 
 // The controller's one write of a table's settings, followed by the apply
-// that puts them on the screen. The patch merges onto the table's settings:
-// the keys the patch holds replace, and every other key keeps the table's
-// value. The sidebar's apply and the table pillbox press both write through it;
-// source holds which ('sidebar' or 'page') for the settings notice. Each
-// caller runs the shape check first and passes the table it returns, so a
-// write to a table the page refilled lands on the fresh registration.
+// that puts them on the screen. The sidebar's apply and the table pillbox
+// press both write through it; source holds which ('sidebar' or 'page') for
+// the settings notice. The caller passes the table the shape check returns
+// (see revalidateTableShape).
 function writeTableSettings(table, patch, source) {
   DR_MODEL.setTableSettings(table, patch, source);
-  applySidebarRounding(table);
+  applyTableSettings(table);
 }
 
-// Every row at one of the log module's error levels (warn and error) is an
-// extension error: it lands in the model's error state, whose state change
-// the toast view (toast-view.js) draws and the capture carries. Debug and info
-// rows stay out. The log module (lib/dr-log/index.js) holds the level list,
-// with the reason for one list, and its header comment holds the reason for
-// the listener.
+// Every row at one of the log module's error levels is an extension error.
+// The log module (lib/dr-log/index.js) holds the level list, with the reason
+// for one list, and its header comment holds the reason for the listener.
 DR_LOG.onRow((row) => {
   if (DR_LOG.ERROR_LEVELS.includes(row.level)) DR_MODEL.recordError(row);
 });
 
-// The sidebar's settings apply: write the active table's settings and apply
-// them. The shape check runs before the write, so a change landing on a
-// table the page refilled writes the fresh registration, and a shape change
-// that registers nothing stops the write. With no table active nothing is
-// written. The answer carries no data: the sidebar reads that someone
-// answered and stays bound.
+// The sidebar's settings apply, written to the table the shape check returns
+// for the active table (see revalidateTableShape). The answer carries no
+// data: the sidebar reads that someone answered and stays bound.
 DR_BUS.respond('request:applySettings', ({ settings }) => {
   const active = DR_MODEL.getActiveTable();
   const target = active && revalidateTableShape(active).table;
@@ -73,34 +57,23 @@ DR_BUS.respond('request:applySettings', ({ settings }) => {
 
 // table-pillbox-view.js's click handler publishes every table pillbox press
 // as this one intent; the comment on that handler holds which clicks count
-// as a press. The menu toggle publishes the same intent from
-// its intent:menuClicked subscriber below. This is where that intent turns
-// into one controller action, and there is exactly one.
+// as a press. The menu toggle publishes the same intent from its
+// intent:menuClicked subscriber below.
 //
 // The rules, in the order they matter:
 //
-//   1. The shape check runs before rule 2's read. For a press on a table
-//      the page has refilled, the handler therefore reads the fresh entry,
-//      which holds the shipped defaults, and turns simplification on, where
-//      a read of the discarded entry would find a setting for values no
-//      longer on the screen. The handler continues on the element the check
-//      returns, and stops when the check registers nothing.
+//   1. The shape check runs before rule 2's read (see revalidateTableShape).
 //   2. The flip direction comes from the table's on/off value, the one the
 //      table pillbox shows, read BEFORE any write. A read afterward would
 //      return the write's own value: for an off table the handler would
 //      write on, then read on and write off, and the table would end where
 //      it started.
 //   3. Activation precedes the write, so the sidebar receives the new
-//      active table before the settings notice for it. The existing suite
-//      pins that order. A shape change already activated the fresh table
-//      inside the check, so the handler activates only an ordinary moved
-//      press. It publishes the activate intent rather than writing the
-//      model, so that intent stays the single place a table becomes active.
+//      active table before the settings notice for it. A shape change
+//      already activated the fresh table inside the check, so the handler
+//      activates only an ordinary moved press.
 //   4. Exactly one settings write per press: the flipped on/off value, onto
-//      the pressed table's own settings. Every other setting, the range
-//      expression included, keeps the table's value, because each table
-//      holds its own. The write's settings notice carries the new value to
-//      the sidebar, and the write runs the single apply.
+//      the pressed table's own settings.
 DR_BUS.subscribe('intent:toggleTable', ({ table: pressedTable }) => {
   // Rule 1.
   const revalidated = revalidateTableShape(pressedTable);
@@ -124,40 +97,33 @@ DR_BUS.subscribe('intent:toggleTable', ({ table: pressedTable }) => {
 // reapplyObservers: table → { observer, target }: the MutationObserver and
 //                   the element it watches, a native table itself or a grid's
 //                   scroll container.
-// reapplyTimers:    table → { id, burstStartMs }: the pending setTimeout id
-//                   for the next pass, and the clock time the current burst
-//                   of page edits began, which bounds the burst's wait.
+// reapplyTimers:    table → the settle delay timer for the next pass (see
+//                   restartSettleWait).
 const reapplyObservers = new WeakMap();
 const reapplyTimers = new WeakMap();
 
-// Pending table state, keyed by chain root. A chain root whose chain is empty
-// — no element of its nest passes the data test — becomes a pending table:
-// the table arrived before its rows or its numbers, and they may still arrive.
-// A native table is a chain root of its own.
-// pendingObservers:   chainRootEl → MutationObserver watching the whole subtree.
-// pendingRetestTimers: chainRootEl → { id, burstStartMs }: the pending setTimeout
-//                      id for the re-test after the settle delay, and its
-//                      burst's start.
-// pendingRetestCounts: chainRootEl → failed re-tests so far, against
+// Pending table state, keyed by chain root.
+// pendingRoots:        chainRootEl → { observer, retests }: the
+//                      MutationObserver watching the whole subtree, and the
+//                      failed re-tests so far, against
 //                      DR_DETECTION_SETTINGS.pendingRetestCap.
-// pendingRoots is the enumerable companion to the three WeakMaps: the table
-// observer's removal branch walks it to find a pending root inside a removed
-// subtree.
-const pendingObservers = new WeakMap();
+// pendingRetestTimers: chainRootEl → the settle delay timer for the next
+//                      re-test (see restartSettleWait).
+const pendingRoots = new Map();
 const pendingRetestTimers = new WeakMap();
-const pendingRetestCounts = new WeakMap();
-const pendingRoots = new Set();
 // True once a table past DR_DETECTION_SETTINGS.pendingTableCap went unwatched
 // on this page, so the cap writes one log row per page.
 let pendingTableCapLogged = false;
 
-// The changes both observers watch: rows arrive as added nodes, and a cell
-// filled in place changes text alone.
+// The changes a pending table's subtree observer and the re-apply observer
+// watch: rows arrive as added nodes, and a cell filled in place changes text
+// alone.
 const OBSERVED_CHANGES = { childList: true, characterData: true, subtree: true };
 
 // Restart key's settle delay; action(key) runs when it ends. waits holds
-// key → { id, burstStartMs }. maxWaitMs bounds the wait from the burst's
-// start, and a call without it sets no longest wait.
+// key → { id, burstStartMs }: the pending setTimeout id, and the time the
+// current burst of page changes began. maxWaitMs bounds the wait from the
+// burst's start, and a call without it sets no longest wait.
 function restartSettleWait(key, waits, action, maxWaitMs) {
   const now = Date.now();
   const previous = waits.get(key);
@@ -234,8 +200,8 @@ DR_BUS.subscribe('intent:menuClicked', () => {
 DR_BUS.respond('request:activeTable', () => {
   // A table the page redrew since the last read registers fresh, and the
   // check makes the fresh table active, before the answer reads it.
-  if (DR_MODEL.getActiveTable()) revalidateTableShape(DR_MODEL.getActiveTable());
-  const active = DR_MODEL.getActiveTable();
+  const current = DR_MODEL.getActiveTable();
+  const active = current && revalidateTableShape(current).table;
   const settings = DR_MODEL.getTableSettings(active);
   if (!active) return { settings, samples: null, maxMag: null };
   return Object.assign({ settings }, extractPreviewSamples(active));
@@ -244,18 +210,15 @@ DR_BUS.respond('request:activeTable', () => {
 DR_BUS.respond('request:captureState', () => buildCaptureStateResponse());
 
 // Apply a table's own settings to it: reset it, then simplify it when its
-// on/off value is on.
-//
-// Every caller runs the shape check first and passes the table it returns,
-// so a table the page refilled is discarded and registered fresh rather than
-// reset against originals that belong to cells no longer on the screen.
+// on/off value is on. The caller passes the table the shape check returns
+// (see revalidateTableShape).
 //
 // An unrestorable cell keeps its simplified text through the reset (see
 // restoreTable's KNOWN ACCEPTED COST).
-function applySidebarRounding(table) {
+function applyTableSettings(table) {
   const opts = DR_MODEL.getTableSettings(table);
   resetTable(table);
-  if (opts.enabled !== false) {
+  if (DR_MODEL.isTableOn(table)) {
     const result = roundTable(table, opts);
     publishRangeStatus(result);
     DR_LOG.debug(DR_LOG.formatRow('settings change',
@@ -287,23 +250,16 @@ function registerDataTable(table, hasPassedDataTest = false) {
 }
 
 // The load-time scan, and the added-node pass for each added element.
-function injectTablePillboxes(root = document) {
+function scanAndRegisterTables(root = document) {
   scanTables(root, DETECT_OPTS).forEach(consumeNomination);
 }
 
 // The one consumer of the nomination step's per-nest outcomes, for both table
 // kinds, the load-time scan, the added-node pass, and the re-test of a pending
 // table alike, so the pending record and its clearing sit behind the step's
-// outcome and never in a caller. The step returns outcomes; this is where an
-// outcome becomes a registration or a watch.
+// outcome and never in a caller. nominateNest (lib/dr-table/detect.js) holds
+// what each outcome means.
 //
-// What this function does with each outcome (nominateNest, in
-// lib/dr-table/detect.js, holds what each outcome means):
-//   'selected'   register the selected element and drop any pending record
-//                the nest carried.
-//   'empty'      hold the chain root as a pending table and re-test its
-//                subtree.
-//   any other    drop any pending record the nest carried; no watch holds it.
 // A registration through another path (a right-click) leaves the pending
 // record standing until the next re-test returns 'registered', which drops it
 // here.
@@ -321,26 +277,17 @@ function consumeNomination({ chainRoot, selected, outcome }) {
 }
 
 // Hold a chain root as a pending table, or count a re-test that failed again.
-//
-// The first 'empty' outcome for a root starts the record: one subtree
-// observer that re-tests after the settle delay, and a count of 0. Every
-// later 'empty' outcome for the same root is a failed re-test and counts
-// against DR_DETECTION_SETTINGS.pendingRetestCap; reaching the cap drops the
-// observer, the timer, and the count, so a region that never holds data
-// costs a bounded amount of processing.
+// The re-test cap bounds the processing spent on a region that never holds
+// data.
 //
 // One observer per chain root, whatever the number of qualifying elements
 // under it: the nomination step keys its results by chain root, so a nest of
 // three role-bearing elements produces one outcome and one watch.
-//
-// A new record past DR_DETECTION_SETTINGS.pendingTableCap does not start, and
-// the first such table on the page writes one row. A record that drops frees
-// its place.
 function holdPendingTable(chainRoot) {
-  if (pendingRoots.has(chainRoot)) {
-    const count = (pendingRetestCounts.get(chainRoot) || 0) + 1;
-    pendingRetestCounts.set(chainRoot, count);
-    if (count >= DR_DETECTION_SETTINGS.pendingRetestCap) {
+  const record = pendingRoots.get(chainRoot);
+  if (record) {
+    record.retests++;
+    if (record.retests >= DR_DETECTION_SETTINGS.pendingRetestCap) {
       dropPendingTable(chainRoot);
       DR_LOG.debug(DR_LOG.formatRow('pending table drop', { reason: 're-test cap' }));
     }
@@ -359,9 +306,7 @@ function holdPendingTable(chainRoot) {
   const observer = new MutationObserver(
     () => restartSettleWait(chainRoot, pendingRetestTimers, retestPendingTable));
   observer.observe(chainRoot, OBSERVED_CHANGES);
-  pendingObservers.set(chainRoot, observer);
-  pendingRetestCounts.set(chainRoot, 0);
-  pendingRoots.add(chainRoot);
+  pendingRoots.set(chainRoot, { observer, retests: 0 });
 }
 
 // Re-run the nomination step from a pending root and consume the outcome
@@ -371,17 +316,11 @@ function retestPendingTable(chainRoot) {
   consumeNomination(nominateNest(chainRoot, DETECT_OPTS));
 }
 
-// Drop a pending record whole: the settle delay timer, the subtree
-// observer, the failed-re-test count, and the root's membership in the
-// enumerable set. Safe on a root that holds no record.
+// Safe on a root that holds no record.
 function dropPendingTable(chainRoot) {
   cancelSettleWait(chainRoot, pendingRetestTimers);
-  const observer = pendingObservers.get(chainRoot);
-  if (observer) {
-    observer.disconnect();
-    pendingObservers.delete(chainRoot);
-  }
-  pendingRetestCounts.delete(chainRoot);
+  const record = pendingRoots.get(chainRoot);
+  if (record) record.observer.disconnect();
   pendingRoots.delete(chainRoot);
 }
 
@@ -389,7 +328,9 @@ function dropPendingTable(chainRoot) {
 // recorded, and recover when the two differ. Every action on a registered
 // table runs this first, and acts on the element it returns: the same table
 // on a match, the fresh registration on a mismatch, or null when nothing
-// registers.
+// registers. An action on a table the page refilled therefore lands on the
+// fresh registration, never on an entry whose originals and settings belong
+// to cells no longer on the screen.
 //
 // The nomination step re-runs from the nest's chain root, because a new
 // result set can change which element of the nest passes the data test, so
@@ -464,19 +405,16 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
   // The table observer. A removal counts its unregistered tables and dropped
   // pending tables across one callback and writes one row for each count, so
   // a page that swaps its view spends at most two rows of the log buffer.
-  const _tableObserver = new MutationObserver((mutations) => {
+  const tableObserver = new MutationObserver((mutations) => {
     let unregistered = 0;
     let pendingDropped = 0;
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
-        injectTablePillboxes(node);
+        scanAndRegisterTables(node);
       }
       for (const node of mutation.removedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
-        // Find every registered table or grid this removed subtree contains
-        // by walking DR_MODEL's registered tables, which cover both table
-        // kinds.
         for (const table of DR_MODEL.getRegisteredTables()) {
           if (!subtreeHolds(node, table)) continue;
           teardownTableEntry(table);
@@ -485,7 +423,7 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
         // The same sweep over the pending roots. A pending table holds no
         // registry entry, so the loop above passes over it; without this one
         // its subtree observer and settle delay timer would outlive the element.
-        for (const chainRoot of pendingRoots) {
+        for (const chainRoot of pendingRoots.keys()) {
           if (!subtreeHolds(node, chainRoot)) continue;
           dropPendingTable(chainRoot);
           pendingDropped++;
@@ -501,9 +439,9 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
   });
 
   const startLoadTimeScan = () => {
-    injectTablePillboxes();
+    scanAndRegisterTables();
     if (document.body) {
-      _tableObserver.observe(document.body, { childList: true, subtree: true });
+      tableObserver.observe(document.body, { childList: true, subtree: true });
     }
   };
   if (document.readyState === 'loading') {
@@ -529,12 +467,8 @@ function fingerprintReadOpts(table) {
   return { originalText: (cellEl) => DR_MODEL.getTableOriginalText(table, cellEl) };
 }
 
-// Restore a table's simplified cells to their originals, reading from
-// DR_MODEL's registry. One piece restore serves
-// both table kinds: each marked cell goes through releaseCell, which puts
-// the original text back into every text piece that still shows the
-// extension's written text. A patch changes only text, never tags, so the
-// cell's markup comes back as it stood before simplification.
+// Restore a table's simplified cells to their originals: every marked cell
+// goes through releaseCell, on both table kinds.
 //
 // The content script can run a restore before a pass has processed a page
 // edit — within the wait for a pass, or on a table above the cell cap — so a
@@ -555,9 +489,8 @@ function restoreTable(table) {
   }
 }
 
-// The restore runs it on every marked cell; a pass runs it on a rewritten
-// cell before simplifying it fresh, and on a held cell whose target text is
-// its original.
+// Put the originals back into the text pieces that still show written text,
+// and drop the cell's record.
 function releaseCell(table, cell) {
   makeCellObj(cell, registryOriginalsPort(table)).restore();
   DR_MODEL.deleteTableOriginal(table, cell);
@@ -576,20 +509,6 @@ function resetTable(table) {
 }
 
 // --- Lens preview sample extraction (read by the sidebar over request:activeTable) ---
-
-// The lens preview's classified cells: every cell of the table's dataset,
-// classified through the classification step the one simplification pass
-// runs (classifyTableCells below). The step reads each simplified cell's
-// stored original (see getText in makeCellObj, lib/dr-table/cells.js) and
-// writes nothing. Every row counts, header, body, and total alike.
-function classifyPreviewCells(table, opts) {
-  const rangeParse = parseRangeExpr(opts.rangeExpr);
-  // An invalid range expression makes roundTable return before it touches
-  // any cell; mirror that here instead of falling back to "whole table".
-  if (rangeParse.error) return [];
-  const adapter = registryAdapter(table);
-  return classifyTableCells(tableDataCells(adapter.getRows()), opts, rangeParse.ranges);
-}
 
 // The lens preview's sample pool: each number the table rounds in its
 // dataset, with its cell's trimmed text, so a cell appears here only if the
@@ -616,25 +535,28 @@ function extractPreviewSamples(table) {
   // preview and the table disagree the moment the lens control or a switch
   // moves away from DR_DEFAULTS.
   const liveSettings = DR_MODEL.getTableSettings(table);
-  const classifiedCells = classifyPreviewCells(table, liveSettings);
-  const cells = numericPreviewCells(classifiedCells);
+  // The pass writes nothing here, and it reads each simplified cell's stored
+  // original (see getText in makeCellObj, lib/dr-table/cells.js).
+  const planned = simplifyTableCells(table, registryAdapter(table).getRows(), liveSettings, {
+    frozenMaxMag: DR_MODEL.getTableMaxMagnitude(table),
+    writes: 'none',
+  });
+  const cells = numericPreviewCells(planned.cells.map(({ classifiedCell }) => classifiedCell));
   if (cells.length === 0) {
     return { samples: { top: [], bottom: [] }, maxMag: null };
   }
-  const maxMag = datasetMaxMagnitude(classifiedCells, DR_MODEL.getTableMaxMagnitude(table));
+  const maxMag = planned.maxMag;
   const { offsetTop: topOffset, offsetOther: otherOffset, numTop } =
     resolveRoundingSettings(liveSettings);
 
-  // Reorder a bucket so cells that visibly *change* under the band's
-  // offset come first. Picking the raw document-order cell can land on
-  // an already-round value (e.g. 250,000,000 → 250,000,000), making the preview
-  // row look like rounding does nothing. Array.prototype.sort is stable, so
-  // cells with the same "demonstrates rounding" verdict keep document order.
-  const demoFirst = (bucket, offset) => bucket.slice().sort((a, b) => {
-    const ca = roundWithOffset(a.num, offset) !== a.num ? 0 : 1;
-    const cb = roundWithOffset(b.num, offset) !== b.num ? 0 : 1;
-    return ca - cb;
-  });
+  // Cells whose value changes under the band's offset come first, each group
+  // in document order. Picking the raw document-order cell can land on an
+  // already-round value (e.g. 250,000,000 → 250,000,000), making the preview
+  // row look like rounding does nothing.
+  const demoFirst = (bucket, offset) => {
+    const changes = (c) => roundWithOffset(c.num, offset) !== c.num;
+    return bucket.filter(changes).concat(bucket.filter((c) => !changes(c)));
+  };
 
   const byMag = new Map();
   for (const c of cells) {
@@ -687,14 +609,14 @@ function extractPreviewSamples(table) {
 
 // The whole page-side half of a capture, in one response: the serialized
 // registry (lib/dr-capture/state.js), plus what only this context holds —
-// the page's own address and title, the lens preview for the bound table,
+// the page's own address and title, the lens preview for the active table,
 // and this context's log rows. Composed in a named function so the suite
 // drives it directly (the bus's own message listener is a no-op stub there);
 // the responder above only returns it.
 function buildCaptureStateResponse() {
   const state = collectCaptureState();
   const active = DR_MODEL.getActiveTable();
-  // The serializer guards per table; this walk of the bound table is the one
+  // The serializer guards per table; this walk of the active table is the one
   // step after it that can throw, and an unguarded throw here would discard
   // the whole page-side half — the serialized registry, the fixture seed,
   // and the log rows. On a throw: null, a warn row (taken into the buffer copy
@@ -722,39 +644,8 @@ function buildCaptureStateResponse() {
 //
 // Every simplification of a table runs simplifyTableCells below, on both
 // table kinds: the first simplification (roundTable) and every pass the
-// re-apply observer runs (reapplyRounding). The pass first sorts each cell
-// by its record (sortCellByRecord in lib/dr-table defines the three results).
-// Every cell is fresh on the first simplification; later, a fresh cell is an
-// added row, a row scrolled into view, or a cell the page replaced with a new
-// element. A held cell's reads answer from its record, so its target text
-// comes from its stored originals under the current max magnitude. A
-// rewritten cell holds a value the page wrote: releaseCell puts the original
-// text back into each piece that still shows written text and drops the
-// record, so the cell holds only the page's text, and the pass then treats it
-// as fresh.
-// The pass then classifies every cell through classifyTableCell in
-// lib/dr-table: the classification ladder (lib/dr-simplify) and the
-// placement step (placeClassification).
-// The table step (tablePatches in lib/dr-simplify/table.js) then resolves
-// ambiguous dates per column, finds the max magnitude over the dataset, and
-// builds each cell's patches. The pass writes each cell through the
-// patch writer, cell by cell in page order. The writer gives every piece
-// whose live text differs from its target the target, so a held cell with
-// nothing changed takes no write, a piece redrawn to its original takes the
-// patch again, and a piece written under an old max magnitude takes the new
-// rounding. A held cell whose target is its original is released. A rule
-// added to the pass reaches both table kinds at once.
-//
-// The adapters (lib/dr-table/adapters.js, cells.js) build one cell object for
-// both kinds, so the pass sees no difference between them before it starts.
-//
-// The pass writes no log row. It counts, by reason, the cells it left as
-// written: a split value (classification.split, after the placement step),
-// and a cell whose patch landed nothing because the text it shows differs
-// from the text its pieces hold. It returns the counts and its duration; the
-// apply writes the counts
-// in its one settings change row, and the re-apply observer writes the
-// duration when a pass runs over the pass target.
+// re-apply observer runs (reapplyRounding). docs/design.md ("A native table
+// and a grid give the same result") holds the reason for one pass.
 //
 // The pass settings:
 //   frozenMaxMag  the max magnitude to use instead of computing it from the
@@ -765,8 +656,8 @@ function buildCaptureStateResponse() {
 //                 magnitude as the table's magnitude freeze. 'reapply'
 //                 writes every changed cell and nothing else. 'none' sorts
 //                 no cell, writes nothing, and returns each cell's patches;
-//                 only the test suite passes it, to read a table's planned
-//                 patches with the page left unchanged.
+//                 the lens preview passes it, to read the table's cells
+//                 with the page left unchanged.
 //   cellCap       the most cells the pass reads; above it the pass writes
 //                 nothing and returns overCap. The re-apply observer passes
 //                 the detection settings' reapplyCellCap; the first
@@ -774,10 +665,12 @@ function buildCaptureStateResponse() {
 //
 // The pass returns cells (every cell in page order with its patches; no
 // patches means the cell's target text is its original), maxMag, cellCount
-// (the cells it read), leftAsWritten (the counts above), and ms (its
-// duration). An invalid range expression or a table with no rows returns no
-// cells and no counts, and writes nothing; so does a table above cellCap,
-// with overCap true.
+// (the cells it read), leftAsWritten (the count of cells it left as written,
+// by reason), and ms (its duration). An invalid range expression or a table
+// with no rows returns no cells and no counts, and writes nothing; so does a
+// table above cellCap, with overCap true. The pass writes no log row: the
+// apply writes the counts in its one settings change row, and the re-apply
+// observer writes the duration when a pass runs over the pass target.
 //
 // The table step reads only what classification captured, never the page,
 // so a write to one cell leaves the patches of the cells after it unchanged.
@@ -795,7 +688,7 @@ function resolveRoundingSettings(opts) {
 
 // Every cell of every row, in page order, with its row index: header, body,
 // and total rows alike, on both table kinds. The cell cap counts these cells.
-function tableDataCells(adapterRows) {
+function tableCells(adapterRows) {
   const cells = [];
   for (let r = 0; r < adapterRows.length; r++) {
     for (const cellObj of adapterRows[r].getCells()) {
@@ -805,16 +698,16 @@ function tableDataCells(adapterRows) {
   return cells;
 }
 
-// Classify every cell of every row, in page order (see tableDataCells),
-// through classifyTableCell (lib/dr-table). The lens preview runs this step
-// alone: no sort and no writes.
+// Classify every cell of every row, in page order (see tableCells),
+// through classifyTableCell (lib/dr-table).
 function classifyTableCells(dataCells, opts, ranges) {
   return dataCells.map(({ cellObj, rowIndex }) =>
     classifyTableCell(cellObj, rowIndex, opts, ranges));
 }
 
-// The pass's sort (see the section header): release every rewritten cell,
-// so it holds only the page's text and classifies fresh.
+// The pass's sort (sortCellByRecord in lib/dr-table defines the three
+// results): release every rewritten cell, so it holds only the page's text
+// and classifies fresh.
 function releaseRewrittenCells(table, dataCells) {
   for (const { cellObj } of dataCells) {
     const record = DR_MODEL.getTableOriginal(table, cellObj.el);
@@ -829,7 +722,7 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
   const rangeParse = parseRangeExpr(opts.rangeExpr);
   const none = { cells: [], maxMag: null, cellCount: 0, overCap: false };
   if (rangeParse.error || adapterRows.length === 0) return none;
-  const dataCells = tableDataCells(adapterRows);
+  const dataCells = tableCells(adapterRows);
   if (pass.cellCap !== undefined && dataCells.length > pass.cellCap) {
     return Object.assign({}, none, { cellCount: dataCells.length, overCap: true });
   }
@@ -852,10 +745,13 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
 }
 
 // The pass's write loop over the table step's cells, cell by cell in page
-// order. The pass releases a held cell on which no patch lands: either it
-// has no patch, so its target is its original, or none of its patches
-// matches the text its pieces hold (a text mismatch). Its record, marker
-// class, and hover text go.
+// order. The patch writer gives every piece whose live text differs from its
+// target the target, so a held cell with nothing changed takes no write, a
+// piece redrawn to its original takes the patch again, and a piece written
+// under an old max magnitude takes the new rounding. The pass releases a
+// held cell on which no patch lands: either it has no patch, so its target
+// is its original, or none of its patches matches the text its pieces hold
+// (a text mismatch). Its record, marker class, and hover text go.
 function writeTableCells(table, patchedCells, writes) {
   const cells = [];
   let missedCells = 0;
@@ -888,11 +784,11 @@ function registryAdapter(table) {
 //
 // The observer is off during the extension's own writes: a pass disconnects
 // it before it writes and reconnects it after, and resetTable holds the rule
-// for the restore. A burst of page edits
-// collapses into one pass under the settle delay and the longest wait
-// (settleDelayMs and reapplyMaxWaitMs in the detection settings). A table
-// above the cell cap (reapplyCellCap) takes no observer, and a pass that finds
-// its table above the cap stops the observer.
+// for the restore. A burst of page edits collapses into one pass under the
+// settle delay and the longest wait (settleDelayMs and reapplyMaxWaitMs in
+// the detection settings). A table above the cell cap (reapplyCellCap) takes
+// no observer, and a pass that finds its table above the cap stops the
+// observer.
 
 // Start watching a table after its first simplification. The first
 // simplification's own writes are done by then, so they run no pass.
@@ -903,7 +799,8 @@ function watchTable(table, adapter, cellCount) {
     logAboveCellCap(cellCount);
     return;
   }
-  const observer = new MutationObserver(() => scheduleReapply(table));
+  const observer = new MutationObserver(() => restartSettleWait(
+    table, reapplyTimers, reapplyRounding, DR_DETECTION_SETTINGS.reapplyMaxWaitMs));
   reapplyObservers.set(table, { observer, target: adapter.getWatchedElement() });
   observeTable(table);
 }
@@ -922,10 +819,6 @@ function unwatchTable(table) {
     watcher.observer.disconnect();
     reapplyObservers.delete(table);
   }
-}
-
-function scheduleReapply(table) {
-  restartSettleWait(table, reapplyTimers, reapplyRounding, DR_DETECTION_SETTINGS.reapplyMaxWaitMs);
 }
 
 // The debug row for a table above the cell cap. A debug row raises no toast.
@@ -952,11 +845,10 @@ function reapplyRounding(table) {
 // observer, and the reset that turns a table off stops it. A table turned on
 // with nothing to simplify therefore simplifies a number the page adds later.
 // The shape check runs before any cell is sorted: a table the page refilled
-// with a different shape re-detects as a new table, showing the original under the
-// shipped defaults, and the pass stops there. Otherwise the pass runs the
-// one simplification pass under the table's own settings and its magnitude
-// freeze, if it holds one, so neither a grid's scroll nor a value the page
-// writes shifts the table's max magnitude.
+// with a different shape registers fresh, and the pass stops there.
+// Otherwise the pass runs the one simplification pass under the table's own
+// settings and its magnitude freeze, if it holds one, so neither a grid's
+// scroll nor a value the page writes shifts the table's max magnitude.
 function runReapplyPass(table) {
   const wasActive = DR_MODEL.getActiveTable() === table;
   const revalidated = revalidateTableShape(table, { activates: wasActive });
@@ -984,9 +876,7 @@ function roundTable(table, options) {
   }
   const adapter = registryAdapter(table);
   const adapterRows = adapter.getRows();
-  // A table with no rows returns early without throwing.
   if (adapterRows.length === 0) return { rangeStatus: 'ok' };
-  // The first simplification computes the max magnitude fresh.
   const { cellCount, leftAsWritten } = simplifyTableCells(table, adapterRows, opts, {
     frozenMaxMag: null,
     writes: 'first',

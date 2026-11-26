@@ -304,7 +304,7 @@ function makeTablePillboxTestTable(rowsOrCells, extra) {
     },
     // offsetWidth access in flashActiveTable triggers reflow; just ignore it
     get offsetWidth() { return 0; },
-    // querySelector('.dr-ext-rounded') — used by applySidebarRounding's menu-label check
+    // querySelector('.dr-ext-rounded') — used by applyTableSettings's menu-label check
     querySelector(sel) {
       if (sel === '.dr-ext-rounded') {
         return this._cells.find(c => c.classList.contains('dr-ext-rounded')) || null;
@@ -1495,7 +1495,7 @@ function makePositionedAncestor(styleOverrides) {
 // The load-time scan skips accessibility artifacts
 // =============================================================================
 //
-// injectTablePillboxes() runs scanTables, which runs the nomination step over
+// scanAndRegisterTables() runs scanTables, which runs the nomination step over
 // each table document.querySelectorAll('table') returns. The step reports an
 // accessibility artifact as 'artifact', and consumeNomination registers only
 // the table of a 'selected' outcome.
@@ -1564,7 +1564,7 @@ function makePass1DataTable(opts) {
   return table;
 }
 
-// Run injectTablePillboxes() with a controlled list of tables returned by
+// Run scanAndRegisterTables() with a controlled list of tables returned by
 // document.querySelectorAll('table'). Stubs away document.createElement and
 // document.body.appendChild so createTablePillbox does not throw in Node.
 // Restores all globals afterwards. Returns { tables } (same array for inspection).
@@ -1628,7 +1628,7 @@ function runPass1WithTables(tables) {
   tablePillboxStyleInjected = true; // skip style injection (would need document.head)
 
   try {
-    injectTablePillboxes();
+    scanAndRegisterTables();
   } finally {
     global.document.querySelectorAll  = origQSA;
     global.document.createElement     = origCreateEl;
@@ -3561,7 +3561,7 @@ function afScan(page) {
     const saved = global.getComputedStyle;
     global.document.querySelectorAll = (selector) => page.querySelectorAll(selector);
     global.getComputedStyle = inlineStyleProbe.getComputedStyle;
-    try { injectTablePillboxes(); } finally { global.getComputedStyle = saved; }
+    try { scanAndRegisterTables(); } finally { global.getComputedStyle = saved; }
   });
 }
 
@@ -3570,7 +3570,7 @@ function afAddNode(node) {
   withTablePillboxDocumentMock(function () {
     const saved = global.getComputedStyle;
     global.getComputedStyle = inlineStyleProbe.getComputedStyle;
-    try { injectTablePillboxes(node); } finally { global.getComputedStyle = saved; }
+    try { scanAndRegisterTables(node); } finally { global.getComputedStyle = saved; }
   });
 }
 

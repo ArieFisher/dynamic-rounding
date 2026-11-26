@@ -3099,7 +3099,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     // the same cells.
     DR_MODEL.setTableSettings(grid.wrapperEl,
       { simplifyFirstRow: true, simplifyFirstColumn: true, enabled: true }, 'page');
-    applySidebarRounding(grid.wrapperEl);
+    applyTableSettings(grid.wrapperEl);
     eq('GV5b: the grid shows simplified values after the press turns simplification back on',
       showsSimplified(grid.wrapperEl), true);
     eq('GV5b: cell[0] re-simplified after the press turns simplification back on',
@@ -3191,9 +3191,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     eq('GV7 (pre): reapplyObservers has entry for grid',
       reapplyObservers.has(grid.wrapperEl), true);
 
-    // The removed-node observer path in content.js (the _tableObserver that watches
+    // The removed-node observer path in content.js (the tableObserver that watches
     // document.body) runs teardownTableEntry when it detects a tracked table was
-    // removed from the DOM. In the test harness the _tableObserver is a no-op
+    // removed from the DOM. In the test harness the tableObserver is a no-op
     // stub, so the teardown runs directly.
     teardownTableEntry(grid.wrapperEl);
 

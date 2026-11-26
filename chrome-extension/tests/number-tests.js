@@ -1195,9 +1195,9 @@ eq('pure cell write: whole negative in parens -> "(3)"',
       });
       return tbl.rows[0].cells[0].innerText;
     }
-    eq('shape-equiv (via roundTable): "06-21-2020" year -> "2020"',    runDateCell('06-21-2020', 'year'),    '2020');
-    eq('shape-equiv (via roundTable): "06-21-2020" decade -> "2020"',  runDateCell('06-21-2020', 'decade'),  '2020');
-    eq('shape-equiv (via roundTable): "06-21-2020" century -> "2000"', runDateCell('06-21-2020', 'century'), '2000');
+    eq('shape-equiv (table cell): "06-21-2020" year -> "2020"',    runDateCell('06-21-2020', 'year'),    '2020');
+    eq('shape-equiv (table cell): "06-21-2020" decade -> "2020"',  runDateCell('06-21-2020', 'decade'),  '2020');
+    eq('shape-equiv (table cell): "06-21-2020" century -> "2000"', runDateCell('06-21-2020', 'century'), '2000');
   });
 })();
 
@@ -2348,7 +2348,7 @@ const LADDER_OPTS = {
     addEventListener: () => {},
     querySelectorAll: () => [],
     readyState: 'complete',
-    // The range pulse at the end of applySidebarRounding adds the highlight
+    // The range pulse at the end of applyTableSettings adds the highlight
     // stylesheet and needs these — the reconnect tests above never reach
     // that call (no active table, so the subscriber's `if (selected)` guard
     // short-circuits).

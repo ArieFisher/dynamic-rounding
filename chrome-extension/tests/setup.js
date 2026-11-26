@@ -30,7 +30,7 @@ function askContentScript(message) {
 }
 global.document = {
   addEventListener: () => {},
-  querySelectorAll: () => [],   // injectTablePillboxes calls this; return empty list
+  querySelectorAll: () => [],   // scanAndRegisterTables calls this; return empty list
   readyState: 'complete',       // prevents DOMContentLoaded deferral
   body: { appendChild: () => {}, observe: () => {} },
   head: { appendChild: () => {} },
@@ -161,12 +161,15 @@ globalThis.syncTablePillbox = syncTablePillbox;
 globalThis.positionTablePillbox = positionTablePillbox;
 globalThis.createTablePillbox = createTablePillbox;
 globalThis.registerDataTable = registerDataTable;
-globalThis.injectTablePillboxes = injectTablePillboxes;
+globalThis.scanAndRegisterTables = scanAndRegisterTables;
 globalThis.isDataTable = isDataTable;
 // The lens preview's sample pool for one table, built from the two steps
 // extractPreviewSamples runs, so a test reads the pool without the bucketing.
-globalThis.collectNumericCells = (table, options) =>
-  numericPreviewCells(classifyPreviewCells(table, Object.assign({}, DR_DEFAULTS, options)));
+globalThis.collectNumericCells = (table, options) => {
+  const planned = simplifyTableCells(table, registryAdapter(table).getRows(),
+    Object.assign({}, DR_DEFAULTS, options), { writes: 'none' });
+  return numericPreviewCells(planned.cells.map(({ classifiedCell }) => classifiedCell));
+};
 globalThis.extractPreviewSamples = extractPreviewSamples;
 // The one currency list and what it derives, so the currency suite reads the
 // canon rather than restating any part of it.
@@ -242,9 +245,7 @@ globalThis.scanTables = scanTables;
 globalThis.holdPendingTable = holdPendingTable;
 globalThis.dropPendingTable = dropPendingTable;
 globalThis.pendingRoots = pendingRoots;
-globalThis.pendingObservers = pendingObservers;
 globalThis.pendingRetestTimers = pendingRetestTimers;
-globalThis.pendingRetestCounts = pendingRetestCounts;
 // pendingTableCapLogged is a let; expose a getter/setter so the page cap case
 // can start from a page that has not yet written the cap row.
 Object.defineProperty(globalThis, 'pendingTableCapLogged', {
@@ -268,7 +269,7 @@ globalThis.restoreTable = restoreTable;
 // resetTable is the one way back to the original, so tests reach the original values
 // through it.
 globalThis.resetTable = resetTable;
-globalThis.applySidebarRounding = applySidebarRounding;
+globalThis.applyTableSettings = applyTableSettings;
 `);
 
 let passed = 0;

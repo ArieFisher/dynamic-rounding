@@ -94,7 +94,7 @@
       return [];
     };
 
-    injectTablePillboxes();
+    scanAndRegisterTables();
   });
 
   eq('load-time scan: grid with only accessibility artifacts registers',
@@ -117,7 +117,7 @@
       return [];
     };
 
-    injectTablePillboxes();
+    scanAndRegisterTables();
   });
 
   eq('load-time scan: grid wrapping a real table does NOT register',
@@ -141,7 +141,7 @@
       return [];
     };
 
-    injectTablePillboxes();
+    scanAndRegisterTables();
   });
 
   eq('load-time scan: grid with accessibility artifact and real table does NOT register',
@@ -164,7 +164,7 @@
       return [];
     };
 
-    injectTablePillboxes();
+    scanAndRegisterTables();
   });
 
   eq('load-time scan: grid with no embedded tables registers',
@@ -187,7 +187,7 @@
       return [];
     };
 
-    injectTablePillboxes();
+    scanAndRegisterTables();
   });
 
   // Already registered → skipped → tablePillboxes should NOT have a new entry
@@ -223,7 +223,7 @@
       return [];
     };
 
-    injectTablePillboxes();
+    scanAndRegisterTables();
   });
 
   eq('load-time scan: a TABLE element carrying the grid role does not register',
@@ -239,7 +239,7 @@
 // Kaggle is a React single-page application that renders its Data Explorer
 // grid AFTER load, so detection runs through the
 // MutationObserver added-node handler, which passes each added element to
-// injectTablePillboxes. These tests call it directly with element-node stubs.
+// scanAndRegisterTables. These tests call it directly with element-node stubs.
 // ---------------------------------------------------------------------------
 
 // an added [role="table"] grid whose ONLY embedded
@@ -250,7 +250,7 @@
   const grid = asAddedGridNode(makeAriaGrid([artifact1, artifact2]));
 
   withTablePillboxDocumentMock(function() {
-    injectTablePillboxes(grid);
+    scanAndRegisterTables(grid);
   });
 
   eq('observer: added grid with only accessibility artifacts registers',
@@ -266,7 +266,7 @@
   const grid = asAddedGridNode(makeAriaGrid([realTbl]));
 
   withTablePillboxDocumentMock(function() {
-    injectTablePillboxes(grid);
+    scanAndRegisterTables(grid);
   });
 
   eq('observer: added grid wrapping a real table does NOT register',
@@ -290,7 +290,7 @@
   };
 
   withTablePillboxDocumentMock(function() {
-    injectTablePillboxes(container);
+    scanAndRegisterTables(container);
   });
 
   eq('observer: accessibility artifact <table> in added subtree gets NO table pillbox',
@@ -310,7 +310,7 @@
   };
 
   withTablePillboxDocumentMock(function() {
-    injectTablePillboxes(container);
+    scanAndRegisterTables(container);
   });
 
   eq('observer: real <table> in added subtree gets a table pillbox',
@@ -361,7 +361,7 @@ const PENDING_FILL_ROWS = [
 
   withPendingHarness(function ({ observers, timers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxes(lone);
+      scanAndRegisterTables(lone);
     });
 
     eq('pending: an empty container registers nothing',
@@ -399,7 +399,7 @@ const PENDING_FILL_ROWS = [
 
   withPendingHarness(function ({ observers, timers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxes(grid.wrapperEl);
+      scanAndRegisterTables(grid.wrapperEl);
     });
 
     eq('pending: an empty database query grid registers nothing',
@@ -451,7 +451,7 @@ const PENDING_FILL_ROWS = [
 
   withPendingHarness(function ({ observers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxes(grid.wrapperEl);
+      scanAndRegisterTables(grid.wrapperEl);
     });
 
     eq('pending: a nest of four qualifying elements carries one observer',
@@ -466,7 +466,7 @@ const PENDING_FILL_ROWS = [
     // A second pass over the same empty wrapper holds the record it already
     // has rather than starting a second one.
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxes(grid.wrapperEl);
+      scanAndRegisterTables(grid.wrapperEl);
     });
     eq('pending: a second pass over the same empty wrapper adds no second observer',
       observers.length, 1);
@@ -506,13 +506,13 @@ const PENDING_FILL_ROWS = [
 
   withPendingHarness(function ({ observers, timers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxes(neverEl);
+      scanAndRegisterTables(neverEl);
     });
 
     eq('pending: the container is held as a pending table',
       pendingRoots.has(neverEl), true);
     eq('pending: the held container starts at zero failed re-tests',
-      pendingRetestCounts.get(neverEl), 0);
+      pendingRoots.get(neverEl).retests, 0);
 
     const observer = observers[0];
     // One short of the cap: the observer stays connected.
@@ -521,7 +521,7 @@ const PENDING_FILL_ROWS = [
       runPendingRetestTimers(timers);
     }
     eq('pending: one short of the cap the count reads the failed re-tests',
-      pendingRetestCounts.get(neverEl), DR_DETECTION_SETTINGS.pendingRetestCap - 1);
+      pendingRoots.get(neverEl).retests, DR_DETECTION_SETTINGS.pendingRetestCap - 1);
     eq('pending: one short of the cap the observer stays connected',
       observer && observer.disconnectCount, 0);
     eq('pending: one short of the cap the container is still pending',
@@ -535,12 +535,8 @@ const PENDING_FILL_ROWS = [
       observer && observer.disconnectCount, 1);
     eq('pending: reaching the cap drops the pending root',
       pendingRoots.has(neverEl), false);
-    eq('pending: reaching the cap drops the failed-re-test count',
-      pendingRetestCounts.has(neverEl), false);
     eq('pending: reaching the cap drops the debounce timer',
       pendingRetestTimers.has(neverEl), false);
-    eq('pending: reaching the cap leaves the observer map empty for the root',
-      pendingObservers.has(neverEl), false);
     eq('pending: the dropped container registers nothing',
       DR_MODEL.hasTable(neverEl), false);
 
@@ -575,7 +571,7 @@ const PENDING_FILL_ROWS = [
 
   withPendingHarness(function ({ observers, timers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxes(neverEl);
+      scanAndRegisterTables(neverEl);
     });
     const observer = observers[0];
     const timersBefore = timers.length;
@@ -594,11 +590,11 @@ const PENDING_FILL_ROWS = [
       waits.map((timer) => timer.ms), new Array(changes).fill(DR_DETECTION_SETTINGS.settleDelayMs));
     eq('pending burst: only the last change keeps a live timer',
       waits.filter((timer) => !timer.cancelled).length, 1);
-    eq('pending burst: no re-test ran during the burst', pendingRetestCounts.get(neverEl), 0);
+    eq('pending burst: no re-test ran during the burst', pendingRoots.get(neverEl).retests, 0);
     eq('pending burst: the burst is longer than the re-apply longest wait',
       changes * stepMs > DR_DETECTION_SETTINGS.reapplyMaxWaitMs, true);
     eq('pending burst: once the page goes quiet, one re-test runs', runPendingRetestTimers(timers), 1);
-    eq('pending burst: that re-test counts as one failed re-test', pendingRetestCounts.get(neverEl), 1);
+    eq('pending burst: that re-test counts as one failed re-test', pendingRoots.get(neverEl).retests, 1);
     dropPendingTable(neverEl);
   });
 })();
@@ -619,7 +615,7 @@ const PENDING_FILL_ROWS = [
 
   withPendingHarness(function ({ observers, timers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxes(grid.wrapperEl);
+      scanAndRegisterTables(grid.wrapperEl);
     });
 
     eq('pending registered: the empty wrapper is held as a pending table',
@@ -647,10 +643,6 @@ const PENDING_FILL_ROWS = [
       pendingRoots.has(grid.wrapperEl), false);
     eq('pending registered: a re-test over a registered nest disconnects the observer',
       observers[0] && observers[0].disconnectCount, 1);
-    eq('pending registered: the observer map holds nothing for the wrapper',
-      pendingObservers.has(grid.wrapperEl), false);
-    eq('pending registered: the failed-re-test count map holds nothing for the wrapper',
-      pendingRetestCounts.has(grid.wrapperEl), false);
     eq('pending registered: the debounce timer map holds nothing for the wrapper',
       pendingRetestTimers.has(grid.wrapperEl), false);
     eq('pending registered: the nest holds one registry entry in all',
@@ -682,7 +674,7 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
       pending: pendingRoots.has(t.table),
     });
     withTablePillboxDocumentMock(() => {
-      injectTablePillboxes(t.table);
+      scanAndRegisterTables(t.table);
       const beforeFill = read();
       t.write(0, 1, '4,281,905');
       t.write(1, 1, '622,148');
@@ -710,7 +702,7 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const t = build(LATE_FILL_EMPTY_ROWS, { header: LATE_FILL_HEADER });
     withTablePillboxDocumentMock(() => {
-      injectTablePillboxes(t.table);
+      scanAndRegisterTables(t.table);
       const heldAtStart = pendingRoots.has(t.table);
       // Each change rewrites a label, so every re-test still finds no number.
       for (let i = 0; i < DR_DETECTION_SETTINGS.pendingRetestCap - 1; i++) {
@@ -774,14 +766,14 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
         const fourth = build('grid');
         const rowsBefore = recordedRows();
 
-        [first, second, third].forEach((t) => injectTablePillboxes(t.table));
+        [first, second, third].forEach((t) => scanAndRegisterTables(t.table));
         eq('page cap: the tables up to the cap are watched, of both kinds',
           [first, second].map((t) => pendingRoots.has(t.table)), [true, true]);
         eq('page cap: a table past the cap is not watched', pendingRoots.has(third.table), false);
         eq('page cap: the first table past the cap writes one row',
           capRowsSince(rowsBefore), ['Dynamic Rounding: pending table cap · tables: 2']);
 
-        injectTablePillboxes(fourth.table);
+        scanAndRegisterTables(fourth.table);
         eq('page cap: a second table past the cap is not watched', pendingRoots.has(fourth.table), false);
         eq('page cap: a second table past the cap writes no second row',
           capRowsSince(rowsBefore).length, 1);
@@ -791,7 +783,7 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
         eq('page cap: the pending table that fills registers', DR_MODEL.hasTable(first.table), true);
         eq('page cap: its registration frees a place', pendingRoots.has(first.table), false);
 
-        injectTablePillboxes(third.table);
+        scanAndRegisterTables(third.table);
         eq('page cap: a table past the cap is watched once a place frees', pendingRoots.has(third.table), true);
       } finally {
         DR_DETECTION_SETTINGS.pendingTableCap = savedCap;
@@ -820,7 +812,7 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
 
   withPendingHarness(function ({ observers, timers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxes(rootEl);
+      scanAndRegisterTables(rootEl);
     });
 
     eq('pending crowded: the empty root is held as a pending table',
@@ -847,10 +839,6 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
       pendingRoots.has(rootEl), false);
     eq('pending crowded: a crowded re-test disconnects the observer',
       observers[0] && observers[0].disconnectCount, 1);
-    eq('pending crowded: the observer map holds nothing for the root',
-      pendingObservers.has(rootEl), false);
-    eq('pending crowded: the failed-re-test count map holds nothing for the root',
-      pendingRetestCounts.has(rootEl), false);
     eq('pending crowded: the debounce timer map holds nothing for the root',
       pendingRetestTimers.has(rootEl), false);
     eq('pending crowded: a crowded nest registers no element',
@@ -872,7 +860,7 @@ const LATE_FILL_EMPTY_ROWS = [['North', ''], ['South', '']];
 
   withPendingHarness(function ({ observers, timers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxes(grid.wrapperEl);
+      scanAndRegisterTables(grid.wrapperEl);
     });
 
     const observer = observers[0];
@@ -944,7 +932,7 @@ function makePlainBox(child) {
       const savedStyle = global.getComputedStyle;
       global.getComputedStyle = inlineStyleProbe.getComputedStyle;
       try {
-        withTablePillboxDocumentMock(function () { injectTablePillboxes(added); });
+        withTablePillboxDocumentMock(function () { scanAndRegisterTables(added); });
         eq(`pending artifact, ${form.name}: the added-node pass holds no pending table`, pendingRoots.has(grid), false);
         eq(`pending artifact, ${form.name}: the added-node pass starts no observer`, observers.length, 0);
 
@@ -952,7 +940,7 @@ function makePlainBox(child) {
         const savedQsa = global.document.querySelectorAll;
         withTablePillboxDocumentMock(function () {
           global.document.querySelectorAll = (selector) => page.querySelectorAll(selector);
-          injectTablePillboxes();
+          scanAndRegisterTables();
         });
         global.document.querySelectorAll = savedQsa;
         eq(`pending artifact, ${form.name}: the load-time scan holds no pending table`, pendingRoots.has(grid), false);
@@ -981,7 +969,7 @@ function makePlainBox(child) {
       const before = DR_MODEL.getRegisteredTables().length;
 
       withPendingHarness(function ({ observers, timers }) {
-        withTablePillboxDocumentMock(function () { injectTablePillboxes(grid); });
+        withTablePillboxDocumentMock(function () { scanAndRegisterTables(grid); });
         eq(`pending artifact turn, ${label}: the empty grid is held as a pending table`, pendingRoots.has(grid), true);
         eq(`pending artifact turn, ${label}: one observer watches it`, observers.length, 1);
 
@@ -1001,8 +989,8 @@ function makePlainBox(child) {
 
         eq(`pending artifact turn, ${label}: the re-test drops the pending table`, pendingRoots.has(grid), false);
         eq(`pending artifact turn, ${label}: the re-test disconnects the observer`, observers[0].disconnectCount, 1);
-        eq(`pending artifact turn, ${label}: the maps hold nothing for the grid`,
-          [pendingObservers.has(grid), pendingRetestCounts.has(grid), pendingRetestTimers.has(grid)], [false, false, false]);
+        eq(`pending artifact turn, ${label}: the debounce timer map holds nothing for the grid`,
+          pendingRetestTimers.has(grid), false);
         eq(`pending artifact turn, ${label}: the grid registers nothing and gains no table pillbox`,
           [DR_MODEL.hasTable(grid), tablePillboxes.has(grid), DR_MODEL.getRegisteredTables().length - before], [false, false, 0]);
       });
@@ -1013,11 +1001,11 @@ function makePlainBox(child) {
 // --- (h) Registry, part 2: the removed-node MutationObserver
 // callback must find and unregister a table when the removedNodes entry is
 // an ANCESTOR of the table, not the table itself — the real production
-// callback (content.js's `_tableObserver`), not GV7's manual re-
+// callback (content.js's `tableObserver`), not GV7's manual re-
 // implementation of its cleanup steps. Exercised by re-evaluating the
 // content-script bundle with a capturing MutationObserver installed first
 // (mirrors appModelSelection_parentEquivalence_contextmenuSelectionFlow's
-// runContextmenuFixture technique above), so `_tableObserver`'s real
+// runContextmenuFixture technique above), so `tableObserver`'s real
 // constructor closure is the one under test. ---
 (function registrySprint_ancestorRemovalUnregistersDescendantTable() {
   const capturedInstances = [];
@@ -1030,7 +1018,7 @@ function makePlainBox(child) {
   const captureDoc = {
     addEventListener() {},
     querySelectorAll: () => [],
-    readyState: 'complete', // else-branch runs synchronously: injectTablePillboxes() + observe()
+    readyState: 'complete', // else-branch runs synchronously: scanAndRegisterTables() + observe()
     body: { appendChild() {} },
   };
   const captureChrome = {
@@ -1059,10 +1047,10 @@ function makePlainBox(child) {
       globalThis.__rt_tablePillboxes = tablePillboxButtons(tablePillboxViews);
     `);
 
-    eq('ancestor removal: exactly one MutationObserver constructed (the _tableObserver watching document.body)',
+    eq('ancestor removal: exactly one MutationObserver constructed (the tableObserver watching document.body)',
       capturedInstances.length, 1);
     const tableObserver = capturedInstances[0];
-    eq('ancestor removal: _tableObserver.observe was called with document.body',
+    eq('ancestor removal: tableObserver.observe was called with document.body',
       tableObserver._target === captureDoc.body, true);
 
     const freshDR_MODEL = global.__rt_DR_MODEL;
@@ -1186,7 +1174,7 @@ function makePlainBox(child) {
 //
 // A pending table holds no registry entry, so the registry sweep above passes
 // over it; the pending sweep is the only thing that reaches it. The real
-// `_tableObserver` callback runs here, captured the same way the ancestor-
+// `tableObserver` callback runs here, captured the same way the ancestor-
 // removal case above captures it: the content-script bundle is re-evaluated
 // with a capturing MutationObserver installed first, so the observer under
 // test is the production one and not a re-implementation of its steps. ---
@@ -1230,7 +1218,6 @@ function makePlainBox(child) {
   try {
     eval(contentScriptBundle + `
       globalThis.__pending_pendingRoots = pendingRoots;
-      globalThis.__pending_pendingObservers = pendingObservers;
       globalThis.__pending_pendingRetestTimers = pendingRetestTimers;
       globalThis.__pending_holdPendingTable = holdPendingTable;
     `);
@@ -1284,9 +1271,6 @@ function makePlainBox(child) {
       timers.filter((t) => !t.cancelled).length, 0);
     eq('pending: removing the pending root itself drops the pending root',
       freshPendingRoots.has(rootItself), false);
-    eq('pending: the pending observer map holds nothing for either root',
-      [global.__pending_pendingObservers.has(root),
-        global.__pending_pendingObservers.has(rootItself)], [false, false]);
     eq('pending: the pending timer map holds nothing for either root',
       [global.__pending_pendingRetestTimers.has(root),
         global.__pending_pendingRetestTimers.has(rootItself)], [false, false]);
@@ -1296,7 +1280,6 @@ function makePlainBox(child) {
     global.Node = saved.Node; global.NodeFilter = saved.NodeFilter;
     global.setTimeout = saved.setTimeout; global.clearTimeout = saved.clearTimeout;
     delete global.__pending_pendingRoots;
-    delete global.__pending_pendingObservers;
     delete global.__pending_pendingRetestTimers;
     delete global.__pending_holdPendingTable;
   }
