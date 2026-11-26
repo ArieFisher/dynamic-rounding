@@ -1,6 +1,6 @@
 {
   "name": "dynamic-rounding",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Simplify the numbers in the markdown tables of a Claude Code session, on or off with /simplify-data",
   "author": { "name": "Arie Fisher" },
   "types": "./types/index.d.ts"
