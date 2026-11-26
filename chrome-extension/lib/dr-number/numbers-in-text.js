@@ -127,7 +127,12 @@ function overlapsMaskedRange(maskedRanges, matchStart, matchEnd) {
 // and the brackets stay where the page put them. Format marks
 // (FORMAT_MARK_ALTERNATION, reader.js) may stand between a bracket and the
 // number: "($1,234)" and "(12.3%)" are bracketed numbers.
-const BRACKET_OPEN_RE = new RegExp('\\(' + FORMAT_MARK_ALTERNATION + '*$');
+// The opening pattern is a lookbehind, tested at the number's start alone,
+// because the regular expression engine, given the whole text before the
+// number, starts a match at every opening bracket in that text: a cell of
+// thousands of brackets then takes time that grows with the square of its
+// length.
+const BRACKET_OPEN_RE = new RegExp('(?<=(\\(' + FORMAT_MARK_ALTERNATION + '*))', 'y');
 const BRACKET_CLOSE_RE = new RegExp('^' + FORMAT_MARK_ALTERNATION + '*\\)');
 // A digit after the closing bracket, with at most one whitespace character
 // or hyphen between, marks a phone number rather than an amount
@@ -147,13 +152,14 @@ const FORMAT_MARKS_ONLY_RE = new RegExp('^' + FORMAT_MARK_ALTERNATION + '*$');
 function bracketSignSpan(text, index, numStr) {
   if (typeof text !== 'string' || typeof numStr !== 'string') return null;
   if (numStr.startsWith('-')) return null;
-  const open = text.slice(0, index).match(BRACKET_OPEN_RE);
+  BRACKET_OPEN_RE.lastIndex = index;
+  const open = BRACKET_OPEN_RE.exec(text);
   if (!open) return null;
   const after = text.slice(index + numStr.length);
   const close = after.match(BRACKET_CLOSE_RE);
   if (!close) return null;
   if (DIGIT_AFTER_BRACKET_RE.test(after.slice(close[0].length))) return null;
-  return { start: index - open[0].length, end: index + numStr.length + close[0].length };
+  return { start: index - open[1].length, end: index + numStr.length + close[0].length };
 }
 
 /**

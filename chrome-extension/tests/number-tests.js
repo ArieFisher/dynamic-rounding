@@ -1964,6 +1964,22 @@ const LADDER_OPTS = {
     Date.now() - wholeCellStarted < 1000, true);
 })();
 
+// In a cell that holds many numbers, each leading-zero run that stands alone
+// is a code, each one that is a group of a longer number is not, and the
+// search for codes runs in time that grows in step with the cell's length.
+(function leadingZeroRuns_inALongCell() {
+  eq('identifier shape inside text: "a 1,034 b 007 c 1 034 567 d 0012 " three times keeps each "007" and "0012"',
+    getIdentifierMaskedRanges('a 1,034 b 007 c 1 034 567 d 0012 '.repeat(3)),
+    [0, 33, 66].flatMap((at) => [{ start: at + 10, end: at + 13 }, { start: at + 28, end: at + 32 }]));
+  const text = '2021-06-03 '.repeat(9000);
+  const started = Date.now();
+  const ranges = getIdentifierMaskedRanges(text);
+  eq('identifier shape inside text: a 99,000-character cell of 9,000 dates scans in under a second',
+    Date.now() - started < 1000, true);
+  eq('identifier shape inside text: a cell of 9,000 dates holds 18,000 leading-zero runs',
+    ranges.length, 18000);
+})();
+
 // --- Shared rounding case table (js/round-dynamic-cases.json) ---
 //
 // This table is generated from this package's own parsing/rounding path (the
@@ -2592,6 +2608,28 @@ eq('bracketed: an unopened bracket leaves the number positive',
 eq('bracketed: "(1,234)" is a bracketed negative and "(see 4)" is not',
   [isBracketedNegative('(1,234)', 1, '1,234'), isBracketedNegative('(see 4)', 5, '4')],
   [true, false]);
+
+eq('bracketed: the bracket span of "($ 1,234 %)" covers both brackets and the format marks',
+  bracketSignSpan('Loss ($ 1,234 %) net', 8, '1,234'), { start: 5, end: 16 });
+
+eq('bracketed: "1) Revenue (2,500)" reads 1 as positive and 2,500 as negative',
+  extractNumbersInText('1) Revenue (2,500)').map((m) => m.num), [1, -2500]);
+
+eq('bracketed: "(kr 1,234)", "(EC$1,234)" and "(F.CFA 1,234)" each read as -1,234',
+  ['(kr 1,234)', '(EC$1,234)', '(F.CFA 1,234)'].map((t) => extractNumbersInText(t).map((m) => m.num)),
+  [[-1234], [-1234], [-1234]]);
+
+// A cell that holds many opening brackets reads in time that grows in step
+// with its length, and a bracket pair in it still stands as a minus sign.
+(function bracketsInALongCell() {
+  const text = '(a 1 '.repeat(40000) + '(2)';
+  const started = Date.now();
+  const numbers = extractNumbersInText(text);
+  eq('bracketed: a 200,000-character cell of 40,000 opening brackets reads in under a second',
+    Date.now() - started < 1000, true);
+  eq('bracketed: in that cell the last number alone is negative',
+    [numbers.length, numbers.filter((m) => m.num < 0).map((m) => m.numStr)], [40001, ['2']]);
+})();
 
 // --- The whole-text match ---
 
