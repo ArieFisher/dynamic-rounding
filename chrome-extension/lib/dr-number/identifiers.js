@@ -35,7 +35,9 @@
  * Every repeat in every pattern matches each character one way only, a code
  * inside text starts only where a shape can start, and every test of the
  * text around a code is anchored at both ends, so every test runs in time
- * linear in the text's length.
+ * linear in the text's length. findIdentifiers lists the text's number runs
+ * once for a shape marked groupOfNumber and compares each code with that
+ * list, so it reads no text again for a code.
  *
  * Each shape's pattern comes first; the list, the one search, and its two
  * readings close the file.
@@ -175,25 +177,35 @@ const POSTAL_CODE_PATTERN = [
 // longer number run.
 const LEADING_ZERO_PATTERN = '0\\d+(?![.,]\\d)';
 
+// The {start, end} of every run the pattern that finds a number inside text
+// (numbers-in-text.js) takes as one number, in text order. That pattern reads
+// the one copy of a number's digit run (DIGIT_RUN_PATTERN), so a group of a
+// space-grouped or comma-grouped number is never read a second way here. A
+// run's span holds its digits alone: its minus sign is not a group ("-0123").
+const numberRunSpans = (text) => Array.from(text.matchAll(NUMBER_IN_TEXT_REGEX_GLOBAL), (run) => ({
+  start: run.index + (run[0].startsWith('-') ? 1 : 0),
+  end: run.index + run[0].length,
+}));
+
 /**
- * True when [start, end) sits inside a longer run the pattern that finds a
- * number inside text (numbers-in-text.js) takes as one number, so the characters
- * are one group of that number. That pattern reads the one copy of a
- * number's digit run (DIGIT_RUN_PATTERN), so a group of a space-grouped or
- * comma-grouped number is never read a second way here.
- * @param {string} text
- * @param {number} start
- * @param {number} end
- * @returns {boolean}
+ * True when [start, end) sits inside a longer run of `runs`
+ * (numberRunSpans), so the characters are one group of that number. The runs
+ * stand in text order and never overlap, so the first run that ends at or
+ * after `end` is the only one that can hold the span, and the function
+ * reaches it by halving the list. A cell of thousands of dates holds
+ * thousands of leading-zero codes, and a walk over every run for each code
+ * takes time that grows with the square of the cell's length.
  */
-function insideNumberRun(text, start, end) {
-  for (const run of text.matchAll(NUMBER_IN_TEXT_REGEX_GLOBAL)) {
-    // The run's digits alone: its minus sign is not a group ("-0123").
-    const runStart = run.index + (run[0].startsWith('-') ? 1 : 0);
-    const runEnd = run.index + run[0].length;
-    if (runStart <= start && end <= runEnd && runEnd - runStart > end - start) return true;
+function insideNumberRun(runs, start, end) {
+  let low = 0;
+  let high = runs.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (runs[middle].end < end) low = middle + 1;
+    else high = middle;
   }
-  return false;
+  const run = runs[low];
+  return run !== undefined && run.start <= start && run.end - run.start > end - start;
 }
 
 // The one list of identifier shapes. Each entry holds the shape's name, its
@@ -233,10 +245,12 @@ function findIdentifiers(text, digitsSpanPieces = false, shapes = IDENTIFIER_SHA
   const quantity = GROUPED_DIGITS_QUANTITY_RE.test(text);
   const codes = [];
   for (const shape of shapes) {
-    for (const match of shape.span ? text.matchAll(shape.span) : []) {
+    const matches = shape.span ? Array.from(text.matchAll(shape.span)) : [];
+    const runs = shape.groupOfNumber && matches.length > 0 ? numberRunSpans(text) : [];
+    for (const match of matches) {
       const start = match.index;
       const end = start + match[0].length;
-      if (shape.groupOfNumber && insideNumberRun(text, start, end)) continue;
+      if (insideNumberRun(runs, start, end)) continue;
       const fillsCell = !quantity
         && CELL_LEAD_RE.test(text.slice(0, start)) && CELL_TRAIL_RE.test(text.slice(end));
       codes.push({ name: shape.name, start, end, fillsCell, inText: !SPACED_DIGITS_ONLY_RE.test(match[0]) });
