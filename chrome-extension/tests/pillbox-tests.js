@@ -2143,13 +2143,15 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 //
 // Runtime note: the main eval() above registered document.addEventListener with
 // the no-op stub, so the contextmenu handler is not capturable from the
-// already-evaluated code.  ACs 1 and 3 are therefore verified in two layers:
+// already-evaluated code.  The outline on a right-click and the activation send
+// for a non-table click are therefore verified in two layers:
 //   (a) live runtime: call flashActiveTable() directly and assert its effect
 //       (it is in global scope after the eval), confirming that the mechanism
 //       the handler uses actually works.
 //   (b) a second eval with a capturing stub exercises the contextmenu handler
-//       end-to-end for ACs 1 and 3.
-// ACs 2 and 4 hold in the sidebar flash test in source-checks-tests.js and in the scans of
+//       end-to-end for those two results.
+// The sidebar flash and the worker's silence on the activation report hold in
+// the sidebar flash test in source-checks-tests.js and in the scans of
 // background.js and content.js below.
 // ---------------------------------------------------------------------------
 

@@ -965,6 +965,32 @@ const SINGLE_READ_SAMPLES = {
   }
 })();
 
+// The lens control's thumbs sit at the centre of their stops' columns.
+(function lensControl_anAnswerWithOffsetsPlacesEachThumbAtItsStopColumn() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('lens thumbs: source files (defaults/rounding/reader/bus) present in manifest', false, true);
+    return;
+  }
+  try {
+    eq('lens thumbs: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    answerActiveTableRead(h, {
+      settings: Object.assign({}, DR_DEFAULTS, { offsetTop: -2, offsetOther: 1 }),
+      samples: SINGLE_READ_SAMPLES,
+      maxMag: 6,
+    });
+    h.dispatch({ topic: 'state:tableSwitched' });
+    const COLUMN_COUNT = 9;
+    eq('lens thumbs: offsets -2 and 1 place the top thumb in the first column and the other thumb in the last',
+      [h.el('topThumb').style.left, h.el('otherThumb').style.left],
+      [(0.5 / COLUMN_COUNT * 100) + '%', (8.5 / COLUMN_COUNT * 100) + '%']);
+  } finally {
+    h.restore();
+  }
+})();
+
 (function captureSizeNoteGlue() {
   const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
   const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
