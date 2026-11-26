@@ -64,6 +64,7 @@ const DR_NUMBER = {
 
   // write-back.js
   formatNumber,
+  groupedNumberText,
 
   // identifiers.js
   matchIdentifierShape,

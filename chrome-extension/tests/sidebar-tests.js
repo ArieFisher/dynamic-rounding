@@ -127,9 +127,9 @@
     'return { formatSample: formatSample };\n' +
     '})()';
   const helpers = (isolatedFunction(
-    'numberFormat',
+    'numberFormat', 'groupedNumberText',
     'return ' + helperSrc + ';'
-  ))(numberFormat);
+  ))(numberFormat, groupedNumberText);
 
   const fmtSample = helpers.formatSample;
 
@@ -144,6 +144,10 @@
      fmtSample(1000000), '1,000,000');
   eq('formatSample(-1234567) -> "-1,234,567"',
      fmtSample(-1234567), '-1,234,567');
+  eq('formatSample(1e21) -> "1,000,000,000,000,000,000,000"',
+     fmtSample(1e21), '1,000,000,000,000,000,000,000');
+  eq('formatSample(-1e22) -> "-10,000,000,000,000,000,000,000"',
+     fmtSample(-1e22), '-10,000,000,000,000,000,000,000');
 
   // -----------------------------------------------------------------
   // rounded numbers magnitude >= 100 → NO decimals.

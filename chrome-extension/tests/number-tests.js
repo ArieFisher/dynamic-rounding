@@ -1674,12 +1674,12 @@ eq('pure cell write: whole negative in parens -> "(3)"',
     );
     const formatSampleFn2 = sidebarSrc.match(/function formatSample\([\s\S]*?\n\}/);
 
-    const fmtSampleSrc = '(function(numberFormat) {\n' +
+    const fmtSampleSrc = '(function(numberFormat, groupedNumberText) {\n' +
       sidebarConstBlock2[0] + '\n' +
       formatSampleFn2[0] + '\n' +
       'return formatSample;\n' +
-      '})(numberFormat)';
-    realFormatSample = (isolatedFunction('numberFormat', 'return ' + fmtSampleSrc + ';'))(numberFormat);
+      '})(numberFormat, groupedNumberText)';
+    realFormatSample = (isolatedFunction('numberFormat', 'groupedNumberText', 'return ' + fmtSampleSrc + ';'))(numberFormat, groupedNumberText);
 
     renderHelpers = (isolatedFunction(
       'document', 'formatSample', 'roundWithOffset', 'stepForOffset', 'formatStep', 'magnitudeOf',
