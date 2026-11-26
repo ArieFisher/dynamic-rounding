@@ -723,6 +723,26 @@ const SEAT_ROWS = [
   eq('lens preview of 27M, 18M, and 45M: the other band is empty', result.samples.bottom.length, 0);
 })();
 
+(function lensPreview_extractPreviewSamples_zeroCell() {
+  function tdCell(text) {
+    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
+  }
+  function thCell(text) {
+    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
+  }
+  const table = {
+    rows: [
+      { cells: [thCell(''), thCell('A'), thCell('B'), thCell('C')] },
+      { cells: [thCell('Row'), tdCell('4,080'), tdCell('0'), tdCell('56')] },
+    ],
+  };
+  const result = extractPreviewSamples(table);
+  const allNums = result.samples.top.concat(result.samples.bottom).map(s => s.num);
+  eq('lens preview of 4,080, 0, and 56: no sample is 0', allNums.includes(0), false);
+  eq('lens preview of 4,080, 0, and 56: the other band holds only 56',
+    result.samples.bottom.map(s => s.num), [56]);
+})();
+
 (function lensPreview_extractPreviewSamples_emptyTable() {
   function tdCell(text) {
     return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });

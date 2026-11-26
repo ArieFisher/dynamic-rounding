@@ -71,9 +71,12 @@ DR_BUS.respond('request:applySettings', ({ settings }) => {
 //   3. Activation precedes the write, so the sidebar receives the new
 //      active table before the settings notice for it. A shape change
 //      already activated the fresh table inside the check, so the handler
-//      activates only an ordinary moved press.
+//      activates only an ordinary moved press. It publishes the activate
+//      intent rather than writing the model, so that intent stays the single
+//      place a table becomes active.
 //   4. Exactly one settings write per press: the flipped on/off value, onto
-//      the pressed table's own settings.
+//      the pressed table's own settings. Every other setting keeps the
+//      table's value, because each table holds its own.
 DR_BUS.subscribe('intent:toggleTable', ({ table: pressedTable }) => {
   // Rule 1.
   const revalidated = revalidateTableShape(pressedTable);
