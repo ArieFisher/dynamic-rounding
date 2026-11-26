@@ -359,19 +359,18 @@ function recoupleIfMatched() {
 
 // Move the 'top' or 'other' thumb to a stop, then redraw and apply. While the
 // lens control is coupled, a move of the top thumb moves the other thumb with
-// it. Returns whether a value changed.
+// it.
 function setThumbValue(which, stop) {
   if (which === 'top') {
-    if (topVal === stop && (!coupled || otherVal === stop)) return false;
+    if (topVal === stop && (!coupled || otherVal === stop)) return;
     topVal = stop;
     if (coupled) otherVal = stop;
   } else {
-    if (otherVal === stop) return false;
+    if (otherVal === stop) return;
     otherVal = stop;
   }
   renderLensControl();
   applyNow();
-  return true;
 }
 
 function startDrag(which) {

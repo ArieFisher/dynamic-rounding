@@ -1683,6 +1683,8 @@ const SIDEBAR_UNBOUND_PROMPT = 'Right-click a table to connect it here.';
     for (let i = 0; i < 12; i++) press(topThumb, 'ArrowLeft');
     eq('lens keyboard: both thumbs rest at the low end after the top thumb is pressed left',
       otherThumb.style.left, topThumb.style.left);
+    eq('lens keyboard: the thumbs rest on the first stop after the top thumb is pressed left',
+      topThumb.style.left, (0.5 / 9 * 100) + '%');
 
     press(otherThumb, 'ArrowLeft');
     press(topThumb, 'ArrowRight');
