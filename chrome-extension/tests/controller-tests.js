@@ -1689,6 +1689,25 @@ function issue328SettingsOf(table) {
   });
 })();
 
+(function shapeFingerprint_aShapeChangeRegistersTheChangedTableAlone() {
+  runPressFixture(() => {
+    const page = makeGridInNativeCell();
+    registerFingerprintedTable(page.nativeTable);
+    DR_MODEL.setActiveTable(page.nativeTable);
+
+    rwTextNodesOf(page.nativeTable.rows[0].cells[1])[0].nodeValue = '2025';
+    let outcome = null;
+    withTablePillboxDocumentMock(function () { outcome = revalidateTableShape(page.nativeTable); });
+    eq('fingerprint nested: a header change on a native table holding a grid in a cell registers the native table fresh',
+      outcome.switched && outcome.table === page.nativeTable, true);
+    eq('fingerprint nested: the grid in the native table\'s cell stays unregistered',
+      DR_MODEL.hasTable(page.grid), false);
+
+    forgetRegisteredTable(page.nativeTable);
+    forgetRegisteredTable(page.grid);
+  });
+})();
+
 // --- changing the column set trips the fingerprint. The entry is
 // discarded, and a table pillbox press afterwards simplifies from the original. ---
 

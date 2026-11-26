@@ -797,7 +797,7 @@ function withGridComputedStyle(targetEl, displayVal, fn) {
 
 /**
  * Build a mock element suitable for the findTargetTable walk-up.
- * Provides: closest(), parentElement, classList, nodeType.
+ * Provides: parentElement, classList, nodeType.
  */
 function makeWalkEl(opts) {
   // opts: { passesLooksLikeGrid, display, className, role, rows }
@@ -829,8 +829,6 @@ function makeWalkEl(opts) {
     // getBoundingClientRect — needed by positionTablePillbox when createTablePillbox
     // fires its deferred setTimeout; return a zero-area rect so the table pillbox hides.
     getBoundingClientRect: function() { return { width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0 }; },
-    // closest() stub: no <table> ancestor
-    closest: function() { return null; },
     _display: disp,
   };
   return el;
@@ -894,6 +892,35 @@ function withFindTargetEnv(elements, fn) {
     global.getComputedStyle = origGetCSGlobal;
     global.document = origDocument;
   }
+}
+
+// The tables the load-time scan registers under `root`: the element the
+// nomination step selects in each nest, in the table scan's order.
+function scannedHandles(root, opts = {}) {
+  return scanTables(root, opts).filter(({ outcome }) => outcome === 'selected').map(({ selected }) => selected);
+}
+
+// A host holding a native table whose North row holds a grid in its last
+// cell. Both tables pass the data test. Invented values.
+function makeGridInNativeCell() {
+  const grid = rwDrawTable('grid', [
+    { part: 'body', rows: [['Q1', '1,234'], ['Q2', '3,587']], grouped: true },
+  ]).table;
+  const nativeTable = rwDrawTable('native', [
+    { part: 'head', rows: [[
+      { pieces: 'Region', header: 'col' }, { pieces: '2023', header: 'col' },
+      { pieces: 'By quarter', header: 'col' },
+    ]] },
+    { part: 'body', rows: [['North', '4,821', ''], ['South', '2,734', '']], grouped: true },
+  ]).table;
+  const holdingCell = nativeTable.rows[1].cells[2];
+  rwSetChildren(holdingCell, [grid]);
+  return {
+    host: rwEl('div', {}, [nativeTable]), nativeTable, grid, holdingCell,
+    // The native table's South row number cell and the grid's Q2 number cell.
+    nativeCell: nativeTable.rows[2].cells[1],
+    gridCell: dgDescendantsMatching(grid, '[role="row"]')[1].children[1],
+  };
 }
 
 // A role-bearing element whose own class carries no vendor token, so the
@@ -3238,7 +3265,7 @@ function tkCellTexts(table) {
 function tkRead(kind, pair, settings) {
   const drawOpts = Object.assign({ gridRole: 'table' }, pair.opts);
   const place = pair.place || ((table) => table);
-  const foundIn = (table) => findTables(rwEl('div', {}, [place(table)]), { styleProbe: inlineStyleProbe })
+  const foundIn = (table) => scannedHandles(rwEl('div', {}, [place(table)]), { styleProbe: inlineStyleProbe })
     .filter((el) => isDataTable(el));
   // The count runs on the rewrite page too: the data test reads each cell
   // through the per-cell read the pass runs, and its markup range read walks
