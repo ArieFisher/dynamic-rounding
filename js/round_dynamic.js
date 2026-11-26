@@ -653,11 +653,12 @@ const PERCENT_AFTER_RE = signAfterDigitsRe('%');
 const CURRENCY_INSIDE_RE = new RegExp(CURRENCY_TOKEN);
 // The most characters before a number that the sign check reads. A sign that
 // touches a number sits across whitespace and marks, with at most the far end
-// of a range between ("$12m – 18"). 24 holds that for ordinary figures; a
-// code before a range's far end, after a figure of 13 digits or more, falls
-// outside it. Reading the cell's whole prefix for each number took time that grows
-// with the square of the cell's length. A sign farther back than the limit
-// counts as touching nothing, so the number rounds.
+// of a range between ("$12m – 18"). Reading the cell's whole prefix for each
+// number makes a long cell take time that grows with the square of its length.
+// A code before a range's far end falls outside the limit when the code, the
+// figure after it, and the join together pass it ("USD 1,234,567,890.12 m to
+// 18"). The text after a number stays unbounded: its patterns are anchored at
+// the number, so they cost nothing for a long cell.
 const SIGN_LOOKBACK_CHARS = 24;
 
 /**
@@ -667,7 +668,12 @@ const SIGN_LOOKBACK_CHARS = 24;
  * returns, positioned in `text`.
  */
 function touchesSwitchedOffSign(text, match, options) {
-  const before = text.slice(Math.max(0, match.index - SIGN_LOOKBACK_CHARS), match.index);
+  // A letter sign or code counts only as its own word, so a word the read
+  // cuts at its start drops: the cut leaves its tail, which would read as a
+  // code ("YEAR" cut to "R", "INDUSTRY" cut to "TRY").
+  const start = Math.max(0, match.index - SIGN_LOOKBACK_CHARS);
+  const cut = text.slice(start, match.index);
+  const before = start > 0 && /[A-Za-z]/.test(text[start - 1]) ? cut.replace(/^[A-Za-z]+/, '') : cut;
   const after = text.slice(match.index + match.numStr.length);
   if (!options.simplifyMixedCurrency && (CURRENCY_BEFORE_RE.test(before) || CURRENCY_AFTER_RE.test(after) ||
     CURRENCY_INSIDE_RE.test(match.numStr))) return true;
