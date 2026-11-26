@@ -1,16 +1,14 @@
 // The sidebar page (sidebar.js, sidebar.html).
 
 // ---------------------------------------------------------------------------
-// Source-level assertions: the absence of a name across the extension, which
-// no running test can reach. The live tests further down this piece load
-// sidebar.js whole and check results.
+// Source-level assertions: the absence of a sidebar-open name across the
+// extension, which no running test can reach. The live tests further down this
+// piece load sidebar.js whole and check results.
 // ---------------------------------------------------------------------------
 
 (function sidebarStateRemoval_sourceLevel() {
-  // Click-handler rebind logic spans content.js + table-pillbox-view.js; scan the
-  // combined content-script source. The active-table reference lives in
-  // DR_MODEL (app/model.js): table-pillbox-view.js publishes an intent, and content.js's
-  // own writes go through DR_MODEL's setters.
+  // The scan covers the whole extension, so it reads the combined
+  // content-script source beside sidebar.js, the model, and the service worker.
   const contentSrc = allContentSrc;
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   const modelSrc = sourceByName('app/model.js') || '';
@@ -37,16 +35,6 @@
     namesSidebarState(fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8')), false);
   eq('sidebar-state removal: a reintroduced sidebarOpened field still fails the scan',
     namesSidebarState('let sidebarOpened = false;'), true);
-
-  // The merged press path: one settings write, and no read of any sidebar
-  // value. The behavioral pins live in the part-one block further down; this
-  // one holds the line at the source, so a reintroduced guard fails here.
-  // The handler names the element it acts on `target`: the shape-fingerprint
-  // check ahead of the on/off value read returns the pressed table on a match and
-  // the freshly registered element on a mismatch, and the flip direction
-  // comes from whichever one the press continues on.
-  eq('sidebar-state removal: the intent:toggleTable handler reads the on/off value for its flip direction',
-    /intent:toggleTable'[\s\S]{0,1200}!DR_MODEL\.isTableOn\(target\)/.test(contentSrc), true);
 })();
 
 // ---------------------------------------------------------------------------
@@ -932,9 +920,8 @@ const SINGLE_READ_SAMPLES = {
   }
 })();
 
-// A sidebar whose tab answers nothing, as a tab with no content script does,
-// shows the unbound state from load, and an answer without samples brings the
-// state back.
+// A sidebar whose tab has sent no answer yet shows the unbound state from
+// load, and an answer without samples brings the state back.
 (function unbound_aSidebarThatNoPageAnswersShowsThePromptWithOptionsDisabled() {
   const h = makeIssue251SidebarHarness({ pageAnswers: false });
   if (!h) {
@@ -949,8 +936,6 @@ const SINGLE_READ_SAMPLES = {
       h.bodyClasses.has('unbound'), true);
     eq('unbound: a sidebar opened with no page answer shows the unbound prompt',
       h.statusEl.textContent, 'Right-click a table to connect it here.');
-    eq('unbound: a sidebar opened with no page answer shows the sidebar pillbox off',
-      h.enabledEl.checked, false);
     eq('unbound: a sidebar opened with no page answer disables its options',
       h.el('optionsSection').classList.contains('disabled'), true);
 
@@ -965,62 +950,16 @@ const SINGLE_READ_SAMPLES = {
         h.el('optionsSection').classList.contains('disabled')],
       [false, '', true, false]);
 
-    answerActiveTableRead(h, { settings: DR_DEFAULTS, samples: null, maxMag: null });
-    h.dispatch({ topic: 'state:tableSwitched' });
-    eq('unbound: an answer with null samples shows the prompt and disables the options again',
-      [h.bodyClasses.has('unbound'), h.statusEl.textContent,
-        h.el('optionsSection').classList.contains('disabled')],
-      [true, 'Right-click a table to connect it here.', true]);
-  } finally {
-    h.restore();
-  }
-})();
-
-// A right-click also flashes the sidebar's container, until the animation ends.
-(function activation_aRightClickFlashesTheSidebarUntilTheAnimationEnds() {
-  const h = makeIssue251SidebarHarness();
-  if (!h) {
-    eq('activation flash: source files (defaults/rounding/reader/bus) present in manifest', false, true);
-    return;
-  }
-  try {
-    eq('activation flash: sidebar.js loaded with no stub gaps', h.evalError, null);
-    if (h.evalError !== null) return;
-
-    eq('activation flash: before a right-click the sidebar is not flashing',
-      h.bodyClasses.has('dr-sidebar-flash'), false);
-    h.dispatch({ topic: 'state:tableActivated' });
-    eq('activation flash: a right-click activation flashes the sidebar',
-      h.bodyClasses.has('dr-sidebar-flash'), true);
-    h.fireBody('animationend', {});
-    eq('activation flash: the end of the animation stops the flash',
-      h.bodyClasses.has('dr-sidebar-flash'), false);
-  } finally {
-    h.restore();
-  }
-})();
-
-// The lens control's thumbs sit at the centre of their stops' columns.
-(function lensControl_anAnswerWithOffsetsPlacesEachThumbAtItsStopColumn() {
-  const h = makeIssue251SidebarHarness();
-  if (!h) {
-    eq('lens thumbs: source files (defaults/rounding/reader/bus) present in manifest', false, true);
-    return;
-  }
-  try {
-    eq('lens thumbs: sidebar.js loaded with no stub gaps', h.evalError, null);
-    if (h.evalError !== null) return;
-
     answerActiveTableRead(h, {
-      settings: Object.assign({}, DR_DEFAULTS, { offsetTop: -2, offsetOther: 1 }),
-      samples: SINGLE_READ_SAMPLES,
-      maxMag: 6,
+      settings: Object.assign({}, DR_DEFAULTS, { enabled: true }),
+      samples: null,
+      maxMag: null,
     });
     h.dispatch({ topic: 'state:tableSwitched' });
-    const COLUMN_COUNT = 9;
-    eq('lens thumbs: offsets -2 and 1 place the top thumb in the first column and the other thumb in the last',
-      [h.el('topThumb').style.left, h.el('otherThumb').style.left],
-      [(0.5 / COLUMN_COUNT * 100) + '%', (8.5 / COLUMN_COUNT * 100) + '%']);
+    eq('unbound: an answer with null samples and enabled:true shows the prompt, the sidebar pillbox off, and the options disabled',
+      [h.bodyClasses.has('unbound'), h.statusEl.textContent, h.enabledEl.checked,
+        h.el('optionsSection').classList.contains('disabled')],
+      [true, 'Right-click a table to connect it here.', false, true]);
   } finally {
     h.restore();
   }

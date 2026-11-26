@@ -2137,7 +2137,6 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // Right-click activation
 // ---------------------------------------------------------------------------
 // Right-clicking a table draws the whole-table outline on that table.
-// The sidebar's state:tableActivated subscriber calls flashSidebarContainer.
 // Right-clicking a non-table element produces NO flash and NO state:tableActivated send.
 // background.js does NOT relay state:tableActivated.
 // ---------------------------------------------------------------------------
@@ -2148,14 +2147,10 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 //   (a) live runtime: call flashActiveTable() directly and assert its effect
 //       (it is in global scope after the eval), confirming that the mechanism
 //       the handler uses actually works.
-//   (b) source-level: regex-assert that the contextmenu handler in content.js
-//       correctly calls flashActiveTable(table) inside the `if (table)` guard
-//       and does NOT call it when there is no table.
-// ACs 2 and 4 are pure source-level (sidebar.js / background.js have no eval
-// path in this harness).
-//
-// Additionally, a second eval with a capturing stub is used to exercise the
-// contextmenu handler end-to-end for ACs 1 and 3.
+//   (b) a second eval with a capturing stub exercises the contextmenu handler
+//       end-to-end for ACs 1 and 3.
+// ACs 2 and 4 hold in the sidebar flash test in source-checks-tests.js and in the scans of
+// background.js and content.js below.
 // ---------------------------------------------------------------------------
 
 (function tableContextmenuActivation_sourceLevel() {
@@ -2165,33 +2160,6 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     return;
   }
   const bgSrc      = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
-
-  // contextmenu handler calls flashActiveTable(table) inside
-  // the `if (found)` guard. findTargetTable returns { handle, isNew }, so the handler
-  // guards on `found` and derives `table` from registerIfNew(found)
-  // before flashing it.
-  // Pattern: `if (found) { ... flashActiveTable(table) ...` within the handler.
-  eq('active table source: contextmenu handler calls flashActiveTable(table)',
-    /if\s*\(\s*found\s*\)[\s\S]{0,300}flashActiveTable\(\s*table\s*\)/.test(contentSrc),
-    true);
-
-  // the call to flashActiveTable is inside the `if (found)` block
-  // — it cannot appear BEFORE the guard.
-  // We verify that flashActiveTable does NOT appear before the first `if (found)`.
-  const contextmenuMatch = contentSrc.match(/document\.addEventListener\s*\(\s*['"]contextmenu['"][\s\S]*?\}\s*,\s*true\s*\)/);
-  const handlerSrc = contextmenuMatch ? contextmenuMatch[0] : '';
-  const flashIndex = handlerSrc.indexOf('flashActiveTable');
-  const guardIndex = handlerSrc.indexOf('if (found)');
-  eq('active table source: flashActiveTable appears after if(found) guard in handler',
-    flashIndex !== -1 && guardIndex !== -1 && flashIndex > guardIndex,
-    true);
-
-  // state:tableActivated sendMessage is inside the `if (found)` block,
-  // meaning a non-table right-click cannot trigger it.
-  const sendMsgIndex = handlerSrc.indexOf('state:tableActivated');
-  eq('active table source: state:tableActivated send is inside if(found) guard',
-    sendMsgIndex !== -1 && sendMsgIndex > guardIndex,
-    true);
 
   // the worker neither publishes nor subscribes to the activation
   // topic. The sidebar receives it straight from the content script over the

@@ -2386,7 +2386,7 @@ function recordAppendedChildren(el) {
 // to the model.
 // ---------------------------------------------------------------------------
 /**
- * @param {{captureMarks?: string[], pageAnswers?: boolean}} [opts] captureMarks: the mark word of each capture mark element the page holds. pageAnswers: false makes the tab answer no request, as a tab with no content script does.
+ * @param {{captureMarks?: string[], pageAnswers?: boolean}} [opts] captureMarks: the mark word of each capture mark element the page holds. pageAnswers: false makes the tab answer no request, which shows the sidebar's state before any answer arrives.
  */
 function makeIssue251SidebarHarness(opts) {
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
