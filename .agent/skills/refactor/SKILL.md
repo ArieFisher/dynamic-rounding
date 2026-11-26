@@ -29,7 +29,7 @@ Search the file, its tests, and the docs that describe it for:
 
 - Terms that differ from the vocabulary (`docs/vocabulary.md`), including old terms in a term's "Not" column.
 - A comment and its code that use different words for the same thing.
-- Code, comments, test names, and living docs that break a rule in `AGENTS.md` or `docs/design.md`. See "Docs track behavior" in `AGENTS.md`.
+- Code, comments, test names, and living documents that break a rule in `AGENTS.md` or `docs/design.md`. See "Docs track behavior" in `AGENTS.md`.
 - Test names or group headings that break the test-name rule under "Code style" in `AGENTS.md`.
 
 ### Comments
