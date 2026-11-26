@@ -580,9 +580,9 @@ const SEAT_ROWS = [
 
 (function lensPreview_extractPreviewSamples_buckets() {
   // 5 cells across 5 distinct magnitudes: 1e7, 1e6, 1e4, 1e2, 1e1.
-  // num_top = 1 (DR_DEFAULTS) -> top band picks the highest magnitude only
-  // (others differ from max_mag by >= 1). To exercise the 2-row top band,
-  // give it two cells at the same top magnitude.
+  // num_top = 1 (DR_DEFAULTS) -> the top band holds the highest magnitude only
+  // (others differ from max_mag by >= 1). Two cells share the top magnitude,
+  // and the preview still holds one top-band sample.
   //
   // The data sits at row >= 1 / column >= 1 behind a TH header row and a TH
   // label column: DR_DEFAULTS.simplifyFirstRow/simplifyFirstColumn are both
@@ -760,7 +760,8 @@ const SEAT_ROWS = [
   // step's datasetMaxMagnitude returns for the classified cells, the one the
   // simplification pass rounds against. A stub returning 3 for a dataset
   // whose largest number has magnitude 7 moves 27,000,000 and 4,080 into the
-  // top band and leaves 312 in the other band.
+  // top band and leaves 312 in the other band. The top band's one sample comes
+  // from the largest order of magnitude, so 4,080 gets no top-band sample.
   function tdCell(text) {
     return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
   }
@@ -4973,6 +4974,23 @@ const RW_CAP_ROW = /^Dynamic Rounding: above cell cap · cells: [\d,]+$/;
     eq(`lens preview (${kind}): the preview max magnitude is the frozen one`, preview.maxMag, 3);
     eq(`lens preview (${kind}): the top band holds the larger value alone`,
       preview.samples.top.map((s) => s.num), [98765]);
+  });
+})();
+
+(function freeze04b_aLensPreviewBelowTheFrozenMaxMagnitudeHoldsNoTopBandSample() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(RW_ROWS);
+    roundTableUnder(t.table, RW_OPTS);
+    [[0, 0, '123'], [0, 1, '567'], [1, 0, '246'], [1, 1, '357']]
+      .forEach(([row, col, text]) => t.write(row, col, text));
+    page.settle();
+    const preview = extractPreviewSamples(t.table);
+    eq(`lens preview of 123, 567, 246, and 357 under a frozen max magnitude of 3 (${kind}): maxMag is 3`,
+      preview.maxMag, 3);
+    eq(`lens preview of 123, 567, 246, and 357 under a frozen max magnitude of 3 (${kind}): the top band is empty`,
+      preview.samples.top, []);
+    eq(`lens preview of 123, 567, 246, and 357 under a frozen max magnitude of 3 (${kind}): the other band holds 123`,
+      preview.samples.other.map((s) => s.num), [123]);
   });
 })();
 

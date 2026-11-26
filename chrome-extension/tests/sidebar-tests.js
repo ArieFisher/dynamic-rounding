@@ -1580,6 +1580,14 @@ const SINGLE_READ_SAMPLES = {
       lensKeysRead.filter((key) => !(key in (sidebarSnapshot.lensPreview || {}))), []);
     eq('sidebar snapshot: a finish on a sidebar bound to a table records bound as true',
       sidebarSnapshot.bound, true);
+
+    answerActiveTableRead(h, { settings: DR_DEFAULTS, samples: null, maxMag: null });
+    h.dispatch({ topic: 'state:tableSwitched' });
+    sidebarSnapshot = null;
+    // The stub renderer's throw leaves the form open with its mark set.
+    h.el('captureSave').fire('click');
+    eq('sidebar snapshot: a finish on an unbound sidebar records bound as false',
+      sidebarSnapshot && sidebarSnapshot.bound, false);
   } finally {
     DR_CAPTURE.buildCaptureDocument = savedBuild;
     DR_LOG.warn = savedWarn;

@@ -529,8 +529,8 @@ function numericPreviewCells(classifiedCells) {
   return out;
 }
 
-// Pick one top-band sample and one sample per other-band order of magnitude
-// for the lens preview. Bucketed by order of magnitude, so the lens
+// Returns one top-band sample and one sample per other-band order of
+// magnitude for the lens preview. Bucketed by order of magnitude, so the lens
 // preview shows the offset_top and offset_other split that roundValueSetAware
 // applies to the table.
 function extractPreviewSamples(table) {
