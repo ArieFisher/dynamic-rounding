@@ -1980,6 +1980,37 @@ const LADDER_OPTS = {
     ranges.length, 18000);
 })();
 
+// With the currency switch off, a cell of many numbers classifies in time
+// proportional to its length, and a sign more than 24 characters before a
+// number no longer holds it.
+(function currencySign_inALongCell() {
+  const currencyOff = Object.assign({}, LADDER_OPTS, { simplifyMixedCurrency: false });
+  const roundedTexts = (text) => stretchTexts(text, classifyAt(text, currencyOff));
+  const text = '$1 - '.repeat(10000);
+  const started = Date.now();
+  const classification = classifyAt(text, currencyOff);
+  eq('currency sign: a 50,000-character cell of 10,000 "$1 - " reads in under a second with currency off',
+    Date.now() - started < 1000, true);
+  eq('currency sign: a cell of 10,000 "$1 - " holds every number with currency off',
+    classification.stretches, []);
+  eq('currency sign: "$" and 23 spaces before "12" holds the number with currency off',
+    classifyAt('$' + ' '.repeat(23) + '12', currencyOff).stretches, []);
+  eq('currency sign: "$" and 24 spaces before "12" rounds the number with currency off',
+    roundedTexts('$' + ' '.repeat(24) + '12'), ['12']);
+  eq('currency sign: "YEAR" and 23 spaces before "12" rounds the number with currency off',
+    roundedTexts('YEAR' + ' '.repeat(23) + '12'), ['12']);
+  eq('currency sign: "COUNTRY" and 21 spaces before "12" rounds the number with currency off',
+    roundedTexts('COUNTRY' + ' '.repeat(21) + '12'), ['12']);
+  eq('currency sign: "ZUSD" and 21 spaces before "12" rounds the number with currency off',
+    roundedTexts('ZUSD' + ' '.repeat(21) + '12'), ['12']);
+  eq('currency sign: "INDUSTRY 1,234,567,890.123 – 15" rounds both numbers with currency off',
+    roundedTexts('INDUSTRY 1,234,567,890.123 – 15'), ['1,234,567,890.123', '15']);
+  eq('currency sign: "12 - 18,000,000,000,000 USD" holds both numbers with currency off',
+    roundedTexts('12 - 18,000,000,000,000 USD'), []);
+  eq('currency sign: "12", 30 spaces, and "- 18 USD" holds both numbers with currency off',
+    roundedTexts('12' + ' '.repeat(30) + '- 18 USD'), []);
+})();
+
 // --- Shared rounding case table (js/round-dynamic-cases.json) ---
 //
 // This table is generated from this package's own parsing/rounding path (the
