@@ -2612,6 +2612,13 @@ eq('bracketed: "(1,234)" is a bracketed negative and "(see 4)" is not',
 eq('bracketed: the bracket span of "($ 1,234 %)" covers both brackets and the format marks',
   bracketSignSpan('Loss ($ 1,234 %) net', 8, '1,234'), { start: 5, end: 16 });
 
+eq('bracketed: "1) Revenue (2,500)" reads 1 as positive and 2,500 as negative',
+  extractNumbersInText('1) Revenue (2,500)').map((m) => m.num), [1, -2500]);
+
+eq('bracketed: "(kr 1,234)", "(EC$1,234)" and "(F.CFA 1,234)" each read as -1,234',
+  ['(kr 1,234)', '(EC$1,234)', '(F.CFA 1,234)'].map((t) => extractNumbersInText(t).map((m) => m.num)),
+  [[-1234], [-1234], [-1234]]);
+
 // A cell that holds many opening brackets reads in time that grows in step
 // with its length, and a bracket pair in it still stands as a minus sign.
 (function bracketsInALongCell() {
