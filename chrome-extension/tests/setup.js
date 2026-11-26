@@ -90,8 +90,8 @@ const contentScriptBundle = contentScriptFiles
   .map((file) => contentScriptSources.get(file))
   .join('\n');
 const readerCode = sourceByName('lib/dr-number/reader.js');
-// The lib/dr-number files the content script loads and the sidebar mostly does
-// not (it loads write-back.js alone), in manifest order; null when the manifest lacks one of them.
+// The lib/dr-number files the content script loads after reader.js, in
+// manifest order; null when the manifest lacks one of them.
 const numberTextFiles = [
   'lib/dr-number/settings.js', 'lib/dr-number/numbers-in-text.js',
   'lib/dr-number/dates.js', 'lib/dr-number/write-back.js',

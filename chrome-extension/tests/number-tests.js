@@ -1667,7 +1667,7 @@ eq('pure cell write: whole negative in parens -> "(3)"',
   let renderHelpers;
   let realFormatSample;
   try {
-    // formatSample in sidebar.js depends on numberFormat (from content.js,
+    // formatSample in sidebar.js depends on numberFormat and groupedNumberText (from content.js,
     // already on globalThis). Extract it from sidebar.js source.
     const sidebarConstBlock2 = sidebarSrc.match(
       /const PREVIEW_DECIMAL_THRESHOLD\s*=.*?;\s*const PREVIEW_MAX_DECIMALS\s*=.*?;/
