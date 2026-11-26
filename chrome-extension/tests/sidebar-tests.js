@@ -1,14 +1,12 @@
 // The sidebar page (sidebar.js, sidebar.html).
 
 // ---------------------------------------------------------------------------
-// Source-level assertions (supplementary): verify structural invariants that
-// cover both click branches and the sidebar.js handler in a single pass.
-// These complement the live tests further down this piece, which load
-// sidebar.js whole, and are an accepted fallback pattern for aspects that the
-// Node harness cannot exercise at runtime.
+// Source-level assertions: the absence of a name across the extension, which
+// no running test can reach. The live tests further down this piece load
+// sidebar.js whole and check results.
 // ---------------------------------------------------------------------------
 
-(function sidebarRebind_sourceLevel() {
+(function sidebarStateRemoval_sourceLevel() {
   // Click-handler rebind logic spans content.js + table-pillbox-view.js; scan the
   // combined content-script source. The active-table reference lives in
   // DR_MODEL (app/model.js): table-pillbox-view.js publishes an intent, and content.js's
@@ -49,44 +47,6 @@
   // comes from whichever one the press continues on.
   eq('sidebar-state removal: the intent:toggleTable handler reads the on/off value for its flip direction',
     /intent:toggleTable'[\s\S]{0,1200}!DR_MODEL\.isTableOn\(target\)/.test(contentSrc), true);
-
-  // content.js: the mouse and touch click branches share one
-  // intent:toggleTable subscriber in content.js, so the literal appears once,
-  // not per branch. On state:tableSwitched the sidebar's handler pulls the
-  // model's settings instead of resetting to defaults.
-  const switchCount = (contentSrc.match(/state:tableSwitched/g) || []).length;
-  eq('rebind source: state:tableSwitched is dispatched from the shared intent:toggleTable handler (>= 1 occurrence)',
-    switchCount >= 1, true);
-
-  // content.js: the intent:toggleTable handler's rebind branch publishes the
-  // activate intent instead of assigning DR_MODEL's field directly. It stays
-  // a published intent rather than a direct DR_MODEL.setActiveTable() call,
-  // keeping one place ("activate this table") for any caller of that
-  // concern, controller included.
-  eq('rebind source: intent:toggleTable publishes intent:activateTable in the rebind block instead of writing DR_MODEL directly',
-    /DR_BUS\.publish\(\s*'intent:activateTable'/.test(contentSrc), true);
-
-  // sidebar.js: the state:tableSwitched subscriber re-reads the model's
-  // settings instead of resetting the controls to the shipped
-  // defaults. The block is isolated to the subscriber's own body, so the
-  // negative pins below cover the whole handler and nothing beyond it.
-  const switchHandlerMatch = sidebarSrc.match(
-    /boundTab\.subscribe\(\s*'state:tableSwitched'[^)]*\)\s*=>\s*\{([\s\S]*?)\n\}\);/);
-  const switchHandlerBlock = switchHandlerMatch ? switchHandlerMatch[1] : '';
-  eq('rebind source: sidebar.js state:tableSwitched handler block was isolated (sanity check on the scan itself)',
-    switchHandlerBlock.length > 0, true);
-  eq('rebind source: sidebar.js state:tableSwitched handler calls redrawFromActiveTable() and writes the controls',
-    /redrawFromActiveTable\(\)/.test(switchHandlerBlock), true);
-
-  // sidebar.js: state:tableSwitched handler does NOT reset the controls to the
-  // shipped defaults — that reset is what desynced the sidebar from the model.
-  eq('rebind source: sidebar.js state:tableSwitched handler does NOT write the controls or read DR_DEFAULTS',
-    /drawControls\s*\(|DR_DEFAULTS/.test(switchHandlerBlock), false);
-
-  // sidebar.js: state:tableSwitched handler does NOT auto-apply settings
-  // (must NOT call applyNow() inside the handler)
-  eq('rebind source: sidebar.js state:tableSwitched handler does NOT call applyNow()',
-    /applyNow\s*\(\)/.test(switchHandlerBlock), false);
 })();
 
 // ---------------------------------------------------------------------------
@@ -233,91 +193,37 @@
 // Sidebar unbound state
 // Tests for the "no table bound" state in sidebar.js.
 //
-// The static assertions here read sidebar.js and sidebar.html source; the
-// live tests further down load sidebar.js whole through the harness in
-// helpers.js.
+// The static assertions here read sidebar.html source, which no running test
+// reaches; the live tests further down load sidebar.js whole through the
+// harness in helpers.js.
 //
-// – init state: body gets the unbound class, #status reads the prompt message.
-// – bound state: setTableBound(true) removes the unbound class; also check that
-//        state:previewSamplesChanged triggers the redraw read, whose callback
-//        sets the bound state.
-// – old error string is gone from sidebar.js.
 // – sidebar.html CSS does not dim optionsSection or advancedSection under the
 //        unbound class.
 // ---------------------------------------------------------------------------
 
 (function sidebarNoTableState() {
-  const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
 
   // -------------------------------------------------------------------------
   // Static source checks (can always be verified without eval)
   // -------------------------------------------------------------------------
 
-  // old error string must be gone.
-  eq('unbound: old error string absent from sidebar.js',
-    sidebarSrc.includes('Right-click a table first, then reopen the sidebar.'), false);
-
-  // UNBOUND_CLASS and UNBOUND_STATUS_MSG are defined.
-  eq('unbound: UNBOUND_CLASS constant defined in sidebar.js',
-    /const UNBOUND_CLASS\s*=\s*['"]unbound['"]/.test(sidebarSrc), true);
-
-  eq('unbound: UNBOUND_STATUS_MSG constant defined in sidebar.js',
-    /const UNBOUND_STATUS_MSG\s*=\s*['"]Right-click a table to connect it here\.['"]/.test(sidebarSrc), true);
-
-  // setTableBound(false) is called on init.
-  eq('unbound: setTableBound(false) called at module level (init)',
-    /setTableBound\(false\)/.test(sidebarSrc), true);
-
-  // setTableBound(true) path exists (an answer holding samples).
-  eq('unbound: setTableBound called with whether the answer holds samples',
-    /setTableBound\(cachedSamples\s*!==\s*null\)/.test(sidebarSrc), true);
-
-  // The sidebar handles state:previewSamplesChanged by calling
-  // redrawFromActiveTable(), which re-reads the model's settings beside the
-  // samples and calls setTableBound inside its callback.
-  eq('unbound: state:previewSamplesChanged handler calls redrawFromActiveTable',
-    /state:previewSamplesChanged[\s\S]{0,300}redrawFromActiveTable\(\)/.test(sidebarSrc), true);
-
-  // the unbound state must NOT dim/disable the sidebar sections.
-  // Instead of greying the whole sidebar, the sidebar pillbox is flipped off
-  // (covered by the behavioural tests below). Guard against dimming rules
-  // being reintroduced.
-  eq('unbound: sidebar.html does NOT dim #optionsSection under body.unbound',
+  // The stylesheet is out of reach of a running test. Instead of greying the
+  // whole sidebar, the sidebar pillbox is flipped off (the running tests
+  // below check that).
+  eq('unbound: the stylesheet leaves the options section undimmed',
     /body\.unbound\s+#optionsSection/.test(sidebarHtml), false);
 
-  eq('unbound: sidebar.html does NOT dim #advancedSection under body.unbound',
+  eq('unbound: the stylesheet leaves the advanced section undimmed',
     /body\.unbound\s+#advancedSection/.test(sidebarHtml), false);
 
-  eq('unbound: sidebar.html does NOT disable the sidebar pillbox under body.unbound',
+  eq('unbound: the stylesheet leaves the sidebar pillbox enabled',
     /body\.unbound\s+\.title-row\s+\.switch/.test(sidebarHtml), false);
 
   // sidebar.html default #status text is the unbound message.
-  eq('unbound: sidebar.html default #status text is the unbound message',
+  eq('unbound: the status line of the page as shipped holds the unbound prompt',
     /id="status"[^>]*>Right-click a table to connect it here\./.test(sidebarHtml), true);
 
-  (function setTableBoundBehavioural() {
-    // Static guard: the real setTableBound flips enabledEl.checked off and runs
-    // updateDisabledState (not just a class toggle). Isolate the function's own
-    // body (rather than scanning from the first "setTableBound" text match
-    // anywhere in the file) so a coincidental match elsewhere — e.g. an
-    // unrelated setTableBound(...) call sitting near an unrelated
-    // updateDisabledState() call in some other function — cannot pass this
-    // for the wrong reason.
-    const setTableBoundFnMatch = sidebarSrc.match(/function setTableBound\([\s\S]*?\n}/);
-    const setTableBoundFnBody = setTableBoundFnMatch ? setTableBoundFnMatch[0] : '';
-    eq('unbound sidebar pillbox: sidebar.js setTableBound function body was isolated (sanity check on the scan itself)',
-      setTableBoundFnBody.length > 0, true);
-    eq('unbound sidebar pillbox: sidebar.js setTableBound sets enabledEl.checked = false when unbound',
-      /enabledEl\.checked\s*=\s*false/.test(setTableBoundFnBody), true);
-    eq('unbound sidebar pillbox: an unbound sidebar shows its options disabled',
-      /updateDisabledState\(\)/.test(setTableBoundFnBody), true);
-    // The bound branch must not reset the switch to the shipped
-    // default — the model (or the pull's explicit defaults fallback) is the
-    // switch's only source once a table is bound.
-    eq('unbound sidebar pillbox: a bind does not reset the sidebar pillbox to the shipped default',
-      /DR_DEFAULTS/.test(setTableBoundFnBody), false);
-  })();
 })();
 
 // ---------------------------------------------------------------------------
@@ -417,23 +323,6 @@
   // --- Vertical CSS — .dual-ticks uses top: 20px ---
   eq('dots-tick: .dual-ticks CSS top is 20px',
     /\.dual-ticks\s*\{[^}]*top:\s*20px/.test(sidebarHtmlSrc), true);
-
-  // --- stopPosition() is only used for thumb positioning (not for fill/label/other) ---
-  // Adversarial: if stopPosition() were wired to a range-fill width or label position, the
-  // non-0/100 extremes would produce a visually broken fill. Verify here that all
-  // stopPosition() call sites in sidebar.js are limited to style.left on thumbs.
-  // Use a negative lookbehind to exclude the function definition itself.
-  const pctCallSites = sidebarJsSrc.match(/(?<!function )stopPosition\([^)]+\)/g) || [];
-  // Every call site should appear only inside thumb left-position assignments.
-  // We check there are exactly 2 call sites (topThumb and otherThumb style.left).
-  eq('dots-tick: stopPosition() is called exactly twice in sidebar.js (both thumb style.left)',
-    pctCallSites.length, 2);
-
-  // Both call sites must be inside a style.left assignment.
-  const thumbLeftPattern = /\.style\.left\s*=\s*stopPosition\(/g;
-  const thumbLeftMatches = (sidebarJsSrc.match(thumbLeftPattern) || []).length;
-  eq('dots-tick: both stopPosition() calls are style.left assignments (not fill/label)',
-    thumbLeftMatches, 2);
 })();
 
 // ---------------------------------------------------------------------------
@@ -1038,6 +927,100 @@ const SINGLE_READ_SAMPLES = {
       h.tabMessages.map((m) => m.topic), ['request:activeTable']);
     eq('echo keeps control: the lens preview redraws from the read',
       otherRows.length, SINGLE_READ_SAMPLES.bottom.length);
+  } finally {
+    h.restore();
+  }
+})();
+
+// A sidebar whose tab answers nothing, as a tab with no content script does,
+// shows the unbound state from load, and an answer without samples brings the
+// state back.
+(function unbound_aSidebarThatNoPageAnswersShowsThePromptWithOptionsDisabled() {
+  const h = makeIssue251SidebarHarness({ pageAnswers: false });
+  if (!h) {
+    eq('unbound: source files (defaults/rounding/reader/bus) present in manifest', false, true);
+    return;
+  }
+  try {
+    eq('unbound: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    eq('unbound: a sidebar opened with no page answer carries the unbound class',
+      h.bodyClasses.has('unbound'), true);
+    eq('unbound: a sidebar opened with no page answer shows the unbound prompt',
+      h.statusEl.textContent, 'Right-click a table to connect it here.');
+    eq('unbound: a sidebar opened with no page answer shows the sidebar pillbox off',
+      h.enabledEl.checked, false);
+    eq('unbound: a sidebar opened with no page answer disables its options',
+      h.el('optionsSection').classList.contains('disabled'), true);
+
+    answerActiveTableRead(h, {
+      settings: Object.assign({}, DR_DEFAULTS, { enabled: true }),
+      samples: SINGLE_READ_SAMPLES,
+      maxMag: 6,
+    });
+    h.dispatch({ topic: 'state:tableSwitched' });
+    eq('unbound: an answer holding samples and enabled:true clears the class, the prompt, and the disabled options',
+      [h.bodyClasses.has('unbound'), h.statusEl.textContent, h.enabledEl.checked,
+        h.el('optionsSection').classList.contains('disabled')],
+      [false, '', true, false]);
+
+    answerActiveTableRead(h, { settings: DR_DEFAULTS, samples: null, maxMag: null });
+    h.dispatch({ topic: 'state:tableSwitched' });
+    eq('unbound: an answer with null samples shows the prompt and disables the options again',
+      [h.bodyClasses.has('unbound'), h.statusEl.textContent,
+        h.el('optionsSection').classList.contains('disabled')],
+      [true, 'Right-click a table to connect it here.', true]);
+  } finally {
+    h.restore();
+  }
+})();
+
+// A right-click also flashes the sidebar's container, until the animation ends.
+(function activation_aRightClickFlashesTheSidebarUntilTheAnimationEnds() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('activation flash: source files (defaults/rounding/reader/bus) present in manifest', false, true);
+    return;
+  }
+  try {
+    eq('activation flash: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    eq('activation flash: before a right-click the sidebar is not flashing',
+      h.bodyClasses.has('dr-sidebar-flash'), false);
+    h.dispatch({ topic: 'state:tableActivated' });
+    eq('activation flash: a right-click activation flashes the sidebar',
+      h.bodyClasses.has('dr-sidebar-flash'), true);
+    h.fireBody('animationend', {});
+    eq('activation flash: the end of the animation stops the flash',
+      h.bodyClasses.has('dr-sidebar-flash'), false);
+  } finally {
+    h.restore();
+  }
+})();
+
+// The lens control's thumbs sit at the centre of their stops' columns.
+(function lensControl_anAnswerWithOffsetsPlacesEachThumbAtItsStopColumn() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('lens thumbs: source files (defaults/rounding/reader/bus) present in manifest', false, true);
+    return;
+  }
+  try {
+    eq('lens thumbs: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    answerActiveTableRead(h, {
+      settings: Object.assign({}, DR_DEFAULTS, { offsetTop: -2, offsetOther: 1 }),
+      samples: SINGLE_READ_SAMPLES,
+      maxMag: 6,
+    });
+    h.dispatch({ topic: 'state:tableSwitched' });
+    const COLUMN_COUNT = 9;
+    eq('lens thumbs: offsets -2 and 1 place the top thumb in the first column and the other thumb in the last',
+      [h.el('topThumb').style.left, h.el('otherThumb').style.left],
+      [(0.5 / COLUMN_COUNT * 100) + '%', (8.5 / COLUMN_COUNT * 100) + '%']);
   } finally {
     h.restore();
   }
