@@ -65,7 +65,6 @@ const DR_NUMBER = {
   formatNumber,
 
   // identifiers.js
-  insideNumberRun,
   matchIdentifierShape,
   getIdentifierMaskedRanges,
   findIdentifiers,

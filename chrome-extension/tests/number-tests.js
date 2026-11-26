@@ -1964,9 +1964,9 @@ const LADDER_OPTS = {
     Date.now() - wholeCellStarted < 1000, true);
 })();
 
-// A cell that holds many numbers keeps each leading-zero run that stands
-// alone, rounds each one that is a group of a longer number, and scans in
-// time that grows in step with its length.
+// In a cell that holds many numbers, each leading-zero run that stands alone
+// is a code, each one that is a group of a longer number is not, and the
+// search for codes runs in time that grows in step with the cell's length.
 (function leadingZeroRuns_inALongCell() {
   eq('identifier shape inside text: "a 1,034 b 007 c 1 034 567 d 0012 " three times keeps each "007" and "0012"',
     getIdentifierMaskedRanges('a 1,034 b 007 c 1 034 567 d 0012 '.repeat(3)),

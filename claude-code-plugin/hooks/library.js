@@ -1078,8 +1078,9 @@ function formatNumber(rounded, originalNumStr) {
  * inside text starts only where a shape can start, and every test of the
  * text around a code is anchored at both ends, so every test runs in time
  * linear in the text's length. findIdentifiers lists the text's number runs
- * once for a shape marked groupOfNumber and compares each code with that
- * list, so it reads no text again for a code.
+ * once for a shape marked groupOfNumber and steps through that list once, so
+ * the test for a group of a longer number reads the text once, not once for
+ * each code.
  *
  * Each shape's pattern comes first; the list, the one search, and its two
  * readings close the file.
@@ -1223,32 +1224,12 @@ const LEADING_ZERO_PATTERN = '0\\d+(?![.,]\\d)';
 // (numbers-in-text.js) takes as one number, in text order. That pattern reads
 // the one copy of a number's digit run (DIGIT_RUN_PATTERN), so a group of a
 // space-grouped or comma-grouped number is never read a second way here. A
-// run's span holds its digits alone: its minus sign is not a group ("-0123").
+// run's span starts after its minus sign, because the sign is not part of a
+// group ("-0123").
 const numberRunSpans = (text) => Array.from(text.matchAll(NUMBER_IN_TEXT_REGEX_GLOBAL), (run) => ({
   start: run.index + (run[0].startsWith('-') ? 1 : 0),
   end: run.index + run[0].length,
 }));
-
-/**
- * True when [start, end) sits inside a longer run of `runs`
- * (numberRunSpans), so the characters are one group of that number. The runs
- * stand in text order and never overlap, so the first run that ends at or
- * after `end` is the only one that can hold the span, and the function
- * reaches it by halving the list. A cell of thousands of dates holds
- * thousands of leading-zero codes, and a walk over every run for each code
- * takes time that grows with the square of the cell's length.
- */
-function insideNumberRun(runs, start, end) {
-  let low = 0;
-  let high = runs.length;
-  while (low < high) {
-    const middle = Math.floor((low + high) / 2);
-    if (runs[middle].end < end) low = middle + 1;
-    else high = middle;
-  }
-  const run = runs[low];
-  return run !== undefined && run.start <= start && run.end - run.start > end - start;
-}
 
 // The one list of identifier shapes. Each entry holds the shape's name, its
 // pattern for a code anywhere in the text, and, for a shape with a form that
@@ -1289,10 +1270,20 @@ function findIdentifiers(text, digitsSpanPieces = false, shapes = IDENTIFIER_SHA
   for (const shape of shapes) {
     const matches = shape.span ? Array.from(text.matchAll(shape.span)) : [];
     const runs = shape.groupOfNumber && matches.length > 0 ? numberRunSpans(text) : [];
+    // A shape's codes and the number runs both stand in text order and never
+    // overlap, so the only run that can hold a code is the first run that ends
+    // at or after the code, and the next code's run never lies before it. A
+    // cell of thousands of dates holds thousands of leading-zero codes, and a
+    // walk over every run for each code takes time that grows with the square
+    // of the cell's length.
+    let runIndex = 0;
     for (const match of matches) {
       const start = match.index;
       const end = start + match[0].length;
-      if (insideNumberRun(runs, start, end)) continue;
+      while (runIndex < runs.length && runs[runIndex].end < end) runIndex += 1;
+      const run = runs[runIndex];
+      // A code inside a longer number run is one group of that number.
+      if (run !== undefined && run.start <= start && run.end - run.start > end - start) continue;
       const fillsCell = !quantity
         && CELL_LEAD_RE.test(text.slice(0, start)) && CELL_TRAIL_RE.test(text.slice(end));
       codes.push({ name: shape.name, start, end, fillsCell, inText: !SPACED_DIGITS_ONLY_RE.test(match[0]) });

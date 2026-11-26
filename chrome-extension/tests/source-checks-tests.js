@@ -1238,7 +1238,7 @@
     // write-back.js
     'formatNumber',
     // identifiers.js
-    'insideNumberRun', 'findIdentifiers', 'isWebOrEmailAddressCell', 'matchIdentifierShape', 'getIdentifierMaskedRanges',
+    'findIdentifiers', 'isWebOrEmailAddressCell', 'matchIdentifierShape', 'getIdentifierMaskedRanges',
   ].sort();
 
   eq('lib/dr-number/index.js: DR_NUMBER exposes exactly the expected public function names',
