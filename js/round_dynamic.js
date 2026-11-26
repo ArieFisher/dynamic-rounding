@@ -653,8 +653,9 @@ const PERCENT_AFTER_RE = signAfterDigitsRe('%');
 const CURRENCY_INSIDE_RE = new RegExp(CURRENCY_TOKEN);
 // The most characters before a number that the sign check reads. A sign that
 // touches a number sits across whitespace and marks, with at most the far end
-// of a range between ("$12m – 18"), and 24 holds that in the ranges tables
-// write. Reading the cell's whole prefix for each number took time that grows
+// of a range between ("$12m – 18"). 24 holds that for ordinary figures; a
+// code before a range's far end, after a figure of 13 digits or more, falls
+// outside it. Reading the cell's whole prefix for each number took time that grows
 // with the square of the cell's length. A sign farther back than the limit
 // counts as touching nothing, so the number rounds.
 const SIGN_LOOKBACK_CHARS = 24;
