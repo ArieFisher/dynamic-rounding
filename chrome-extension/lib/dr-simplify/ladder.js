@@ -4,28 +4,27 @@
  * The classification ladder: the ordered per-cell rules that determine
  * whether and how a cell simplifies. classifyTableCell (lib/dr-table) calls
  * classifyCell for the rounding pass, the lens preview, and the data test,
- * and the Sheets input step calls it for each text cell.
+ * the Sheets input step calls it for each text cell, and the plugin's text
+ * table step calls it for each markdown table cell.
  *
  * Core layer: reads no page and calls no Chrome. classifyCell takes the
  * cell's text, its row and column, the range list parsed once per table, and
  * the simplification options, and returns its classification as data. In the
  * extension the text is the rendered text (the raw text when the rendered
  * text is empty) or a simplified cell's stored original; in Sheets it is the
- * cell value. Four more values come from the cell's source, and the caller
- * derives them: the markup ranges, the spans of the text that the source
- * marks as a link or as code (getMarkupRanges in lib/dr-table on a page, the
- * markdown adapter in the plugin); whether the cell holds a superscript; the
- * superscript spans in the text classifyCell reads (getSuperscriptRanges);
- * and whether the cell's digits sit in more than one text piece (from the
- * piece layout). The bare names the ladder calls come from the lib/dr-number
- * files, loaded ahead of this file.
+ * cell value; in the plugin it is the markdown table cell's text. Four more
+ * values come from the cell's source, and the caller derives them: the
+ * markup ranges, the spans of the text that the source marks as a link or as
+ * code (getMarkupRanges in lib/dr-table on a page, the markdown adapter in
+ * the plugin); whether the cell holds a superscript; the superscript spans in
+ * the text classifyCell reads (getSuperscriptRanges); and whether the cell's
+ * digits sit in more than one text piece (from the piece layout). The bare
+ * names the ladder calls come from the lib/dr-number files, loaded ahead of
+ * this file.
  */
 
-/**
- * True when trimmedText is a single balanced ASCII double-quoted span
- * spanning the entire cell (e.g. `"12345"`). Such cells are left untouched —
- * quoting is read as "treat this text literally," not as a number to round.
- */
+// A quoted cell stays as written: the quotes mark the text as a direct quote,
+// not a number to round.
 function isWholeCellQuoted(trimmedText) {
   return trimmedText.startsWith('"') && trimmedText.endsWith('"') &&
     (trimmedText.match(/"/g) || []).length === 2;
@@ -48,10 +47,10 @@ function blankRanges(text, ranges) {
 /**
  * Every date and time in the text. Each reader reads the text with the spans
  * of the readers before it blanked, so a reader earlier in the list keeps
- * the characters it reads: an ISO date-time first, because findDates reads no
- * date followed by "T"; then findDates; then clock times, on the text with
- * each superscript span blanked too, so a footnote marker right after a time
- * ("18:30<sup>2</sup>") never joins its digits.
+ * the characters it reads: an ISO date-time first, so a date-time written
+ * with a space or a "T" stays one pair; then findDates; then clock times, on
+ * the text with each superscript span blanked too, so a footnote marker right
+ * after a time ("18:30<sup>2</sup>") never joins its digits.
  */
 function readDatesAndTimes(text, superscriptRanges) {
   const isoPairs = findISODateTimes(text);
@@ -146,8 +145,7 @@ function extractSimplifyMatches(text, superscriptRanges) {
  * so the write-back leaves a sign, a bracket, a currency sign, a percent
  * sign, a suffix, or a currency code where the page put it.
  */
-function readNumberCell(text, input) {
-  const { superscriptRanges = [], hasSuperscript = false, digitsSpanPieces = false } = input;
+function readNumberCell({ text, trimmedText, superscriptRanges, hasSuperscript, digitsSpanPieces }) {
   // In a cell with a superscript, the text classifyCell reads joins base and
   // exponent digits ("10<sup>12</sup>" reads "1012"), which is not the text
   // the reader sees. So no whole-cell shape is tested against it, and
@@ -157,7 +155,7 @@ function readNumberCell(text, input) {
   // An identifier shape reads as a code, not a quantity, so the whole cell
   // stays as written. Checked before the number reader, which also reads a
   // digit run with a leading zero ("0012345678", "(0012345678)") as a number.
-  if (matchIdentifierShape(text.trim(), digitsSpanPieces)) return [];
+  if (matchIdentifierShape(trimmedText, digitsSpanPieces)) return [];
 
   const num = toNumber(text);
   if (num !== null) {
@@ -165,8 +163,6 @@ function readNumberCell(text, input) {
     return [{ numStr: span.numStr, num, index: span.index }];
   }
 
-  // A unit number ("4.91tn", "CAD45.67") is one number with a suffix or a
-  // currency code.
   const unit = matchUnitNumber(text);
   if (unit) return [unit];
 
@@ -178,8 +174,8 @@ function numberStretch(match) {
 }
 
 /**
- * Classify a single cell and return a classification: { stretches }, the
- * cell's stretches in text order, each with its start and end in text:
+ * The cell's classification: { stretches }, the cell's stretches in text
+ * order, each with its start and end in text:
  *
  *   { kind: 'number', start, end, num }
  *   { kind: 'date', start, end, ...the date findDates or findISODateTimes
@@ -189,35 +185,32 @@ function numberStretch(match) {
  *
  * Every number, date, and time in a cell is its own stretch under its own
  * switch. A value held stays as written and takes no stretch, and the
- * readers after it never read its characters. The column post-pass settles
- * the day and month of an ambiguous date stretch (isAmbiguousDate).
- *
- * A cell holds no stretch when it is out of range, under an exclusion
- * (getExclusionReason), wholly quoted, a web or email address, or an
- * identifier shape. A value is
- * held when it overlaps a markup range or its switch is off. A date or time
- * is also held when it is impossible (see dateTimeStretches), and a number
- * when a currency or percent sign whose switch is off touches its digits
- * (touchesSwitchedOffSign). The placement step adds split: true to a
- * classification whose split stretches it removes.
+ * readers after it never read its characters. dateTimeStretches holds the
+ * rules that hold a date or a time, and the filters below hold a number. The
+ * column post-pass settles the day and month of an ambiguous date stretch
+ * (isAmbiguousDate). The placement step adds split: true to a classification
+ * whose split stretches it removes.
  */
 function classifyCell(input, options) {
-  const { text, rowIndex, columnIndex, ranges, markupRanges = [], superscriptRanges = [] } = input;
+  const {
+    text, rowIndex, columnIndex, ranges, markupRanges = [], superscriptRanges = [], hasSuperscript, digitsSpanPieces,
+  } = input;
+  const trimmedText = text.trim();
 
   if (!isInRanges(rowIndex, columnIndex, ranges)) return { stretches: [] };
   if (getExclusionReason(columnIndex, options, rowIndex)) return { stretches: [] };
-  if (isWholeCellQuoted(text.trim())) return { stretches: [] };
+  if (isWholeCellQuoted(trimmedText)) return { stretches: [] };
   // A web or email address that fills the cell holds before any date or time
   // is read: its path or query may hold one ("https://example.com/2020-07-21/
   // post"), and a changed date or time breaks the address.
-  if (isWebOrEmailAddressCell(text.trim())) return { stretches: [] };
+  if (isWebOrEmailAddressCell(trimmedText)) return { stretches: [] };
 
   const read = readDatesAndTimesHoldingMarkup(text, superscriptRanges, markupRanges);
   const dateTimeSpans = valuesRead(read);
   const heldRanges = [...markupRanges, ...dateTimeSpans];
   const numbers = dateTimeSpans.length > 0
     ? extractSimplifyMatches(text, superscriptRanges)
-    : readNumberCell(text, input);
+    : readNumberCell({ text, trimmedText, superscriptRanges, hasSuperscript, digitsSpanPieces });
   const numberStretches = numbers
     .filter((m) => !overlapsMaskedRange(heldRanges, m.index, m.index + m.numStr.length))
     .filter((m) => !touchesSwitchedOffSign(text, m, options))
@@ -225,25 +218,4 @@ function classifyCell(input, options) {
   const stretches = [...dateTimeStretches(read, options), ...numberStretches]
     .sort((a, b) => a.start - b.start);
   return { stretches };
-}
-
-/**
- * Decide how to read a column's ambiguous N1/N2/Y dates (e.g. "03/04/2020"),
- * given every ambiguous date's {n1, n2} found in that column. Any n > 12 in
- * one position rules out that position being the month, so a lone violator
- * pins the whole column's format ('month-first' or 'day-first'); violators on
- * both sides make the column unsafe to guess ('mixed'); no violator leaves it
- * genuinely ambiguous ('ambiguous').
- */
-function pickDateFormatHint(ambiguousList) {
-  let hasN1gt12 = false;
-  let hasN2gt12 = false;
-  for (const { n1, n2 } of ambiguousList) {
-    if (n1 > 12) hasN1gt12 = true;
-    if (n2 > 12) hasN2gt12 = true;
-  }
-  if (hasN1gt12 && !hasN2gt12) return 'day-first';
-  if (hasN2gt12 && !hasN1gt12) return 'month-first';
-  if (hasN1gt12 && hasN2gt12) return 'mixed';
-  return 'ambiguous';
 }

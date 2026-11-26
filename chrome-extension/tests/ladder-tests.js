@@ -91,7 +91,7 @@
     classifyCell({ text: '03/04/2020', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
     { stretches: [{
       kind: 'date', year: 2020, n1: 3, n2: 4, start: 0, end: 10, n1Cut: { start: 0, end: 3 }, n2Cut: { start: 3, end: 6 } }] });
-  eq('classifyCell: "2020-13-45", a date that cannot exist, holds no stretch',
+  eq('classifyCell: "2020-13-45", an impossible date, holds no stretch',
     classifyCell({ text: '2020-13-45', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
     { stretches: [] });
 })();
@@ -216,11 +216,11 @@
   eq('classifyCell: "CAD45.67" holds one number stretch over "45.67"',
     classifyCell(at('CAD45.67'), LADDER_OPTS),
     { stretches: [expectedNumberStretch(3, '45.67', 45.67)] });
-  eq('classifyCell: "CAD45.67" holds no stretch with the currency setting off',
+  eq('classifyCell: "CAD45.67" holds no stretch with the currency switch off',
     classifyCell(at('CAD45.67'), currencyOff), { stretches: [] });
-  eq('classifyCell: "45.67 USD" holds no stretch with the currency setting off',
+  eq('classifyCell: "45.67 USD" holds no stretch with the currency switch off',
     classifyCell(at('45.67 USD'), currencyOff), { stretches: [] });
-  eq('classifyCell: "45.67 USD" holds one number stretch over "45.67" with the currency setting on',
+  eq('classifyCell: "45.67 USD" holds one number stretch over "45.67" with the currency switch on',
     classifyCell(at('45.67 USD'), LADDER_OPTS), { stretches: [expectedNumberStretch(0, '45.67', 45.67)] });
   eq('classifyCell: "7.5m" inside a markup range holds no stretch',
     classifyCell(at('7.5m', { markupRanges: [{ start: 0, end: 4 }] }), LADDER_OPTS), { stretches: [] });
@@ -235,14 +235,6 @@
   eq('classifyCell: "4.911tn" with "1" in a superscript holds no stretch',
     classifyCell(at('4.911tn', { hasSuperscript: true, superscriptRanges: [{ start: 4, end: 5 }] }), LADDER_OPTS),
     { stretches: [] });
-})();
-
-(function pickDateFormatHint_readsTheColumn() {
-  eq('pickDateFormatHint: n1 > 12 only -> day-first', pickDateFormatHint([{ n1: 25, n2: 4 }]), 'day-first');
-  eq('pickDateFormatHint: n2 > 12 only -> month-first', pickDateFormatHint([{ n1: 3, n2: 25 }]), 'month-first');
-  eq('pickDateFormatHint: both > 12 across the column -> mixed',
-    pickDateFormatHint([{ n1: 25, n2: 4 }, { n1: 3, n2: 25 }]), 'mixed');
-  eq('pickDateFormatHint: neither > 12 -> ambiguous', pickDateFormatHint([{ n1: 3, n2: 4 }]), 'ambiguous');
 })();
 
 // --- Stretch positions and order ---
@@ -443,8 +435,8 @@ const IDENTIFIER_SPAN_NEAR_MISSES = [
     extractNumbersInText('@2020vision has 1,613,245 fans').map((m) => m.numStr), ['1,613,245']);
 })();
 
-// A clock time inside text never rounds as a number, whatever the Times
-// setting holds, and the cell's other numbers round.
+// A clock time inside text never rounds as a number, whether the times switch
+// is on or off, and the cell's other numbers round.
 const CLOCK_TIME_SPAN_CELLS = [
   ['9:45 - 11:45 AM', []],
   ['11:45 AM - 1:00 PM', []],
@@ -467,7 +459,8 @@ const CLOCK_TIME_SPAN_NEAR_MISSES = [
   const timesOn = Object.assign({}, LADDER_OPTS, { simplifyTimes: true });
   for (const [text, expected] of CLOCK_TIME_SPAN_CELLS) {
     eq(`clock time inside text: "${text}" rounds only its quantity`, extractedNumbers(text, LADDER_OPTS), expected);
-    eq(`clock time inside text: "${text}" rounds the same numbers with Times on`, extractedNumbers(text, timesOn), expected);
+    eq(`clock time inside text: "${text}" rounds the same numbers with the times switch on`,
+      extractedNumbers(text, timesOn), expected);
   }
   for (const [text, expected] of CLOCK_TIME_SPAN_NEAR_MISSES) {
     eq(`clock time inside text: "${text}" rounds every number`, extractedNumbers(text, LADDER_OPTS), expected);
@@ -481,10 +474,10 @@ const CLOCK_TIME_SPAN_NEAR_MISSES = [
 // =============================================================================
 // Bracketed numbers — the accounting minus sign
 // =============================================================================
-// A bracket pair around a number is that number's minus sign: "(1,234)" is
-// -1,234. The brackets are format marks, so the number's own text is its
-// digits alone, the digits alone round, and the brackets stay where the page
-// put them — including when the page gives a bracket its own text piece.
+// A bracket pair around a number is that number's minus sign, not a pair of
+// format marks: "(1,234)" is -1,234. The number's own text is its digits
+// alone, the digits alone round, and the brackets stay where the page put
+// them — including when the page gives a bracket its own text piece.
 // =============================================================================
 
 const bracketOpts = Object.assign({}, DR_DEFAULTS, {
