@@ -493,12 +493,14 @@
 
   // dateGranularity.disabled must be set to !simplifyDates (true when OFF, false when ON)
   eq('date and time switches: sidebar.js sets dateGranularity.disabled = !simplifyDates',
-    /dateGranularityEl\.disabled\s*=\s*!document\.getElementById\(['"]simplifyDates['"]\)\.checked/.test(sidebarSrc),
+    /const simplifyDatesEl\s*=\s*document\.getElementById\(['"]simplifyDates['"]\)/.test(sidebarSrc) &&
+      /dateGranularityEl\.disabled\s*=\s*!simplifyDatesEl\.checked/.test(sidebarSrc),
     true);
 
   // timeGranularity.disabled must be set to !simplifyTimes
   eq('date and time switches: sidebar.js sets timeGranularity.disabled = !simplifyTimes',
-    /timeGranularityEl\.disabled\s*=\s*!document\.getElementById\(['"]simplifyTimes['"]\)\.checked/.test(sidebarSrc),
+    /const simplifyTimesEl\s*=\s*document\.getElementById\(['"]simplifyTimes['"]\)/.test(sidebarSrc) &&
+      /timeGranularityEl\.disabled\s*=\s*!simplifyTimesEl\.checked/.test(sidebarSrc),
     true);
 
   // updateDisabledState function must still exist (not deleted or renamed)
@@ -1220,8 +1222,8 @@
 (function drNumberBundleIsPublished() {
   const EXPECTED_DR_NUMBER_NAMES = [
     // rounding.js
-    'roundWithOffset', 'roundValueSetAware', 'stepForOffset', 'formatStep', 'trimNum',
-    'findMaxMagnitude',
+    'magnitudeOf', 'roundWithOffset', 'roundValueSetAware', 'stepForOffset', 'formatStep',
+    'trimNum', 'findMaxMagnitude',
     // reader.js
     'numberFormat', 'groupShapePattern', 'isNumberShape', 'toNumber',
     // settings.js

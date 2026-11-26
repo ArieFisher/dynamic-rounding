@@ -13,6 +13,7 @@
 const DR_CAPTURE = {
   // state.js
   collectCaptureState,
+  emptyPageHalf,
   // render.js
   buildCaptureDocument,
   filenameFor: captureFilenameFor,

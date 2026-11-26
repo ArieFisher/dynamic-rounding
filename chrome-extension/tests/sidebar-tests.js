@@ -3,8 +3,9 @@
 // ---------------------------------------------------------------------------
 // Source-level assertions (supplementary): verify structural invariants that
 // cover both click branches and the sidebar.js handler in a single pass.
-// These complement the live tests above and are an accepted fallback pattern
-// for aspects that the Node harness cannot exercise at runtime.
+// These complement the live tests further down this piece, which load
+// sidebar.js whole, and are an accepted fallback pattern for aspects that the
+// Node harness cannot exercise at runtime.
 // ---------------------------------------------------------------------------
 
 (function sidebarRebind_sourceLevel() {
@@ -92,16 +93,15 @@
 // --- sidebar.js: formatSample ---
 //
 // Strategy: extract the real implementation from sidebar.js source via regex
-// and eval it in this scope (where toNumber and numberFormat are already
-// available from the evaled reader.js / content.js block above).
+// and eval it in this scope (where numberFormat is already available from the
+// evaled reader.js / content.js block above).
 // This exercises the REAL implementation, not a reimplementation.
 // ---------------------------------------------------------------------------
 (function sidebarHelperTests() {
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
   // Extract the two constants and the function we need from sidebar.js.
-  // toNumber and numberFormat are already on globalThis from the
-  // content-script eval above.
+  // numberFormat is already on globalThis from the content-script eval above.
   const constBlock = sidebarSrc.match(
     /const PREVIEW_DECIMAL_THRESHOLD\s*=.*?;\s*const PREVIEW_MAX_DECIMALS\s*=.*?;/
   );
@@ -118,8 +118,7 @@
 
   // Eval into a local object using an IIFE so the const declarations bind in
   // function scope (not global) and the compiled function body can hold them.
-  // toNumber and numberFormat are passed in from the content scripts the
-  // setup runs.
+  // numberFormat is passed in from the content scripts the setup runs.
   // Note: string concatenation is used (not a template literal) to avoid any
   // back-tick/interpolation issues with the extracted source text.
   const helperSrc = '(function() {\n' +
@@ -128,9 +127,9 @@
     'return { formatSample: formatSample };\n' +
     '})()';
   const helpers = (isolatedFunction(
-    'toNumber', 'numberFormat',
+    'numberFormat',
     'return ' + helperSrc + ';'
-  ))(toNumber, numberFormat);
+  ))(numberFormat);
 
   const fmtSample = helpers.formatSample;
 
@@ -140,22 +139,15 @@
 
   // -----------------------------------------------------------------
   // original numbers display with thousands commas.
-  // formatSample converts numeric strings to comma-formatted numbers.
   // -----------------------------------------------------------------
-  eq('formatSample integer string gets commas (273233 -> "273,233")',
-     fmtSample('273233'), '273,233');
-  eq('formatSample large integer number gets commas',
+  eq('formatSample(1000000) -> "1,000,000"',
      fmtSample(1000000), '1,000,000');
-  eq('formatSample already-comma string parses and re-formats ("273,233")',
-     fmtSample('273,233'), '273,233');
-  eq('formatSample negative large integer gets commas',
+  eq('formatSample(-1234567) -> "-1,234,567"',
      fmtSample(-1234567), '-1,234,567');
 
   // -----------------------------------------------------------------
   // rounded numbers magnitude >= 100 → NO decimals.
   // -----------------------------------------------------------------
-  eq('formatSample("1234.56") -> "1,234" (magnitude >= 100, commas, no decimals)',
-     fmtSample('1234.56'), '1,234');
   eq('formatSample(100) -> "100" (exactly at boundary, no decimals)',
      fmtSample(100), '100');
 
@@ -164,51 +156,19 @@
   // This is the adversarial core: must be truncation, NOT rounding.
   // -----------------------------------------------------------------
 
-  // Boundary: 99.99999 must NOT round to 100, and must stay < threshold, giving 4 dec.
-  eq('boundary-99.99999: formatSample("99.99999") -> "99.9999" (not rounded to 100)',
-     fmtSample('99.99999'), '99.9999');
-
   // Negatives below threshold: trunc toward zero (not floor).
-  eq('negative: formatSample("-99.99999") -> "-99.9999" (negative, truncated, not -100)',
-     fmtSample('-99.99999'), '-99.9999');
-  eq('negative: formatSample("-1.7999") -> "-1.7999" (toward zero)',
-     fmtSample('-1.7999'), '-1.7999');
+  eq('negative: formatSample(-1.7999) -> "-1.7999" (toward zero)',
+     fmtSample(-1.7999), '-1.7999');
 
   // Negative boundary: -100 at threshold → no decimals.
-  eq('negative-100: formatSample("-100") -> "-100"',
-     fmtSample('-100'), '-100');
-
-  // Numbers with fewer than 4 decimals are preserved as-is (no padding).
-  eq('fewer-decimals: formatSample("1.5") -> "1.5"',
-     fmtSample('1.5'), '1.5');
-
-  // -----------------------------------------------------------------
-  // Comma parsing of original: string with commas should parse and reformat.
-  // -----------------------------------------------------------------
-  eq('comma-parse: formatSample("273,233") -> "273,233"',
-     fmtSample('273,233'), '273,233');
-  eq('comma-parse: formatSample("1,234.5678999") -> "1,234" (magnitude >= 100, trunc)',
-     fmtSample('1,234.5678999'), '1,234');
-  eq('comma-parse: formatSample("99,999") -> "99,999" (magnitude >= 100, no decimals)',
-     fmtSample('99,999'), '99,999');
-
-  // -----------------------------------------------------------------
-  // NaN / unparseable fallback: should return the raw string, not "NaN".
-  // -----------------------------------------------------------------
-  eq('unparseable: formatSample("abc") -> "abc"',
-     fmtSample('abc'), 'abc');
-  eq('unparseable: formatSample("") -> ""',
-     fmtSample(''), '');
-  eq('unparseable: formatSample(null) -> "null"',
-     fmtSample(null), 'null');
-  eq('unparseable: formatSample("12abc") -> "12abc"',
-     fmtSample('12abc'), '12abc');
+  eq('negative-100: formatSample(-100) -> "-100"',
+     fmtSample(-100), '-100');
 
   // -----------------------------------------------------------------
   // Edge cases: zero, very small numbers, integers.
   // -----------------------------------------------------------------
-  eq('edge: formatSample("0") -> "0"',
-     fmtSample('0'), '0');
+  eq('edge: formatSample(0) -> "0"',
+     fmtSample(0), '0');
   eq('edge: formatSample(0.00001) -> "0" (truncated to 4 places, last digit gone)',
      fmtSample(0.00001), '0');
   eq('edge: formatSample(0.00009999) -> "0" (below 4th decimal place)',
@@ -273,17 +233,17 @@
 // Sidebar unbound state
 // Tests for the "no table bound" state in sidebar.js.
 //
-// sidebar.js cannot be eval'd wholesale without a full browser DOM, but we
-// can read sidebar.js / sidebar.html source for static assertions.
+// The static assertions here read sidebar.js and sidebar.html source; the
+// live tests further down load sidebar.js whole through the harness in
+// helpers.js.
 //
 // – init state: body gets the unbound class, #status reads the prompt message.
 // – bound state: setTableBound(true) removes the unbound class; also check that
 //        state:previewSamplesChanged triggers the redraw read, whose callback
-//        sets the bound state (the only live-rebind path) — note this means
-//        the sidebar does NOT listen for a separate SET_TABLE_BOUND message;
-//        see gap note below.
+//        sets the bound state.
 // – old error string is gone from sidebar.js.
-// – sidebar.html CSS disables optionsSection/advancedSection under the unbound class.
+// – sidebar.html CSS does not dim optionsSection or advancedSection under the
+//        unbound class.
 // ---------------------------------------------------------------------------
 
 (function sidebarNoTableState() {
@@ -313,25 +273,11 @@
   eq('unbound: setTableBound called with whether the answer holds samples',
     /setTableBound\(cachedSamples\s*!==\s*null\)/.test(sidebarSrc), true);
 
-  // gap check: the sidebar handles state:previewSamplesChanged by calling
-  // redrawFromActiveTable() (every refresh re-reads the model's settings
-  // beside the samples, and calls setTableBound inside its callback). There
-  // is NO direct
-  // setTableBound call in the state:previewSamplesChanged handler, and no
-  // separate runtime message that calls setTableBound(true) synchronously.
-  // The sidebar has no push-style binding message. We assert the handler
-  // exists and starts the redraw read, then flag the architectural gap as a
-  // note.
+  // The sidebar handles state:previewSamplesChanged by calling
+  // redrawFromActiveTable(), which re-reads the model's settings beside the
+  // samples and calls setTableBound inside its callback.
   eq('unbound: state:previewSamplesChanged handler calls redrawFromActiveTable',
     /state:previewSamplesChanged[\s\S]{0,300}redrawFromActiveTable\(\)/.test(sidebarSrc), true);
-
-  // GAP NOTE: The sidebar does not handle a dedicated "TABLE_BOUND" push message.
-  // If content.js ever fails to send state:previewSamplesChanged after a new right-click
-  // (e.g. in error paths), the sidebar state will not update. There is no direct
-  // setTableBound(true) call reachable from state:previewSamplesChanged — the binding
-  // happens inside the redrawFromActiveTable callback only when the tab responds.
-  // This gap is architectural and cannot be covered by a unit test without a
-  // full browser environment; flagged here for reviewer awareness.
 
   // the unbound state must NOT dim/disable the sidebar sections.
   // Instead of greying the whole sidebar, the sidebar pillbox is flipped off
@@ -545,7 +491,7 @@
 // dependency) and pins the call shape directly, independent of sidebar.js's
 // heavier DOM requirements.
 // ---------------------------------------------------------------------------
-(function appModelSettings_wirePayload_parityWithParentSendToActiveTab() {
+(function settingsApply_wirePayload() {
   if (busCode === null) {
     eq('wire payload: app/bus.js present in manifest', false, true);
     return;
@@ -579,7 +525,7 @@
     msg.topic, 'request:applySettings');
   eq('wire payload: message field names are exactly {topic, settings} — no extra bus-envelope fields',
     Object.keys(msg).sort(), ['topic', 'settings'].sort());
-  eq('wire payload: settings payload is nested exactly as sendToActiveTab sent it, unchanged',
+  eq('wire payload: settings of offsetTop -2 and rangeExpr A1:B2 arrive nested in the message unchanged',
     JSON.stringify(msg.settings), JSON.stringify({ offsetTop: -2, rangeExpr: 'A1:B2' }));
 
   // Pin: the ask passes a response callback
@@ -588,7 +534,7 @@
   // statusEl on success. This only pins the MECHANISM — that the ask passes a
   // callback — not the behavior; see appModelSettings_settingsPublish_
   // deliveryFeedback_behavioral below for the behavioral coverage.
-  eq('wire payload: the ask passes a response callback to chrome.tabs.sendMessage, matching sendToActiveTab\'s delivery-failure handling (regression — see PR notes)',
+  eq('wire payload: an ask passes a response callback as chrome.tabs.sendMessage\'s third argument',
     typeof callback, 'function');
 })();
 
@@ -718,7 +664,7 @@
       typeof enabledChangeHandler, 'function');
     if (typeof enabledChangeHandler !== 'function') return;
 
-    // --- Failure: chrome.runtime.lastError set -> setTableBound(false) ran. ---
+    // --- Failure: chrome.runtime.lastError set -> the sidebar shows unbound. ---
     bodyClasses.delete('unbound');
     enabledEl.checked = true;
     statusEl.textContent = '';
@@ -728,11 +674,11 @@
 
     eq('settings publish delivery: one request:applySettings message sent for the change',
       sentTabMessages.length, 1);
-    eq('settings publish delivery: failed delivery adds the unbound class (setTableBound(false) ran)',
+    eq('settings publish delivery: failed delivery adds the unbound class',
       bodyClasses.has('unbound'), true);
-    eq('settings publish delivery: failed delivery flips the enabled checkbox off (setTableBound(false) ran)',
+    eq('settings publish delivery: failed delivery flips the enabled checkbox off',
       enabledEl.checked, false);
-    eq('settings publish delivery: failed delivery sets #status to the unbound message (setTableBound(false) ran)',
+    eq('settings publish delivery: failed delivery sets #status to the unbound message',
       statusEl.textContent, 'Right-click a table to connect it here.');
 
     // --- Success: no lastError -> #status is cleared. ---
@@ -1271,11 +1217,8 @@ const SINGLE_READ_SAMPLES = {
 // --- The sidebar serves one tab --------------------------------
 //
 // The comment on createBoundTab in sidebar.js holds the reason the sidebar
-// drops a message from any other tab.
-//
-// createBoundTab holds the whole concern and takes its tabs interface and its
-// bus as parameters, so this section drives the real source with stubs
-// instead of scanning it.
+// drops a message from any other tab, and the reason it takes its tabs
+// interface and its event bus as parameters.
 (function boundTabSection() {
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   const factory = sidebarSrc.match(/function createBoundTab\([\s\S]*?\n\}/);

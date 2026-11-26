@@ -638,7 +638,7 @@ function extractPreviewSamples(table) {
 
   const byMag = new Map();
   for (const c of cells) {
-    const mag = Math.floor(Math.log10(Math.abs(c.num)));
+    const mag = magnitudeOf(c.num);
     if (!byMag.has(mag)) byMag.set(mag, []);
     byMag.get(mag).push(c);
   }
@@ -707,7 +707,7 @@ function buildCaptureStateResponse() {
       DR_LOG.warnError('lens preview', e);
     }
   }
-  return Object.assign({
+  return Object.assign(emptyPageHalf(), {
     page: {
       url: typeof location !== 'undefined' ? location.href : null,
       title: (typeof document !== 'undefined' && typeof document.title === 'string')

@@ -24,12 +24,16 @@ const EPSILON = 1e-9;
 // fractional offset.
 const X_FLOOR_THRESHOLD = 1;
 
+function magnitudeOf(num) {
+  return Math.floor(Math.log10(Math.abs(num)));
+}
+
 function roundWithOffset(num, offset) {
   if (num === 0) return 0;
 
   const sign = num < 0 ? -1 : 1;
   const absnum = Math.abs(num);
-  const current_mag = Math.floor(Math.log10(absnum));
+  const current_mag = magnitudeOf(absnum);
   const step = stepForOffset(absnum, offset);
 
   const raw = Math.round(absnum / step + EPSILON) * step;
@@ -55,7 +59,7 @@ function roundWithOffset(num, offset) {
 function roundValueSetAware(num, max_mag, offset_top, offset_other, num_top) {
   if (num === 0) return 0;
 
-  const current_mag = Math.floor(Math.log10(Math.abs(num)));
+  const current_mag = magnitudeOf(num);
 
   let offset = offset_other;
   if (max_mag !== null && (max_mag - current_mag) < num_top) {
@@ -68,7 +72,7 @@ function roundValueSetAware(num, max_mag, offset_top, offset_other, num_top) {
 // The step roundWithOffset rounds num to under offset.
 function stepForOffset(num, offset) {
   if (num === 0) return 0;
-  const current_mag = Math.floor(Math.log10(Math.abs(num)));
+  const current_mag = magnitudeOf(num);
   if (Number.isInteger(offset)) {
     return Math.pow(10, current_mag + offset);
   }
@@ -96,7 +100,7 @@ function findMaxMagnitude(dataset) {
   for (const row of dataset) {
     for (const num of row) {
       if (num !== null && num !== 0 && isFinite(num)) {
-        const mag = Math.floor(Math.log10(Math.abs(num)));
+        const mag = magnitudeOf(num);
         if (max_mag === null || mag > max_mag) {
           max_mag = mag;
         }

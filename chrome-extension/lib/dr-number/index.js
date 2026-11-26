@@ -14,6 +14,7 @@
 
 const DR_NUMBER = {
   // rounding.js
+  magnitudeOf,
   roundWithOffset,
   roundValueSetAware,
   stepForOffset,

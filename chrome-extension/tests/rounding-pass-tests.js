@@ -615,7 +615,7 @@ const SEAT_ROWS = [
 })();
 
 (function lensPreview_extractPreviewSamples_onePerOrderOfMagnitude() {
-  // The bottom band shows one example per distinct lower order of magnitude,
+  // The other band shows one example per distinct lower order of magnitude,
   // with no cap. Negatives bucket by absolute value. For 1234 / 123 / -12 the
   // preview is three lines: top-band 1k+ (1234) plus bottom-band 100+ (123)
   // and 10+ (|-12|).
@@ -634,12 +634,12 @@ const SEAT_ROWS = [
   const result = extractPreviewSamples(table);
   eq('onePerOom: maxMag is 3 (1234)', result.maxMag, 3);
   eq('onePerOom: top band is the 1k+ value (1234)', result.samples.top[0].num, 1234);
-  eq('onePerOom: bottom band has one row per lower magnitude (2)',
+  eq('onePerOom: other band has one row per lower magnitude (2)',
     result.samples.bottom.length, 2);
   eq('onePerOom: bottom[0] is the 100+ value (123)', result.samples.bottom[0].num, 123);
   eq('onePerOom: bottom[1] is the 10+ value, abs of -12', result.samples.bottom[1].num, -12);
 
-  // No cap: five distinct lower magnitudes yield five bottom rows.
+  // No cap: five distinct lower magnitudes yield five other-band rows.
   const deep = {
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B'), thCell('C'), thCell('D'), thCell('E'), thCell('F')] },
@@ -651,9 +651,9 @@ const SEAT_ROWS = [
     ],
   };
   const deepResult = extractPreviewSamples(deep);
-  eq('onePerOom: uncapped bottom band has 5 rows (one per lower OoM)',
+  eq('onePerOom: uncapped other band has 5 rows (one per lower OoM)',
     deepResult.samples.bottom.length, 5);
-  eq('onePerOom: bottom rows are descending by magnitude',
+  eq('onePerOom: other-band rows are descending by magnitude',
     deepResult.samples.bottom.map(r => r.num), [500000, 40000, 3000, 200, 10]);
 })();
 
@@ -705,7 +705,7 @@ const SEAT_ROWS = [
 })();
 
 (function lensPreview_extractPreviewSamples_largeMagOnly() {
-  // All cells in the top magnitude bucket -> bottom band ends up empty.
+  // All cells in the top magnitude bucket -> other band ends up empty.
   function tdCell(text) {
     return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
   }
@@ -2464,7 +2464,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 
 (function gr5_extractPreviewSamples_gridStructure() {
   // Build a grid with numeric cells of two distinct magnitudes so both
-  // top and bottom bands are populated in the returned structure.
+  // top and other bands are populated in the returned structure.
   //
   // A leading header row and label column keep the numeric data off row 0 /
   // column 0: DR_DEFAULTS.simplifyFirstRow/simplifyFirstColumn are both

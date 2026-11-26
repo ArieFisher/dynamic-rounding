@@ -1208,11 +1208,8 @@
   eq('capture-settings: the format version still prints in the header when detectionSettings is absent',
     /<dt>Capture format<\/dt><dd>11<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
 
-  const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
-  const fnStart = sidebarJsSrc.indexOf('function assembleAndSaveCapture');
-  const fnBody = fnStart === -1 ? '' : sidebarJsSrc.slice(fnStart, sidebarJsSrc.indexOf('\nfunction ', fnStart + 1));
-  eq('capture-settings: assembleAndSaveCapture\'s fallback state carries detectionSettings: null',
-    fnStart !== -1 && /detectionSettings:\s*null/.test(fnBody), true);
+  eq('capture-settings: the empty page half carries detectionSettings: null',
+    DR_CAPTURE.emptyPageHalf().detectionSettings, null);
 })();
 
 // the detection settings section sits in the visible half under its own
@@ -1306,12 +1303,8 @@
   eq('capture-render: the island carries the error state',
     islandState && islandState.errorState, errorState);
 
-  const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
-  const fnStart = sidebarJsSrc.indexOf('function assembleAndSaveCapture');
-  const fnBody = fnStart === -1 ? '' :
-    sidebarJsSrc.slice(fnStart, sidebarJsSrc.indexOf('\nfunction ', fnStart + 1));
-  eq('capture: assembleAndSaveCapture\'s fallback state carries errorState: null',
-    fnStart !== -1 && /errorState:\s*null/.test(fnBody), true);
+  eq('capture: the empty page half carries errorState: null',
+    DR_CAPTURE.emptyPageHalf().errorState, null);
 })();
 
 // --- lib/dr-capture: stack frames print in the short form ---
