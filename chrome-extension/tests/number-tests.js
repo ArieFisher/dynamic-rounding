@@ -1980,6 +1980,24 @@ const LADDER_OPTS = {
     ranges.length, 18000);
 })();
 
+// With the currency switch off, the sign beside each number is found in the
+// text just before it, so a long cell is read in time that grows in step with
+// its length.
+(function currencySign_inALongCell() {
+  const currencyOff = Object.assign({}, LADDER_OPTS, { simplifyMixedCurrency: false });
+  const text = '$1 - '.repeat(10000);
+  const started = Date.now();
+  const classification = classifyAt(text, currencyOff);
+  eq('currency sign: a 50,000-character cell of 10,000 "$1 - " reads in under a second with currency off',
+    Date.now() - started < 1000, true);
+  eq('currency sign: a cell of 10,000 "$1 - " holds every number with currency off',
+    classification.stretches, []);
+  eq('currency sign: "$" and 20 spaces before "12" holds the number with currency off',
+    classifyAt('$' + ' '.repeat(20) + '12', currencyOff).stretches, []);
+  eq('currency sign: "$" and 40 spaces before "12" rounds the number with currency off',
+    stretchTexts('$' + ' '.repeat(40) + '12', classifyAt('$' + ' '.repeat(40) + '12', currencyOff)), ['12']);
+})();
+
 // --- Shared rounding case table (js/round-dynamic-cases.json) ---
 //
 // This table is generated from this package's own parsing/rounding path (the

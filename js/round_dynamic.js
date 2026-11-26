@@ -651,6 +651,13 @@ const PERCENT_AFTER_RE = signAfterDigitsRe('%');
 // A pure cell whose trailing run stops short of its end ("45%.", "1,234 kr.")
 // holds its sign inside its number span, so a sign there touches too.
 const CURRENCY_INSIDE_RE = new RegExp(CURRENCY_TOKEN);
+// The most characters before a number that the sign check reads. A sign that
+// touches a number sits across whitespace and marks, with at most the far end
+// of a range between ("$12m – 18"), and 24 holds that in the ranges tables
+// write. Reading the cell's whole prefix for each number took time that grows
+// with the square of the cell's length. A sign farther back than the limit
+// counts as touching nothing, so the number rounds.
+const SIGN_LOOKBACK_CHARS = 24;
 
 /**
  * True when a currency sign or code touches the number's digits and the
@@ -659,7 +666,7 @@ const CURRENCY_INSIDE_RE = new RegExp(CURRENCY_TOKEN);
  * returns, positioned in `text`.
  */
 function touchesSwitchedOffSign(text, match, options) {
-  const before = text.slice(0, match.index);
+  const before = text.slice(Math.max(0, match.index - SIGN_LOOKBACK_CHARS), match.index);
   const after = text.slice(match.index + match.numStr.length);
   if (!options.simplifyMixedCurrency && (CURRENCY_BEFORE_RE.test(before) || CURRENCY_AFTER_RE.test(after) ||
     CURRENCY_INSIDE_RE.test(match.numStr))) return true;
