@@ -48,9 +48,13 @@
  * Format 10 drops each table's appliedFlag field: a table shows simplified
  * values when one of its cells carries the marker class, and each cell records that.
  * Format 11 renames the sidebarView field to sidebarSnapshot.
+ * Format 12 renames the sidebar snapshot's botVal to otherVal and its
+ * lensPreview.bottom to lensPreview.other, replaces its noTable with bound
+ * (the opposite value), renames the lens preview samples' bottom to other,
+ * and holds one top-band sample in place of up to two.
  */
 
-const CAPTURE_FORMAT = 11;
+const CAPTURE_FORMAT = 12;
 
 // The page half of a capture state with every field empty: what the capture
 // holds when the state pull has no answer. Its key order is the key order of

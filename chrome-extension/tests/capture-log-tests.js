@@ -139,7 +139,7 @@
       lensPreview: unboundResponse.lensPreview,
       tablesIsArray: Array.isArray(unboundResponse.tables),
     },
-    { captureFormat: 11, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
+    { captureFormat: 12, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
   eq('capture-wire: the response carries this context\'s log buffer copy',
     Array.isArray(unboundResponse.log.rows) && unboundResponse.log.limit, 50);
   eq('capture-wire: collecting the capture state writes no row', collectRows, []);
@@ -249,7 +249,7 @@
       cellRec.original, ' 8,584,629 ');
     const html = DR_CAPTURE.buildCaptureDocument({
       state: {
-        captureFormat: 11,
+        captureFormat: 12,
         meta: { url: 'https://www.example.com/grid', title: 'G', version: '2.1.70',
           platform: 'test', at: '2026-09-22T16:00:00.000Z' },
         mark: 'looks-right', remarks: '', detectionSettings: null,
@@ -380,7 +380,7 @@
 
   const state = collectCaptureState({ model, adapterFor: fakeAdapterFor });
 
-  eq('capture-state: the state carries its format version', state.captureFormat, 11);
+  eq('capture-state: the state carries its format version', state.captureFormat, 12);
   eq('capture-state: the state holds no page-wide settings; each table carries its own',
     Object.prototype.hasOwnProperty.call(state, 'settings'), false);
   eq('capture-state: a table with no settings of its own carries the shipped defaults',
@@ -521,7 +521,7 @@
   const filenameFor = DR_CAPTURE.filenameFor;
 
   const makeState = (over) => Object.assign({
-    captureFormat: 11,
+    captureFormat: 12,
     meta: {
       url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z',
@@ -537,15 +537,15 @@
         { row: 1, col: 0, role: 'td', text: '99,000', original: '98,765', wearsMarker: true },
       ],
     }],
-    lensPreview: { samples: { top: [{ original: '98,765', num: 98765 }], bottom: [] }, maxMag: 4 },
+    lensPreview: { samples: { top: [{ original: '98,765', num: 98765 }], other: [] }, maxMag: 4 },
     sidebarSnapshot: {
       enabled: true,
       switches: { simplifyDates: false },
       dateGranularity: 'year', timeGranularity: 'hour', rangeExpr: '',
       stops: [-2, -1.5, -1, -0.5, -0.25, 0, 0.25, 0.5, 1],
-      topVal: -0.5, botVal: -0.5, coupled: true,
-      status: '', noTable: false,
-      lensPreview: { top: ['98,765'], bottom: [] },
+      topVal: -0.5, otherVal: -0.5, coupled: true,
+      status: '', bound: true,
+      lensPreview: { top: ['98,765'], other: [] },
     },
     log: {
       content: {
@@ -781,7 +781,7 @@
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
   const makeState = (over) => Object.assign({
-    captureFormat: 11,
+    captureFormat: 12,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
     mark: 'looks-wrong',
@@ -798,9 +798,9 @@
     lensPreview: null,
     sidebarSnapshot: {
       enabled: true, switches: {}, dateGranularity: 'year', timeGranularity: 'hour',
-      rangeExpr: '', stops: [-1, 0, 1], topVal: 0, botVal: 0, coupled: true,
-      status: '', noTable: false,
-      lensPreview: { top: ['98,765'], bottom: [] },
+      rangeExpr: '', stops: [-1, 0, 1], topVal: 0, otherVal: 0, coupled: true,
+      status: '', bound: true,
+      lensPreview: { top: ['98,765'], other: [] },
     },
     log: {
       content: { rows: [], dropped: 0, limit: 50 },
@@ -858,7 +858,7 @@
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
   const makeState = (over) => Object.assign({
-    captureFormat: 11,
+    captureFormat: 12,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
     mark: 'looks-wrong', remarks: '', detectionSettings: null,
@@ -937,7 +937,7 @@
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
   const makeState = (over) => Object.assign({
-    captureFormat: 11,
+    captureFormat: 12,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
     mark: 'looks-wrong',
@@ -1074,8 +1074,8 @@
     state.detectionSettings, DR_DETECTION_SETTINGS);
   eq('capture-settings: the state\'s captureFormat equals CAPTURE_FORMAT',
     state.captureFormat, CAPTURE_FORMAT);
-  eq('capture-settings: CAPTURE_FORMAT is 11',
-    CAPTURE_FORMAT, 11);
+  eq('capture-settings: CAPTURE_FORMAT is 12',
+    CAPTURE_FORMAT, 12);
   eq('capture-settings: the returned copy is not the same object as DR_DETECTION_SETTINGS',
     state.detectionSettings !== DR_DETECTION_SETTINGS, true);
 
@@ -1105,7 +1105,7 @@
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
   const baseState = (detectionSettings) => ({
-    captureFormat: 11,
+    captureFormat: 12,
     meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
     mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
     tables: [], lensPreview: null, sidebarSnapshot: null,
@@ -1171,7 +1171,7 @@
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
   const baseState = (over) => Object.assign({
-    captureFormat: 11,
+    captureFormat: 12,
     meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
     mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
     tables: [], lensPreview: null, sidebarSnapshot: null,
@@ -1206,7 +1206,7 @@
   eq('capture-settings: an absent detectionSettings field renders the absence placeholder in the detection settings section',
     /<h2>Detection settings<\/h2>[\s\S]{0,80}—/.test(visibleHalf(htmlWithAbsent)), true);
   eq('capture-settings: the format version still prints in the header when detectionSettings is absent',
-    /<dt>Capture format<\/dt><dd>11<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
+    /<dt>Capture format<\/dt><dd>12<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
 
   eq('capture-settings: the empty page half carries detectionSettings: null',
     DR_CAPTURE.emptyPageHalf().detectionSettings, null);
@@ -1219,7 +1219,7 @@
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const html = DR_CAPTURE.buildCaptureDocument({
     state: {
-      captureFormat: 11,
+      captureFormat: 12,
       meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
       mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
       tables: [], lensPreview: null, sidebarSnapshot: null,
@@ -1259,14 +1259,14 @@
   eq('capture-state: the state carries the model\'s error state', state.errorState, errorState);
 
   const renderState = {
-    captureFormat: 11,
+    captureFormat: 12,
     meta: { url: 'https://www.example.com/p', title: 'P', version: '2.1.70',
       platform: 'test', at: '2026-09-17T16:00:00.000Z' },
     mark: 'looks-wrong', remarks: '', detectionSettings: null,
     activeTableIndex: null, tables: [], lensPreview: null, fixtureSeed: null,
     sidebarSnapshot: { enabled: true, switches: {}, dateGranularity: 'year', timeGranularity: 'hour',
-      rangeExpr: '', stops: [0], topVal: 0, botVal: 0, coupled: true, status: '',
-      noTable: true, lensPreview: { top: [], bottom: [] } },
+      rangeExpr: '', stops: [0], topVal: 0, otherVal: 0, coupled: true, status: '',
+      bound: false, lensPreview: { top: [], other: [] } },
     errorState: errorState,
     log: {
       content: {

@@ -529,8 +529,8 @@ function numericPreviewCells(classifiedCells) {
   return out;
 }
 
-// Pick up to 2 top-band samples and one sample per other-band order of
-// magnitude for the lens preview. Bucketed by order of magnitude, so the lens
+// Pick one top-band sample and one sample per other-band order of magnitude
+// for the lens preview. Bucketed by order of magnitude, so the lens
 // preview shows the offset_top and offset_other split that roundValueSetAware
 // applies to the table.
 function extractPreviewSamples(table) {
@@ -546,7 +546,7 @@ function extractPreviewSamples(table) {
   });
   const cells = numericPreviewCells(planned.cells.map(({ classifiedCell }) => classifiedCell));
   if (cells.length === 0) {
-    return { samples: { top: [], bottom: [] }, maxMag: null };
+    return { samples: { top: [], other: [] }, maxMag: null };
   }
   const maxMag = planned.maxMag;
   const { offsetTop: topOffset, offsetOther: otherOffset, numTop } =
@@ -569,24 +569,12 @@ function extractPreviewSamples(table) {
   }
 
   // Top band: cells in the numTop largest orders of magnitude, counting down
-  // from maxMag (the cells roundValueSetAware routes to offset_top). Pick up
-  // to 2; prefer distinct orders of magnitude.
+  // from maxMag (the cells roundValueSetAware routes to offset_top). The one
+  // sample comes from the largest order of magnitude present, which a frozen
+  // maxMag can sit above or below.
   const inTopBand = (m) => (maxMag - m) < numTop;
-  const topMags = Array.from(byMag.keys())
-    .filter(inTopBand)
-    .sort((a, b) => b - a);
-  const top = [];
-  for (const m of topMags) {
-    if (top.length >= 2) break;
-    top.push(demoFirst(byMag.get(m), topOffset)[0]);
-  }
-  if (top.length < 2 && topMags.length > 0) {
-    // One order of magnitude holds several cells: fill from the top bucket.
-    const bucket = demoFirst(byMag.get(topMags[0]), topOffset);
-    for (let i = 1; i < bucket.length && top.length < 2; i++) {
-      top.push(bucket[i]);
-    }
-  }
+  const largestMag = Math.max(...byMag.keys());
+  const top = inTopBand(largestMag) ? [demoFirst(byMag.get(largestMag), topOffset)[0]] : [];
 
   // Other band: one sample per remaining order of magnitude, descending.
   // Every order of magnitude present gets its own sample, with no cap, so
@@ -603,7 +591,7 @@ function extractPreviewSamples(table) {
 
   const toRow = c => ({ original: c.text, num: c.num });
   return {
-    samples: { top: top.map(toRow), bottom: other.map(toRow) },
+    samples: { top: top.map(toRow), other: other.map(toRow) },
     maxMag,
   };
 }

@@ -322,7 +322,7 @@ function appendLabel(cell, className, text) {
 
 function renderLensPreview() {
   renderTopPreview(topPreviewEl, cachedSamples && cachedSamples.top, topVal, cachedMaxMag);
-  renderOtherPreview(otherPreviewEl, cachedSamples && cachedSamples.bottom, otherVal);
+  renderOtherPreview(otherPreviewEl, cachedSamples && cachedSamples.other, otherVal);
 }
 
 // Redraw the sidebar from one read of the active table. With no answer, which
@@ -631,13 +631,13 @@ function collectSidebarSnapshot() {
   return Object.assign(readControls(), {
     stops: STOPS.slice(),
     topVal: topVal,
-    botVal: otherVal,
+    otherVal: otherVal,
     coupled: coupled,
     status: statusEl.textContent,
-    noTable: document.body.classList.contains(UNBOUND_CLASS),
+    bound: !document.body.classList.contains(UNBOUND_CLASS),
     lensPreview: {
       top: Array.from(topPreviewEl.children).map((n) => n.textContent),
-      bottom: Array.from(otherPreviewEl.children).map((n) => n.textContent),
+      other: Array.from(otherPreviewEl.children).map((n) => n.textContent),
     },
   });
 }
