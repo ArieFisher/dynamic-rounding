@@ -354,7 +354,6 @@ function recoupleIfMatched() {
   if (!coupled && otherVal === topVal) {
     coupled = true;
     renderLensControl();
-    applyNow();
   }
 }
 
@@ -404,7 +403,8 @@ function moveThumbByKey(which, delta) {
   const cur = which === 'top' ? topVal : otherVal;
   const next = stopAt(STOPS.indexOf(cur) + delta);
   if (which === 'other') decouple();
-  if (setThumbValue(which, next)) recoupleIfMatched();
+  setThumbValue(which, next);
+  recoupleIfMatched();
 }
 
 function thumbKeyHandler(which) {
