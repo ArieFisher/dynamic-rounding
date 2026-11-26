@@ -177,6 +177,24 @@ function assignGridColumns(rowSpans) {
 }
 
 /**
+ * Each row's cell elements, row by row, until the count of cells read reaches
+ * `cellBudget`; the rows after that stay unread. With no budget every row is
+ * read. assignGridColumns places a row from the rows above it alone, so the
+ * rows read get the same grid columns as in a full read.
+ * @returns {Element[][]}
+ */
+function readRowCellEls(rows, readCellEls, cellBudget = Infinity) {
+  const rowCellEls = [];
+  let cellsRead = 0;
+  for (let r = 0; r < rows.length && cellsRead < cellBudget; r++) {
+    const cellEls = readCellEls(rows[r], r);
+    rowCellEls.push(cellEls);
+    cellsRead += cellEls.length;
+  }
+  return rowCellEls;
+}
+
+/**
  * The rows of one table, built from each row's cell elements. The caller
  * reads each row's cell elements once, so the column plan and the cell
  * objects count the same row shape.
@@ -199,9 +217,9 @@ class NativeTableAdapter {
   getElement() { return this.el; }
   isGrid() { return false; }
   getWatchedElement() { return this.el; }
-  getRows() {
+  getRows(cellBudget) {
     const rows = Array.from(this.el.rows);
-    return buildRows(rows.map((row) => Array.from(row.cells)), this.originalsPort,
+    return buildRows(readRowCellEls(rows, (row) => Array.from(row.cells), cellBudget), this.originalsPort,
       rows.map((row) => {
         const parent = parentOf(row);
         return { isOutside: !!parent && parent.tagName === 'THEAD', isGrouped: true };
@@ -368,7 +386,7 @@ class GridAdapter {
     return String(domIndex);
   }
 
-  getRows() {
+  getRows(cellBudget) {
     const scrollContainer = this._getScrollContainer();
     const pinnedPane = this._getPinnedPane(scrollContainer);
 
@@ -380,13 +398,13 @@ class GridAdapter {
 
     // A row read from a column-first grid has no row element, so it takes no
     // pinned cells.
-    const rowCellEls = scrollEntries.map(({ el: rowEl, cellEls }, idx) => {
+    const rowCellEls = readRowCellEls(scrollEntries, ({ el: rowEl, cellEls }, idx) => {
       if (cellEls) return cellEls;
       const scrollKey = this._getRowKey(rowEl, idx);
       const pinnedRowEl = pinnedByKey.get(scrollKey) || pinnedRows[idx];
       const pinned = pinnedRowEl ? this._getCellEls(pinnedRowEl) : [];
       return pinned.concat(this._getCellEls(rowEl));
-    });
+    }, cellBudget);
     return buildRows(rowCellEls, this.originalsPort,
       scrollEntries.map(({ isOutside, isGrouped }) => ({ isOutside, isGrouped })));
   }

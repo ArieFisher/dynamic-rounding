@@ -400,6 +400,16 @@
     looksLikeGrid(gridWithNumberAt(budget + 1), { styleProbe: gridProbe }), false);
 })();
 
+(function adapters_aCellBudgetEndsTheRowReadOnBothTableKinds() {
+  const texts = [['Name', 'Sales'], ['Tami', '1,234'], ['Ravi', '5,678']];
+  for (const [kind, el] of [['native', makeIsDataTable(texts)], ['grid', makeGridWrapper(texts).wrapperEl]]) {
+    eq(`adapter cell budget (${kind}): three rows of two cells under a budget of 3 read as two rows`,
+      makeAdapter(el).getRows(3).map((row) => row.getCells().length), [2, 2]);
+    eq(`adapter cell budget (${kind}): three rows of two cells with no budget read as three rows`,
+      makeAdapter(el).getRows().length, 3);
+  }
+})();
+
 (function geometryProbe_columnPlanReadsSpansWithinTheDataTestBudget() {
   const budget = DR_DETECTION_SETTINGS.dataTestCellBudget;
   const gridProbe = { getComputedStyle: () => ({ display: 'grid' }), getOffsetWidth: () => 100 };
@@ -4578,6 +4588,47 @@ function numericLabelColumns() {
 (function columnFirst_theDataTestReadsTheTurnedGrid() {
   const plan = makeColumnFirstGrid(planGridColumns());
   eq('column-first consumers: the data test passes the grid', isDataTable(plan.gridEl), true);
+})();
+
+// Each column's dates share one order, and the columns use two orders, so
+// a row of columns mixes both orders.
+function officeDateColumns() {
+  return [
+    ['Office', 'Opened', 'Audited'],
+    ['Boston', '4/25/2019', '3/14/2021'],
+    ['Denver', '5/18/2018', '6/30/2020'],
+    ['Leeds', '25/4/2019', '14/3/2021'],
+    ['York', '18/5/2018', '30/6/2020'],
+    ['Bath', '22/7/2017', '19/2/2022'],
+  ];
+}
+
+// Every column holds one date in each order, so each column is mixed and
+// each row of columns holds one order.
+function eachColumnMixedDateColumns() {
+  return [
+    ['Office', 'Opened', 'Audited'],
+    ['Boston', '4/25/2019', '14/3/2021'],
+    ['Denver', '5/18/2018', '30/6/2020'],
+    ['Leeds', '7/25/2019', '14/9/2021'],
+    ['York', '8/18/2018', '30/1/2020'],
+    ['Bath', '2/22/2017', '19/2/2022'],
+  ];
+}
+
+(function columnFirst_theGeometryProbeAndTheDataTestReadTheSameCells() {
+  for (const [label, columns, expected] of [
+    ['columns of dates, each column in one order and the columns in two orders,', officeDateColumns(), true],
+    ['columns that each hold dates in both orders', eachColumnMixedDateColumns(), false],
+  ]) {
+    const plan = makeColumnFirstGrid(columns);
+    withElementDisplays(() => {
+      eq(`column-first consumers: ${label} ${expected ? 'pass' : 'fail'} the geometry probe`,
+        looksLikeGrid(plan.gridEl), expected);
+    });
+    eq(`column-first consumers: ${label} ${expected ? 'pass' : 'fail'} the data test`,
+      isDataTable(plan.gridEl), expected);
+  }
 })();
 
 (function columnFirst_theLensPreviewPoolReadsTheTurnedGrid() {

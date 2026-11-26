@@ -61,22 +61,10 @@ function looksLikeGrid(el, opts = {}) {
   if (_artifactCheck(opts)(el, opts)) return false;
   const display = styleProbe.getComputedStyle(el)?.display || '';
   if (!DR_DETECTION_SETTINGS.gridDisplayValues.includes(display)) return false;
-  if (!probeRowsHoldRoundableCell(candidateRows, opts)) return false;
+  const rows = makeAdapter(el, opts).getRows(DR_DETECTION_SETTINGS.dataTestCellBudget);
+  if (!holdsRoundableCell(rows)) return false;
   return carriesGridMark(el, opts.vendorProfiles || GRID_VENDOR_PROFILES)
     || firstCellsAlign(children, candidateRows, styleProbe);
-}
-
-/**
- * Whether the candidate rows hold a cell the data test counts, reading the
- * rows' children as grid cells.
- * @returns {boolean}
- */
-function probeRowsHoldRoundableCell(candidateRows, opts) {
-  const port = opts.originalsPort || DEFAULT_ORIGINALS_PORT;
-  // Each candidate row holds at least one cell, so the cell budget ends
-  // within this many rows.
-  const rows = candidateRows.slice(0, DR_DETECTION_SETTINGS.dataTestCellBudget);
-  return holdsRoundableCell(buildRows(rows.map((row) => Array.from(row.children)), port));
 }
 
 /**
@@ -254,8 +242,9 @@ function sitsOffscreen(el, styleProbe) {
 /**
  * Whether the rows hold a cell the extension can round: the cell read of the
  * data test (isDataTable) and of the geometry probe's numeric step
- * (looksLikeGrid). classifyTableCell is the function the rounding pass calls
- * for every cell.
+ * (looksLikeGrid), each over the rows the adapter presents, the rows the
+ * rounding pass reads. classifyTableCell is the function the rounding pass
+ * calls for every cell.
  *
  * The walk spends one budget of DR_DETECTION_SETTINGS.dataTestCellBudget cell
  * reads across every row, and an empty cell counts as a read. The walk holds
