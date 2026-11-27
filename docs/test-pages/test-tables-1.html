@@ -3234,13 +3234,14 @@ TSLA,75,"248.09","18,606.75"
     <details class="tester-notes">
       <summary>Tester's notes</summary>
       <p>A native table and a grid holding the same rows. Each <span class="col">Value</span> cell down to
-        "Phone inside words" holds an identifier or an at-name; the last two hold
+        "Phone inside words" holds an identifier or an at-name; the last three hold
         a number. The <span class="col">Count</span> column holds a plain number in every row.</p>
       <p class="expect">Expect: a table pillbox at load on both tables. Press each
         table pillbox on: every identifier stays as written, on both tables, with no
-        hover text, and the <span class="col">Count</span> column rounds. The last two <span class="col">Value</span> cells round:
-        "1 234 567" is thousands grouping and is read as one number, and "90210"
-        alone is read as a count. The lens preview holds samples from the <span class="col">Count</span>
+        hover text, and the <span class="col">Count</span> column rounds. The last three <span class="col">Value</span> cells round:
+        "1 234 567" is thousands grouping and is read as one number, "90210"
+        alone is read as a count, and "1.2E+05" is one number in scientific
+        notation. The lens preview holds samples from the <span class="col">Count</span>
         column and none from the identifiers. The web address with a date and
         a time stays whole whatever the date and time switches hold; a failure
         shows 2025 in place of its date.</p>
@@ -3368,9 +3369,11 @@ TSLA,75,"248.09","18,606.75"
           ['ISBN, brackets', '(978 0 306 40615 7)', '71,846'],
           ['Account number, leading zero', '0012345678', '2,318,604'],
           ['ZIP code, leading zero', '02134', '82,957'],
+          ['Leading zero, currency code', '0012 USD', '506,318'],
           ['Phone inside words', 'Call 416-555-1234', '1,611,842'],
           ['Thousands grouping (rounds)', '1 234 567', '281,745'],
-          ['Five-digit ZIP (rounds)', '90210', '93,662']
+          ['Five-digit ZIP (rounds)', '90210', '93,662'],
+          ['Scientific notation (rounds)', '1.2E+05', '734,206']
         ]);
 
         buildPair('id-text-native', 'id-text-grid', ['Shape', 'Text', 'Count'], [

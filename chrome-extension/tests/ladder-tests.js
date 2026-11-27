@@ -411,17 +411,43 @@ const IDENTIFIER_SPAN_NEAR_MISSES = [
   eq('identifier shape inside text: "Call 416-555-1234" holds no stretch',
     classifyCell({ text: 'Call 416-555-1234', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
     { stretches: [] });
+  const footnotedNumbers = (text, superscriptRanges) => stretchTexts(text, classifyCell({
+    text, rowIndex: 1, columnIndex: 1, ranges: null, superscriptRanges, hasSuperscript: true,
+  }, LADDER_OPTS));
   eq('identifier shape inside text: a footnote cell holds its phone number and rounds its quantity',
-    extractSimplifyMatches('Call 416-555-1234 about 1,613,245 units1', [{ start: 39, end: 40 }]).map((m) => m.numStr),
+    footnotedNumbers('Call 416-555-1234 about 1,613,245 units1', [{ start: 39, end: 40 }]),
     ['1,613,245']);
   eq('identifier shape inside text: a footnote marker right after a phone number leaves the phone number whole',
-    extractSimplifyMatches('416-555-12341 about 1,613,245 units', [{ start: 12, end: 13 }]).map((m) => m.numStr),
+    footnotedNumbers('416-555-12341 about 1,613,245 units', [{ start: 12, end: 13 }]),
     ['1,613,245']);
   eq('identifier shape inside text: ranges cover each span in the text',
     getIdentifierMaskedRanges('Call 416-555-1234 or sales@example.com'),
     [{ start: 5, end: 17 }, { start: 21, end: 38 }]);
   eq('identifier shape inside text: a text with no shape has no ranges',
     getIdentifierMaskedRanges('About 1,613,245 people'), []);
+})();
+
+// A number with a leading zero is a code in every cell shape, and the
+// exponent of scientific notation is a code only among words.
+(function leadingZeroCodesAndExponents() {
+  eq('leading zero: "0012 USD" holds no stretch',
+    classifyAt('0012 USD', LADDER_OPTS), { stretches: [] });
+  for (const [text, num] of [
+    ['1.2E+05', 120000], ['1.2E−05', 0.000012], ['1.2E–05', 0.000012],
+    ['1.2 E+05', 120000], ['1.2E+ 05', 120000], ['1.2E +05', 120000],
+  ]) {
+    eq(`scientific notation: "${text}" gives one number stretch over the whole cell`,
+      classifyAt(text, LADDER_OPTS), { stretches: [expectedNumberStretch(0, text, num)] });
+  }
+  eq('scientific notation: "1.2E+05" with "05" a markup range holds no stretch',
+    classifyAt('1.2E+05', LADDER_OPTS, { markupRanges: [{ start: 5, end: 7 }] }), { stretches: [] });
+  eq('scientific notation: "-1.2E+12" with "12" a markup range holds no stretch',
+    classifyAt('-1.2E+12', LADDER_OPTS, { markupRanges: [{ start: 6, end: 8 }] }), { stretches: [] });
+  eq('scientific notation: "about 1.2E+05 units" gives one stretch over "1.2"',
+    stretchTexts('about 1.2E+05 units', classifyAt('about 1.2E+05 units', LADDER_OPTS)), ['1.2']);
+  eq('scientific notation: "1.2E+017a" with "a" a superscript gives one stretch over "1.2"',
+    stretchTexts('1.2E+017a', classifyAt('1.2E+017a', LADDER_OPTS,
+      { superscriptRanges: [{ start: 8, end: 9 }], hasSuperscript: true })), ['1.2']);
 })();
 
 // A number right after "@" belongs to an at-name or an address, in any cell.

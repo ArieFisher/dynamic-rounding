@@ -24,7 +24,7 @@
  * time, so a date the date parser reads ("21 June 2020") stays a date, and
  * before the number reader. getIdentifierMaskedRanges
  * returns the codes that count inside a cell with words ("Call 416-555-1234
- * about 1,613,245 units"), and extractSimplifyMatches drops every number
+ * about 1,613,245 units"), and classifyCell drops every number
  * inside one, so the code stays as written and the other numbers round.
  *
  * Some codes count only when they fill the cell, because inside a sentence
@@ -277,7 +277,7 @@ function isWebOrEmailAddressCell(text) {
 
 /**
  * The {start, end} ranges of every code that counts inside a cell with
- * words. extractSimplifyMatches drops a number that touches any.
+ * words. classifyCell drops a number that touches any.
  * @param {string} text
  * @returns {{start: number, end: number}[]}
  */
