@@ -163,10 +163,10 @@
 })();
 // ---------------------------------------------------------------------------
 // The application model (app/model.js, DR_MODEL)
-// and the typed event bus (app/bus.js, DR_BUS). The selected
-// table and the sidebar-open flag moved out of content.js's file-level lets
-// into DR_MODEL; table-pillbox-view.js reports an intent through DR_BUS instead of
-// writing content.js's variables directly.
+// and the typed event bus (app/bus.js, DR_BUS): one declaration per file, the
+// topic table, an intent publish that sets the active table, the active table
+// surviving a sidebar reconnect, and no file writing another file's variables
+// or the model's fields.
 // ---------------------------------------------------------------------------
 (function appModelSelection_storeAndBus() {
   const busSrc = sourceByName('app/bus.js');
