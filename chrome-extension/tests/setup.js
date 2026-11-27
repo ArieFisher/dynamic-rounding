@@ -202,8 +202,8 @@ Object.defineProperty(globalThis, 'lastRightClickedTable', {
   set(v) { DR_MODEL.setActiveTable(v); },
   configurable: true,
 });
-// Expose the application model and event bus directly for the
-// app-model-selection test suite.
+// Expose the application model and event bus directly for the application
+// model and bus tests.
 globalThis.DR_MODEL = DR_MODEL;
 globalThis.DR_BUS = DR_BUS;
 // Expose grid-detection helpers for the grid-detection test suite.

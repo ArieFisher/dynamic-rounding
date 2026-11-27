@@ -22,6 +22,36 @@ const DR_MODEL = (function () {
     activeTable = table;
   }
 
+  // --- Error state ---
+  //
+  // The rows are bounded so a warning logged on every scroll cannot grow the
+  // model for the life of the page; errorCount still increments past the cap
+  // so the total stays readable. The model copies each row on the way in and
+  // on the way out, so a caller cannot change the stored rows through a row
+  // it passed in or read back.
+  const ERROR_ROW_LIMIT = 50;
+  const errorRows = [];
+  let errorCount = 0;
+
+  function copyErrorRow(row) {
+    return { at: row.at, level: row.level, text: row.text, stack: row.stack };
+  }
+
+  function getErrorState() {
+    return {
+      hasError: errorCount > 0,
+      count: errorCount,
+      rows: errorRows.map(copyErrorRow),
+    };
+  }
+
+  function recordError(row) {
+    errorRows.push(copyErrorRow(row));
+    if (errorRows.length > ERROR_ROW_LIMIT) errorRows.shift();
+    errorCount++;
+    DR_BUS.publish('state:errorRecorded', { errorState: getErrorState() });
+  }
+
   // --- Table registry ---
   //
   // The Map holds a strong reference to each table, so an entry stays until
@@ -56,39 +86,6 @@ const DR_MODEL = (function () {
     return entry;
   }
 
-  // --- Error state ---
-  //
-  // The rows are bounded so a warning logged on every scroll cannot grow the
-  // model for the life of the page; errorCount still increments past the cap
-  // so the total stays readable. Rows are plain values, copied on the way in
-  // and on the way out.
-  const ERROR_ROW_LIMIT = 50;
-  const errorRows = [];
-  let errorCount = 0;
-
-  function copyErrorRow(row) {
-    return { at: row.at, level: row.level, text: row.text, stack: row.stack };
-  }
-
-  function getErrorState() {
-    return {
-      hasError: errorCount > 0,
-      count: errorCount,
-      rows: errorRows.map(copyErrorRow),
-    };
-  }
-
-  function recordError(row) {
-    errorRows.push(copyErrorRow(row));
-    if (errorRows.length > ERROR_ROW_LIMIT) errorRows.shift();
-    errorCount++;
-    DR_BUS.publish('state:errorRecorded', { errorState: getErrorState() });
-  }
-
-  // --- Table registry API ---
-  //
-  // Only setTableSettings publishes.
-
   // Every setter below also calls _ensureEntry, so a table can have an entry
   // without registerTable ever running for it.
   function registerTable(table) {
@@ -121,7 +118,7 @@ const DR_MODEL = (function () {
     return !!entry && entry.originals.has(cellEl);
   }
 
-  // Reads CellRecord.value, the text the pass classified.
+  // Reads CellRecord.value.
   function getTableOriginalText(table, cellEl) {
     const original = getTableOriginal(table, cellEl);
     return original === undefined ? undefined : original.value;
@@ -140,7 +137,7 @@ const DR_MODEL = (function () {
   // The one place the shipped defaults fill in on a write. settings is a
   // patch: a key it leaves out keeps its stored value.
   function setTableSettings(table, settings, source) {
-    const stored = Object.assign({}, getTableSettings(table), settings);
+    const stored = Object.assign(getTableSettings(table), settings);
     _ensureEntry(table).settings = stored;
     DR_BUS.publish('state:settingsChanged', { source, settings: Object.assign({}, stored) });
   }
@@ -152,9 +149,9 @@ const DR_MODEL = (function () {
     return Object.assign({}, entry && entry.settings ? entry.settings : DR_DEFAULTS);
   }
 
-  // The on/off value the table pillbox and the sidebar pillbox both show, so
-  // the two always agree. The value comes from the table settings alone, not
-  // from whether any cell changed.
+  // The on/off value the table pillbox and the sidebar pillbox both show. The
+  // value comes from the table settings alone, not from whether any cell
+  // changed.
   function isTableOn(table) {
     return getTableSettings(table).enabled === true;
   }
