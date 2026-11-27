@@ -2,12 +2,12 @@
 /**
  * Self-test for scripts/planted-bugs.js, the planted bug script.
  *
- * The cases build a synthetic git repository in the operating system's
- * temporary folder: one small product file, a suite of a few assertions that
- * writes the record to TEST_RECORD_PATH, and the suite file. They run the
- * three modes on it and compare each result with an answer worked out by hand
- * from docs/sprint-plans/test-dedup.md, section 3. A last case runs the
- * extension suite with and without a record path.
+ * The cases build two synthetic git repositories in the operating system's
+ * temporary folder, each with one small product file and a suite of a few
+ * assertions that writes the record to TEST_RECORD_PATH, plus the suite
+ * file. They run the three modes on them and compare each result with an
+ * answer worked out by hand from docs/sprint-plans/test-dedup.md, section 3.
+ * A last case runs the extension suite with and without a record path.
  *
  * Run with no arguments; exits 0 when every case passes and 1 when any case
  * fails. Node standard library only.
@@ -69,7 +69,9 @@ const PRODUCT = [
 // The setup piece writes the record at process exit, so a run that stops
 // with an uncaught error still holds the assertions before the stop. The
 // flaky assertion fails in the run that takes slot 2 of the folder in
-// FIXTURE_FLAKY_DIR, which is one of the clean runs of measure.
+// FIXTURE_FLAKY_DIR, which is one of the three clean runs of measure. With
+// FIXTURE_FLAKY_LATER set, it also fails in every run after them, which are
+// the planted bug runs.
 const SETUP = [
   "'use strict';",
   "const fs = require('fs');",
@@ -96,7 +98,11 @@ const SETUP = [
   '  }',
   "  throw new Error('no free flaky slot');",
   '}',
-  'module.exports = { eq, product, flakySlot };',
+  'function flakyFails() {',
+  '  const slot = flakySlot();',
+  "  return slot === 2 || (process.env.FIXTURE_FLAKY_LATER === '1' && slot > 3);",
+  '}',
+  'module.exports = { eq, product, flakyFails };',
   '',
 ].join('\n');
 
@@ -112,16 +118,19 @@ const PIECE_A = [
 
 const PIECE_B = [
   "'use strict';",
-  "const { eq, product, flakySlot } = require('./setup.js');",
+  "const { eq, product, flakyFails } = require('./setup.js');",
   "eq('labelFor zz is none', product.labelFor('zz'), 'none');",
   "eq('isSmall 10 and 11 are false', [product.isSmall(10), product.isSmall(11)], [false, false]);",
-  "eq('flaky in one clean run', flakySlot() === 2 ? 'unstable' : 'stable', 'stable');",
+  "eq('flaky in one clean run', flakyFails() ? 'unstable' : 'stable', 'stable');",
   "eq('double 3 is 6', product.double(3), 6);",
   '',
 ].join('\n');
 
+// With FIXTURE_RUNS_DIR set, each suite run writes a file named by its
+// process id there, so a case can find every suite run of one script run.
 const RUNNER = [
   "'use strict';",
+  "if (process.env.FIXTURE_RUNS_DIR) require('fs').writeFileSync(`${process.env.FIXTURE_RUNS_DIR}/${process.pid}`, '');",
   "for (const piece of ['setup.js', 'a-tests.js', 'b-tests.js']) require(`./tests/${piece}`);",
   '',
 ].join('\n');
@@ -132,6 +141,57 @@ const FIXTURE_FILES = {
   'app/tests/setup.js': SETUP,
   'app/tests/a-tests.js': PIECE_A,
   'app/tests/b-tests.js': PIECE_B,
+};
+
+// A second repository with the same runner and setup. Piece B's assertions
+// are the only catchers of its 3 planted bugs, and their inputs come from a
+// list piece A defines and from a data file outside the test and product
+// folders.
+const CROSS_PRODUCT = [
+  "'use strict';",
+  'function isSmall(n) {',
+  '  return n < 10;',
+  '}',
+  'function double(n) {',
+  '  return n * 2;',
+  '}',
+  'module.exports = { isSmall, double };',
+  '',
+].join('\n');
+
+const CROSS_PIECE_A = [
+  "'use strict';",
+  'globalThis.SIZES = [9, 10];',
+  '',
+].join('\n');
+
+const CROSS_PIECE_B = [
+  "'use strict';",
+  "const fs = require('fs');",
+  "const path = require('path');",
+  "const { eq, product } = require('./setup.js');",
+  'for (const n of globalThis.SIZES) eq(`isSmall ${n} is ${n < 10}`, product.isSmall(n), n < 10);',
+  "const doubles = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'data', 'doubles.json'), 'utf8'));",
+  'for (const [n, twice] of doubles) eq(`double ${n} is ${twice}`, product.double(n), twice);',
+  '',
+].join('\n');
+
+const CROSS_FILES = {
+  [PRODUCT_FILE]: CROSS_PRODUCT,
+  'app/tests.js': RUNNER,
+  'app/tests/setup.js': SETUP,
+  'app/tests/a-tests.js': CROSS_PIECE_A,
+  'app/tests/b-tests.js': CROSS_PIECE_B,
+  'data/doubles.json': '[[3, 6]]\n',
+};
+
+// Each assertion of piece B with the planted bugs only it catches.
+const CROSS_SMALL_10 = 'app/tests/b-tests.js:5  isSmall 10 is false';
+const CROSS_DOUBLE_3 = 'app/tests/b-tests.js:7  double 3 is 6';
+const EXPECTED_CROSS_CATCHES = {
+  'isSmall 9 is true': [],
+  'isSmall 10 is false': [bugKey(3, '<', '<='), bugKey(3, '10', '11')],
+  'double 3 is 6': [bugKey(6, '2', '3')],
 };
 
 // Each planted bug: a text that finds its line, the code before and after,
@@ -251,6 +311,14 @@ function commitBranch(repo, branch, files) {
   git(repo, 'checkout', '-q', 'main');
 }
 
+function moveBranch(repo, branch, from, to) {
+  git(repo, 'checkout', '-q', '-b', branch, 'main');
+  fs.mkdirSync(path.dirname(path.join(repo, to)), { recursive: true });
+  git(repo, 'mv', from, to);
+  git(repo, 'commit', '-q', '-m', branch);
+  git(repo, 'checkout', '-q', 'main');
+}
+
 function withoutLine(text, part) {
   const lines = text.split('\n');
   const kept = lines.filter((line) => !line.includes(part));
@@ -258,18 +326,27 @@ function withoutLine(text, part) {
   return kept.join('\n');
 }
 
-function buildFixture(temp) {
-  const repo = path.join(temp, 'repo');
+function initRepo(repo, files) {
   fs.mkdirSync(repo);
   git(repo, 'init', '-q');
-  writeFiles(repo, FIXTURE_FILES);
-  git(repo, 'add', '--', ...Object.keys(FIXTURE_FILES));
+  writeFiles(repo, files);
+  git(repo, 'add', '--', ...Object.keys(files));
   git(repo, 'commit', '-q', '-m', 'fixture');
   git(repo, 'branch', '-M', 'main');
+}
+
+function buildFixture(temp) {
+  const repo = path.join(temp, 'repo');
+  initRepo(repo, FIXTURE_FILES);
   commitBranch(repo, 'delete-unique', { 'app/tests/b-tests.js': withoutLine(PIECE_B, "'double 3 is 6'") });
   commitBranch(repo, 'delete-repeat', { 'app/tests/a-tests.js': withoutLine(PIECE_A, "'stepsToReach 4 is 2',") });
   commitBranch(repo, 'delete-crash-trigger', { 'app/tests/b-tests.js': withoutLine(PIECE_B, "'labelFor zz is none'") });
   commitBranch(repo, 'change-product', { [PRODUCT_FILE]: PRODUCT.replace('n >= 5', 'n >= 7') });
+  moveBranch(repo, 'move-product-out', PRODUCT_FILE, 'lib/product.js');
+  const crossRepo = path.join(temp, 'cross-repo');
+  initRepo(crossRepo, CROSS_FILES);
+  commitBranch(crossRepo, 'shrink-list', { 'app/tests/a-tests.js': CROSS_PIECE_A.replace('[9, 10]', '[9]') });
+  commitBranch(crossRepo, 'trim-data', { 'data/doubles.json': '[]\n' });
   const suite = path.join(temp, 'suite.json');
   fs.writeFileSync(suite, JSON.stringify({
     command: [process.execPath, 'app/tests.js'],
@@ -280,7 +357,16 @@ function buildFixture(temp) {
   fs.mkdirSync(scriptTemp);
   const flaky = path.join(temp, 'flaky');
   fs.mkdirSync(flaky);
-  return { repo, suite, scriptTemp, flaky, result: path.join(temp, 'result.json') };
+  return {
+    temp, repo, suite, scriptTemp, flaky, result: path.join(temp, 'result.json'),
+    cross: { repo: crossRepo, suite, scriptTemp, result: path.join(temp, 'cross-result.json') },
+  };
+}
+
+function freshDir(fixture, name) {
+  const dir = path.join(fixture.temp, name);
+  fs.mkdirSync(dir);
+  return dir;
 }
 
 // The script makes its worker copies under TMPDIR, so the fixture's own
@@ -317,6 +403,24 @@ function bugKeys(result) {
   return new Map(result.plantedBugs.map((bug) => [bug.id, bugKey(bug.line, bug.before, bug.after)]));
 }
 
+const EXPECTED_OUTCOMES = EXPECTED_BUGS
+  .map((bug) => `${bugKey(lineOf(bug.at), bug.before, bug.after)} ${bug.outcome}`).sort();
+
+function outcomeList(result) {
+  const keys = bugKeys(result);
+  return result.plantedBugs.map((bug) => `${keys.get(bug.id)} ${bug.outcome}`).sort();
+}
+
+function catchLists(result) {
+  const keys = bugKeys(result);
+  return Object.fromEntries(result.assertions.map((assertion) =>
+    [assertion.name, assertion.catches.map((id) => keys.get(id)).sort()]));
+}
+
+function sortedLists(lists) {
+  return Object.fromEntries(Object.entries(lists).map(([name, list]) => [name, [...list].sort()]));
+}
+
 function parseSort(stdout) {
   const lists = {};
   let current = null;
@@ -342,7 +446,6 @@ async function measureCases(fixture) {
   });
   if (!result) return null;
   process.stdout.write(`        measure took ${run.elapsedMs} ms\n`);
-  const keys = bugKeys(result);
 
   await check('measure on a product file with < && true || false in a comment, a string, and template text: no planted bug on those lines', () => {
     const textLines = [2, 3, 4];
@@ -350,18 +453,11 @@ async function measureCases(fixture) {
     return inText.length ? `planted bugs in text: ${JSON.stringify(inText)}` : null;
   });
 
-  await check('measure on the fixture: the planted bugs and their outcomes match the hand-computed list', () => {
-    const actual = result.plantedBugs.map((bug) => `${keys.get(bug.id)} ${bug.outcome}`).sort();
-    const expected = EXPECTED_BUGS.map((bug) => `${bugKey(lineOf(bug.at), bug.before, bug.after)} ${bug.outcome}`).sort();
-    return differs('planted bugs', actual, expected);
-  });
+  await check('measure on the fixture: the planted bugs and their outcomes match the hand-computed list', () =>
+    differs('planted bugs', outcomeList(result), EXPECTED_OUTCOMES));
 
-  await check('measure on the fixture: each assertion\'s catch list matches the hand-computed list', () => {
-    const actual = Object.fromEntries(result.assertions.map((assertion) =>
-      [assertion.name, assertion.catches.map((id) => keys.get(id)).sort()]));
-    const expected = Object.fromEntries(Object.entries(EXPECTED_CATCHES).map(([name, list]) => [name, [...list].sort()]));
-    return differs('catch lists', actual, expected);
-  });
+  await check('measure on the fixture: each assertion\'s catch list matches the hand-computed list', () =>
+    differs('catch lists', catchLists(result), sortedLists(EXPECTED_CATCHES)));
 
   await check('measure on a planted bug that loops forever: stops at the time cap and counts as caught by a timeout', () => {
     const looping = result.plantedBugs.filter((bug) => bug.line === lineOf('let value = 0;'));
@@ -418,6 +514,125 @@ async function proveCases(fixture) {
     const run = prove(fixture, 'change-product');
     return run.status === 1 && run.stderr.includes('measure again') ? leftovers(fixture) : exitDetail(run);
   });
+
+  await check('prove on a branch that moves a product file out of the product folder: exits 1 with "measure again"', () => {
+    const run = prove(fixture, 'move-product-out');
+    return run.status === 1 && run.stderr.includes('measure again') ? leftovers(fixture) : exitDetail(run);
+  });
+}
+
+function measureArgs(fixture, out) {
+  return ['measure', '--out', out, '--root', fixture.repo, '--commit', 'main', '--suite', fixture.suite];
+}
+
+async function measureFailureCases(fixture) {
+  await check('measure on an assertion that fails in one clean run and in every planted bug run: each planted bug keeps its hand-computed outcome', () => {
+    const flakyDir = freshDir(fixture, 'flaky-later');
+    const out = path.join(fixture.temp, 'flaky-later-result.json');
+    const run = runScript(fixture, measureArgs(fixture, out), { FIXTURE_FLAKY_DIR: flakyDir, FIXTURE_FLAKY_LATER: '1' });
+    if (run.status !== 0) return exitDetail(run);
+    const slots = fs.readdirSync(flakyDir).length;
+    if (slots <= 3) return `the flaky assertion ran in no planted bug run (${slots} slots taken)`;
+    return differs('planted bugs', outcomeList(JSON.parse(fs.readFileSync(out, 'utf8'))), EXPECTED_OUTCOMES) ||
+      leftovers(fixture);
+  });
+
+  await check('measure with --out in a missing folder: exits 2 and starts no suite run', () => {
+    const runsDir = freshDir(fixture, 'missing-out-runs');
+    const run = runScript(fixture, measureArgs(fixture, path.join(fixture.temp, 'missing', 'result.json')),
+      { FIXTURE_RUNS_DIR: runsDir });
+    const runs = fs.readdirSync(runsDir).length;
+    return run.status === 2 && runs === 0 ? leftovers(fixture) : `suite runs: ${runs}\n${exitDetail(run)}`;
+  });
+}
+
+async function crossPieceCases(fixture) {
+  const { cross } = fixture;
+  const run = runScript(cross, measureArgs(cross, cross.result));
+  let measured = false;
+  await check('measure on a piece that loops over a list from another piece and over a data file: its assertions catch the hand-computed planted bugs', () => {
+    if (run.status !== 0) return exitDetail(run);
+    const result = JSON.parse(fs.readFileSync(cross.result, 'utf8'));
+    const detail = differs('catch lists', catchLists(result), sortedLists(EXPECTED_CROSS_CATCHES));
+    measured = !detail;
+    return detail;
+  });
+  if (!measured) return;
+
+  await check('prove on a branch that shrinks the list in piece A that piece B loops over: exits 1 and names the 2 lost planted bugs with the piece B assertion under them', () => {
+    const lost = prove(cross, 'shrink-list');
+    return lost.status === 1 && lost.stderr.includes('2 of 3 rerun') && lost.stderr.includes(`${PRODUCT_FILE}:3:`) &&
+      lost.stderr.includes(CROSS_SMALL_10) ? leftovers(cross) : exitDetail(lost);
+  });
+
+  await check('prove on a branch that trims a data file outside the test and product folders: exits 1 and names the lost planted bug', () => {
+    const lost = prove(cross, 'trim-data');
+    return lost.status === 1 && lost.stderr.includes('1 of 3 rerun') && lost.stderr.includes(`${PRODUCT_FILE}:6:`) &&
+      lost.stderr.includes(CROSS_DOUBLE_3) ? leftovers(cross) : exitDetail(lost);
+  });
+}
+
+// Normal fixture runs end in well under LONG_RUN_MS, so a run older than
+// that is a planted bug that loops forever.
+const LONG_RUN_MS = 300;
+const POLL_MS = 25;
+const WAIT_LIMIT_MS = 15 * 1000;
+// Long enough for the operating system to end a killed run and remove it.
+const SETTLE_MS = 500;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function isAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === 'EPERM';
+  }
+}
+
+async function waitForLongRun(runsDir) {
+  const firstSeen = new Map();
+  const deadline = Date.now() + WAIT_LIMIT_MS;
+  while (Date.now() < deadline) {
+    const now = Date.now();
+    for (const pid of fs.readdirSync(runsDir).map(Number)) {
+      if (!firstSeen.has(pid)) firstSeen.set(pid, now);
+      if (now - firstSeen.get(pid) >= LONG_RUN_MS && isAlive(pid)) return pid;
+    }
+    await sleep(POLL_MS);
+  }
+  return null;
+}
+
+async function signalCase(fixture) {
+  await check('measure sent SIGTERM alone while a planted bug loops forever: no suite run and no worker copy is left', async () => {
+    const runsDir = freshDir(fixture, 'signal-runs');
+    const out = path.join(fixture.temp, 'signal-result.json');
+    const script = childProcess.spawn(process.execPath, [SCRIPT, ...measureArgs(fixture, out)], {
+      stdio: 'ignore',
+      env: { ...process.env, TEST_RECORD_PATH: '', TMPDIR: fixture.scriptTemp, FIXTURE_RUNS_DIR: runsDir },
+    });
+    const exited = new Promise((resolve) => script.on('exit', resolve));
+    const runPids = () => fs.readdirSync(runsDir).map(Number);
+    try {
+      const looping = await waitForLongRun(runsDir);
+      if (looping === null) return `no suite run lasted ${LONG_RUN_MS} ms within ${WAIT_LIMIT_MS} ms`;
+      script.kill('SIGTERM');
+      await exited;
+      await sleep(SETTLE_MS);
+      const alive = runPids().filter(isAlive);
+      return alive.length ? `suite runs still going: ${alive.join(', ')}` : leftovers(fixture);
+    } finally {
+      for (const pid of runPids()) {
+        try { process.kill(pid, 'SIGKILL'); } catch { /* already ended */ }
+      }
+      if (script.exitCode === null && script.signalCode === null) {
+        script.kill('SIGKILL');
+        await exited;
+      }
+    }
+  });
 }
 
 function runExtensionSuite(recordPath) {
@@ -456,6 +671,9 @@ async function main() {
       await sortCases(fixture);
       await proveCases(fixture);
     }
+    await measureFailureCases(fixture);
+    await crossPieceCases(fixture);
+    await signalCase(fixture);
     await extensionCase(temp);
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
