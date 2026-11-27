@@ -519,11 +519,9 @@
   const pctMatch = sidebarJsSrc.match(/function stopPosition\(v\)\s*\{([\s\S]*?)\n\}/);
   const stopsMatch = sidebarJsSrc.match(/const STOPS\s*=\s*\[([^\]]*)\]/);
   const snapMatch = sidebarJsSrc.match(/function snap\(v\)\s*\{([\s\S]*?)\n\}/);
-  if (!pctMatch || !stopsMatch || !snapMatch) {
-    failed++;
-    failures.push({ name: 'dots-tick: stopPosition(), STOPS, and snap() found in sidebar.js', actual: false, expected: true });
-  } else {
-    passed++;
+  const allFound = Boolean(pctMatch && stopsMatch && snapMatch);
+  eq('dots-tick: stopPosition(), STOPS, and snap() found in sidebar.js', allFound, true);
+  if (allFound) {
     // stopPosition() closes over STOPS and snap(); both come from sidebar.js
     // so the extracted body runs standalone against the real stops.
     const stops = stopsMatch[1].split(',').map((s) => parseFloat(s.trim()));
@@ -539,17 +537,10 @@
     stops.forEach((v, k) => {
       const expected = (k + 0.5) / N * 100;
       const actual = stopPosition(v);
-      const ok = Math.abs(actual - expected) < TOL;
-      if (ok) {
-        passed++;
-      } else {
-        failed++;
-        failures.push({
-          name: `dots-tick: stopPosition(${v}) === cell-${k}-centre (${expected.toFixed(6)}%)`,
-          actual: actual,
-          expected: expected,
-        });
-      }
+      // Within tolerance, the expected value stands in for the actual one,
+      // so a failure prints both numbers.
+      eq(`dots-tick: stopPosition(${v}) === cell-${k}-centre (${expected.toFixed(6)}%)`,
+        Math.abs(actual - expected) < TOL ? expected : actual, expected);
     });
 
     // Key exact values — extremes and the zero stop (index 5 of 9).
