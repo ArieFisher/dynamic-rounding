@@ -119,23 +119,22 @@ function dateTimeStretches({ isoPairs, dates, times }, options) {
 }
 
 /**
- * The masked ranges are one list, so a new kind of text whose numbers stay as
- * written is one more source here. The identifier scan reads the text with
- * each superscript span blanked, so a footnote marker right after a phone
- * number ("416-555-1234<sup>1</sup>") never joins its digits. classifyCell
- * holds, after this step, every number that overlaps a markup range, a date,
- * or a time.
+ * The cell's masked ranges, with the spans of its dates and times: one list,
+ * so a new kind of text whose numbers stay as written is one more source
+ * here, and classifyCell holds every number that overlaps an entry. The
+ * identifier scan reads the text with each superscript span blanked, so a
+ * footnote marker right after a phone number ("416-555-1234<sup>1</sup>")
+ * never joins its digits.
  */
-function extractSimplifyMatches(text, superscriptRanges) {
-  const shapeText = blankRanges(text, superscriptRanges);
-  const masked = [
+function maskedRanges(text, superscriptRanges, markupRanges, dateTimeSpans) {
+  return [
+    ...markupRanges,
+    ...dateTimeSpans,
     ...getQuoteMaskedRanges(text),
-    ...getIdentifierMaskedRanges(shapeText),
+    ...getIdentifierMaskedRanges(blankRanges(text, superscriptRanges)),
     ...superscriptRanges,
     ...getEraYearMaskedRanges(text),
   ];
-  return extractNumbersInText(text)
-    .filter((m) => !overlapsMaskedRange(masked, m.index, m.index + m.numStr.length));
 }
 
 /**
@@ -145,12 +144,12 @@ function extractSimplifyMatches(text, superscriptRanges) {
  * so the write-back leaves a sign, a bracket, a currency sign, a percent
  * sign, a suffix, or a currency code where the page put it.
  */
-function readNumberCell({ text, trimmedText, superscriptRanges, hasSuperscript, digitsSpanPieces }) {
+function readNumberCell({ text, trimmedText, hasSuperscript, digitsSpanPieces }) {
   // In a cell with a superscript, the text classifyCell reads joins base and
   // exponent digits ("10<sup>12</sup>" reads "1012"), which is not the text
   // the reader sees. So no whole-cell shape is tested against it, and
-  // extraction masks each superscript span.
-  if (hasSuperscript) return extractSimplifyMatches(text, superscriptRanges);
+  // classifyCell masks each superscript span.
+  if (hasSuperscript) return extractNumbersInText(text);
 
   // An identifier shape reads as a code, not a quantity, so the whole cell
   // stays as written. Checked before the number reader, which also reads a
@@ -166,7 +165,7 @@ function readNumberCell({ text, trimmedText, superscriptRanges, hasSuperscript, 
   const unit = matchUnitNumber(text);
   if (unit) return [unit];
 
-  return extractSimplifyMatches(text, superscriptRanges);
+  return extractNumbersInText(text);
 }
 
 function numberStretch(match) {
@@ -207,12 +206,12 @@ function classifyCell(input, options) {
 
   const read = readDatesAndTimesHoldingMarkup(text, superscriptRanges, markupRanges);
   const dateTimeSpans = valuesRead(read);
-  const heldRanges = [...markupRanges, ...dateTimeSpans];
+  const masked = maskedRanges(text, superscriptRanges, markupRanges, dateTimeSpans);
   const numbers = dateTimeSpans.length > 0
-    ? extractSimplifyMatches(text, superscriptRanges)
-    : readNumberCell({ text, trimmedText, superscriptRanges, hasSuperscript, digitsSpanPieces });
+    ? extractNumbersInText(text)
+    : readNumberCell({ text, trimmedText, hasSuperscript, digitsSpanPieces });
   const numberStretches = numbers
-    .filter((m) => !overlapsMaskedRange(heldRanges, m.index, m.index + m.numStr.length))
+    .filter((m) => !overlapsMaskedRange(masked, m.index, m.index + m.numStr.length))
     .filter((m) => !touchesSwitchedOffSign(text, m, options))
     .map(numberStretch);
   const stretches = [...dateTimeStretches(read, options), ...numberStretches]

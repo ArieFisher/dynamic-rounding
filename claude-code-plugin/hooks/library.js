@@ -1093,7 +1093,7 @@ function groupedNumberText(value) {
  * time, so a date the date parser reads ("21 June 2020") stays a date, and
  * before the number reader. getIdentifierMaskedRanges
  * returns the codes that count inside a cell with words ("Call 416-555-1234
- * about 1,613,245 units"), and extractSimplifyMatches drops every number
+ * about 1,613,245 units"), and classifyCell drops every number
  * inside one, so the code stays as written and the other numbers round.
  *
  * Some codes count only when they fill the cell, because inside a sentence
@@ -1244,8 +1244,13 @@ const POSTAL_CODE_PATTERN = [
 // ("ID 0000123, late") still ends it. A run that is one group of a larger
 // number ("034" in "1,034" or "1 034 567") is not a code either: the shape
 // is groupOfNumber, so findIdentifiers drops a match that sits inside a
-// longer number run.
+// longer number run. The exponent of a number in scientific notation that
+// fills the cell ("05" in "1.2E+05") is not a code either: the shape is
+// exponentOfCellNumber, so findIdentifiers drops that match. Inside words
+// the reader takes "1.2" and "05" as two numbers, so there the exponent stays
+// a code and keeps its digits.
 const LEADING_ZERO_PATTERN = '0\\d+(?![.,]\\d)';
+const EXPONENT_MARK_BEFORE_RE = /[\d.][eE][+-]$/;
 
 // The {start, end} of every run the pattern that finds a number inside text
 // (numbers-in-text.js) takes as one number, in text order. That pattern reads
@@ -1263,9 +1268,10 @@ const numberRunSpans = (text) => Array.from(text.matchAll(NUMBER_IN_TEXT_REGEX_G
 // counts only when it fills the cell, a test of the whole text for that form.
 // The test takes the text and whether the cell's digits span several text
 // pieces. A shape marked groupOfNumber drops a match that is one group of a
-// longer number run. findIdentifiers reads the list alone, and a new shape
-// is one more entry here. Phone numbers come before grouped digits so
-// "416 555 1234" takes the phone name.
+// longer number run, and a shape marked exponentOfCellNumber drops a match
+// that is the exponent of a number filling the cell. findIdentifiers reads
+// the list alone, and a new shape is one more entry here. Phone numbers come
+// before grouped digits so "416 555 1234" takes the phone name.
 const IDENTIFIER_SHAPES = [
   { name: 'phone-number', span: spanRe(PHONE_NUMBER_PATTERN) },
   { name: 'grouped-digits', fillsOnly: (text, digitsSpanPieces) => !digitsSpanPieces && GROUPED_DIGITS_RE.test(text) },
@@ -1277,7 +1283,7 @@ const IDENTIFIER_SHAPES = [
     fillsOnly: (text) => /[- ]/.test((ISBN_WITHOUT_WORD_RE.exec(text) || [])[1] || ''),
   },
   { name: 'postal-code', span: spanRe(POSTAL_CODE_PATTERN) },
-  { name: 'leading-zero', span: spanRe(LEADING_ZERO_PATTERN), groupOfNumber: true },
+  { name: 'leading-zero', span: spanRe(LEADING_ZERO_PATTERN), groupOfNumber: true, exponentOfCellNumber: true },
 ];
 
 /**
@@ -1293,6 +1299,9 @@ const IDENTIFIER_SHAPES = [
 function findIdentifiers(text, digitsSpanPieces = false, shapes = IDENTIFIER_SHAPES) {
   if (typeof text !== 'string') return [];
   const quantity = GROUPED_DIGITS_QUANTITY_RE.test(text);
+  // Read on the first exponent match only, so a long cell of codes with no
+  // exponent never runs the whole-cell number reader.
+  let isCellNumber;
   const codes = [];
   for (const shape of shapes) {
     const matches = shape.span ? Array.from(text.matchAll(shape.span)) : [];
@@ -1311,6 +1320,10 @@ function findIdentifiers(text, digitsSpanPieces = false, shapes = IDENTIFIER_SHA
       const run = runs[runIndex];
       // A code inside a longer number run is one group of that number.
       if (run !== undefined && run.start <= start && run.end - run.start > end - start) continue;
+      if (shape.exponentOfCellNumber && EXPONENT_MARK_BEFORE_RE.test(text.slice(Math.max(0, start - 3), start))) {
+        if (isCellNumber === undefined) isCellNumber = toNumber(text) !== null;
+        if (isCellNumber) continue;
+      }
       const fillsCell = !quantity
         && CELL_LEAD_RE.test(text.slice(0, start)) && CELL_TRAIL_RE.test(text.slice(end));
       codes.push({ name: shape.name, start, end, fillsCell, inText: !SPACED_DIGITS_ONLY_RE.test(match[0]) });
@@ -1346,7 +1359,7 @@ function isWebOrEmailAddressCell(text) {
 
 /**
  * The {start, end} ranges of every code that counts inside a cell with
- * words. extractSimplifyMatches drops a number that touches any.
+ * words. classifyCell drops a number that touches any.
  * @param {string} text
  * @returns {{start: number, end: number}[]}
  */
@@ -1477,23 +1490,22 @@ function dateTimeStretches({ isoPairs, dates, times }, options) {
 }
 
 /**
- * The masked ranges are one list, so a new kind of text whose numbers stay as
- * written is one more source here. The identifier scan reads the text with
- * each superscript span blanked, so a footnote marker right after a phone
- * number ("416-555-1234<sup>1</sup>") never joins its digits. classifyCell
- * holds, after this step, every number that overlaps a markup range, a date,
- * or a time.
+ * The cell's masked ranges, with the spans of its dates and times: one list,
+ * so a new kind of text whose numbers stay as written is one more source
+ * here, and classifyCell holds every number that overlaps an entry. The
+ * identifier scan reads the text with each superscript span blanked, so a
+ * footnote marker right after a phone number ("416-555-1234<sup>1</sup>")
+ * never joins its digits.
  */
-function extractSimplifyMatches(text, superscriptRanges) {
-  const shapeText = blankRanges(text, superscriptRanges);
-  const masked = [
+function maskedRanges(text, superscriptRanges, markupRanges, dateTimeSpans) {
+  return [
+    ...markupRanges,
+    ...dateTimeSpans,
     ...getQuoteMaskedRanges(text),
-    ...getIdentifierMaskedRanges(shapeText),
+    ...getIdentifierMaskedRanges(blankRanges(text, superscriptRanges)),
     ...superscriptRanges,
     ...getEraYearMaskedRanges(text),
   ];
-  return extractNumbersInText(text)
-    .filter((m) => !overlapsMaskedRange(masked, m.index, m.index + m.numStr.length));
 }
 
 /**
@@ -1503,12 +1515,12 @@ function extractSimplifyMatches(text, superscriptRanges) {
  * so the write-back leaves a sign, a bracket, a currency sign, a percent
  * sign, a suffix, or a currency code where the page put it.
  */
-function readNumberCell({ text, trimmedText, superscriptRanges, hasSuperscript, digitsSpanPieces }) {
+function readNumberCell({ text, trimmedText, hasSuperscript, digitsSpanPieces }) {
   // In a cell with a superscript, the text classifyCell reads joins base and
   // exponent digits ("10<sup>12</sup>" reads "1012"), which is not the text
   // the reader sees. So no whole-cell shape is tested against it, and
-  // extraction masks each superscript span.
-  if (hasSuperscript) return extractSimplifyMatches(text, superscriptRanges);
+  // classifyCell masks each superscript span.
+  if (hasSuperscript) return extractNumbersInText(text);
 
   // An identifier shape reads as a code, not a quantity, so the whole cell
   // stays as written. Checked before the number reader, which also reads a
@@ -1524,7 +1536,7 @@ function readNumberCell({ text, trimmedText, superscriptRanges, hasSuperscript, 
   const unit = matchUnitNumber(text);
   if (unit) return [unit];
 
-  return extractSimplifyMatches(text, superscriptRanges);
+  return extractNumbersInText(text);
 }
 
 function numberStretch(match) {
@@ -1565,12 +1577,12 @@ function classifyCell(input, options) {
 
   const read = readDatesAndTimesHoldingMarkup(text, superscriptRanges, markupRanges);
   const dateTimeSpans = valuesRead(read);
-  const heldRanges = [...markupRanges, ...dateTimeSpans];
+  const masked = maskedRanges(text, superscriptRanges, markupRanges, dateTimeSpans);
   const numbers = dateTimeSpans.length > 0
-    ? extractSimplifyMatches(text, superscriptRanges)
-    : readNumberCell({ text, trimmedText, superscriptRanges, hasSuperscript, digitsSpanPieces });
+    ? extractNumbersInText(text)
+    : readNumberCell({ text, trimmedText, hasSuperscript, digitsSpanPieces });
   const numberStretches = numbers
-    .filter((m) => !overlapsMaskedRange(heldRanges, m.index, m.index + m.numStr.length))
+    .filter((m) => !overlapsMaskedRange(masked, m.index, m.index + m.numStr.length))
     .filter((m) => !touchesSwitchedOffSign(text, m, options))
     .map(numberStretch);
   const stretches = [...dateTimeStretches(read, options), ...numberStretches]
