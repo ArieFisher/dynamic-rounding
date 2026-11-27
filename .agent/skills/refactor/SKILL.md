@@ -7,14 +7,15 @@ description: Run a refactor pass over a file, a list of files, or a directory. F
 
 Run to the end without stopping to ask questions. File an issue only for a defect on main, as section 3 says. Write no memory, and keep no record of anything not done: a Group B finding reaches the product manager only through chat, and is lost on purpose when no one reads it, because a later pass may resolve it. In chat, write no preamble and no summary of the groups, except the Group B lines in step 2.
 
-1. Create a branch from the latest main named `refactor/asx-<YYYYMMDD>`. Use the run's start date here and in every findings file name.
-2. For each file in the input, one at a time, skipping `js/round_dynamic.js`, run the find subagent and then the action subagent. Use the `refactor` agent type for both, and give each its section name, the input file, and the findings file's path.
-   1. After the find subagent finishes, reply in chat with the file's Group B lines.
-   2. After the action subagent finishes, reply in chat with one line giving the file's Group A and Group B counts. Add any judgement calls the action subagent made, in plain language for a product manager.
+1. Create a branch from the latest main named `refactor/asx-<YYYYMMDD>`. Use the run's start date here and in every findings file name. When the input holds a test piece, start `measure` on the branch's start commit in the background, with the result file at `docs/private/asx-<YYYYMMDD>-measure.json`. "Measuring the extension tests" in `CONTRIBUTING.md` describes each mode and its run time.
+2. For each file in the input, one at a time, skipping `js/round_dynamic.js`, run the find subagent and then the action subagent. Use the `refactor` agent type for both, and give each its section name, the input file, and the findings file's path. For a test piece, also give the find subagent the sort output's path.
+   1. Before the find subagent for the first test piece, wait for `measure` to exit, then run `sort` on the result file and write its output to `docs/private/asx-<YYYYMMDD>-sort.txt`. If either mode exits 2, report its error in chat and skip every test piece in the input.
+   2. After the find subagent finishes, reply in chat with the file's Group B lines, and file an issue for each defect on main it found, as section 3 says.
+   3. After the action subagent finishes, reply in chat with one line giving the file's Group A and Group B counts. Add any judgement calls the action subagent made, in plain language for a product manager.
 3. After the last file, reply with one line of totals.
 4. Run the review subagent on the whole branch, and act on its findings as section 3 says.
 5. Once it returns APPROVE, push the branch and open a pull request. Do not merge it.
-6. Delete the findings files.
+6. Delete the findings files, the result file, and the sort output.
 7. Report the elapsed time and three token counts summed over every subagent: read (new), read (cache), and written. Take them from the usage in each subagent's transcript, counting each reply once. Do not report a subagent's own token total, which counts conversation size, not tokens processed. Give no dollar cost.
 
 ## 1. Find subagent
@@ -60,6 +61,14 @@ Search for code that breaks these principles:
 - **Events between parts.** Parts talk through events on the event bus. They never reach into each other's insides.
 - **One interface for all table kinds.** Code outside the table adapters uses only the adapters' shared methods. It never checks the table kind or calls an adapter's private methods.
 
+### Test pieces
+
+For a test piece, read its lists in the sort output.
+
+- An assertion that repeats others is a Group A finding: drop it. Keep it when its name, a comment, or its test group heading points to a past bug or issue, unless a kept assertion checks the exact same input.
+- Tests that the case table rule under "Code style" in `AGENTS.md` covers are a Group A finding: merge them into a case table.
+- An assertion that catches nothing is a defect on main: mark it so in place of A or B. An assertion that checks code text, docs, or the manifest is no finding: the planted bug script plants bugs only in product code, so such an assertion catches nothing by design.
+
 ### Categorize
 
 A cleanup is Group A only if all of these hold. Otherwise it is Group B, a decision for the product manager.
@@ -80,7 +89,7 @@ A cleanup is Group A only if all of these hold. Otherwise it is Group B, a decis
 
 ## 3. Review subagent
 
-Use the `code-reviewer` agent type on Opus at high effort. Give it this section, the Categorize rules, and the branch name, and nothing else. Tell it not to read `docs/private/`.
+Use the `code-reviewer` agent type on Opus at high effort. Give it this section, the Categorize rules, the branch name, and, when the branch changes a test piece, the result file's path, and nothing else. Tell it not to read `docs/private/`; `prove` reads the result file there.
 
 - Review the branch's full diff against main, and test the claim that every change is Group A. Look for:
   - behavior changes on real page paths
@@ -88,11 +97,13 @@ Use the `code-reviewer` agent type on Opus at high effort. Give it this section,
   - changed signatures or return values whose callers were not all updated
   - comments, test names, test group headings, or docs that are now false, or that break a rule under "Docs track behavior" in `AGENTS.md`
 - Run the test suites that cover the changed files.
+- When the branch changes a test piece, run `prove` with the result file on the branch, in the background, and wait for it to exit. Exit 1 is a defect in the branch's own changes: report each lost planted bug with the assertions the script prints under it. Exit 2 forces BLOCK: report the error.
 - Edit no files. Return APPROVE or BLOCK, and each finding with its location, its severity, and its kind: a defect in the branch's own changes, a defect on main (wrong behavior a user can hit today), Group A, or Group B. A defect in the branch's own changes forces BLOCK.
 
 The main agent then:
 
-- Fixes each defect in the branch's own changes or reverts the cleanup that caused it.
+- Fixes each defect in the branch's own changes or reverts the cleanup that caused it. For a lost planted bug, it reverts the cleanup that removed or changed the assertions printed under it.
+- On a `prove` error, stops the run and reports the error in chat.
 - Makes every Group A finding, in any file.
 - Files a `[follow-up]` issue for each defect on main, as bucket 3 of "Review findings" in `AGENTS.md` says.
 - Reports each Group B finding in chat, in plain language, and acts on none of them.

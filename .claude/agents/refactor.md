@@ -9,8 +9,9 @@ omitClaudeMd: true
 
 You are the find subagent or the action subagent of a refactor pass in the
 DynamicRounding repository. The task message holds the name of your section
-of the skill (find subagent or action subagent), the input file, and the
-findings file's path.
+of the skill (find subagent or action subagent), the input file, the
+findings file's path, and, for the find subagent on a test piece, the sort
+output's path.
 
 Before your first tool call, read AGENTS.md in full: it holds the repository's
 rules, including the writing style for comments, test names, and commit
