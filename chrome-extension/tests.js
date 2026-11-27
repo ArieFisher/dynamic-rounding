@@ -94,30 +94,18 @@ function mapToPieces(stack, startLines) {
 // scripts/planted-bugs.js sets TEST_RECORD_PATH. With it set, the runner
 // writes one entry per assertion to that file at process exit, so an
 // assertion that runs after a timer is in the record. A piece is a path from
-// the repository root. `pieces` holds every piece on the assertion's stack,
-// so an assertion a helper makes counts against the piece that called it.
+// the repository root.
 function assertionRecorder(recordPath, startLines) {
   if (!recordPath) return () => {};
   const repositoryRoot = path.join(__dirname, '..');
-  const piecePath = (piece) =>
-    path.relative(repositoryRoot, path.join(PIECES_DIR, piece)).split(path.sep).join('/');
   const entries = [];
   process.on('exit', () => fs.writeFileSync(recordPath, JSON.stringify(entries)));
   return (name, passed) => {
-    const savedLimit = Error.stackTraceLimit;
-    Error.stackTraceLimit = Infinity;
-    const stack = new Error().stack;
-    Error.stackTraceLimit = savedLimit;
-    // The first frame of the joined suite is eq itself; the next is its call site.
-    const frames = [...stack.matchAll(JOINED_FRAME)].slice(1)
-      .map((match) => pieceAt(Number(match[1]), startLines));
-    entries.push({
-      piece: piecePath(frames[0].piece),
-      line: frames[0].line,
-      name,
-      passed,
-      pieces: [...new Set(frames.map((frame) => piecePath(frame.piece)))],
-    });
+    // The first frame of the joined suite is eq itself; the second is its call site.
+    const callSite = [...new Error().stack.matchAll(JOINED_FRAME)][1];
+    const { piece, line } = pieceAt(Number(callSite[1]), startLines);
+    const piecePath = path.relative(repositoryRoot, path.join(PIECES_DIR, piece)).split(path.sep).join('/');
+    entries.push({ piece: piecePath, line, name, passed });
   };
 }
 

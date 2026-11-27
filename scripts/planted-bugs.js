@@ -28,20 +28,16 @@ const PROGRESS_EVERY = 100;
 // One core stays free for the computer.
 const WORKERS = Math.max(1, os.availableParallelism() - 1);
 
-// The suite measure runs by default. A --suite file holds the same four
+// The suite measure runs by default. A --suite file holds the same three
 // fields for another suite. Paths are from the repository root; a path in a
 // list stands for the file or every file under the folder.
 //   command      runs the suite from the root of a worker copy
 //   productDir   product code: every file under it outside testPaths
 //   testPaths    the runner and the test pieces
-//   sharedPaths  test files every piece depends on; prove reruns every
-//                caught planted bug when a branch changes one
 const EXTENSION_SUITE = {
   command: ['node', 'chrome-extension/tests.js'],
   productDir: 'chrome-extension',
   testPaths: ['chrome-extension/tests.js', 'chrome-extension/tests'],
-  sharedPaths: ['chrome-extension/tests.js', 'chrome-extension/tests/setup.js',
-    'chrome-extension/tests/helpers.js'],
 };
 
 const USAGE = `Usage, from any directory:
@@ -55,9 +51,9 @@ measure  Runs the clean suite ${CLEAN_RUNS} times, then the suite once per plant
          (default: every product file).
 sort     Prints, by piece, the assertions that catch nothing, the ones that
          repeat others, the unique ones, and the flaky ones.
-prove    Exits 1 unless every planted bug the result file holds as caught is
-         still caught on the branch. Exits 1 with "measure again" when the
-         branch changes product code.
+prove    Reruns every planted bug the result file holds as caught, at the
+         branch's commit, and exits 1 unless each one is still caught.
+         Exits 1 with "measure again" when the branch changes product code.
 
 --root <dir>    the repository (default: the one holding this script)
 --suite <file>  a JSON file describing another suite, with the fields of
@@ -67,9 +63,8 @@ prove    Exits 1 unless every planted bug the result file holds as caught is
 
 The script runs the suite command with TEST_RECORD_PATH set to a file path.
 The suite writes there a JSON list with one entry per assertion:
-{ piece, line, name, passed, pieces }, where piece and line locate the call
-site, pieces lists every piece on the assertion's stack, and each piece is a
-path from the repository root.
+{ piece, line, name, passed }, where piece and line locate the call site and
+piece is a path from the repository root.
 
 Exit codes: 0 success, 1 a failed proof, 2 an error.`;
 
@@ -140,16 +135,15 @@ function checkSuite(suite, source) {
   const isText = (value) => typeof value === 'string' && value.length > 0;
   const isTextList = (value) => Array.isArray(value) && value.every(isText);
   const valid = suite && isTextList(suite.command) && suite.command.length > 0 &&
-    isText(suite.productDir) && isTextList(suite.testPaths) && isTextList(suite.sharedPaths);
+    isText(suite.productDir) && isTextList(suite.testPaths);
   if (!valid) {
-    throw new ScriptError(`${source} must hold command (a list of strings), productDir, testPaths, and sharedPaths`);
+    throw new ScriptError(`${source} must hold command (a list of strings), productDir, and testPaths`);
   }
   const trim = (file) => file.replace(/\/+$/, '');
   return {
     command: suite.command,
     productDir: trim(suite.productDir),
     testPaths: suite.testPaths.map(trim),
-    sharedPaths: suite.sharedPaths.map(trim),
   };
 }
 
@@ -378,8 +372,7 @@ async function withWorkerCopies(root, commit, count, work) {
 
 function isRecordEntry(entry) {
   return entry && typeof entry.piece === 'string' && Number.isInteger(entry.line) &&
-    typeof entry.name === 'string' && typeof entry.passed === 'boolean' &&
-    Array.isArray(entry.pieces) && entry.pieces.every((piece) => typeof piece === 'string');
+    typeof entry.name === 'string' && typeof entry.passed === 'boolean';
 }
 
 // A run that stops before the process exit writes no record, so a missing or
@@ -392,7 +385,7 @@ function readRecord(file) {
     return null;
   }
   if (!Array.isArray(entries) || !entries.every(isRecordEntry)) {
-    throw new ScriptError(`the record ${file} is not a list of { piece, line, name, passed, pieces }`);
+    throw new ScriptError(`the record ${file} is not a list of { piece, line, name, passed }`);
   }
   return entries;
 }
@@ -464,8 +457,8 @@ function summarizeCleanRuns(runs, command) {
     const known = byId.get(entry.id) || { ...entry, runs: 0, passes: 0 };
     byId.set(entry.id, { ...known, runs: known.runs + 1, passes: known.passes + (entry.passed ? 1 : 0) });
   }
-  const assertions = [...byId.values()].map(({ id, piece, line, name, pieces, site, runs: seen, passes }) => ({
-    id, piece, line, name, pieces, site,
+  const assertions = [...byId.values()].map(({ id, piece, line, name, site, runs: seen, passes }) => ({
+    id, piece, line, name, site,
     flaky: !(passes === runs.length && seen === runs.length),
     broken: passes === 0 && seen === runs.length,
   }));
@@ -616,19 +609,23 @@ function sort(options) {
   }
 }
 
-function plannedReruns(result, changed) {
-  const caught = result.plantedBugs.filter((bug) => CAUGHT_OUTCOMES.has(bug.outcome));
-  if (changed.some((file) => result.suite.sharedPaths.some((shared) => isUnder(file, shared)))) return caught;
-  if (!changed.some((file) => isTestPath(result.suite, file))) return [];
-  const changedSet = new Set(changed);
-  const crediting = new Map();
+// Each lost planted bug comes with the assertions that caught it in the
+// result file, so a reader can find the cleanup that lost it.
+function describeLost(result, lost) {
+  const catchers = new Map();
   for (const assertion of result.assertions) {
-    for (const bug of assertion.catches) crediting.set(bug, [...(crediting.get(bug) || []), assertion]);
+    for (const bug of assertion.catches) catchers.set(bug, [...(catchers.get(bug) || []), assertion]);
   }
-  return caught.filter((bug) => (crediting.get(bug.id) || [])
-    .every((assertion) => assertion.pieces.some((piece) => changedSet.has(piece))));
+  return lost.flatMap((bug) => [
+    `  planted bug ${bug.id}: ${bug.file}:${bug.line}:${bug.column} ${bug.change}, caught by ` +
+      (bug.outcome === 'assertions' ? 'assertions' : `a ${bug.outcome}`),
+    ...(catchers.get(bug.id) || []).map((assertion) => `    ${assertion.piece}:${assertion.line}  ${assertion.name}`),
+  ]);
 }
 
+// The joined suite is one scope, and files outside the test pieces feed
+// assertions too, so a branch that changes any test file can change what any
+// assertion checks. prove therefore reruns every caught planted bug.
 async function prove(options) {
   const root = path.resolve(options.root || path.join(__dirname, '..'));
   const result = readResult(options.in);
@@ -638,14 +635,14 @@ async function prove(options) {
   if (productChanges.length) {
     throw new ScriptError(`the branch changes product code (${productChanges.join(', ')}); measure again`, 1);
   }
-  const reruns = plannedReruns(result, changed);
+  const reruns = result.plantedBugs.filter((bug) => CAUGHT_OUTCOMES.has(bug.outcome));
   const outcomes = await withWorkerCopies(root, branch, workerCount(reruns.length), async (copies) => {
     const clean = await runCleanSuite(copies, result.suite);
     return runPlantedBugs(copies, reruns, result.suite, clean);
   });
   const lost = reruns.filter((bug, index) => outcomes[index].outcome === 'not caught');
   if (lost.length) {
-    const lines = lost.map((bug) => `  planted bug ${bug.id}: ${bug.file}:${bug.line}:${bug.column} ${bug.change}`);
+    const lines = describeLost(result, lost);
     throw new ScriptError(`${lost.length} of ${reruns.length} rerun planted bugs are no longer caught:\n${lines.join('\n')}`, 1);
   }
   console.log(`proved: ${reruns.length} rerun planted bugs are still caught`);

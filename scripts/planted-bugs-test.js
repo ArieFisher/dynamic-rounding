@@ -82,10 +82,8 @@ const SETUP = [
   'const SITE = /\\/(app\\/tests\\/[\\w-]+\\.js):(\\d+):\\d+/;',
   'function eq(name, actual, expected) {',
   '  const passed = JSON.stringify(actual) === JSON.stringify(expected);',
-  "  const sites = new Error().stack.split('\\n').slice(2).map((frame) => frame.match(SITE)).filter(Boolean)",
-  '    .map((match) => ({ piece: match[1], line: Number(match[2]) }));',
-  '  entries.push({ piece: sites[0].piece, line: sites[0].line, name, passed,',
-  '    pieces: [...new Set(sites.map((site) => site.piece))] });',
+  "  const site = new Error().stack.split('\\n').slice(2).map((frame) => frame.match(SITE)).find(Boolean);",
+  '  entries.push({ piece: site[1], line: Number(site[2]), name, passed });',
   '  if (!passed) process.exitCode = 1;',
   '}',
   'function flakySlot() {',
@@ -272,13 +270,11 @@ function buildFixture(temp) {
   commitBranch(repo, 'delete-repeat', { 'app/tests/a-tests.js': withoutLine(PIECE_A, "'stepsToReach 4 is 2',") });
   commitBranch(repo, 'delete-crash-trigger', { 'app/tests/b-tests.js': withoutLine(PIECE_B, "'labelFor zz is none'") });
   commitBranch(repo, 'change-product', { [PRODUCT_FILE]: PRODUCT.replace('n >= 5', 'n >= 7') });
-  commitBranch(repo, 'change-setup', { 'app/tests/setup.js': `// A changed shared setup.\n${SETUP}` });
   const suite = path.join(temp, 'suite.json');
   fs.writeFileSync(suite, JSON.stringify({
     command: [process.execPath, 'app/tests.js'],
     productDir: 'app',
     testPaths: ['app/tests.js', 'app/tests'],
-    sharedPaths: ['app/tests.js', 'app/tests/setup.js'],
   }));
   const scriptTemp = path.join(temp, 'script-temp');
   fs.mkdirSync(scriptTemp);
@@ -407,9 +403,9 @@ async function proveCases(fixture) {
       ? leftovers(fixture) : exitDetail(run);
   });
 
-  await check('prove on a branch that deletes a repeating assertion: exits 0', () => {
+  await check(`prove on a branch that deletes a repeating assertion: reruns all ${CAUGHT_COUNT} caught planted bugs and exits 0`, () => {
     const run = prove(fixture, 'delete-repeat');
-    return run.status === 0 ? leftovers(fixture) : exitDetail(run);
+    return run.status === 0 && run.stdout.includes(`proved: ${CAUGHT_COUNT} rerun`) ? leftovers(fixture) : exitDetail(run);
   });
 
   await check('prove on a branch that deletes the assertion whose call crashes the suite: exits 1, the crash catches are lost', () => {
@@ -421,11 +417,6 @@ async function proveCases(fixture) {
   await check('prove on a branch that changes product code: exits 1 with "measure again"', () => {
     const run = prove(fixture, 'change-product');
     return run.status === 1 && run.stderr.includes('measure again') ? leftovers(fixture) : exitDetail(run);
-  });
-
-  await check(`prove on a branch that changes the shared setup: reruns all ${CAUGHT_COUNT} caught planted bugs and exits 0`, () => {
-    const run = prove(fixture, 'change-setup');
-    return run.status === 0 && run.stdout.includes(`proved: ${CAUGHT_COUNT} rerun`) ? leftovers(fixture) : exitDetail(run);
   });
 }
 
