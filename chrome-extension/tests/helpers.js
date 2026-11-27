@@ -2731,8 +2731,8 @@ function sidebarEventTarget(tagName, el) {
   return target;
 }
 
-// Register one element the way the page does — through the table pillbox view's
-// builder, the one writer of the shape fingerprint — and hand back the list a
+// Register one element the way the page does — through the controller's
+// registration step, the one writer of the shape fingerprint — and hand back the list a
 // later teardown records its table pillbox removal in. The document mock's body stub
 // carries no removeChild, so the table pillbox gets a parent stub of its own.
 function registerFingerprintedTable(table) {

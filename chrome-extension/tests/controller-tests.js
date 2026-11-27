@@ -168,11 +168,11 @@
 // surviving a sidebar reconnect, and no file writing another file's variables
 // or the model's fields.
 // ---------------------------------------------------------------------------
-(function appModelSelection_storeAndBus() {
+(function applicationModelAndBus() {
   const busSrc = sourceByName('app/bus.js');
   const modelSrc = sourceByName('app/model.js');
   if (busSrc === null || modelSrc === null) {
-    eq('app-model-selection: app/bus.js and app/model.js are present in the manifest', false, true);
+    eq('application model and bus: app/bus.js and app/model.js are present in the manifest', false, true);
     return;
   }
 
@@ -316,19 +316,12 @@
   eq("static scan: table-pillbox-view.js assigns none of content.js's top-level bindings",
     crossFileWrites, []);
 
-  // --- (e) hardening: the scan above only catches writes to content.js's
-  // SURVIVING top-level bindings. It has a blind spot — a name that moved OUT
-  // of content.js into DR_MODEL (activeTable) is invisible to
-  // that scan, so a file that reintroduces a bare assignment to that name
-  // would slip through undetected. Close
-  // that gap by scanning for writes to DR_MODEL's own private field names,
-  // read directly from app/model.js rather than from content.js.
-  //
-  // The field declarations sit one level inside the IIFE (2-space indent);
-  // anchoring on that indentation (rather than a bare \b(?:let|const) scan
-  // anywhere in the file) is what keeps this from also matching the `const
-  // entry = ...` locals declared inside the table-registry getters/setters
-  // — those are per-call temporaries, not fields.
+  // --- (e) the model's fields: the scan above reads only content.js's
+  // top-level bindings, so this one reads DR_MODEL's private field names from
+  // app/model.js and checks that neither content.js nor table-pillbox-view.js
+  // assigns them. The fields sit one
+  // level inside the IIFE (2-space indent); anchoring on that indent skips
+  // the per-call locals inside the registry functions.
   const modelFieldNames = Array.from(modelSrc.matchAll(/^ {2}(?:let|const)\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm))
     .map((m) => m[1])
     .filter((name) => name !== 'DR_MODEL');
@@ -436,7 +429,7 @@
 // ---------------------------------------------------------------------------
 // Publishing intent:toggleTable is content.js's only
 // path to running a press — prove the wiring end to end (mirrors the
-// intent:activateTable behavioral pin in the app-model-selection block above).
+// intent:activateTable behavioral pin in the application model and bus block above).
 // ---------------------------------------------------------------------------
 (function tablePillboxSplit_intentToggleTableRunsThePress() {
   // DR_DEFAULTS excludes row 0 (firstRow) and col 0 (firstColumn) — use a
@@ -868,13 +861,10 @@
   }
 })();
 
-// --- (h) Registry, part 1: a table re-added after removal (the
-// SAME element reference, as a virtualized-DOM library recycling a detached
-// node back into the tree would do) must come back with a FRESH registry
-// entry, not the previous round's leftover state. unregisterTable deletes
-// the registry entry outright, so a later registerTable (via _ensureEntry)
-// can only build a brand-new entry — this pins that no per-cell original,
-// round options, or frozen magnitude survives the round trip. ---
+// --- (h) Registry, part 1: a table re-added after removal starts with an
+// empty registry entry. No cell original, table settings, or frozen max
+// magnitude from before the removal survives. The same element reference
+// comes back, as a virtualized grid recycling a detached node does. ---
 (function registrySprint_reregisterAfterUnregisterGetsFreshEntry() {
   const table = { tagName: 'TABLE' }; // identity is all that matters here
   const cell = { tagName: 'TD' };
@@ -884,35 +874,32 @@
   DR_MODEL.setTableSettings(table, { offsetTop: -1 }, 'page');
   DR_MODEL.setTableMaxMagnitude(table, 7);
 
-  eq('re-register: table holds an original before removal (pre-condition)',
+  eq('re-register: a registered table holds its stored original before removal',
     DR_MODEL.hasTableOriginal(table, cell), true);
 
-  // Simulate the removed-node observer's cleanup: unregisterTable is the
-  // ONLY registry call it makes (content.js's removedNodes loop).
+  // The registry write in the table observer's removal (teardownTableEntry
+  // in content.js).
   DR_MODEL.unregisterTable(table);
 
-  eq('re-register: hasTable is false immediately after unregisterTable',
+  eq('re-register: a removed table holds no registry entry',
     DR_MODEL.hasTable(table), false);
 
-  // The SAME table reference comes back (e.g. a virtualized list recycling
-  // the detached DOM node into view again). registerTable is idempotent /
-  // "found again" — it must not resurrect the old entry.
   DR_MODEL.registerTable(table);
 
-  eq('re-register: the old per-cell original does NOT leak through (hasTableOriginal is false)',
+  eq('re-register: a re-added table holds no original for its old cell',
     DR_MODEL.hasTableOriginal(table, cell), false);
-  eq('re-register: getTableOriginal for the old cell reference is undefined, not the stale record',
+  eq('re-register: a re-added table reads back no record for its old cell',
     DR_MODEL.getTableOriginal(table, cell), undefined);
-  eq('re-register: the table settings reset to the shipped defaults (not the leftover settings)',
+  eq('re-register: a re-added table holds the shipped default settings',
     DR_MODEL.getTableSettings(table), Object.assign({}, DR_DEFAULTS));
-  eq('re-register: maxMagnitude resets to null (not the leftover frozen value)',
+  eq('re-register: a re-added table holds no frozen max magnitude',
     DR_MODEL.getTableMaxMagnitude(table), null);
 })();
 
-// --- The registry's fingerprint field. The entry
-// carries the shape the table had when it registered, and the table pillbox view's
-// builder is its one writer. The shape fingerprint row in docs/vocabulary.md
-// defines the field. ---
+// --- The registry's fingerprint field. The entry holds the shape the table
+// had when it registered, and the controller's registration step is its one
+// writer. The shape fingerprint row in docs/vocabulary.md defines the
+// field. ---
 (function shapeFingerprint_theRegistryHoldsAFingerprintPerTable() {
   const table = { tagName: 'TABLE' }; // identity is all that matters here
 
@@ -940,8 +927,8 @@
   DR_MODEL.unregisterTable(table);
 })();
 
-// The table pillbox view's builder records the shape after it registers the table,
-// on a grid and on a native table alike.
+// The controller's registration step records the shape after it registers
+// the table, on a grid and on a native table alike.
 (function shapeFingerprint_registrationRecordsTheTablesShape() {
   const grouped = makeScrollingRowgroupGrid(['Region', 'Q1'], [
     ['North', '1,482,391'], ['South', '918,554'],
@@ -2260,13 +2247,7 @@ function issue328SettingsOf(table) {
   });
 })();
 
-// --- app model: the error state ---
-//
-// The tab's error state: whether an extension error has been recorded on
-// this page, how many, and the last rows with their stack traces. The
-// controller writes it from the log buffer's row listener, the toast view
-// redraws from its state change, and the capture carries it. It never clears
-// within a page's life; a reload starts clean because nothing persists.
+// --- application model: the error state ---
 //
 // The live model is a singleton every earlier test has written to, so these
 // tests build a fresh one: the settings contract, the bus, and the model,
