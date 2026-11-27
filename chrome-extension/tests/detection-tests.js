@@ -400,6 +400,74 @@
     looksLikeGrid(gridWithNumberAt(budget + 1), { styleProbe: gridProbe }), false);
 })();
 
+// Each child records its position when the probe reads its children.
+(function geometryProbe_readsNoChildPastTheCellBudget() {
+  const budget = DR_DETECTION_SETTINGS.dataTestCellBudget;
+  const gridProbe = { getComputedStyle: () => ({ display: 'grid' }), getOffsetWidth: () => 100 };
+  let furthestRead = -1;
+  const children = Array.from({ length: budget * 3 }, (_, i) => {
+    const cells = [withTextPiece({ textContent: '' })];
+    return {
+      className: 'row',
+      get children() { furthestRead = Math.max(furthestRead, i); return cells; },
+    };
+  });
+  const grid = { className: '', getAttribute: () => null, children };
+  eq('geometry probe: three budgets\' worth of rows of one empty cell fail the probe',
+    looksLikeGrid(grid, { styleProbe: gridProbe }), false);
+  eq('geometry probe: three budgets\' worth of rows of one empty cell are read no further than the budget',
+    furthestRead < budget, true);
+})();
+
+(function geometryProbe_aWrapperOfWordSectionsFailsOnTheNumbersOfATableInside() {
+  const probe = { getComputedStyle: (el) => ({ display: (el && el._display) || 'block' }), getOffsetWidth: () => 100 };
+  const optsFor = (page) => ({ isRegistered: () => false, styleProbe: probe, doc: { body: page } });
+  const resolvedLabel = (found, wrapper) => {
+    if (!found) return 'no table';
+    return found.handle === wrapper ? 'the wrapper' : 'another element';
+  };
+
+  const gridOfSales = () => {
+    const holder = wrapperOfWordSections({ el: rwEl('div', {}, []) });
+    const rows = [['Name', 'Sales'], ['Tami', '1,234'], ['Ravi', '5,678'], ['Noa', '9,012'], ['Lior', '3,456']]
+      .map(([a, b]) => holder.block('flex', [holder.leaf(a), holder.leaf(b)]));
+    return holder.block('grid', rows);
+  };
+  const grid = gridOfSales();
+  const withGrid = wrapperOfWordSections({ el: grid });
+  const value = grid.children[1].children[1];
+  eq('geometry probe: a flex wrapper of four word sections and an unmarked grid of sales fails the probe',
+    looksLikeGrid(withGrid.wrapper, optsFor(withGrid.page)), false);
+  const found = findTargetTable(value, optsFor(withGrid.page));
+  eq('geometry probe: a right-click on a sales value in that grid resolves the grid, not the wrapper',
+    !!found && found.handle === grid, true);
+
+  const native = rwBuildTable('native', [['Tami', '1,234'], ['Ravi', '5,678']], { header: ['Name', 'Sales'] }).table;
+  const withNative = wrapperOfWordSections({ el: native, wrapped: true });
+  eq('geometry probe: a right-click on the word "Overview" beside a native table of sales, in a flex wrapper of word sections, resolves no table',
+    resolvedLabel(findTargetTable(withNative.word, optsFor(withNative.page)), withNative.wrapper), 'no table');
+
+  const marked = rwBuildTable('grid', [['Tami', '1,234'], ['Ravi', '5,678']]).table;
+  const withMarked = wrapperOfWordSections({ el: marked, wrapped: true });
+  eq('geometry probe: a right-click on the word "Overview" beside a marked grid of sales, in a flex wrapper of word sections, resolves no table',
+    resolvedLabel(findTargetTable(withMarked.word, optsFor(withMarked.page)), withMarked.wrapper), 'no table');
+})();
+
+(function rightClick_aWordBesideARegisteredNativeTableRegistersNoSecondTable() {
+  withRightClickSandbox((ctx) => {
+    const native = rwBuildTable('native', [['Tami', '1,234'], ['Ravi', '5,678']], { header: ['Name', 'Sales'] }).table;
+    const { wrapper, word } = wrapperOfWordSections({ el: native, wrapped: true });
+    wrapper.parentNode = global.document.body;
+    wrapper.parentElement = global.document.body;
+    ctx.contextmenuHandler({ target: native.rows[1].cells[1] });
+    ctx.contextmenuHandler({ target: word });
+    eq('right-click: a value in a native table of sales, then the word "Overview" in the flex wrapper around it, leave the native table as the one registered table',
+      ctx.model.getRegisteredTables().map((el) => el === native), [true]);
+  });
+})();
+
+// 300 rows of 10 word cells hold three budgets' worth of cells within the
+// first 1,000 children, so only the cell budget ends the read.
 (function geometryProbe_columnPlanReadsSpansWithinTheDataTestBudget() {
   const budget = DR_DETECTION_SETTINGS.dataTestCellBudget;
   const gridProbe = { getComputedStyle: () => ({ display: 'grid' }), getOffsetWidth: () => 100 };
@@ -407,18 +475,85 @@
   const grid = {
     className: '',
     getAttribute: (name) => (name === 'role' ? 'grid' : null),
-    children: Array.from({ length: budget + 50 }, () => ({
+    children: Array.from({ length: 300 }, () => ({
       className: 'row',
-      children: [withTextPiece({
+      children: Array.from({ length: 10 }, () => withTextPiece({
         textContent: 'text',
         getAttribute: (name) => { if (name === 'aria-colspan') spanReads++; return null; },
-      })],
+      })),
     })),
   };
-  eq('geometry probe: candidate rows holding no number fail the numeric step',
+  eq('geometry probe: 300 rows of 10 word cells fail the numeric step',
     looksLikeGrid(grid, { styleProbe: gridProbe }), false);
-  eq('geometry probe: the column plan reads spans within the data test budget',
+  eq('geometry probe: 300 rows of 10 word cells have spans read for no more than the data test budget of cells',
     spanReads <= budget, true);
+})();
+
+// Ten columns of 300 word items turn into 300 rows of 10 cells.
+(function geometryProbe_columnFirstColumnPlanReadsSpansWithinTheDataTestBudget() {
+  const budget = DR_DETECTION_SETTINGS.dataTestCellBudget;
+  const plan = makeColumnFirstGrid(Array.from({ length: 10 }, (_, c) =>
+    Array.from({ length: 300 }, (__, r) => `Item ${String.fromCharCode(65 + c)}${'x'.repeat(r % 3)}`)));
+  let spanReads = 0;
+  plan.itemEls.flat().forEach((item) => {
+    const read = item.getAttribute;
+    item.getAttribute = (name) => {
+      if (name === 'aria-colspan') spanReads++;
+      return typeof read === 'function' ? read.call(item, name) : null;
+    };
+  });
+  withElementDisplays(() => {
+    eq('geometry probe: ten columns of 300 word items fail the numeric step',
+      looksLikeGrid(plan.gridEl), false);
+  });
+  eq('geometry probe: ten columns of 300 word items have spans read for no more than the data test budget of cells',
+    spanReads > 0 && spanReads <= budget, true);
+})();
+
+// Five rows of 2,500 word cells: the first row alone holds more cells than
+// the budget.
+(function geometryProbe_aRowWiderThanTheBudgetHasSpansReadWithinIt() {
+  const budget = DR_DETECTION_SETTINGS.dataTestCellBudget;
+  const gridProbe = { getComputedStyle: () => ({ display: 'grid' }), getOffsetWidth: () => 100 };
+  let spanReads = 0;
+  const grid = {
+    className: '',
+    getAttribute: () => null,
+    children: Array.from({ length: 5 }, () => ({
+      className: 'row',
+      children: Array.from({ length: budget * 2.5 }, () => withTextPiece({
+        textContent: 'text',
+        getAttribute: (name) => { if (name === 'aria-colspan') spanReads++; return null; },
+      })),
+    })),
+  };
+  eq('geometry probe: five rows of 2,500 word cells fail the numeric step',
+    looksLikeGrid(grid, { styleProbe: gridProbe }), false);
+  eq('geometry probe: five rows of 2,500 word cells have spans read for no more than the data test budget of cells',
+    spanReads > 0 && spanReads <= budget, true);
+})();
+
+// Each column records the furthest item position the probe reads from it.
+(function geometryProbe_columnFirstItemsAreReadWithinTheBudget() {
+  const budget = DR_DETECTION_SETTINGS.dataTestCellBudget;
+  const columnCount = 5;
+  const plan = makeColumnFirstGrid(Array.from({ length: columnCount }, (_, c) =>
+    Array.from({ length: 1000 }, () => `Item ${String.fromCharCode(65 + c)}`)));
+  let furthestItem = -1;
+  plan.columnEls.forEach((column) => {
+    column.children = new Proxy(column.children, {
+      get(items, key) {
+        if (typeof key === 'string' && /^\d+$/.test(key)) furthestItem = Math.max(furthestItem, Number(key));
+        return items[key];
+      },
+    });
+  });
+  withElementDisplays(() => {
+    eq('geometry probe: five columns of 1,000 word items fail the numeric step',
+      looksLikeGrid(plan.gridEl), false);
+  });
+  eq('geometry probe: five columns of 1,000 word items are read no further than the data test budget of cells allows',
+    furthestItem >= 0 && furthestItem < Math.ceil(budget / columnCount), true);
 })();
 
 // The removed repetition step passed when the largest first-class-token share
@@ -4657,6 +4792,47 @@ function numericLabelColumns() {
 (function columnFirst_theDataTestReadsTheTurnedGrid() {
   const plan = makeColumnFirstGrid(planGridColumns());
   eq('column-first consumers: the data test passes the grid', isDataTable(plan.gridEl), true);
+})();
+
+// Each column's dates share one order, and the columns use two orders, so
+// a row of columns mixes both orders.
+function officeDateColumns() {
+  return [
+    ['Office', 'Opened', 'Audited'],
+    ['Boston', '4/25/2019', '3/14/2021'],
+    ['Denver', '5/18/2018', '6/30/2020'],
+    ['Leeds', '25/4/2019', '14/3/2021'],
+    ['York', '18/5/2018', '30/6/2020'],
+    ['Bath', '22/7/2017', '19/2/2022'],
+  ];
+}
+
+// Every column holds one date in each order, so each column is mixed and
+// each row of columns holds one order.
+function eachColumnMixedDateColumns() {
+  return [
+    ['Office', 'Opened', 'Audited'],
+    ['Boston', '4/25/2019', '14/3/2021'],
+    ['Denver', '5/18/2018', '30/6/2020'],
+    ['Leeds', '7/25/2019', '14/9/2021'],
+    ['York', '8/18/2018', '30/1/2020'],
+    ['Bath', '2/22/2017', '19/2/2022'],
+  ];
+}
+
+(function columnFirst_theGeometryProbeAndTheDataTestReadTheSameCells() {
+  for (const [label, columns, expected] of [
+    ['columns of dates, each column in one order and the columns in two orders,', officeDateColumns(), true],
+    ['columns that each hold dates in both orders', eachColumnMixedDateColumns(), false],
+  ]) {
+    const plan = makeColumnFirstGrid(columns);
+    withElementDisplays(() => {
+      eq(`column-first consumers: ${label} ${expected ? 'pass' : 'fail'} the geometry probe`,
+        looksLikeGrid(plan.gridEl), expected);
+    });
+    eq(`column-first consumers: ${label} ${expected ? 'pass' : 'fail'} the data test`,
+      isDataTable(plan.gridEl), expected);
+  }
 })();
 
 (function columnFirst_theLensPreviewPoolReadsTheTurnedGrid() {

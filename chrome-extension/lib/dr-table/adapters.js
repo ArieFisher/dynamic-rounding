@@ -177,6 +177,28 @@ function assignGridColumns(rowSpans) {
 }
 
 /**
+ * Each row's cell elements, row by row, until the count of cells read reaches
+ * `cellBudget`; the rows after that stay unread, and the last row read keeps
+ * only the cells within the budget, so one very wide row ends there too.
+ * `readCellEls` returns a row's cells as a list or a live collection, which
+ * this function copies only up to the budget. Every row of the own-children
+ * read holds at least one cell, so the rows read are no more than the budget.
+ * assignGridColumns places a cell from the cells before it alone, so the
+ * cells read get the same grid columns as in a read of every row.
+ * @returns {Element[][]}
+ */
+function readRowCellEls(rows, readCellEls, cellBudget = Infinity) {
+  const rowCellEls = [];
+  let cellsRead = 0;
+  for (let r = 0; r < rows.length && cellsRead < cellBudget; r++) {
+    const cellEls = Array.prototype.slice.call(readCellEls(rows[r]), 0, cellBudget - cellsRead);
+    rowCellEls.push(cellEls);
+    cellsRead += cellEls.length;
+  }
+  return rowCellEls;
+}
+
+/**
  * The rows of one table, built from each row's cell elements. The caller
  * reads each row's cell elements once, so the column plan and the cell
  * objects count the same row shape.
@@ -311,7 +333,7 @@ class GridAdapter {
    */
   _getRowEntries(container) {
     if (!container.querySelectorAll) {
-      return this._childRowEntries(container);
+      return this._childRowEntries(Array.from(container.children || []), false);
     }
     const rowgroups = _ownDescendants(container, '[role="rowgroup"]');
     const isGrouped = rowgroups.length > 0;
@@ -327,25 +349,30 @@ class GridAdapter {
     // With no row group, scopes[0] is the container. Row groups that hold no
     // row elements are non-conforming markup, and only the first group's
     // children count.
-    return this._childRowEntries(scopes[0]);
+    return this._childRowEntries(Array.from(scopes[0].children || []), false);
   }
 
   /**
-   * Rows from an element's children, the fallback when no row selector
-   * matches. On a column-first grid each child is a column; only columns with
-   * the most common item count count, so every row holds one cell per column.
+   * Rows from an element's children: the full scope's fallback when no row
+   * selector matches, and the whole of the own-children scope. On a
+   * column-first grid each child is a column; only columns with the most
+   * common item count count, so every row holds one cell per column. On a
+   * row-first grid `isRepeatedOnly` keeps the children with the most common
+   * child count, the rows the geometry probe measures. With a `cellBudget`,
+   * a column-first grid turns only the rows whose cells fit in it, so a
+   * column of many items is read no further than the budget.
    *
    * @returns {{el: Element|null, isOutside: boolean, isGrouped: boolean, cellEls?: Element[]}[]}
    */
-  _childRowEntries(parent) {
-    if (!parent || !parent.children) return [];
-    const children = Array.from(parent.children);
+  _childRowEntries(children, isRepeatedOnly, cellBudget = Infinity) {
     if (!isColumnFirst(children, this.styleProbe)) {
-      return children.map((el) => ({ el, isOutside: false, isGrouped: false }));
+      const rowEls = isRepeatedOnly ? childCountCandidates(children).candidates : children;
+      return rowEls.map((el) => ({ el, isOutside: false, isGrouped: false }));
     }
     const { modalChildCount, candidates: columns } = childCountCandidates(children);
+    const rowCount = Math.min(modalChildCount, Math.ceil(cellBudget / columns.length));
     const rows = [];
-    for (let r = 0; r < modalChildCount; r++) {
+    for (let r = 0; r < rowCount; r++) {
       rows.push({ el: null, isOutside: false, isGrouped: false, cellEls: columns.map((column) => column.children[r]) });
     }
     return rows;
@@ -368,27 +395,53 @@ class GridAdapter {
     return String(domIndex);
   }
 
-  getRows() {
+  /**
+   * The grid's rows, read in one of two scopes. Both turn a column-first grid.
+   *
+   * 'full', the scope every table action reads: rows by role, vendor class,
+   * or <tr> anywhere beneath the element, inside its scroll container, with a
+   * pinned pane's cells joined to each row. It reads every row and takes no
+   * cell budget.
+   *
+   * 'ownChildren', the scope the geometry probe reads: the element's own
+   * repeated children as rows and their children as cells, among the first
+   * `cellBudget` children, stopping at `cellBudget` cells (see
+   * readRowCellEls). The probe tests an element no page marked, often a
+   * layout wrapper; a row found anywhere beneath a wrapper belongs to a table
+   * inside it, so under the full scope the wrapper would pass on that
+   * table's numbers and register over the same cells.
+   *
+   * @returns {{isOutside?: boolean, isGrouped?: boolean, getCells(): object[]}[]}
+   */
+  getRows({ scope = 'full', cellBudget } = {}) {
+    const { entries, rowCellEls } = this._readScope(scope, cellBudget);
+    if (entries.length === 0) return [];
+    return buildRows(rowCellEls, this.originalsPort,
+      entries.map(({ isOutside, isGrouped }) => ({ isOutside, isGrouped })));
+  }
+
+  _readScope(scope, cellBudget) {
+    if (scope === 'ownChildren') {
+      const children = Array.prototype.slice.call(this.el.children || [], 0, cellBudget);
+      const entries = this._childRowEntries(children, true, cellBudget);
+      const readCellEls = ({ el: rowEl, cellEls }) => cellEls || rowEl.children;
+      return { entries, rowCellEls: readRowCellEls(entries, readCellEls, cellBudget) };
+    }
+    if (scope !== 'full') throw new Error(`GridAdapter: unknown row scope "${scope}"`);
     const scrollContainer = this._getScrollContainer();
     const pinnedPane = this._getPinnedPane(scrollContainer);
-
-    const scrollEntries = this._getRowEntries(scrollContainer);
-    if (scrollEntries.length === 0) return [];
-
     const pinnedRows = pinnedPane ? this._getRowEntries(pinnedPane).map((entry) => entry.el) : [];
     const pinnedByKey = new Map(pinnedRows.map((pr, idx) => [this._getRowKey(pr, idx), pr]));
-
+    const entries = this._getRowEntries(scrollContainer);
     // A row read from a column-first grid has no row element, so it takes no
     // pinned cells.
-    const rowCellEls = scrollEntries.map(({ el: rowEl, cellEls }, idx) => {
+    const rowCellEls = entries.map(({ el: rowEl, cellEls }, idx) => {
       if (cellEls) return cellEls;
-      const scrollKey = this._getRowKey(rowEl, idx);
-      const pinnedRowEl = pinnedByKey.get(scrollKey) || pinnedRows[idx];
+      const pinnedRowEl = pinnedByKey.get(this._getRowKey(rowEl, idx)) || pinnedRows[idx];
       const pinned = pinnedRowEl ? this._getCellEls(pinnedRowEl) : [];
       return pinned.concat(this._getCellEls(rowEl));
     });
-    return buildRows(rowCellEls, this.originalsPort,
-      scrollEntries.map(({ isOutside, isGrouped }) => ({ isOutside, isGrouped })));
+    return { entries, rowCellEls };
   }
 }
 

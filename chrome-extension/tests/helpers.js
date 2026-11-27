@@ -3109,6 +3109,25 @@ function rwBuildTable(kind, rows, opts) {
   };
 }
 
+// A flex wrapper of word sections, laid out as repeated blocks, around a
+// table or a grid. The wrapper repeats like a grid but holds no number of its
+// own; only the table inside it does.
+function wrapperOfWordSections(inner) {
+  const breaks = (els) => els.flatMap((el, i) => (i === 0 ? [el] : [rwText('\n'), el]));
+  const block = (display, children) => {
+    const el = rwEl('div', {}, breaks(children));
+    el._display = display;
+    return el;
+  };
+  const leaf = (text) => rwEl('div', {}, [rwText(text)]);
+  const section = (a, b) => block('block', [leaf(a), leaf(b)]);
+  const first = section('Overview', 'Team totals');
+  const middle = inner.wrapped ? block('block', [inner.el]) : inner.el;
+  const wrapper = block('flex', [first, section('Filters', 'Region'), middle, section('Notes', 'Draft'), section('Help', 'Contact')]);
+  const page = rwEl('body', {}, [wrapper]);
+  return { wrapper, word: first.children[0], page, block, leaf };
+}
+
 /**
  * Draw a grid in the order-summary shape: a header row of two column-header
  * elements, then one row group whose rows each hold one row-header label
