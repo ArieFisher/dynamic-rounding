@@ -1667,19 +1667,19 @@ eq('pure cell write: whole negative in parens -> "(3)"',
   let renderHelpers;
   let realFormatSample;
   try {
-    // formatSample in sidebar.js depends on numberFormat (from content.js,
+    // formatSample in sidebar.js depends on numberFormat and groupedNumberText (from content.js,
     // already on globalThis). Extract it from sidebar.js source.
     const sidebarConstBlock2 = sidebarSrc.match(
       /const PREVIEW_DECIMAL_THRESHOLD\s*=.*?;\s*const PREVIEW_MAX_DECIMALS\s*=.*?;/
     );
     const formatSampleFn2 = sidebarSrc.match(/function formatSample\([\s\S]*?\n\}/);
 
-    const fmtSampleSrc = '(function(numberFormat) {\n' +
+    const fmtSampleSrc = '(function(numberFormat, groupedNumberText) {\n' +
       sidebarConstBlock2[0] + '\n' +
       formatSampleFn2[0] + '\n' +
       'return formatSample;\n' +
-      '})(numberFormat)';
-    realFormatSample = (isolatedFunction('numberFormat', 'return ' + fmtSampleSrc + ';'))(numberFormat);
+      '})(numberFormat, groupedNumberText)';
+    realFormatSample = (isolatedFunction('numberFormat', 'groupedNumberText', 'return ' + fmtSampleSrc + ';'))(numberFormat, groupedNumberText);
 
     renderHelpers = (isolatedFunction(
       'document', 'formatSample', 'roundWithOffset', 'stepForOffset', 'formatStep', 'magnitudeOf',
