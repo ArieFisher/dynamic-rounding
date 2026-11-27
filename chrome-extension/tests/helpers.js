@@ -156,6 +156,27 @@ function makeMockTable(rowsSpec, querySelectorResult) {
   };
 }
 
+// A table of cells already built, one array of cells per row.
+function makeTableOfCells(cellRows) {
+  return { rows: cellRows.map((cells) => ({ cells })), querySelector: () => null, dataset: {} };
+}
+
+// A bare data cell and header cell holding one text piece, for the lens
+// preview tests, which read a cell's tag and text alone.
+function tdCell(text) {
+  return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
+}
+
+function thCell(text) {
+  return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
+}
+
+// The pass's plan for a table under the given settings, with no write and
+// no frozen max magnitude: { cells, maxMag }, one entry per cell, row-major.
+function planTablePass(table, opts) {
+  return simplifyTableCells(table, registryAdapter(table).getRows(), opts, { frozenMaxMag: null, writes: 'none' });
+}
+
 // Simplify a table under the given settings the way the apply does: the
 // settings land on the table first, so the re-apply pass reads them back.
 // roundTable alone writes no settings.
@@ -193,8 +214,32 @@ function withCreateTreeWalker(fn) {
   try { fn(); } finally { delete global.document.createTreeWalker; }
 }
 
-// --- Test 3 / 4 helper: row-header table shaped like Wikipedia's
-// "List of James Bond films" — every data row opens with <th scope="row">.
+// The texts of a one-column table of dates after a pass with the date switch
+// on at the given granularity, one text per row.
+function roundDateColumn(texts, dateGranularity) {
+  const table = makeMockTable(texts.map((text) => [{ tag: 'td', text }]));
+  withCreateTreeWalker(() => roundTable(table, roundTableOpts({ simplifyDates: true, dateGranularity })));
+  return table.rows.map((row) => row.cells[0].innerText);
+}
+
+// A tree walker that steps through a grid cell's text pieces in page order,
+// for the length of fn.
+function withGridPieceTreeWalker(fn) {
+  const saved = global.document.createTreeWalker;
+  global.document.createTreeWalker = (root) => {
+    const nodes = gridCellTextPieces(root);
+    return { nextNode() { return nodes.shift() || null; } };
+  };
+  try {
+    fn();
+  } finally {
+    if (saved === undefined) delete global.document.createTreeWalker;
+    else global.document.createTreeWalker = saved;
+  }
+}
+
+// A row-header table shaped like Wikipedia's "List of James Bond films":
+// every data row opens with <th scope="row">.
 //   [<th>Dr. No</th>,     <td>59.5</td>,  <td>1234</td>]
 //   [<th>Goldfinger</th>, <td>124.9</td>, <td>5678</td>]
 // Columns: A = the <th>, B = the first <td>, C = the second <td>.
@@ -726,6 +771,19 @@ function withSupCreateTreeWalker(fn) {
   try { fn(); } finally { delete global.document.createTreeWalker; }
 }
 
+// Standard opts for the exponent tests.
+const supTestOpts = {
+  enabled: true,
+  simplifyMixedCurrency: true,
+  simplifyMixedPercent: true,
+  simplifyFirstRow: true,
+  simplifyFirstColumn: true,
+  offsetTop: -0.5,
+  offsetOther: -0.5,
+  numTop: 1,
+  rangeExpr: '',
+};
+
 // segments: [{text, inSup?, inAnchor?}]
 // Returns a cell mock whose _textNodes drive withSupCreateTreeWalker.
 function makeExtractedCell(segments) {
@@ -1049,7 +1107,7 @@ function makeNativeTableEl(rowsSpec) {
 
 /**
  * Create a plain-object Text node (nodeType 3) with a live nodeValue.
- * Designed so findCellTextNode will recognise and return it.
+ * A walk over a cell's text pieces reads it by its nodeType.
  */
 function makeTextNode(value) {
   return {
@@ -1350,6 +1408,16 @@ function gridCellTextPieces(cell) {
   return found;
 }
 
+// True when each cell holds the same text piece objects it held before, as
+// many and in the same order: a write that patched each piece in place.
+function keepsEveryTextPiece(cells, piecesBefore) {
+  return cells.every((cell, k) => {
+    const after = gridCellTextPieces(cell);
+    return after.length === piecesBefore[k].length &&
+      after.every((node, n) => node === piecesBefore[k][n]);
+  });
+}
+
 // Four cells, each a different piece layout:
 //   a: whitespace pieces around a number in its own element
 //   b: one piece with whitespace inside it
@@ -1368,6 +1436,14 @@ function makePatchGrid() {
   return { grid, aNumber };
 }
 
+// A synthetic key-statistics grid with invented values. The dataset is
+// 338.49, 4.91, 125, 126, 337.91, 41.31, and 500, so the max magnitude is 2:
+//   magnitude 2, top band, step 50:    338.49 → 350, 125 → 150, 126 → 150, 337.91 → 350, 500 → 500
+//   magnitude 1, other band, step 5:   41.31 → 40
+//   magnitude 0, other band, step 0.5: 4.91 → 5
+// The split number (4.91 across two pieces) and the link stay out of the
+// dataset. Counted as one number, the cell with 125 above 126 would raise
+// the max magnitude to 5.
 function makeKeyStatsGrid() {
   const grid = makeE2EGridWrapper([
     ['$338.49', '4.91tn'],
@@ -1458,7 +1534,7 @@ function makeE2EGridWrapper(rowData) {
  * Build a grid with a capturing MutationObserver stub installed, then round it.
  * Returns { grid, capturedObserver, capturedTimers, origMO, origSetTimeout, origClearTimeout }.
  *
- * The caller is responsible for restoring globals in a finally block.
+ * The caller puts the globals back with restoreVirtGridGlobals in a finally block.
  *
  * @param {Array<Array<string>>} rowData
  * @param {object} [roundOpts]   — merged with DR_DEFAULTS for roundTable
@@ -1527,7 +1603,16 @@ function setupVirtGrid(rowData, roundOpts) {
   };
 }
 
-/** Fire all non-cancelled pending timers synchronously (simulate "advance past debounce"). */
+// Put back the three globals setupVirtGrid replaced. With no context, from a
+// setupVirtGrid call that threw, it puts nothing back.
+function restoreVirtGridGlobals(ctx) {
+  if (!ctx) return;
+  global.MutationObserver = ctx.origMO;
+  global.setTimeout = ctx.origSetTimeout;
+  global.clearTimeout = ctx.origClearTimeout;
+}
+
+/** Fire all non-cancelled pending timers synchronously, as if the settle delay had passed. */
 function flushTimers(pendingTimers) {
   for (const t of pendingTimers) {
     if (!t.cancelled) t.fn();

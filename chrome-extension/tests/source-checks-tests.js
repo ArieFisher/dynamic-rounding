@@ -66,6 +66,13 @@
     allContentSrc.includes('cellEl.innerText || cellEl.textContent'), true);
 })();
 
+// roundTable patches each number into its text piece and assigns no markup.
+(function nativeWrite_roundTableAssignsNoMarkup() {
+  const body = sourceBodyOf(allContentSrc, 'function roundTable(');
+  eq('native write: roundTable holds no innerHTML= assignment',
+    body.length > 0 && !/innerHTML\s*=(?!=)/.test(body), true);
+})();
+
 // --- Sidebar defaults and layout ---
 
 (function sidebarDefaultsAndLayout() {

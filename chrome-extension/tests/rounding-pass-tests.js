@@ -9,48 +9,34 @@
 //     table, so the leading <td> there is column "B".
 //   - simplifyFirstColumn gates the leftmost DOM cell, so in a row-header table
 //     it does not gate the leading <td>.
-//
-// Helper: build a minimal mock table that roundTable can traverse.
-// roundTable accesses: table.rows -> array of {cells: array of cell-like objects}
-// cell-like object needs: tagName, innerText, textContent, classList, dataset,
-//   title (writable), and a querySelector stub on the table.
 // ---------------------------------------------------------------------------
 
-// roundTable calls document.createTreeWalker (via collectTextPieces).
-// We need to stub that too so the "apply rounding" path does not crash.
-// Stub createTreeWalker to return a walker that finds the cell's single text node.
-
-// --- Test 1: Table with row headers — nothing outside the range is rounded ---
-// Row: [<th>Name</th>, <td>100</td>, <td>200</td>]
+// A table with row headers: nothing outside the range is rounded.
+// Row: [<th>Name</th>, <td>123</td>, <td>234</td>]
 // With rangeExpr = "A" the range covers the <th> column only; neither <td> is
-// in range, and the <th> holds a name, not a number.
+// in range, and the <th> holds a name, not a number. Both <td> values change
+// when they round, so a range that let them in would mark them.
 (function firstColIsA_withRowHeader() {
   withCreateTreeWalker(function() {
     const table = makeMockTable([[
       { tag: 'th', text: 'Name' },
-      { tag: 'td', text: '100'  },
-      { tag: 'td', text: '200'  },
+      { tag: 'td', text: '123'  },
+      { tag: 'td', text: '234'  },
     ]]);
-    const opts = {
-      enabled: true, simplifyDates: false, simplifyTimes: false,
-      simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
-      rangeExpr: 'A'
-    };
-    roundTable(table, opts);
+    roundTable(table, roundTableOpts({ rangeExpr: 'A' }));
     const cells = table.rows[0].cells;
     // <th> Name holds no number, so it stays raw.
     eq('first-col-is-A (row-header table): a <th> holding a name shows the original',
       cells[0].classList.contains('dr-ext-rounded'), false);
-    // <td>100 is column B and <td>200 column C — both out of range A
-    eq('first-col-is-A (row-header table): <td>100 at column B not rounded',
+    // <td>123 is column B and <td>234 column C — both out of range A
+    eq('first-col-is-A (row-header table): <td>123 at column B not rounded',
       cells[1].classList.contains('dr-ext-rounded'), false);
-    eq('first-col-is-A (row-header table): <td>200 at column C not rounded',
+    eq('first-col-is-A (row-header table): <td>234 at column C not rounded',
       cells[2].classList.contains('dr-ext-rounded'), false);
   });
 })();
 
-// --- Test 2: Table without row headers — non-targeted columns stay untouched ---
+// A table without row headers: columns outside the range stay untouched.
 // Note: directly asserting "first <td> gets the rounded class" depends on the
 // rounding algorithm producing a *changed* value, which for some inputs (e.g.
 // a single in-range cell) is a no-op. We pin only the negative behavior here:
@@ -59,16 +45,10 @@
   withCreateTreeWalker(function() {
     const table = makeMockTable([[
       { tag: 'td', text: '50000' },
-      { tag: 'td', text: '100'   },
-      { tag: 'td', text: '200'   },
+      { tag: 'td', text: '123'   },
+      { tag: 'td', text: '234'   },
     ]]);
-    const opts = {
-      enabled: true, simplifyDates: false, simplifyTimes: false,
-      simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
-      rangeExpr: 'A'
-    };
-    roundTable(table, opts);
+    roundTable(table, roundTableOpts({ rangeExpr: 'A' }));
     const cells = table.rows[0].cells;
     eq('first-col-is-A (no row-header): second <td> is column B, not rounded',
       cells[1].classList.contains('dr-ext-rounded'), false);
@@ -77,7 +57,7 @@
   });
 })();
 
-// --- Test 3: simplifyFirstColumn gates the <th>, not the leading <td> ---
+// simplifyFirstColumn gates the <th>, not the leading <td>.
 // The <th> counts toward the column index, so "first column" means the <th>,
 // not the second rendered column. The <th> is the first column, so the leading <td> (column
 // B) is rounded regardless of the first-column switch, and the <th> holds a name, so it shows the original.
@@ -91,7 +71,7 @@
   }
 })();
 
-// --- Test 4: range letters count the <th> column ---
+// Range letters count the <th> column.
 // "A" is the <th> column (nothing to round there); "B" is the leading <td>.
 (function rangeLetters_withRowHeader() {
   const rangeA = runRowHeaderTable({ rangeExpr: 'A' });
@@ -222,46 +202,31 @@ const SEAT_ROWS = [
 (function roundTable_percentCellHeldWithThePercentSwitchOff() {
   withLinkCreateTreeWalker(function() {
     const cell = makeMockCell('td', '+2.3%');
-    cell.querySelectorAll = () => [];  // no anchors
-
-    const table = {
-      rows: [{ cells: [cell] }],
-      querySelector: () => null,
-      dataset: {},
-    };
-    roundTable(table, roundTableOpts());
+    roundTable(makeTableOfCells([[cell]]), roundTableOpts());
     eq('roundTable: percent cell "+2.3%" with the percent switch off is not rounded',
       cell.classList.contains('dr-ext-rounded'), false);
   });
 })();
 
-// --- 3. Whole-cell short-circuit via roundTable mock ---
-
-(function wholeCellQuoteShortCircuit() {
+// A cell whose whole trimmed text is one balanced quoted span stays as
+// written, though the number inside the quotes would round to 35.
+(function wholeCellQuote_quotedCellStaysAsWritten() {
   withCreateTreeWalker(function() {
-    // A cell whose entire trimmed content is a single balanced quoted span.
-    // The cell has a number inside quotes — it must NOT get dr-ext-rounded.
     const table = makeMockTable([[
-      { tag: 'td', text: '"3 musketeers"' },
-      { tag: 'td', text: '42' },  // this one should round (control)
+      { tag: 'td', text: '"37 musketeers"' },
+      { tag: 'td', text: '42' },
     ]]);
-    const opts = {
-      enabled: true, simplifyDates: false, simplifyTimes: false,
-      simplifyFirstColumn: true, simplifyMixedPercent: true, simplifyMixedCurrency: true,
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
-      rangeExpr: ''
-    };
-    roundTable(table, opts);
+    roundTable(table, roundTableOpts({ simplifyMixedPercent: true, simplifyMixedCurrency: true }));
     const cells = table.rows[0].cells;
-    eq('wholeCellQuote: "3 musketeers" cell not rounded (short-circuit)',
-      cells[0].classList.contains('dr-ext-rounded'), false);
-    // Note: 42 is a single cell with a large magnitude; whether it rounds depends on
-    // the set. The key invariant is the quoted cell is skipped.
+    eq('wholeCellQuote: the quoted cell "37 musketeers" stays as written',
+      { text: cells[0].innerText, rounded: cells[0].classList.contains('dr-ext-rounded') },
+      { text: '"37 musketeers"', rounded: false });
+    eq('wholeCellQuote: the unquoted 42 beside it rounds to 40',
+      cells[1].innerText, '40');
   });
 })();
 
-// --- 3b. Era-marked years are not parameter-rounded by roundTable ---
-
+// Era-marked years are not rounded by the offsets.
 (function eraYearNotParameterRounded() {
   withCreateTreeWalker(function() {
     // "Kalki 2898 AD": the 2898 is a calendar year (era marker), so it must NOT
@@ -271,13 +236,7 @@ const SEAT_ROWS = [
       { tag: 'td', text: 'Kalki 2898 AD' },
       { tag: 'td', text: '1,050,000,000' },
     ]]);
-    const opts = {
-      enabled: true, simplifyDates: false, simplifyTimes: false,
-      simplifyFirstRow: true, simplifyFirstColumn: true, simplifyMixedPercent: true, simplifyMixedCurrency: true,
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
-      rangeExpr: ''
-    };
-    roundTable(table, opts);
+    roundTable(table, roundTableOpts({ simplifyMixedPercent: true, simplifyMixedCurrency: true }));
     const cells = table.rows[0].cells;
     eq('era-round: "Kalki 2898 AD" cell is NOT rounded (era year, not a number)',
       cells[0].classList.contains('dr-ext-rounded'), false);
@@ -288,24 +247,14 @@ const SEAT_ROWS = [
   });
 })();
 
-// --- 3c. A silently failed extracted patch records nothing ---
+// A failed extracted-cell patch records nothing.
 //
-// The patch step skips silently when the number is not at its flat-text
-// position in the live nodes (the text moved between classification and
-// patching). The write path records a cell as simplified only when a patch
-// confirmed a change: no stored original, no hover text, no marker, no
-// simplified flag — and a log row states the failure so a capture shows it
-// instead of a false success.
+// The patch step skips when the number is not at its flat-text position in
+// the live nodes (the text moved between classification and patching). A
+// cell whose patches all skip gets no stored original, no hover text, and no
+// marker, and the pass counts it as left as written for a text mismatch.
 
-(function extractedPatchOptsFor() {
-  globalThis.EXTRACTED_PATCH_OPTS = {
-    enabled: true, simplifyDates: false, simplifyTimes: false,
-    simplifyFirstRow: true, simplifyFirstColumn: true,
-    simplifyMixedPercent: true, simplifyMixedCurrency: true,
-    offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
-    rangeExpr: '',
-  };
-})();
+const EXTRACTED_PATCH_OPTS = roundTableOpts({ simplifyMixedPercent: true, simplifyMixedCurrency: true });
 
 // Two numbers in one text piece are two patches that land in one write, so
 // the pass counts no text mismatch.
@@ -319,9 +268,9 @@ const SEAT_ROWS = [
       result = roundTable(table, EXTRACTED_PATCH_OPTS);
     });
     const cell = table.rows[0].cells[0];
-    eq('patch-honesty: both numbers in one piece change',
+    eq('extracted-cell patch: both numbers in one piece change',
       /123,456|654,321/.test(cell.innerText), false);
-    eq('patch-honesty: two landed patches in one piece count no text mismatch',
+    eq('extracted-cell patch: two landed patches in one piece count no text mismatch',
       result.leftAsWritten.textMismatch, 0);
   } finally {
     DR_MODEL.unregisterTable(table);
@@ -347,13 +296,13 @@ const SEAT_ROWS = [
   try {
     const result = roundTable(table, EXTRACTED_PATCH_OPTS);
     const cell = table.rows[0].cells[0];
-    eq('patch-honesty: a cell whose patches all skip gets no marker',
+    eq('extracted-cell patch: a cell whose patches all skip gets no marker',
       cell.classList.contains('dr-ext-rounded'), false);
-    eq('patch-honesty: a cell whose patches all skip gets no hover text',
+    eq('extracted-cell patch: a cell whose patches all skip gets no hover text',
       cell.title, '');
-    eq('patch-honesty: a cell whose patches all skip stores no original',
+    eq('extracted-cell patch: a cell whose patches all skip stores no original',
       DR_MODEL.getTableOriginalText(table, cell), undefined);
-    eq('patch-honesty: the pass counts the cell as left as written for a text mismatch',
+    eq('extracted-cell patch: the pass counts the cell as left as written for a text mismatch',
       result.leftAsWritten.textMismatch, 1);
   } finally {
     delete global.document.createTreeWalker;
@@ -361,8 +310,8 @@ const SEAT_ROWS = [
   }
 })();
 
-// Control: the same cell with its number where the patch expects it still
-// records in full — the honesty gate never blocks a confirmed change.
+// Control: the same cell with its number where the patch expects it
+// records in full.
 (function landedExtractedPatchStillRecords() {
   const table = makeMockTable([[
     { tag: 'td', text: 'Cost: 123,456 per month' },
@@ -372,13 +321,13 @@ const SEAT_ROWS = [
       roundTable(table, EXTRACTED_PATCH_OPTS);
     });
     const cell = table.rows[0].cells[0];
-    eq('patch-honesty: a landed patch changes the cell text',
+    eq('extracted-cell patch: a landed patch changes the cell text',
       cell.innerText.includes('123,456'), false);
-    eq('patch-honesty: a landed patch stamps the marker and hover text',
+    eq('extracted-cell patch: a landed patch stamps the marker and hover text',
       cell.classList.contains('dr-ext-rounded') &&
         cell.title === 'Original: Cost: 123,456 per month',
       true);
-    eq('patch-honesty: a landed patch stores the original',
+    eq('extracted-cell patch: a landed patch stores the original',
       DR_MODEL.getTableOriginalText(table, cell), 'Cost: 123,456 per month');
   } finally {
     DR_MODEL.unregisterTable(table);
@@ -386,200 +335,97 @@ const SEAT_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// Two-digit-year US dates via findDates + roundTable pipeline.
-// We test via roundTable since an all-numeric date needs the column post-pass.
+// Two-digit-year US dates through roundTable, since an all-numeric date needs
+// the column post-pass.
 // ---------------------------------------------------------------------------
 (function dateRoundTwoDigitYear() {
-  // 3/14/24 → 2024-03-14 (yy=24 < 50 → 2024). MDY forced since n2=14 > 12.
+  // 3/14/24 → 2024-03-14 (yy=24 < 50 → 2024). Month-first, since n2=14 > 12.
   // year granularity → 2024, decade → 2020, century → 2000.
-  withCreateTreeWalker(function() {
-    function twoDigitTable(cellText, gran) {
-      const tbl = makeMockTable([[{ tag: 'td', text: cellText }]]);
-      tbl.rows[0].cells[0].querySelectorAll = () => [];
-      roundTable(tbl, {
-        enabled: true, simplifyDates: true, simplifyTimes: false,
-        simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
-        simplifyFirstRow: true,
-        offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
-        rangeExpr: '',
-        dateGranularity: gran,
-      });
-      return tbl.rows[0].cells[0].innerText;
-    }
+  const twoDigit = (text, granularity) => roundDateColumn([text], granularity)[0];
+  eq('two-digit-year: 3/14/24 year -> "2024"',   twoDigit('3/14/24', 'year'),    '2024');
+  eq('two-digit-year: 3/14/24 decade -> "2020"', twoDigit('3/14/24', 'decade'),  '2020');
+  eq('two-digit-year: 3/14/24 century -> "2000"',twoDigit('3/14/24', 'century'), '2000');
 
-    // 3/14/24 → MDY forced (14 > 12) → 2024-03-14
-    eq('two-digit-year: 3/14/24 year -> "2024"',   twoDigitTable('3/14/24', 'year'),    '2024');
-    eq('two-digit-year: 3/14/24 decade -> "2020"', twoDigitTable('3/14/24', 'decade'),  '2020');
-    eq('two-digit-year: 3/14/24 century -> "2000"',twoDigitTable('3/14/24', 'century'), '2000');
-
-    // 3/14/75 → MDY forced (14 > 12) → 1975-03-14 (yy=75 >= 50 → 1975)
-    eq('two-digit-year: 3/14/75 year -> "1975"',   twoDigitTable('3/14/75', 'year'),    '1975');
-    eq('two-digit-year: 3/14/75 decade -> "1970"', twoDigitTable('3/14/75', 'decade'),  '1970');
-    eq('two-digit-year: 3/14/75 century -> "1900"',twoDigitTable('3/14/75', 'century'), '1900');
-    eq('two-digit-year: 3/14/75 month -> "3/75"',  twoDigitTable('3/14/75', 'month'),   '3/75');
-    eq('two-digit-year: 3/14/75 quarter -> "Q1 1975"', twoDigitTable('3/14/75', 'quarter'), 'Q1 1975');
-  });
+  // 3/14/75 → month-first (14 > 12) → 1975-03-14 (yy=75 >= 50 → 1975)
+  eq('two-digit-year: 3/14/75 year -> "1975"',   twoDigit('3/14/75', 'year'),    '1975');
+  eq('two-digit-year: 3/14/75 decade -> "1970"', twoDigit('3/14/75', 'decade'),  '1970');
+  eq('two-digit-year: 3/14/75 century -> "1900"',twoDigit('3/14/75', 'century'), '1900');
+  eq('two-digit-year: 3/14/75 month -> "3/75"',  twoDigit('3/14/75', 'month'),   '3/75');
+  eq('two-digit-year: 3/14/75 quarter -> "Q1 1975"', twoDigit('3/14/75', 'quarter'), 'Q1 1975');
 })();
 
 // ---------------------------------------------------------------------------
-// Column-level MDY/DMY auto-detect via roundTable pipeline.
+// The column's format hint for all-numeric dates, through roundTable.
 // ---------------------------------------------------------------------------
 (function dateRoundColumnAutoDetect() {
-  withCreateTreeWalker(function() {
+  // --- Month-first column ---
+  // '04/13/2022' sets month-first (n2=13 > 12). At month granularity the
+  // sibling '12-03-2022' tells the two readings apart: month-first keeps the
+  // month 12, day-first keeps 03.
+  const monthFirst = roundDateColumn(['04/13/2022', '12-03-2022'], 'month');
+  eq('month-first column: 04/13/2022 at month -> 04/2022', monthFirst[0], '04/2022');
+  eq('month-first column: 12-03-2022 reads as month-first (Dec 3 → 12-2022, not day-first Mar 12 → 03-2022)',
+    monthFirst[1], '12-2022');
 
-    // Helper: run roundTable with simplifyDates:true and return cell text array.
-    function runDateTable(rowsSpec, gran) {
-      const tbl = makeMockTable(rowsSpec);
-      // Add querySelectorAll stub to all cells
-      for (const row of tbl.rows) {
-        for (const cell of row.cells) {
-          cell.querySelectorAll = () => [];
-        }
-      }
-      roundTable(tbl, {
-        enabled: true, simplifyDates: true, simplifyTimes: false,
-        simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
-        simplifyFirstRow: true,
-        offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
-        rangeExpr: '',
-        dateGranularity: gran,
-      });
-      return tbl.rows.map(row => row.cells.map(c => c.innerText));
-    }
+  // --- Day-first column ---
+  // '13/04/2022' sets day-first (n1=13 > 12). At month granularity the
+  // sibling '12-03-2022' keeps 03 under day-first and 12 under month-first.
+  const dayFirst = roundDateColumn(['13/04/2022', '12-03-2022'], 'month');
+  eq('day-first column: 13/04/2022 at month -> 04/2022', dayFirst[0], '04/2022');
+  eq('day-first column: 12-03-2022 reads as day-first (Mar 12 → 03-2022, not month-first Dec 3 → 12-2022)',
+    dayFirst[1], '03-2022');
 
-    // --- MDY column (discriminating) ---
-    // '04/13/2022' forces MDY (n2=13 > 12). At month granularity the sibling
-    // '12-03-2022' is discriminating: MDY keeps the month 12, DMY keeps 03.
-    const mdyResult = runDateTable([
-      [{ tag: 'td', text: '04/13/2022' }],
-      [{ tag: 'td', text: '12-03-2022' }],
-    ], 'month');
-    eq('MDY column: 04/13/2022 at month -> 04/2022', mdyResult[0][0], '04/2022');
-    eq('MDY column: 12-03-2022 resolved as MDY (Dec 3 → 12-2022, not DMY Mar 12 → 03-2022)',
-      mdyResult[1][0], '12-2022');
+  // At quarter the column's reading sets which part is the month:
+  // '12-03-2022' is Q4 when month-first and Q1 when day-first.
+  const monthFirstQuarter = roundDateColumn(['04/13/2022', '12-03-2022'], 'quarter');
+  eq('month-first column: 04/13/2022 at quarter -> Q2 2022', monthFirstQuarter[0], 'Q2 2022');
+  eq('month-first column: 12-03-2022 at quarter -> Q4 2022', monthFirstQuarter[1], 'Q4 2022');
+  const dayFirstQuarter = roundDateColumn(['13/04/2022', '12-03-2022'], 'quarter');
+  eq('day-first column: 13/04/2022 at quarter -> Q2 2022', dayFirstQuarter[0], 'Q2 2022');
+  eq('day-first column: 12-03-2022 at quarter -> Q1 2022', dayFirstQuarter[1], 'Q1 2022');
 
-    // --- DMY column ---
-    // '13/04/2022' forces DMY (n1=13 > 12). At month granularity the sibling
-    // '12-03-2022' keeps 03 under DMY and 12 under MDY.
-    const dmyResult = runDateTable([
-      [{ tag: 'td', text: '13/04/2022' }],  // n1=13 forces DMY
-      [{ tag: 'td', text: '12-03-2022' }],  // DMY: day=12, month=Mar → 03-2022; MDY: month=Dec → 12-2022
-    ], 'month');
-    eq('DMY column: 13/04/2022 at month -> 04/2022', dmyResult[0][0], '04/2022');
-    eq('DMY column: 12-03-2022 resolved as DMY (Mar 12 → 03-2022, not MDY Dec 12 → 12-2022)',
-      dmyResult[1][0], '03-2022');
+  // A numeric date with words around it changes in place, so the words stay.
+  const wordsResult = roundDateColumn(['Due 7/21/2020', '7/4/99'], 'year');
+  eq('numeric date in words: Due 7/21/2020 at year -> Due 2020', wordsResult[0], 'Due 2020');
+  eq('numeric date in words: 7/4/99 at year -> 1999', wordsResult[1], '1999');
 
-    // At quarter the column's reading sets which part is the month:
-    // '12-03-2022' is Q4 when month-first and Q1 when day-first.
-    const mdyQuarter = runDateTable([
-      [{ tag: 'td', text: '04/13/2022' }],
-      [{ tag: 'td', text: '12-03-2022' }],
-    ], 'quarter');
-    eq('MDY column: 04/13/2022 at quarter -> Q2 2022', mdyQuarter[0][0], 'Q2 2022');
-    eq('MDY column: 12-03-2022 at quarter -> Q4 2022', mdyQuarter[1][0], 'Q4 2022');
-    const dmyQuarter = runDateTable([
-      [{ tag: 'td', text: '13/04/2022' }],
-      [{ tag: 'td', text: '12-03-2022' }],
-    ], 'quarter');
-    eq('DMY column: 13/04/2022 at quarter -> Q2 2022', dmyQuarter[0][0], 'Q2 2022');
-    eq('DMY column: 12-03-2022 at quarter -> Q1 2022', dmyQuarter[1][0], 'Q1 2022');
+  // Every numeric date in a cell changes, and a cell's second date counts
+  // toward its column's reading: 7/31/2020 is the only date that settles it.
+  const rangeResult = roundDateColumn(['7/1/2020 - 7/31/2020', '12/31/2020 11:59'], 'month');
+  eq('numeric range: both dates change at month', rangeResult[0], '7/2020 - 7/2020');
+  eq('numeric date with a time: the time stays', rangeResult[1], '12/2020 11:59');
 
-    // A numeric date with words around it changes in place, so the words stay.
-    const wordsResult = runDateTable([
-      [{ tag: 'td', text: 'Due 7/21/2020' }],
-      [{ tag: 'td', text: '7/4/99' }],
-    ], 'year');
-    eq('numeric date in words: Due 7/21/2020 at year -> Due 2020', wordsResult[0][0], 'Due 2020');
-    eq('numeric date in words: 7/4/99 at year -> 1999', wordsResult[1][0], '1999');
+  // A cell whose numeric date sits in a column with an ambiguous format hint
+  // stays as written, its named date included.
+  const heldResult = roundDateColumn(['Jun 2020 - 03/04/2020', '05/06/2021'], 'year');
+  eq('ambiguous format hint: a cell with a named and a numeric date stays as written',
+    heldResult[0], 'Jun 2020 - 03/04/2020');
 
-    // Every numeric date in a cell changes, and a cell's second date counts
-    // toward its column's reading: 7/31/2020 is the only date that settles it.
-    const rangeResult = runDateTable([
-      [{ tag: 'td', text: '7/1/2020 - 7/31/2020' }],
-      [{ tag: 'td', text: '12/31/2020 11:59' }],
-    ], 'month');
-    eq('numeric range: both dates change at month', rangeResult[0][0], '7/2020 - 7/2020');
-    eq('numeric date with a time: the time stays', rangeResult[1][0], '12/2020 11:59');
-
-    // A cell whose numeric date cannot be read holds whole, its named date included.
-    const heldResult = runDateTable([
-      [{ tag: 'td', text: 'Jun 2020 - 03/04/2020' }],
-      [{ tag: 'td', text: '05/06/2021' }],
-    ], 'year');
-    eq('unreadable column: a cell with a named and a numeric date holds whole',
-      heldResult[0][0], 'Jun 2020 - 03/04/2020');
-
-    // --- Ambiguous column ---
-    // Column where ALL cells have both components <= 12, so no reading of day
-    // and month holds for the column.
-    const ambigResult = runDateTable([
-      [{ tag: 'td', text: '03-04-2022' }],
-      [{ tag: 'td', text: '05-06-2023' }],
-    ], 'year');
-    eq('ambiguous column: 03-04-2022 left unchanged',
-      ambigResult[0][0], '03-04-2022');
-    eq('ambiguous column: 05-06-2023 left unchanged',
-      ambigResult[1][0], '05-06-2023');
-  });
+  // --- Ambiguous column ---
+  // Column where ALL cells have both components <= 12, so no reading of day
+  // and month holds for the column.
+  const ambigResult = roundDateColumn(['03-04-2022', '05-06-2023'], 'year');
+  eq('ambiguous column: 03-04-2022 left unchanged', ambigResult[0], '03-04-2022');
+  eq('ambiguous column: 05-06-2023 left unchanged', ambigResult[1], '05-06-2023');
 })();
 
 // ---------------------------------------------------------------------------
 // Non-date strings pass through unchanged.
 // ---------------------------------------------------------------------------
 (function dateRoundNonDatePassthrough() {
-  withCreateTreeWalker(function() {
-    function runSingleCell(text) {
-      const tbl = makeMockTable([[{ tag: 'td', text }]]);
-      tbl.rows[0].cells[0].querySelectorAll = () => [];
-      roundTable(tbl, {
-        enabled: true, simplifyDates: true, simplifyTimes: false,
-        simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
-        simplifyFirstRow: true,
-        offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
-        rangeExpr: '',
-        dateGranularity: 'decade',
-      });
-      return tbl.rows[0].cells[0].innerText;
-    }
-
-    eq('non-date passthrough: "hello" stays unchanged', runSingleCell('hello'), 'hello');
-  });
+  eq('non-date pass-through: "hello" stays unchanged', roundDateColumn(['hello'], 'decade')[0], 'hello');
 })();
 
 // =============================================================================
-// The lens preview's step labels, steps, sample pool, and sample choice
+// The lens preview's sample pool and sample choice
+//
+// DR_DEFAULTS leave the first row and the first column as written, and the
+// lens preview samples only the cells the table rounds, so the fixtures below
+// put a <th> header row and a <th> label column around their numbers.
 // =============================================================================
-
-(function lensPreview_formatStep() {
-  eq('formatStep: 5000 -> "5k"', formatStep(5000), '5k');
-  eq('formatStep: 500 -> "500"', formatStep(500), '500');
-  eq('formatStep: 2_500_000 -> "2.5M"', formatStep(2500000), '2.5M');
-  eq('formatStep: 1e9 -> "1B"', formatStep(1e9), '1B');
-  eq('formatStep: 2.5 -> "2.5"', formatStep(2.5), '2.5');
-  eq('formatStep: 0.25 -> "0.25"', formatStep(0.25), '0.25');
-  eq('formatStep: 1 -> "1"', formatStep(1), '1');
-  eq('formatStep: 0 -> "0"', formatStep(0), '0');
-})();
-
-(function lensPreview_stepForOffset() {
-  // offset = 0 on a 5-digit number -> step = 10^4 = 10000
-  eq('stepForOffset(27136, 0) = 10000', stepForOffset(27136, 0), 10000);
-  // offset = -0.5 on a 5-digit number -> f=0.5, target_mag=4, step = 0.5*1e4
-  eq('stepForOffset(27136, -0.5) = 5000', stepForOffset(27136, -0.5), 5000);
-  // offset = -1 -> step = 10^(4-1) = 1000
-  eq('stepForOffset(27136, -1) = 1000', stepForOffset(27136, -1), 1000);
-  // num=0 -> 0
-  eq('stepForOffset(0, -0.5) = 0', stepForOffset(0, -0.5), 0);
-})();
 
 (function lensPreview_collectNumericCells() {
   // Build a small stub table; only the pure-number cells should appear.
-  function tdCell(text) {
-    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
-  }
-  function thCell(text) {
-    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
-  }
   const table = {
     rows: [
       { cells: [thCell('Header'), thCell('Year')] },
@@ -601,18 +447,6 @@ const SEAT_ROWS = [
   // num_top = 1 (DR_DEFAULTS) -> the top band holds the highest magnitude only
   // (others differ from max_mag by >= 1). Two cells share the top magnitude,
   // and the preview still holds one top-band sample.
-  //
-  // The data sits at row >= 1 / column >= 1 behind a TH header row and a TH
-  // label column: DR_DEFAULTS.simplifyFirstRow/simplifyFirstColumn are both
-  // false, and the preview honours that exclusion (see the merge-ladder
-  // divergence tests below) the way the engine does — a row-0/column-0 <td> would be dropped, same as it
-  // would be when actually rounding the table.
-  function tdCell(text) {
-    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
-  }
-  function thCell(text) {
-    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
-  }
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B')] },
@@ -632,16 +466,10 @@ const SEAT_ROWS = [
 })();
 
 (function lensPreview_extractPreviewSamples_onePerOrderOfMagnitude() {
-  // The other band shows one example per distinct lower order of magnitude,
+  // The other band shows one sample per distinct lower order of magnitude,
   // with no cap. Negatives bucket by absolute value. For 1234 / 123 / -12 the
   // preview is three lines: top-band 1k+ (1234) plus other-band 100+ (123)
   // and 10+ (|-12|).
-  function tdCell(text) {
-    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
-  }
-  function thCell(text) {
-    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
-  }
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B'), thCell('C')] },
@@ -649,14 +477,14 @@ const SEAT_ROWS = [
     ],
   };
   const result = extractPreviewSamples(table);
-  eq('onePerOom: maxMag is 3 (1234)', result.maxMag, 3);
-  eq('onePerOom: top band is the 1k+ value (1234)', result.samples.top[0].num, 1234);
-  eq('onePerOom: other band has one row per lower magnitude (2)',
+  eq('lens preview of 1234, 123, and -12: maxMag is 3', result.maxMag, 3);
+  eq('lens preview of 1234, 123, and -12: the top-band sample is 1234', result.samples.top[0].num, 1234);
+  eq('lens preview of 1234, 123, and -12: the other band holds one sample per lower magnitude, 2 samples',
     result.samples.other.length, 2);
-  eq('onePerOom: other[0] is the 100+ value (123)', result.samples.other[0].num, 123);
-  eq('onePerOom: other[1] is the 10+ value, abs of -12', result.samples.other[1].num, -12);
+  eq('lens preview of 1234, 123, and -12: the first other-band sample is 123', result.samples.other[0].num, 123);
+  eq('lens preview of 1234, 123, and -12: the second other-band sample is -12, read by its absolute value', result.samples.other[1].num, -12);
 
-  // No cap: five distinct lower magnitudes yield five other-band rows.
+  // No cap: five distinct lower magnitudes yield five other-band samples.
   const deep = {
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B'), thCell('C'), thCell('D'), thCell('E'), thCell('F')] },
@@ -668,23 +496,17 @@ const SEAT_ROWS = [
     ],
   };
   const deepResult = extractPreviewSamples(deep);
-  eq('onePerOom: uncapped other band has 5 rows (one per lower OoM)',
+  eq('lens preview of 7M down to 10: the other band holds 5 samples, one per lower order of magnitude',
     deepResult.samples.other.length, 5);
-  eq('onePerOom: other-band rows are descending by magnitude',
+  eq('lens preview of 7M down to 10: the other-band samples descend by magnitude',
     deepResult.samples.other.map(r => r.num), [500000, 40000, 3000, 200, 10]);
 })();
 
 (function lensPreview_extractPreviewSamples_prefersDemonstrative() {
   // Within a magnitude bucket, an already-round value (250,000,000) would make
-  // a useless "X -> X" preview row. extractPreviewSamples should surface a cell
+  // a useless "X -> X" sample. extractPreviewSamples should surface a cell
   // that visibly changes under the default offset instead, even when the
   // already-round cell appears first in document order.
-  function tdCell(text) {
-    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
-  }
-  function thCell(text) {
-    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
-  }
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B')] },
@@ -703,13 +525,7 @@ const SEAT_ROWS = [
 
 (function lensPreview_extractPreviewSamples_allRoundFallback() {
   // If every cell in a bucket is already round, fall back to document order
-  // rather than dropping the row.
-  function tdCell(text) {
-    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
-  }
-  function thCell(text) {
-    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
-  }
+  // rather than dropping the sample.
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B')] },
@@ -723,12 +539,6 @@ const SEAT_ROWS = [
 
 (function lensPreview_extractPreviewSamples_largeMagOnly() {
   // All cells in the top magnitude bucket -> other band ends up empty.
-  function tdCell(text) {
-    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
-  }
-  function thCell(text) {
-    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
-  }
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B'), thCell('C')] },
@@ -741,32 +551,6 @@ const SEAT_ROWS = [
 })();
 
 (function lensPreview_extractPreviewSamples_zeroCell() {
-  function tdCell(text) {
-    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
-  }
-  function thCell(text) {
-    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
-  }
-  const table = {
-    rows: [
-      { cells: [thCell(''), thCell('A'), thCell('B'), thCell('C')] },
-      { cells: [thCell('Row'), tdCell('4,080'), tdCell('0'), tdCell('56')] },
-    ],
-  };
-  const result = extractPreviewSamples(table);
-  const allNums = result.samples.top.concat(result.samples.other).map(s => s.num);
-  eq('lens preview of 4,080, 0, and 56: no sample is 0', allNums.includes(0), false);
-  eq('lens preview of 4,080, 0, and 56: the other band holds only 56',
-    result.samples.other.map(s => s.num), [56]);
-})();
-
-(function lensPreview_extractPreviewSamples_zeroCell() {
-  function tdCell(text) {
-    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
-  }
-  function thCell(text) {
-    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
-  }
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B'), thCell('C')] },
@@ -781,9 +565,6 @@ const SEAT_ROWS = [
 })();
 
 (function lensPreview_extractPreviewSamples_emptyTable() {
-  function tdCell(text) {
-    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
-  }
   const table = {
     rows: [{ cells: [tdCell('hello'), tdCell('world')] }],
   };
@@ -800,12 +581,6 @@ const SEAT_ROWS = [
   // whose largest number has magnitude 7 moves 27,000,000 and 4,080 into the
   // top band and leaves 312 in the other band. The top band's one sample comes
   // from the largest order of magnitude, so 4,080 gets no top-band sample.
-  function tdCell(text) {
-    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
-  }
-  function thCell(text) {
-    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
-  }
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B'), thCell('C')] },
@@ -854,33 +629,27 @@ const SEAT_ROWS = [
     customSettings.offsetTop !== DR_DEFAULTS.offsetTop && customSettings.offsetOther !== DR_DEFAULTS.offsetOther,
     true);
 
-  const previewTable = makeMockTable([[
-    { tag: 'td', text: '1,000,000' },
-    { tag: 'td', text: '50' },
-  ]]);
+  // Values the offsets change, so a pass that rounded nothing would show.
+  const rowsSpec = [[
+    { tag: 'td', text: '1,234,567' },
+    { tag: 'td', text: '37' },
+  ]];
+  const previewTable = makeMockTable(rowsSpec);
   DR_MODEL.setTableSettings(previewTable, customSettings, 'page');
   const preview = extractPreviewSamples(previewTable);
-  eq('preview/table agreement: top band has the large cell',
-    preview.samples.top.length, 1);
-  eq('preview/table agreement: other band has the small cell',
-    preview.samples.other.length, 1);
+  eq('preview/table agreement: the top-band sample is 1,234,567',
+    preview.samples.top.map((sample) => sample.num), [1234567]);
+  eq('preview/table agreement: the other-band sample is 37',
+    preview.samples.other.map((sample) => sample.num), [37]);
 
-  const expectedTop = roundWithOffset(1000000, customSettings.offsetTop);
-  const expectedOther = roundWithOffset(50, customSettings.offsetOther);
-
-  // What the lens preview would render for these two cells,
-  // built from the same sample the model supplied.
-  eq('preview/table agreement: preview top sample rounds via the live offsetTop',
-    roundWithOffset(preview.samples.top[0].num, customSettings.offsetTop), expectedTop);
-  eq('preview/table agreement: preview other-band sample rounds via the live offsetOther',
-    roundWithOffset(preview.samples.other[0].num, customSettings.offsetOther), expectedOther);
+  const expectedTop = roundWithOffset(1234567, customSettings.offsetTop);
+  const expectedOther = roundWithOffset(37, customSettings.offsetOther);
+  eq('preview/table agreement: the table settings change both values (test validity check)',
+    expectedTop !== 1234567 && expectedOther !== 37, true);
 
   // What the table actually renders for the identical cells, applied the
   // way the apply does — straight from the table's settings in the model.
-  const liveTable = makeMockTable([[
-    { tag: 'td', text: '1,000,000' },
-    { tag: 'td', text: '50' },
-  ]]);
+  const liveTable = makeMockTable(rowsSpec);
   DR_MODEL.setTableSettings(liveTable, customSettings, 'page');
   withCreateTreeWalker(() => {
     roundTable(liveTable, DR_MODEL.getTableSettings(liveTable));
@@ -897,211 +666,73 @@ const SEAT_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// settings survive a sidebar close and
-// reopen — pulled from the model (request:activeTable), not reset to DR_DEFAULTS.
-// The settings live on the active table, so the reopen's read
-// answers that table's settings.
+// The cross-context apply: a request:applySettings message, delivered through
+// the content script's own listener to the active table, writes the table's
+// settings and simplifies it, and extractPreviewSamples on the same table,
+// which classifies each simplified cell's stored original, predicts the
+// values the table shows.
 // ---------------------------------------------------------------------------
-(function appModelSettings_settingsSurviveSidebarReconnect() {
+(function appModelSettings_crossContextMessageAppliesLiveSettingsToBoundTableAndPreviewAgrees() {
+  // Values the offsets below change: 1,000,000 and 50 at offsetTop -2 and
+  // offsetOther 0.25 round to themselves and would pass with no rounding.
+  const CUSTOM_OFFSET_TOP = -2;
+  const CUSTOM_OFFSET_OTHER = 0.25;
   runPressFixture(() => {
-    const table = makePressTable('12,345');
+    const table = makeTablePillboxTestTable([
+      { tag: 'td', text: '1,234,567' },
+      { tag: 'td', text: '37' },
+    ]);
     DR_MODEL.setActiveTable(table);
-
-    // The sidebar sets a custom value (an "open" session), then — simulated by
-    // nothing happening in between — closes and reopens, pulling the model.
-    const customSettings = {
-      enabled: true, simplifyMixedCurrency: false,
-      simplifyMixedPercent: true, simplifyFirstRow: false, simplifyFirstColumn: false,
-      simplifyDates: true, simplifyTimes: false, dateGranularity: 'year', timeGranularity: 'hour',
-      offsetTop: 0.25, offsetOther: -1.5, numTop: 1, rangeExpr: 'B2:E8',
-    };
-    let applyResponse = null;
-    withCreateTreeWalker(() => {
-      applyResponse = askContentScript({ topic: 'request:applySettings', settings: customSettings });
+    const customSettings = Object.assign({}, DR_DEFAULTS, {
+      simplifyFirstRow: true, simplifyFirstColumn: true,
+      offsetTop: CUSTOM_OFFSET_TOP, offsetOther: CUSTOM_OFFSET_OTHER,
+      numTop: 1, rangeExpr: '', enabled: true,
     });
-    eq('reconnect: request:applySettings was acknowledged before the (simulated) close',
-      applyResponse && applyResponse.ok, true);
+    let ackResponse = null;
+    try {
+      withCreateTreeWalker(() => {
+        ackResponse = askContentScript({ topic: 'request:applySettings', settings: customSettings });
+      });
+      eq('cross-context apply: request:applySettings was acknowledged',
+        ackResponse && ackResponse.ok, true);
 
-    const getResponse = askContentScript({ topic: 'request:activeTable' });
-    const pulled = (getResponse && getResponse.settings) || {};
+      const renderedTop = toNumber(table.rows[0].cells[0].innerText);
+      const renderedOther = toNumber(table.rows[0].cells[1].innerText);
+      eq('cross-context apply: the fixture top value actually changed under rounding (test validity check)',
+        renderedTop !== 1234567, true);
+      eq('cross-context apply: the fixture other-band value actually changed under rounding (test validity check)',
+        renderedOther !== 37, true);
+      eq('cross-context apply: the message alone simplifies the active table',
+        table.rows[0].cells[0].classList.contains('dr-ext-rounded'), true);
 
-    eq('reconnect: request:activeTable returns a settings object',
-      !!(getResponse && getResponse.settings), true);
-    eq('reconnect: offsetTop survives the close/reopen', pulled.offsetTop, 0.25);
-    eq('reconnect: offsetOther survives the close/reopen', pulled.offsetOther, -1.5);
-    eq('reconnect: rangeExpr survives the close/reopen', pulled.rangeExpr, 'B2:E8');
-    eq('reconnect: a changed boolean flag survives the close/reopen', pulled.simplifyMixedCurrency, false);
+      // The preview extractor reads the table's own settings and each
+      // simplified cell's stored original, so the rounded text on the screen
+      // stays out of its read.
+      const preview = extractPreviewSamples(table);
+      eq('cross-context apply: preview top band has the large cell',
+        preview.samples.top.length, 1);
+      eq('cross-context apply: preview other band has the small cell',
+        preview.samples.other.length, 1);
+      eq('cross-context apply: the top value the table shows matches the preview-predicted top value',
+        renderedTop, roundWithOffset(preview.samples.top[0].num, CUSTOM_OFFSET_TOP));
+      eq('cross-context apply: the other-band value the table shows matches the preview-predicted other-band value',
+        renderedOther, roundWithOffset(preview.samples.other[0].num, CUSTOM_OFFSET_OTHER));
+    } finally {
+      resetTable(table);
+      DR_MODEL.unregisterTable(table);
+    }
   });
 })();
 
 // ---------------------------------------------------------------------------
-// Adversarial: the full cross-context message path, not the application model
-// directly. appModelSettings_previewAndTableAgreeOnLiveSettings (above) calls
-// DR_MODEL.setTableSettings() straight from the test — it never exercises
-// content.js's own onMessage listener or the settings apply's responder,
-// which is the actual code path a real request:applySettings message
-// drives. This test dispatches that message through the captured listener
-// (the pattern) against a table already bound as active, lets the
-// real responder write the table's settings and apply them, and checks the
-// resulting cells against extractPreviewSamples on the same table, which
-// classifies each simplified cell's stored original — so the assertion
-// covers the message arriving, not just the pure math agreeing.
-// ---------------------------------------------------------------------------
-(function appModelSettings_crossContextMessageAppliesLiveSettingsToBoundTableAndPreviewAgrees() {
-  function makeWiredMockTable(rowsSpec) {
-    const table = makeMockTable(rowsSpec);
-    table.classList = { remove() {}, add() {}, contains() { return false; } };
-    table.offsetWidth = 0;
-    table.querySelectorAll = () => [];
-    return table;
-  }
-
-  // Values chosen so the offsets below visibly change them (unlike, say,
-  // 1,000,000 / 50 at offsetTop -2 / offsetOther 0.25, which round to
-  // themselves and would pass this test even if rounding silently no-op'd).
-  const rowsSpec = [[
-    { tag: 'td', text: '1,234,567' },
-    { tag: 'td', text: '37' },
-  ]];
-  const CUSTOM_OFFSET_TOP = -2;
-  const CUSTOM_OFFSET_OTHER = 0.25;
-
-  // Chrome hands an arriving message to every registered listener, so collect
-  // them all and fan out the same way. The bundle registers one today, the
-  // bus's; keeping only the last registration would silently skip whichever
-  // listener registers first should a second one ever appear.
-  const capturedListeners = [];
-  function capturedListener(req, sender, respond) {
-    // Chrome keeps the reply port open when ANY listener returns true, and
-    // closes it otherwise. Returning nothing here would make the
-    // synchronous-answer assertions below unfalsifiable.
-    let keepOpen = false;
-    for (const fn of capturedListeners) {
-      if (fn(req, sender, respond || function () {}) === true) keepOpen = true;
-    }
-    return keepOpen;
-  }
-  let wiredDR_MODEL = null;
-  let wiredExtractPreviewSamples = null;
-  let boundTable = null;
-  let ackResponse = null;
-
-  const captureChrome = {
-    runtime: {
-      onMessage: { addListener(fn) { capturedListeners.push(fn); } },
-      sendMessage: () => {},
-      lastError: null,
-    },
-  };
-  const captureDoc = {
-    addEventListener: () => {},
-    querySelectorAll: () => [],
-    readyState: 'complete',
-    // The range pulse at the end of applyTableSettings adds the highlight
-    // stylesheet and needs these.
-    createElement: () => ({ textContent: '', appendChild() {} }),
-    head: { appendChild() {} },
-    documentElement: { appendChild() {} },
-    body: { appendChild: () => {}, observe: () => {} },
-  };
-  const captureWindow = {
-    addEventListener: () => {},
-    getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
-  };
-
-  const saved = { chrome: global.chrome, document: global.document, window: global.window };
-  global.chrome = captureChrome;
-  global.document = captureDoc;
-  global.window = captureWindow;
-
-  try {
-    withCreateTreeWalker(() => {
-      try {
-        eval(contentScriptBundle + `
-          wiredDR_MODEL = DR_MODEL;
-          wiredExtractPreviewSamples = extractPreviewSamples;
-        `);
-      } catch (e) {
-        // module-level init may fail against the stub DOM; the onMessage
-        // listener and the two wiring assignments above both run before any
-        // dynamic/async code.
-      }
-
-      if (capturedListeners.length === 0 || !wiredDR_MODEL) return;
-
-      // Bind a table as active — mirrors what the contextmenu handler
-      // does for real, so the settings apply has an active table to write
-      // the incoming message to.
-      boundTable = makeWiredMockTable(rowsSpec);
-      wiredDR_MODEL.setActiveTable(boundTable);
-
-      const customSettings = Object.assign({}, DR_DEFAULTS, {
-        simplifyFirstRow: true, simplifyFirstColumn: true,
-        offsetTop: CUSTOM_OFFSET_TOP, offsetOther: CUSTOM_OFFSET_OTHER,
-        numTop: 1, rangeExpr: '', enabled: true,
-      });
-
-      capturedListener(
-        { topic: 'request:applySettings', settings: customSettings },
-        {},
-        (r) => { ackResponse = r; }
-      );
-    });
-  } finally {
-    global.chrome = saved.chrome;
-    global.document = saved.document;
-    global.window = saved.window;
-  }
-
-  eq('cross-context apply: content.js onMessage listener was captured',
-    capturedListeners.length > 0, true);
-  eq('cross-context apply: request:applySettings was acknowledged',
-    ackResponse && ackResponse.ok, true);
-  if (!boundTable) return;
-
-  // The responder applied the message straight to the bound table — no
-  // separate "apply" call from the test.
-  const renderedTop = toNumber(boundTable.rows[0].cells[0].innerText);
-  const renderedOther = toNumber(boundTable.rows[0].cells[1].innerText);
-  eq('cross-context apply: the fixture top value actually changed under rounding (test validity check)',
-    renderedTop !== 1234567, true);
-  eq('cross-context apply: the fixture other-band value actually changed under rounding (test validity check)',
-    renderedOther !== 37, true);
-  eq('cross-context apply: the bound table was actually rounded by the real responder path',
-    boundTable.rows[0].cells[0].classList.contains('dr-ext-rounded'), true);
-
-  // The preview extractor reads the bound table's own settings and each
-  // simplified cell's stored original, so the rounded text on the screen
-  // stays out of its read.
-  const preview = wiredExtractPreviewSamples(boundTable);
-  eq('cross-context apply: preview top band has the large cell',
-    preview.samples.top.length, 1);
-  eq('cross-context apply: preview other band has the small cell',
-    preview.samples.other.length, 1);
-
-  const previewTop = roundWithOffset(preview.samples.top[0].num, CUSTOM_OFFSET_TOP);
-  const previewOther = roundWithOffset(preview.samples.other[0].num, CUSTOM_OFFSET_OTHER);
-
-  eq('cross-context apply: the table cell the real message pipeline rendered matches the preview-predicted top value',
-    renderedTop, previewTop);
-  eq('cross-context apply: the table cell the real message pipeline rendered matches the preview-predicted other-band value',
-    renderedOther, previewOther);
-})();
-
-// ---------------------------------------------------------------------------
-// Regression: collectNumericCells must classify a rounded cell's stored
-// original text (dataset.originalValue) using ranges/filters measured against
-// THAT text, not against the live (already-rounded, differently-offset) cell.
-// Reviewer repro: reviewer-sup-stale.js.
+// collectNumericCells classifies a rounded cell's registry original using
+// ranges and filters measured against that text, not against the live,
+// already-rounded cell, whose positions differ.
 // ---------------------------------------------------------------------------
 
 (function lensPreview_supStaleRegression() {
   withReactiveCreateTreeWalker(function () {
-    const opts = {
-      simplifyFirstRow: true, simplifyFirstColumn: true, 
-      simplifyMixedCurrency: true, simplifyMixedPercent: true,
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
-    };
+    const opts = EXTRACTED_PATCH_OPTS;
     // "1234.5678 kg" + <sup>"9"</sup> -> flattened "1234.5678 kg9". The
     // footnote digit sits after a decimal number that rounding shortens
     // (e.g. "1234.5678" -> "1000"), shifting where "9" lands in the live text.
@@ -1119,7 +750,7 @@ const SEAT_ROWS = [
     const cell = makeReactiveCell(segsFor());
     const table = { rows: [{ cells: [cell, otherCell()] }], dataset: {} };
     roundTable(table, opts);
-    eq('sup-stale regression: cell was actually rounded (registry original.value set)',
+    eq('sup-stale regression: the cell rounds and its registry original holds its text',
       DR_MODEL.getTableOriginal(table, cell).value, '1234.5678 kg9');
 
     const after = collectNumericCells(table, opts);
@@ -1130,11 +761,7 @@ const SEAT_ROWS = [
 
 (function lensPreview_linkedNumberPostRoundRegression() {
   withReactiveCreateTreeWalker(function () {
-    const opts = {
-      simplifyFirstRow: true, simplifyFirstColumn: true, 
-      simplifyMixedCurrency: true, simplifyMixedPercent: true,
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
-    };
+    const opts = EXTRACTED_PATCH_OPTS;
     // Plain "1234.5678" (should round) plus a link whose OWN number,
     // "51234.5678", contains the plain number's digits as a substring. Once
     // rounding shortens the plain occurrence away, a live-text substring
@@ -1154,7 +781,7 @@ const SEAT_ROWS = [
     const cell = makeReactiveCell(segsFor());
     const table = { rows: [{ cells: [cell, otherCell()] }], dataset: {} };
     roundTable(table, opts);
-    eq('linked-number-post-round regression: cell was actually rounded (registry original.value set)',
+    eq('linked-number-post-round regression: the cell rounds and its registry original holds its text',
       DR_MODEL.getTableOriginal(table, cell).value, 'Total 1234.5678 see also 51234.5678');
 
     const after = collectNumericCells(table, opts);
@@ -1169,7 +796,7 @@ const SEAT_ROWS = [
     const splitSegments = [{ text: '2024-', inSup: false }, { text: '09-15', inSup: false }];
     const oneCell = makeReactiveCell(oneSegments);
     const splitCell = makeReactiveCell(splitSegments);
-    const table = { rows: [{ cells: [oneCell] }, { cells: [splitCell] }], querySelector: () => null, dataset: {} };
+    const table = makeTableOfCells([[oneCell], [splitCell]]);
     try {
       roundTable(table, Object.assign(nativeOnePieceOpts(), { simplifyDates: true, dateGranularity: 'year' }));
       eq('native date cell: a date in one piece rounds, and the piece keeps its whitespace',
@@ -1190,7 +817,7 @@ const SEAT_ROWS = [
     const repeated = [{ text: '0000004523789', inSup: false }, { text: '4523789', inSup: false }];
     const keyedCell = makeSortKeyCell(keyed, () => keyed[1].text);
     const repeatedCell = makeSortKeyCell(repeated, () => repeated[1].text);
-    const table = { rows: [{ cells: [keyedCell] }, { cells: [repeatedCell] }], querySelector: () => null, dataset: {} };
+    const table = makeTableOfCells([[keyedCell], [repeatedCell]]);
     try {
       roundTable(table, nativeOnePieceOpts());
       eq('native sort-key cell: the visible value rounds',
@@ -1230,7 +857,7 @@ const SEAT_ROWS = [
       makeSortKeyCell(a, joined(a)), makeSortKeyCell(b, onRows(b)),
       makeSortKeyCell(c, joined(c)), makeSortKeyCell(d, joined(d)),
     ];
-    const table = { rows: cells.map((cell) => ({ cells: [cell] })), querySelector: () => null, dataset: {} };
+    const table = makeTableOfCells(cells.map((cell) => [cell]));
     const rows = [];
     const offRow = DR_LOG.onRow((row) => rows.push(row));
     const opts = nativeOnePieceOpts();
@@ -1264,7 +891,7 @@ const SEAT_ROWS = [
   withReactiveCreateTreeWalker(function () {
     const segs = [{ text: '7002300', inSup: false }, { text: '$', inSup: false }, { text: '7,002,300', inSup: false }];
     const cell = makeSortKeyCell(segs, () => '$7,002,300');
-    const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
+    const table = makeTableOfCells([[cell]]);
     try {
       eq('native separate pieces: a hidden sort key beside numbers in separate pieces keeps its numbers out of the pool',
         collectNumericCells(table, nativeOnePieceOpts()), []);
@@ -1277,32 +904,19 @@ const SEAT_ROWS = [
   });
 })();
 
-(function nativeWrite_olderWriterIsGone() {
-  const body = sourceBodyOf(allContentSrc, 'function roundTable(');
-  eq('native write: roundTable holds no innerHTML= assignment',
-    body.length > 0 && !/innerHTML\s*=(?!=)/.test(body), true);
-})();
-
-// Regression: test page Table 8, "Linked number in text". The cell reads
+// Test page section 8, "Linked number in text". The cell reads
 // "See <a>ref 12</a>, total 9,850". The linked 12 holds and 9,850 rounds,
-// with no patch left unlanded. A number scan that took "12," as the match
-// string would break the patch step: it found "12" where it expected "12,"
-// and skipped it, logging "1 of 2 extracted-cell patches did not land".
+// with no patch left unlanded.
 (function linkedReferenceFollowedByComma() {
   withReactiveCreateTreeWalker(function () {
-    const opts = {
-      enabled: true, simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyMixedCurrency: true, simplifyMixedPercent: true,
-      simplifyDates: false, simplifyTimes: false,
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
-    };
+    const opts = EXTRACTED_PATCH_OPTS;
     const segments = [
       { text: 'See ', inSup: false, inAnchor: false },
       { text: 'ref 12', inSup: false, inAnchor: true },
       { text: ', total 9,850', inSup: false, inAnchor: false },
     ];
     const cell = makeReactiveCell(segments);
-    const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
+    const table = makeTableOfCells([[cell]]);
     try {
       const result = roundTableUnder(table, opts);
       eq('table 8 linked reference: no patch is left unlanded',
@@ -1313,9 +927,7 @@ const SEAT_ROWS = [
         segments[2].text, ', total 10,000');
       eq('table 8 linked reference: the cell records as simplified',
         cell.classList.contains('dr-ext-rounded'), true);
-      // A re-apply classifies the stored original again; the linked 12 must
-      // hold on the simplified cell, where its original characters are gone
-      // from the live text only if the filter searched by characters.
+      // A re-apply classifies the stored original, so the linked 12 stays.
       reapplyRounding(table);
       eq('table 8 linked reference: the linked 12 holds after a re-apply',
         segments[1].text, 'ref 12');
@@ -1329,15 +941,10 @@ const SEAT_ROWS = [
 
 (function prettyPrintedExtractedCellRounds() {
   withReactiveCreateTreeWalker(function () {
-    const opts = {
-      enabled: true, simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyMixedCurrency: true, simplifyMixedPercent: true,
-      simplifyDates: false, simplifyTimes: false,
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
-    };
+    const opts = EXTRACTED_PATCH_OPTS;
     const segments = [{ text: '\n            Grew 9,850 units\n          ', inSup: false, inAnchor: false }];
     const cell = makePrettyPrintedCell(segments);
-    const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
+    const table = makeTableOfCells([[cell]]);
     try {
       const result = roundTable(table, opts);
       eq('table 21 line breaks: no patch is left unlanded',
@@ -1359,19 +966,14 @@ const SEAT_ROWS = [
 // masked and the quantity beside it rounds.
 (function prettyPrintedFootnoteStaysMasked() {
   withReactiveCreateTreeWalker(function () {
-    const opts = {
-      enabled: true, simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyMixedCurrency: true, simplifyMixedPercent: true,
-      simplifyDates: false, simplifyTimes: false,
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
-    };
+    const opts = EXTRACTED_PATCH_OPTS;
     const segments = [
       { text: '\n      Total\n      9,850 kg\n      ', inSup: false },
       { text: '7', inSup: true },
       { text: '\n    ', inSup: false },
     ];
     const cell = makePrettyPrintedCell(segments);
-    const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
+    const table = makeTableOfCells([[cell]]);
     try {
       roundTableUnder(table, opts);
       eq('pretty-printed footnote: the quantity rounds',
@@ -1391,7 +993,7 @@ const SEAT_ROWS = [
   withReactiveCreateTreeWalker(function () {
     const segments = [{ text: '\n      4,523,789\n    ', inSup: false }];
     const cell = makePrettyPrintedCell(segments);
-    const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
+    const table = makeTableOfCells([[cell]]);
     try {
       roundTable(table, nativeOnePieceOpts());
       eq('native pure cell: a pretty-printed value rounds, and the line breaks stay',
@@ -1411,7 +1013,7 @@ const SEAT_ROWS = [
     // "4,523," plain and "789" in bold: one number across two text pieces.
     const segments = [{ text: '4,523,', inSup: false }, { text: '789', inSup: false }];
     const cell = makeReactiveCell(segments);
-    const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
+    const table = makeTableOfCells([[cell]]);
     try {
       const result = roundTable(table, nativeOnePieceOpts());
       eq('native pure cell across pieces: the first piece keeps its text',
@@ -1431,169 +1033,45 @@ const SEAT_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// Whole-cell exponent cell — 10<sup>12</sup> → innerText "1012"
-// The exponent digits "12" must NOT be altered after roundTable runs.
+// An exponent in a <sup> stays as written: the exponent's text node keeps its
+// text after the pass. "10<sup>12</sup>" flattens to "1012".
 // ---------------------------------------------------------------------------
-(function supAC1_wholeCellExponent() {
+(function sup_theExponentStaysAsWritten() {
+  const CASES = [
+    ['10<sup>12</sup>', [{ text: '10', inSup: false }, { text: '12', inSup: true }]],
+    ['20 × 10<sup>15</sup>', [{ text: '20 × 10', inSup: false }, { text: '15', inSup: true }]],
+    ['20 × 10<sup>−12</sup> s',
+      [{ text: '20 × 10', inSup: false }, { text: '−12', inSup: true }, { text: ' s', inSup: false }]],
+    ['~ 10<sup>−32</sup> sec',
+      [{ text: '~ 10', inSup: false }, { text: '−32', inSup: true }, { text: ' sec', inSup: false }]],
+    ['6 × 10<sup>9</sup>', [{ text: '6 × 10', inSup: false }, { text: '9', inSup: true }]],
+  ];
   withSupCreateTreeWalker(function() {
-    // "10<sup>12</sup>" → flattened innerText "1012"
-    // segments: "10" (plain) + "12" (in <sup>)
-    const cell = makeSuperscriptCell([
-      { text: '10', inSup: false },
-      { text: '12', inSup: true },
-    ]);
-
-    const table = {
-      rows: [{ cells: [cell] }],
-      querySelector: () => null,
-      dataset: {},
-    };
-
-    roundTable(table, supTestOpts);
-
-    // The exponent "12" must not have been touched — cell.innerText must still
-    // contain "12" at the sup position (indices 2..4 of the flattened text).
-    const supNode = cell._textNodes[1];
-    eq('sup: exponent text node "12" is unchanged after roundTable',
-      supNode.nodeValue, '12');
+    for (const [markup, segments] of CASES) {
+      const cell = makeSuperscriptCell(segments);
+      roundTable(makeTableOfCells([[cell]]), supTestOpts);
+      eq(`sup: the exponent "${segments[1].text}" in "${markup}" is unchanged`,
+        cell._textNodes[1].nodeValue, segments[1].text);
+    }
   });
 })();
 
-// ---------------------------------------------------------------------------
-// "20 × 10<sup>15</sup>" — the "15" exponent must not be rounded.
-// ---------------------------------------------------------------------------
-(function supAC2a_positiveExponent() {
-  withSupCreateTreeWalker(function() {
-    // innerText: "20 × 1015" (7 + 2 chars)
-    const cell = makeSuperscriptCell([
-      { text: '20 × 10', inSup: false },
-      { text: '15', inSup: true },
-    ]);
-
-    const table = {
-      rows: [{ cells: [cell] }],
-      querySelector: () => null,
-      dataset: {},
-    };
-
-    roundTable(table, supTestOpts);
-
-    const supNode = cell._textNodes[1];
-    eq('sup: exponent "15" in "20 × 10<sup>15</sup>" is unchanged',
-      supNode.nodeValue, '15');
-  });
-})();
-
-// ---------------------------------------------------------------------------
-// "20 × 10<sup>−12</sup> s" — unicode-minus negative exponent preserved.
-// ---------------------------------------------------------------------------
-(function supAC2b_negativeExponentWithUnit() {
-  withSupCreateTreeWalker(function() {
-    const cell = makeSuperscriptCell([
-      { text: '20 × 10', inSup: false },
-      { text: '−12', inSup: true },   // "−12"
-      { text: ' s', inSup: false },
-    ]);
-
-    const table = {
-      rows: [{ cells: [cell] }],
-      querySelector: () => null,
-      dataset: {},
-    };
-
-    roundTable(table, supTestOpts);
-
-    const supNode = cell._textNodes[1];
-    eq('sup: exponent "−12" in "20 × 10<sup>−12</sup> s" is unchanged',
-      supNode.nodeValue, '−12');
-  });
-})();
-
-// ---------------------------------------------------------------------------
-// "~ 10<sup>−32</sup> sec" — the "−32" exponent must not be rounded.
-// ---------------------------------------------------------------------------
-(function supAC2c_negativeExponentTildeForm() {
-  withSupCreateTreeWalker(function() {
-    const cell = makeSuperscriptCell([
-      { text: '~ 10', inSup: false },
-      { text: '−32', inSup: true },   // "−32"
-      { text: ' sec', inSup: false },
-    ]);
-
-    const table = {
-      rows: [{ cells: [cell] }],
-      querySelector: () => null,
-      dataset: {},
-    };
-
-    roundTable(table, supTestOpts);
-
-    const supNode = cell._textNodes[1];
-    eq('sup: exponent "−32" in "~ 10<sup>−32</sup> sec" is unchanged',
-      supNode.nodeValue, '−32');
-  });
-})();
-
-// ---------------------------------------------------------------------------
-// "6 × 10<sup>9</sup>" — the "9" exponent must not be rounded.
-// ---------------------------------------------------------------------------
-(function supAC2d_singleDigitExponent() {
-  withSupCreateTreeWalker(function() {
-    const cell = makeSuperscriptCell([
-      { text: '6 × 10', inSup: false },
-      { text: '9', inSup: true },
-    ]);
-
-    const table = {
-      rows: [{ cells: [cell] }],
-      querySelector: () => null,
-      dataset: {},
-    };
-
-    roundTable(table, supTestOpts);
-
-    const supNode = cell._textNodes[1];
-    eq('sup: exponent "9" in "6 × 10<sup>9</sup>" is unchanged',
-      supNode.nodeValue, '9');
-  });
-})();
-
-// ---------------------------------------------------------------------------
-// Mixed cell — exponent protected, non-exponent number still eligible.
-//
-// Cell: "From inflation (~ 10<sup>−32</sup> sec) – 1234 ka"
-// The "1234" is not inside <sup> so it goes through the normal extraction path.
-// We use 1234 (magnitude 3) with default offsetTop=-0.5 which at max_mag=3
-// should round 1234 → ~1000 (or similar). The key assertion is:
-//   (a) the "−32" exponent node is unchanged, AND
-//   (b) the "1234" text node IS modified (i.e. rounded/simplified).
-// ---------------------------------------------------------------------------
+// A cell with an exponent and a number outside the <sup>:
+// "From inflation (~ 10<sup>−32</sup> sec) – 1234 ka". The exponent stays,
+// and 1234 (magnitude 3, the max magnitude) rounds to 1,000 at offset -0.5.
 (function supAC3_mixedCellExponentProtectedNonExponentRounded() {
   withSupCreateTreeWalker(function() {
-    // segments: prefix, exponent (sup), suffix with large number
     const cell = makeSuperscriptCell([
       { text: 'From inflation (~ 10', inSup: false },
-      { text: '−32', inSup: true },             // "−32"
-      { text: ' sec) – 1234 ka', inSup: false }, // "– 1234 ka"
+      { text: '−32', inSup: true },
+      { text: ' sec) – 1234 ka', inSup: false },
     ]);
-
-    const table = {
-      rows: [{ cells: [cell] }],
-      querySelector: () => null,
-      dataset: {},
-    };
-
-    roundTable(table, supTestOpts);
-
-    // The exponent node must be untouched
-    const supNode = cell._textNodes[1];
+    roundTable(makeTableOfCells([[cell]]), supTestOpts);
     eq('sup: exponent "−32" in mixed cell is unchanged',
-      supNode.nodeValue, '−32');
-
-    // The non-exponent part must have been processed — assert the cell was
-    // marked as rounded (dr-ext-rounded), which applyPatches adds only when a
-    // patch lands (i.e. "1234" was simplified).
-    eq('sup: mixed cell is marked dr-ext-rounded (non-exponent 1234 was simplified)',
+      cell._textNodes[1].nodeValue, '−32');
+    eq('sup: the 1234 outside the exponent rounds to 1,000',
+      cell._textNodes[2].nodeValue, ' sec) – 1,000 ka');
+    eq('sup: the cell with an exponent and a rounded number carries the marker',
       cell.classList.contains('dr-ext-rounded'), true);
   });
 })();
@@ -1606,7 +1084,7 @@ const SEAT_ROWS = [
       { text: '4,523,789 ', inSup: false },
       Object.assign({ text: '12', inSup: false }, raised),
     ]);
-    roundTable({ rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} }, supTestOpts);
+    roundTable(makeTableOfCells([[cell]]), supTestOpts);
     return cell._textNodes.map((node) => node.nodeValue);
   };
   const saved = global.getComputedStyle;
@@ -1624,407 +1102,59 @@ const SEAT_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// SimplifyDates / simplifyTimes boolean wiring
-//
-// Checked here:
-//   simplifyDates=true  → date cell IS rounded (dr-ext-rounded added, text changed)
-//   simplifyDates=false → date cell is left UNCHANGED (no class, same text)
-//   simplifyTimes=true  → time cell IS simplified (dr-ext-rounded added, text changed)
-//   simplifyTimes=false → time cell is left UNCHANGED
-//   sidebar.js updateDisabledState wires dateGranularity.disabled to !simplifyDates
-//        and timeGranularity.disabled to !simplifyTimes (static source analysis only —
-//        the test harness has no sidebar DOM path so live execution is not possible).
+// The date and time switches: a date or time cell changes only with its own
+// switch on, at any granularity, beside any other cell.
 // ---------------------------------------------------------------------------
-
-// --- simplifyDates=true → date cell is rounded ---
-// Use a bare year "2018" with decade granularity: "2018" becomes "2010" at decade,
-// so the cell text must change and dr-ext-rounded must be added.
-(function dateTimeSwitches_simplifyDatesTrue() {
-  withCreateTreeWalker(function() {
-    const table = makeMockTable([[
-      { tag: 'td', text: '2018' },
-    ]]);
-    const opts = {
-      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
-      simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyDates: true, simplifyTimes: false,
-      dateGranularity: 'decade', timeGranularity: 'hour',
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
-      rangeExpr: ''
-    };
-    roundTable(table, opts);
-    const cell = table.rows[0].cells[0];
-    eq('date and time switches: simplifyDates=true — date cell gets dr-ext-rounded class',
-      cell.classList.contains('dr-ext-rounded'), true);
-    eq('date and time switches: simplifyDates=true — date cell text is changed (2018→2010)',
-      cell.innerText, '2010');
-  });
-})();
-
-// --- simplifyDates=false → date cell is left unchanged ---
-// Same "2018" cell, same decade granularity, but simplifyDates=false.
-// The cell must NOT be rounded — text stays "2018", no class added.
-(function dateTimeSwitches_simplifyDatesFalse() {
-  withCreateTreeWalker(function() {
-    const table = makeMockTable([[
-      { tag: 'td', text: '2018' },
-    ]]);
-    const opts = {
-      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
-      simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyDates: false, simplifyTimes: false,
-      dateGranularity: 'decade', timeGranularity: 'hour',
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
-      rangeExpr: ''
-    };
-    roundTable(table, opts);
-    const cell = table.rows[0].cells[0];
-    eq('date and time switches: simplifyDates=false — date cell does NOT get dr-ext-rounded',
-      cell.classList.contains('dr-ext-rounded'), false);
-    eq('date and time switches: simplifyDates=false — date cell text is unchanged',
-      cell.innerText, '2018');
-  });
-})();
-
-// parity check with ISO date "2024-03-14" (decade granularity → "2020")
-(function dateTimeSwitches_isoDate() {
-  withCreateTreeWalker(function() {
-    // simplifyDates=true branch
-    const tableOn = makeMockTable([[{ tag: 'td', text: '2024-03-14' }]]);
-    roundTable(tableOn, {
-      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
-      simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyDates: true, simplifyTimes: false,
-      dateGranularity: 'decade', timeGranularity: 'hour',
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
+(function dateTimeSwitches_eachSwitchGovernsItsOwnCells() {
+  // [case, settings, cell texts, expected texts, expected markers]
+  const CASES = [
+    ['with the date switch on, 2018 at decade rounds to 2010',
+      { simplifyDates: true }, ['2018'], ['2010'], [true]],
+    ['with the date switch off, 2018 at decade stays as written',
+      { simplifyDates: false }, ['2018'], ['2018'], [false]],
+    ['with the date switch on, the ISO date 2024-03-14 at decade rounds to 2020',
+      { simplifyDates: true }, ['2024-03-14'], ['2020'], [true]],
+    ['with the date switch off, the ISO date 2024-03-14 at decade stays as written',
+      { simplifyDates: false }, ['2024-03-14'], ['2024-03-14'], [false]],
+    ['with the time switch on, 14:30 at hour rounds to 15:00',
+      { simplifyTimes: true }, ['14:30'], ['15:00'], [true]],
+    ['with the time switch off, 14:30 at hour stays as written',
+      { simplifyTimes: false }, ['14:30'], ['14:30'], [false]],
+    ['with the time switch on, the 12-hour time 3:45 PM at hour rounds to 4:00 PM',
+      { simplifyTimes: true }, ['3:45 PM'], ['4:00 PM'], [true]],
+    ['with the time switch off, the 12-hour time 3:45 PM at hour stays as written',
+      { simplifyTimes: false }, ['3:45 PM'], ['3:45 PM'], [false]],
+    ['with the date switch on, 2018 at century rounds to 2000',
+      { simplifyDates: true, dateGranularity: 'century' }, ['2018'], ['2000'], [true]],
+    ['with the date switch off, 2018 at century stays as written',
+      { simplifyDates: false, dateGranularity: 'century' }, ['2018'], ['2018'], [false]],
+    ['with the date switch off, 2018 stays as written beside 8,584,629, which rounds',
+      { simplifyDates: false }, ['2018', '8,584,629'], ['2018', '8,500,000'], [false, true]],
+    ['with the time switch on and the date switch off, 14:30 rounds to 15:00 and 2018 stays as written',
+      { simplifyDates: false, simplifyTimes: true }, ['14:30', '2018'], ['15:00', '2018'], [true, false]],
+    ['with the date switch on and the time switch off, 2018 rounds to 2010 and 14:30 stays as written',
+      { simplifyDates: true, simplifyTimes: false }, ['2018', '14:30'], ['2010', '14:30'], [true, false]],
+    ['with both switches on, 2018 rounds to 2010 and 14:30 rounds to 15:00',
+      { simplifyDates: true, simplifyTimes: true }, ['2018', '14:30'], ['2010', '15:00'], [true, true]],
+    ['with both switches off, 2018 and 14:30 stay as written',
+      { simplifyDates: false, simplifyTimes: false }, ['2018', '14:30'], ['2018', '14:30'], [false, false]],
+  ];
+  for (const [name, switches, texts, expectedTexts, expectedMarkers] of CASES) {
+    withCreateTreeWalker(function() {
+      const table = makeMockTable([texts.map((text) => ({ tag: 'td', text }))]);
+      roundTable(table, roundTableOpts(Object.assign(
+        { dateGranularity: 'decade', timeGranularity: 'hour' }, switches)));
+      const cells = table.rows[0].cells;
+      eq(`date and time switches: ${name}`,
+        { texts: cells.map((cell) => cell.innerText), rounded: cells.map(isRounded) },
+        { texts: expectedTexts, rounded: expectedMarkers });
     });
-    const cellOn = tableOn.rows[0].cells[0];
-    eq('date and time switches (ISO date): simplifyDates=true — ISO date rounded',
-      cellOn.classList.contains('dr-ext-rounded'), true);
-  });
-
-  withCreateTreeWalker(function() {
-    // simplifyDates=false branch — same input
-    const tableOff = makeMockTable([[{ tag: 'td', text: '2024-03-14' }]]);
-    roundTable(tableOff, {
-      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
-      simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyDates: false, simplifyTimes: false,
-      dateGranularity: 'decade', timeGranularity: 'hour',
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
-    });
-    const cellOff = tableOff.rows[0].cells[0];
-    eq('date and time switches (ISO date): simplifyDates=false — ISO date NOT rounded',
-      cellOff.classList.contains('dr-ext-rounded'), false);
-    eq('date and time switches (ISO date): simplifyDates=false — ISO date text unchanged',
-      cellOff.innerText, '2024-03-14');
-  });
-})();
-
-// --- simplifyTimes=true → time cell IS simplified ---
-// "14:30" with hour granularity → roundTime returns "15:00" (half-hour rounds up).
-(function dateTimeSwitches_simplifyTimesTrue() {
-  withCreateTreeWalker(function() {
-    const table = makeMockTable([[
-      { tag: 'td', text: '14:30' },
-    ]]);
-    const opts = {
-      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
-      simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyDates: false, simplifyTimes: true,
-      dateGranularity: 'decade', timeGranularity: 'hour',
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
-      rangeExpr: ''
-    };
-    roundTable(table, opts);
-    const cell = table.rows[0].cells[0];
-    eq('date and time switches: simplifyTimes=true — time cell gets dr-ext-rounded class',
-      cell.classList.contains('dr-ext-rounded'), true);
-    eq('date and time switches: simplifyTimes=true — time cell text is changed (14:30→15:00)',
-      cell.innerText, '15:00');
-  });
-})();
-
-// --- simplifyTimes=false → time cell is left UNCHANGED ---
-// Same "14:30" cell; with simplifyTimes=false the cell must stay as-is.
-(function dateTimeSwitches_simplifyTimesFalse() {
-  withCreateTreeWalker(function() {
-    const table = makeMockTable([[
-      { tag: 'td', text: '14:30' },
-    ]]);
-    const opts = {
-      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
-      simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyDates: false, simplifyTimes: false,
-      dateGranularity: 'decade', timeGranularity: 'hour',
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
-      rangeExpr: ''
-    };
-    roundTable(table, opts);
-    const cell = table.rows[0].cells[0];
-    eq('date and time switches: simplifyTimes=false — time cell does NOT get dr-ext-rounded',
-      cell.classList.contains('dr-ext-rounded'), false);
-    eq('date and time switches: simplifyTimes=false — time cell text is unchanged',
-      cell.innerText, '14:30');
-  });
-})();
-
-// parity check with "3:45 PM" (hour granularity → "4:00 PM")
-(function dateTimeSwitches_twelveHour() {
-  withCreateTreeWalker(function() {
-    // simplifyTimes=true
-    const tableOn = makeMockTable([[{ tag: 'td', text: '3:45 PM' }]]);
-    roundTable(tableOn, {
-      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
-      simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyDates: false, simplifyTimes: true,
-      dateGranularity: 'decade', timeGranularity: 'hour',
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
-    });
-    const cellOn = tableOn.rows[0].cells[0];
-    eq('date and time switches (12-hr): simplifyTimes=true — "3:45 PM" rounded',
-      cellOn.classList.contains('dr-ext-rounded'), true);
-    eq('date and time switches (12-hr): simplifyTimes=true — text changed to "4:00 PM"',
-      cellOn.innerText, '4:00 PM');
-  });
-
-  withCreateTreeWalker(function() {
-    // simplifyTimes=false — same input must be untouched
-    const tableOff = makeMockTable([[{ tag: 'td', text: '3:45 PM' }]]);
-    roundTable(tableOff, {
-      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
-      simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyDates: false, simplifyTimes: false,
-      dateGranularity: 'decade', timeGranularity: 'hour',
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
-    });
-    const cellOff = tableOff.rows[0].cells[0];
-    eq('date and time switches (12-hr): simplifyTimes=false — "3:45 PM" NOT rounded',
-      cellOff.classList.contains('dr-ext-rounded'), false);
-    eq('date and time switches (12-hr): simplifyTimes=false — text unchanged',
-      cellOff.innerText, '3:45 PM');
-  });
-})();
-
-// ---------------------------------------------------------------------------
-// Adversarial tests
-//
-// These tests are written from the intended behavior, not the implementation.
-// Adversarial focus: prove the boolean polarity is correct (true=simplify,
-// false=leave alone) across a wider set of inputs and combinations that the
-// developer's own tests did not exercise.
-// ---------------------------------------------------------------------------
-
-// --- century granularity also works when simplifyDates=true ---
-// A different granularity than the developer tested (decade) to ensure the
-// boolean wiring is not granularity-specific.
-(function dateTimeSwitches_century() {
-  withCreateTreeWalker(function() {
-    const table = makeMockTable([[
-      { tag: 'td', text: '2018' },
-    ]]);
-    roundTable(table, {
-      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
-      simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyDates: true, simplifyTimes: false,
-      dateGranularity: 'century', timeGranularity: 'hour',
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
-    });
-    const cell = table.rows[0].cells[0];
-    eq('(century): simplifyDates=true — 2018 rounded to 2000',
-      cell.innerText, '2000');
-    eq('(century): simplifyDates=true — cell gets dr-ext-rounded',
-      cell.classList.contains('dr-ext-rounded'), true);
-  });
-})();
-
-// --- century granularity, simplifyDates=false — year must NOT be rounded ---
-// Adversarial: if the implementation only guards the decade path, century would leak.
-(function dateTimeSwitches_century() {
-  withCreateTreeWalker(function() {
-    const table = makeMockTable([[
-      { tag: 'td', text: '2018' },
-    ]]);
-    roundTable(table, {
-      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
-      simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyDates: false, simplifyTimes: false,
-      dateGranularity: 'century', timeGranularity: 'hour',
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
-    });
-    const cell = table.rows[0].cells[0];
-    eq('(century): simplifyDates=false — cell does NOT get dr-ext-rounded',
-      cell.classList.contains('dr-ext-rounded'), false);
-    eq('(century): simplifyDates=false — text unchanged (2018)',
-      cell.innerText, '2018');
-  });
-})();
-
-// --- mixed table — date cell left alone while numeric cell rounds ---
-// A date-like year appears alongside a large number.
-// simplifyDates=false: the year must not be rounded even though max_mag is
-// computed from the real number in the same table.
-(function dateTimeSwitches_mixedTable() {
-  withCreateTreeWalker(function() {
-    const table = makeMockTable([[
-      { tag: 'td', text: '2018' },
-      { tag: 'td', text: '8,584,629' },
-    ]]);
-    roundTable(table, {
-      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
-      simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyDates: false, simplifyTimes: false,
-      dateGranularity: 'decade', timeGranularity: 'hour',
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
-    });
-    const dateCell = table.rows[0].cells[0];
-    eq('(mixed): simplifyDates=false — date cell NOT rounded even with large sibling',
-      dateCell.classList.contains('dr-ext-rounded'), false);
-    eq('(mixed): simplifyDates=false — date cell text unchanged (2018)',
-      dateCell.innerText, '2018');
-    // Numeric cell SHOULD still be rounded (control: proves roundTable ran)
-    const numCell = table.rows[0].cells[1];
-    eq('(mixed): numeric sibling 8,584,629 IS rounded (control)',
-      numCell.classList.contains('dr-ext-rounded'), true);
-  });
-})();
-
-// --- isolation — simplifyTimes=true with simplifyDates=false ---
-// Time cell must be simplified; a date cell in the same row must be left alone.
-// This catches any incorrect coupling between the two boolean flags.
-(function dateTimeSwitches_timesOnDatesOff() {
-  withCreateTreeWalker(function() {
-    const table = makeMockTable([[
-      { tag: 'td', text: '14:30' },
-      { tag: 'td', text: '2018' },
-    ]]);
-    roundTable(table, {
-      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
-      simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyDates: false, simplifyTimes: true,
-      dateGranularity: 'decade', timeGranularity: 'hour',
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
-    });
-    const timeCell = table.rows[0].cells[0];
-    const dateCell = table.rows[0].cells[1];
-    eq('isolation: simplifyTimes=true — time cell IS rounded',
-      timeCell.classList.contains('dr-ext-rounded'), true);
-    eq('isolation: simplifyTimes=true — time cell text changed (14:30→15:00)',
-      timeCell.innerText, '15:00');
-    eq('isolation: simplifyDates=false — date cell NOT rounded',
-      dateCell.classList.contains('dr-ext-rounded'), false);
-    eq('isolation: simplifyDates=false — date cell text unchanged (2018)',
-      dateCell.innerText, '2018');
-  });
-})();
-
-// --- isolation — simplifyDates=true with simplifyTimes=false ---
-// Date cell must be simplified; a time cell in the same row must be left alone.
-(function dateTimeSwitches_datesOnTimesOff() {
-  withCreateTreeWalker(function() {
-    const table = makeMockTable([[
-      { tag: 'td', text: '2018' },
-      { tag: 'td', text: '14:30' },
-    ]]);
-    roundTable(table, {
-      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
-      simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyDates: true, simplifyTimes: false,
-      dateGranularity: 'decade', timeGranularity: 'hour',
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
-    });
-    const dateCell = table.rows[0].cells[0];
-    const timeCell = table.rows[0].cells[1];
-    eq('isolation: simplifyDates=true — date cell IS rounded',
-      dateCell.classList.contains('dr-ext-rounded'), true);
-    eq('isolation: simplifyDates=true — date cell text changed (2018→2010)',
-      dateCell.innerText, '2010');
-    eq('isolation: simplifyTimes=false — time cell NOT rounded',
-      timeCell.classList.contains('dr-ext-rounded'), false);
-    eq('isolation: simplifyTimes=false — time cell text unchanged (14:30)',
-      timeCell.innerText, '14:30');
-  });
-})();
-
-// --- both simplifyDates=true and simplifyTimes=true — both simplified ---
-// Confirm both flags can be active simultaneously without one suppressing the other.
-(function dateTimeSwitches_bothTrue() {
-  withCreateTreeWalker(function() {
-    const table = makeMockTable([[
-      { tag: 'td', text: '2018' },
-      { tag: 'td', text: '14:30' },
-    ]]);
-    roundTable(table, {
-      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
-      simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyDates: true, simplifyTimes: true,
-      dateGranularity: 'decade', timeGranularity: 'hour',
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
-    });
-    const dateCell = table.rows[0].cells[0];
-    const timeCell = table.rows[0].cells[1];
-    eq('both=true: date cell IS rounded (2018→2010)',
-      dateCell.classList.contains('dr-ext-rounded'), true);
-    eq('both=true: date cell text changed to 2010',
-      dateCell.innerText, '2010');
-    eq('both=true: time cell IS rounded (14:30→15:00)',
-      timeCell.classList.contains('dr-ext-rounded'), true);
-    eq('both=true: time cell text changed to 15:00',
-      timeCell.innerText, '15:00');
-  });
-})();
-
-// --- both simplifyDates=false and simplifyTimes=false — neither simplified ---
-// The fully-off state: no date or time cell gets rounded.
-(function dateTimeSwitches_bothFalse() {
-  withCreateTreeWalker(function() {
-    const table = makeMockTable([[
-      { tag: 'td', text: '2018' },
-      { tag: 'td', text: '14:30' },
-    ]]);
-    roundTable(table, {
-      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
-      simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyDates: false, simplifyTimes: false,
-      dateGranularity: 'decade', timeGranularity: 'hour',
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
-    });
-    const dateCell = table.rows[0].cells[0];
-    const timeCell = table.rows[0].cells[1];
-    eq('both=false: date cell NOT rounded',
-      dateCell.classList.contains('dr-ext-rounded'), false);
-    eq('both=false: date cell text unchanged (2018)',
-      dateCell.innerText, '2018');
-    eq('both=false: time cell NOT rounded',
-      timeCell.classList.contains('dr-ext-rounded'), false);
-    eq('both=false: time cell text unchanged (14:30)',
-      timeCell.innerText, '14:30');
-  });
+  }
 })();
 
 // =============================================================================
 // Grid rounding tests
 // =============================================================================
-
-// ---------------------------------------------------------------------------
-// DOM-stub helpers for grid cells that contain real Text nodes (nodeType 3).
-//
-// findCellTextNode does a depth-first walk that checks node.nodeType,
-// node.nodeValue, and iterates node.childNodes. We build minimal objects that
-// satisfy exactly those interfaces — no jsdom required.
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// A synthetic database-query-shaped vendor grid.
-//
-// The shape rebuilds docs/test-pages/test-tables-1.html §13 with invented
-// values, per the repository's regression-fixture convention: a role="table"
-// wrapper holding a pinned pane of leading columns beside a scrolling pane of
-// data, all under dg-- classes, with rows paired across the panes by data-row. The
-// nomination step, the two adapters, and the table pillbox builder all read these
-// nodes, so each one answers the selector queries, the role read, the class
-// list, the parent link, and the text reads those three make.
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Grid patch writes. A grid cell's change lands as a patch to the one
@@ -2046,6 +1176,7 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
   const { grid } = makePatchGrid();
   const [a, b, c, d] = grid.cellEls;
   const piecesBefore = grid.cellEls.map(gridCellTextPieces);
+  const childCountsBefore = grid.cellEls.map((cell) => cell.childNodes.length);
   try {
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
     eq('grid patch: a number between whitespace pieces changes in its own piece',
@@ -2054,14 +1185,12 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
       pieceTextsOf(b), [' 7,500,000 ']);
     eq('grid patch: a number after a piece of its own patches at that piece\'s position',
       pieceTextsOf(c), ['$', '2,000,000']);
-    eq('grid patch: a plain one-piece cell rounds as before',
+    eq('grid patch: a plain one-piece cell rounds in its piece',
       pieceTextsOf(d), ['1,000,000']);
     eq('grid patch: every text piece is the same node object after the round',
-      grid.cellEls.every((cell, k) => {
-        const after = gridCellTextPieces(cell);
-        return after.length === piecesBefore[k].length &&
-          after.every((node, n) => node === piecesBefore[k][n]);
-      }), true);
+      keepsEveryTextPiece(grid.cellEls, piecesBefore), true);
+    eq('grid patch: every cell keeps its child count after the round',
+      grid.cellEls.map((cell) => cell.childNodes.length), childCountsBefore);
     eq('grid patch: every rounded cell carries the marker class',
       grid.cellEls.every((cell) => cell.classList.contains('dr-ext-rounded')), true);
   } finally {
@@ -2102,19 +1231,25 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
   }
 })();
 
-(function gridPatch_resetPutsEveryPieceBack() {
+(function gridPatch_restorePutsEveryPieceBack() {
   const { grid } = makePatchGrid();
   const [a, b, c, d] = grid.cellEls;
+  const piecesBefore = grid.cellEls.map(gridCellTextPieces);
+  const childCountsBefore = grid.cellEls.map((cell) => cell.childNodes.length);
   try {
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
     resetTable(grid.wrapperEl);
-    eq('grid patch reset: each piece holds its original text again',
+    eq('grid patch restore: each piece holds its original text again',
       [pieceTextsOf(a), pieceTextsOf(b), pieceTextsOf(c), pieceTextsOf(d)],
       [[' ', '8,584,629', ' '], [' 7,318,204 '], ['$', '2,140,663'], ['1,234,567']]);
-    eq('grid patch reset: the records are cleared',
+    eq('grid patch restore: every text piece is the same node object after the restore',
+      keepsEveryTextPiece(grid.cellEls, piecesBefore), true);
+    eq('grid patch restore: every cell keeps its child count after the restore',
+      grid.cellEls.map((cell) => cell.childNodes.length), childCountsBefore);
+    eq('grid patch restore: the records are cleared',
       grid.cellEls.map((cell) => DR_MODEL.hasTableOriginal(grid.wrapperEl, cell)),
       [false, false, false, false]);
-    eq('grid patch reset: the marker classes are removed',
+    eq('grid patch restore: the marker classes are removed',
       grid.cellEls.some((cell) => cell.classList.contains('dr-ext-rounded')), false);
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
@@ -2133,14 +1268,14 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
     // line up with the cell's.
     setGridCellPieces(a, [makeTextNode('9,100,000')]);
     resetTable(grid.wrapperEl);
-    eq('grid patch reset: the redrawn cell keeps the page\'s text',
+    eq('grid patch restore: the redrawn cell keeps the page\'s text',
       pieceTextsOf(a), ['9,100,000']);
-    eq('grid patch reset: the redrawn cell drops its marker and record',
+    eq('grid patch restore: the redrawn cell drops its marker and record',
       { marked: a.classList.contains('dr-ext-rounded'), record: DR_MODEL.hasTableOriginal(grid.wrapperEl, a) },
       { marked: false, record: false });
-    eq('grid patch reset: the other cells restore',
+    eq('grid patch restore: the other cells restore',
       pieceTextsOf(b), [' 7,318,204 ']);
-    eq('grid patch reset: with every cell restored, the grid shows its originals',
+    eq('grid patch restore: with every cell restored, the grid shows its originals',
       showsSimplified(grid.wrapperEl), false);
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
@@ -2203,7 +1338,7 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
 // freeze (null). The re-apply then computes the max magnitude from the
 // visible cells, and only a first simplification stores a freeze, so the
 // freeze stays unset for the next re-apply.
-(function gridReapply_withNoMagnitudeFreeze_computesTheBasisAndLeavesTheFreezeUnset() {
+(function gridReapply_withNoMagnitudeFreeze_computesTheMaxMagnitudeAndLeavesTheFreezeUnset() {
   const { grid, aNumber } = makePatchGrid();
   const [a] = grid.cellEls;
   try {
@@ -2213,7 +1348,7 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
     DR_MODEL.setTableMaxMagnitude(grid.wrapperEl, null);
     aNumber.nodeValue = '8,584,629';
     reapplyRounding(grid.wrapperEl);
-    eq('grid re-apply no freeze: a piece redrawn to its original rounds against the visible cells',
+    eq('grid re-apply no freeze: a piece redrawn to its original rounds under the max magnitude of the visible cells',
       pieceTextsOf(a), [' ', '8,500,000', ' ']);
     eq('grid re-apply no freeze: the re-apply stores no freeze',
       DR_MODEL.getTableMaxMagnitude(grid.wrapperEl), null);
@@ -2257,7 +1392,6 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
       [{ tag: 'td', text: 'north' }, { tag: 'td', text: 'south' }],
       [{ tag: 'td', text: 'east' }, { tag: 'td', text: 'pending' }],
     ]);
-    table._cells.forEach((c) => { c.querySelectorAll = () => []; });
     const cell = table._cells[3];
     try {
       roundTableUnder(table, Object.assign({}, DR_DEFAULTS, { enabled: true }));
@@ -2279,16 +1413,8 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
 // Numbers in separate text pieces and unit numbers on grids. A grid cell's
 // text is its flat text. A cell that holds whole numbers in separate text
 // pieces rounds each in its own piece. A unit number's digits change and its suffix
-// or currency code stays. Extracted cells stay unchanged on grids.
-//
-// A synthetic key-statistics grid with invented values. The dataset is
-// 338.49, 4.91, 125, 126, 337.91, and 41.31, so the max magnitude is 2:
-//   magnitude 2, top band, step 50:    338.49 → 350, 125 → 150, 126 → 150, 337.91 → 350
-//   magnitude 1, other band, step 5:   41.31 → 40
-//   magnitude 0, other band, step 0.5: 4.91 → 5
-// The split number (4.91 across two pieces), the link, and the extracted
-// cell stay out of the dataset. Counted as one number, the cell with 125
-// above 126 would raise the max magnitude to 5.
+// or currency code stays. An extracted cell rounds as it does on a native
+// table. makeKeyStatsGrid (helpers.js) states the grid's dataset.
 // ---------------------------------------------------------------------------
 
 const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true });
@@ -2312,11 +1438,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
         ['7.5m'], ['2024-', '03-15'],
       ]);
     eq('grid separate pieces: every text piece is the same node object after the round',
-      grid.cellEls.every((cell, k) => {
-        const after = gridCellTextPieces(cell);
-        return after.length === piecesBefore[k].length &&
-          after.every((node, n) => node === piecesBefore[k][n]);
-      }), true);
+      keepsEveryTextPiece(grid.cellEls, piecesBefore), true);
     eq('grid separate pieces: the max magnitude counts the numbers in separate pieces one by one',
       DR_MODEL.getTableMaxMagnitude(grid.wrapperEl), 2);
     eq('grid separate pieces: the pass counts the split number and the split date',
@@ -2326,7 +1448,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   }
 })();
 
-(function gridSeparatePieces_recordAndReset() {
+(function gridSeparatePieces_recordAndRestore() {
   const grid = makeKeyStatsGrid();
   const [, , pair, dollar] = grid.cellEls;
   const originalPieces = grid.cellEls.map(pieceTextsOf);
@@ -2340,9 +1462,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
       DR_MODEL.getTableOriginal(grid.wrapperEl, dollar).pieces,
       [{ text: '$', written: '$' }, { text: '337.91', written: '350' }]);
     resetTable(grid.wrapperEl);
-    eq('grid separate pieces: reset restores every cell', showsSimplified(grid.wrapperEl), false);
-    eq('grid separate pieces: reset puts every piece back', grid.cellEls.map(pieceTextsOf), originalPieces);
-    eq('grid separate pieces: reset clears every record',
+    eq('grid separate pieces: the restore restores every cell', showsSimplified(grid.wrapperEl), false);
+    eq('grid separate pieces: the restore puts every piece back', grid.cellEls.map(pieceTextsOf), originalPieces);
+    eq('grid separate pieces: the restore clears every record',
       grid.cellEls.some((cell) => DR_MODEL.hasTableOriginal(grid.wrapperEl, cell)), false);
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
@@ -2412,7 +1534,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 // section 25). A grid reads the gap between
 // two pieces from the cell's rendered text, as a native table does, so one
 // number that inline styling splits ("6,7" plain, "18,245" in bold) stays
-// unchanged. Before, the grid rounded it to "65" and "20,000".
+// unchanged.
 (function gridSeparatePieces_sameCellsAsTheNativeTable() {
   const grid = makeE2EGridWrapper([['$337.91', '125126', '6,718,245']]);
   const [a, b, c] = grid.cellEls;
@@ -2474,31 +1596,26 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     holder.childNodes[0].parentElement = holder;
     holder.closest = (sel) => (sel === 'a' && holder === anchor ? anchor : null);
   }
-  const saved = global.document.createTreeWalker;
-  global.document.createTreeWalker = (root) => {
-    const nodes = gridCellTextPieces(root);
-    return { nextNode() { return nodes.shift() || null; } };
-  };
   const pool = () => collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS).map((sample) => sample.num);
-  try {
-    eq('grid separate pieces link (setup): the preview leaves out the linked number', pool(), [125]);
-    roundTableUnder(grid.wrapperEl, PATCH_GRID_OPTS);
-    eq('grid separate pieces link: the number inside the link stays', pieceTextsOf(cell), ['150', '126']);
-    reapplyRounding(grid.wrapperEl);
-    eq('grid separate pieces link: the number inside the link stays after a re-apply', pieceTextsOf(cell), ['150', '126']);
-    eq('grid separate pieces link: the preview after the round leaves out the linked number', pool(), [125]);
-  } finally {
-    if (saved === undefined) delete global.document.createTreeWalker;
-    else global.document.createTreeWalker = saved;
-    DR_MODEL.unregisterTable(grid.wrapperEl);
-  }
+  withGridPieceTreeWalker(() => {
+    try {
+      eq('grid separate pieces link (setup): the preview leaves out the linked number', pool(), [125]);
+      roundTableUnder(grid.wrapperEl, PATCH_GRID_OPTS);
+      eq('grid separate pieces link: the number inside the link stays', pieceTextsOf(cell), ['150', '126']);
+      reapplyRounding(grid.wrapperEl);
+      eq('grid separate pieces link: the number inside the link stays after a re-apply', pieceTextsOf(cell), ['150', '126']);
+      eq('grid separate pieces link: the preview after the round leaves out the linked number', pool(), [125]);
+    } finally {
+      DR_MODEL.unregisterTable(grid.wrapperEl);
+    }
+  });
 })();
 
 // Cells with numbers in separate pieces that stay unchanged, and the ones that round. Dataset
 // 4.91, 125, and 126, so the max magnitude is 2.
-//   a: a number beside a <sup> footnote, glued together with no separator:
-//      the base number rounds and the footnote digits stay, exactly as a
-//      native table already rounds this shape — the digit run
+//   a: a number beside raised digits in a <sup>, glued together with no
+//      separator: the base number rounds and the raised digits stay,
+//      exactly as a native table rounds this shape — the digit run
 //      right after the <sup> is never even a candidate match, since the
 //      number extractor never starts a match right after a letter
 //   b: a year above a year: each piece holds a number
@@ -2516,10 +1633,10 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])], { lines: true });
   const opts = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true });
   try {
-    eq('grid separate pieces: the lens preview pool keeps the footnote\'s base number and the years, and leaves out the split number',
+    eq('grid separate pieces: the lens preview pool keeps the base number beside the raised digits and the years, and leaves out the split number',
       collectNumericCells(grid.wrapperEl, opts).map((sample) => sample.num).sort((x, y) => x - y), [4.91, 125, 126, 2024, 2025]);
     roundTable(grid.wrapperEl, opts);
-    eq('grid separate pieces: a cell with a <sup> rounds its base and keeps the exponent', pieceTextsOf(a), ['5T', '12']);
+    eq('grid separate pieces: a cell with a <sup> rounds its base and keeps the raised digits', pieceTextsOf(a), ['5T', '12']);
     eq('grid separate pieces: years on separate lines round, as on a native table', pieceTextsOf(b), ['2,000', '2,000']);
     eq('grid separate pieces: a number split after its grouping comma stays unchanged', pieceTextsOf(c), ['1,', '234']);
     eq('grid separate pieces: a currency code in its own piece stays and the numbers round',
@@ -2543,25 +1660,20 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   const plain = makeTextNode('Revenue 837 units ');
   setGridCellPieces(cell, [plain, sup]);
   cell.querySelector = (sel) => (sel === 'sup' ? sup : null);
-  const saved = global.document.createTreeWalker;
-  global.document.createTreeWalker = (root) => {
-    const nodes = gridCellTextPieces(root);
-    return { nextNode() { return nodes.shift() || null; } };
-  };
   const pool = () => collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS).map((sample) => sample.num);
-  try {
-    roundTableUnder(grid.wrapperEl, PATCH_GRID_OPTS);
-    eq('grid footnote: the base rounds and the footnote digit stays',
-      pieceTextsOf(cell), ['Revenue 850 units ', '7']);
-    reapplyRounding(grid.wrapperEl);
-    eq('grid footnote: the footnote digit stays after a re-apply',
-      pieceTextsOf(cell), ['Revenue 850 units ', '7']);
-    eq('grid footnote: the preview after the round reads the base number, not the footnote digit', pool(), [837]);
-  } finally {
-    if (saved === undefined) delete global.document.createTreeWalker;
-    else global.document.createTreeWalker = saved;
-    DR_MODEL.unregisterTable(grid.wrapperEl);
-  }
+  withGridPieceTreeWalker(() => {
+    try {
+      roundTableUnder(grid.wrapperEl, PATCH_GRID_OPTS);
+      eq('grid footnote: the base rounds and the footnote digit stays',
+        pieceTextsOf(cell), ['Revenue 850 units ', '7']);
+      reapplyRounding(grid.wrapperEl);
+      eq('grid footnote: the footnote digit stays after a re-apply',
+        pieceTextsOf(cell), ['Revenue 850 units ', '7']);
+      eq('grid footnote: the preview after the round reads the base number, not the footnote digit', pool(), [837]);
+    } finally {
+      DR_MODEL.unregisterTable(grid.wrapperEl);
+    }
+  });
 })();
 
 // A grid cell whose raised digits sit in a span styled vertical-align: super
@@ -2583,21 +1695,16 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   const sup = Object.assign(makeElementNode('sup', [makeTextNode('12')]), { tagName: 'SUP' });
   const styled = Object.assign(makeElementNode('raised', [makeTextNode('12')]),
     { tagName: 'SPAN', style: { verticalAlign: 'super' } });
-  const savedWalker = global.document.createTreeWalker;
   const savedStyle = global.getComputedStyle;
-  global.document.createTreeWalker = (root) => {
-    const nodes = gridCellTextPieces(root);
-    return { nextNode() { return nodes.shift() || null; } };
-  };
   global.getComputedStyle = inlineStyleProbe.getComputedStyle;
   try {
-    const supTexts = roundOne(sup);
-    const styledTexts = roundOne(styled);
-    eq('styled superscript (grid): the base rounds and the raised digits stay', styledTexts, ['4,500,000 ', '12']);
-    eq('styled superscript (grid): the cell rounds the same as a <sup> cell', styledTexts, supTexts);
+    withGridPieceTreeWalker(() => {
+      const supTexts = roundOne(sup);
+      const styledTexts = roundOne(styled);
+      eq('styled superscript (grid): the base rounds and the raised digits stay', styledTexts, ['4,500,000 ', '12']);
+      eq('styled superscript (grid): the cell rounds the same as a <sup> cell', styledTexts, supTexts);
+    });
   } finally {
-    if (savedWalker === undefined) delete global.document.createTreeWalker;
-    else global.document.createTreeWalker = savedWalker;
     global.getComputedStyle = savedStyle;
   }
 })();
@@ -2616,31 +1723,26 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   const plain = makeTextNode('Revenue 4.91tn units ');
   setGridCellPieces(cell, [plain, sup]);
   cell.querySelector = (sel) => (sel === 'sup' ? sup : null);
-  const saved = global.document.createTreeWalker;
-  global.document.createTreeWalker = (root) => {
-    const nodes = gridCellTextPieces(root);
-    return { nextNode() { return nodes.shift() || null; } };
-  };
-  try {
-    roundTableUnder(grid.wrapperEl, PATCH_GRID_OPTS);
-    const afterFirstRound = pieceTextsOf(cell);
-    eq('grid footnote re-apply (setup): the base rounds and the footnote holds',
-      afterFirstRound[1], '137');
-    reapplyRounding(grid.wrapperEl);
-    eq('grid footnote re-apply: the footnote stays masked after the base has already shrunk',
-      pieceTextsOf(cell), afterFirstRound);
-  } finally {
-    if (saved === undefined) delete global.document.createTreeWalker;
-    else global.document.createTreeWalker = saved;
-    DR_MODEL.unregisterTable(grid.wrapperEl);
-  }
+  withGridPieceTreeWalker(() => {
+    try {
+      roundTableUnder(grid.wrapperEl, PATCH_GRID_OPTS);
+      const afterFirstRound = pieceTextsOf(cell);
+      eq('grid footnote re-apply (setup): the base rounds and the footnote holds',
+        afterFirstRound[1], '137');
+      reapplyRounding(grid.wrapperEl);
+      eq('grid footnote re-apply: the footnote stays masked after the base has already shrunk',
+        pieceTextsOf(cell), afterFirstRound);
+    } finally {
+      DR_MODEL.unregisterTable(grid.wrapperEl);
+    }
+  });
 })();
 
 // A rounded cell with numbers in separate pieces that the page redraws with
 // fewer pieces is a rewritten cell. Its one remaining piece shows the extension's
 // written text for the first stored piece, so it matches that piece by text
 // and takes its original back before the record drops: the re-apply then
-// simplifies the cell from 125, the lens preview reads 125, and reset puts
+// simplifies the cell from 125, the lens preview reads 125, and a restore puts
 // 125 back and leaves nothing unrestorable.
 (function gridSeparatePieces_aRoundedCellThatLostAPiece() {
   const grid = makeE2EGridWrapper([['125126']]);
@@ -2659,9 +1761,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     eq('grid separate pieces: the lens preview reads the matched original in a cell that lost a piece',
       collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS).map((c) => c.num), [125]);
     resetTable(grid.wrapperEl);
-    eq('grid separate pieces: reset leaves nothing unrestorable after a cell lost a piece',
+    eq('grid separate pieces: the restore leaves nothing unrestorable after a cell lost a piece',
       showsSimplified(grid.wrapperEl), false);
-    eq('grid separate pieces: reset puts the matched original back', pieceTextsOf(cell), ['125']);
+    eq('grid separate pieces: the restore puts the matched original back', pieceTextsOf(cell), ['125']);
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
   }
@@ -2680,14 +1782,14 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   }
 })();
 
-(function gridSeparatePieces_currencyOffExcludesASymbolInItsOwnPiece() {
+(function gridSeparatePieces_currencyOffKeepsTheNumberASymbolInItsOwnPieceTouches() {
   const grid = makeKeyStatsGrid();
   const [, unit, , dollar] = grid.cellEls;
   try {
     roundTable(grid.wrapperEl, Object.assign({}, KEY_STATS_OPTS, { simplifyMixedCurrency: false }));
-    eq('grid separate pieces: with the currency setting off, a "$" in its own piece excludes the cell',
+    eq('grid separate pieces: with the currency switch off, the number a "$" in its own piece touches stays as written',
       pieceTextsOf(dollar), ['$', '337.91']);
-    eq('grid separate pieces: with the currency setting off, a suffixed number still rounds',
+    eq('grid separate pieces: with the currency switch off, a suffixed number still rounds',
       pieceTextsOf(unit), ['5tn']);
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
@@ -2696,10 +1798,10 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 
 // The lens preview lists exactly the numbers the grid rounds: the numbers in
 // separate pieces one by one, the unit numbers, the number inside "Revenue 500
-// units", and nothing from "DT1234" (its digits sit glued to a letter, so
-// the extractor never finds them, on a grid or a native table alike) or the
-// split number or the link. It lists the same numbers once the grid is
-// rounded, read from the records.
+// units", and nothing from "DT1234" (the reason sits above
+// gridSeparatePieces_roundWritesEachNumberInItsPiece) or the split number or
+// the link. It lists the same numbers once the grid is rounded, read from the
+// records.
 (function gridSeparatePieces_lensPreviewMatchesThePage() {
   const grid = makeKeyStatsGrid();
   const nums = () => collectNumericCells(grid.wrapperEl, KEY_STATS_OPTS)
@@ -2715,75 +1817,12 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 })();
 
 // ---------------------------------------------------------------------------
-// resetTable restores originals on visible rows
+// The lens preview on a grid
 // ---------------------------------------------------------------------------
 
-(function gr4_resetTable_restoresOriginals() {
-  const grid = makeGridWrapper([
-    ['8584629', '286'],
-    ['1234567', '99'],
-  ]);
-
-  const adapter = makeAdapter(grid.wrapperEl, { originalsPort: registryOriginalsPort(grid.wrapperEl) });
-  const rows = adapter.getRows();
-
-  // Round all cells
-  rows.forEach(function(row) {
-    row.getCells().forEach(function(c) {
-      c.applyPatches([{ index: 0, numStr: c.getText(), newNum: 'ROUNDED' }], { value: c.getText() });
-    });
-  });
-
-  // All cells should carry dr-ext-rounded and a registry original
-  eq('(setup): cell 0 is rounded',
-    grid.cellEls[0].classList.contains('dr-ext-rounded'), true);
-  eq('(setup): cell 0 registry original is stored original value',
-    DR_MODEL.getTableOriginalText(grid.wrapperEl, grid.cellEls[0]), '8584629');
-
-  // Build a querySelectorAll stub on the wrapper that returns only the already-rounded cells
-  const roundedCells = grid.cellEls.filter(function(c) {
-    return c.classList.contains('dr-ext-rounded');
-  });
-
-  // Attach querySelectorAll('.dr-ext-rounded') to the wrapper
-  grid.wrapperEl.querySelectorAll = function(sel) {
-    if (sel === '.dr-ext-rounded') return roundedCells;
-    return [];
-  };
-
-  // Also need querySelector for showsSimplified's call after reset
-  grid.wrapperEl.querySelector = function(sel) {
-    if (sel === '.dr-ext-rounded') return null; // after reset, none
-    return null;
-  };
-
-  // resetTable expects a table.querySelectorAll that returns .dr-ext-rounded cells
-  resetTable(grid.wrapperEl);
-
-  // All previously-rounded cells should now have their original text restored
-  eq('cell 0 nodeValue restored to original',
-    grid.cellEls[0].childNodes[0].nodeValue, '8584629');
-
-  eq('cell 0 no longer carries dr-ext-rounded',
-    grid.cellEls[0].classList.contains('dr-ext-rounded'), false);
-
-  eq('cell 0 registry original cleared after reset',
-    DR_MODEL.getTableOriginal(grid.wrapperEl, grid.cellEls[0]), undefined);
-})();
-
-// ---------------------------------------------------------------------------
-// extractPreviewSamples on a grid — expected structure returned
-// ---------------------------------------------------------------------------
-
-(function gr5_extractPreviewSamples_gridStructure() {
-  // Build a grid with numeric cells of two distinct magnitudes so both
-  // top and other bands are populated in the returned structure.
-  //
-  // A leading header row and label column keep the numeric data off row 0 /
-  // column 0: DR_DEFAULTS.simplifyFirstRow/simplifyFirstColumn are both
-  // false, and grid cells are always tagName 'TD' (GridAdapter has no <th>
-  // concept), so unlike a native table there is no tag-based escape from the
-  // exclusion — position is all that matters.
+(function lensPreview_gridSamples() {
+  // Numbers of two magnitudes fill both bands, behind a header row and a
+  // label column, which the defaults leave as written.
   const grid = makeGridWrapper([
     ['label', 'x', 'y'],
     ['R1', '8584629', '286'],
@@ -2792,130 +1831,60 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   ]);
 
   const result = extractPreviewSamples(grid.wrapperEl);
-
-  // Must return the correct shape: { samples: { top: [...], other: [...] }, maxMag: <number> }
-  eq('lens preview of a grid of 7M to 9M and 286 to 514: the result holds samples',
-    typeof result.samples, 'object');
-
-  eq('lens preview of a grid of 7M to 9M and 286 to 514: samples holds a top array',
-    Array.isArray(result.samples.top), true);
-
-  eq('lens preview of a grid of 7M to 9M and 286 to 514: samples holds an other array',
-    Array.isArray(result.samples.other), true);
-
-  eq('lens preview of a grid of 7M to 9M and 286 to 514: maxMag is a number',
-    typeof result.maxMag, 'number');
-
-  // The large-magnitude cells (8M, 9M, 7M) are magnitude 6; they go in top.
-  eq('top band contains at least one entry',
-    result.samples.top.length >= 1, true);
-
-  // Each entry must have original and num fields
-  if (result.samples.top.length > 0) {
-    eq('top[0] has original field',
-      typeof result.samples.top[0].original, 'string');
-    eq('top[0] has num field',
-      typeof result.samples.top[0].num, 'number');
-  }
-
-  // maxMag for cells in the 8M range is 6
-  eq('maxMag is 6 for cells around 8,000,000',
+  eq('lens preview of a grid of 7M to 9M and 286 to 514: maxMag is 6',
     result.maxMag, 6);
+  eq('lens preview of a grid of 7M to 9M and 286 to 514: the top band holds 8,584,629',
+    result.samples.top.map((sample) => sample.num), [8584629]);
+  eq('lens preview of a grid of 7M to 9M and 286 to 514: the top-band sample holds its original text',
+    result.samples.top.map((sample) => sample.original), ['8584629']);
+  eq('lens preview of a grid of 7M to 9M and 286 to 514: the other band holds 286',
+    result.samples.other.map((sample) => sample.num), [286]);
 })();
 
-// ---------------------------------------------------------------------------
-// Adversarial extras
-// ---------------------------------------------------------------------------
-
-// the grid read is the cell's flat text: every text piece, joined in
+// The grid read is the cell's flat text: every text piece, joined in
 // page order, however deep the pieces sit.
-(function gr6a_gridRead_isTheFlatText() {
+(function gridRead_isTheFlatText() {
   const readOf = (cell) => makeCellObj(cell, new GridAdapter({}).originalsPort).getText();
-  eq('a piece inside nested elements is read',
+  eq('grid read: a piece inside nested elements is read',
     readOf(makeElementNode('cell', [makeElementNode('inner', [makeTextNode('42')])])), '42');
-  eq('a cell with no text piece reads as empty',
+  eq('grid read: a cell with no text piece reads as empty',
     readOf(makeElementNode('cell', [makeElementNode('inner', [])])), '');
-  eq('a whitespace piece is part of the read',
+  eq('grid read: a whitespace piece is part of the read',
     readOf(makeElementNode('cell', [makeTextNode('   ')])), '   ');
-  eq('every piece joins in page order',
+  eq('grid read: every piece joins in page order',
     readOf(makeElementNode('cell', [makeTextNode('first'), makeElementNode('b', [makeTextNode('42')])])), 'first42');
 })();
 
 // =============================================================================
-// E2E grid rounding tests — drive roundTable/resetTable on real div-grid stubs.
-// Regression guard for commit 3404e86: roundTable must write via nodeValue
-// (GridAdapter's applyPatches → the registry record), NOT via
-// an innerHTML write (which crashes React's reconciler).
+// Grid writes through roundTable and resetTable: each change lands in its
+// text node's nodeValue, never through an innerHTML write, which breaks a
+// framework that renders the cell, such as React.
 // =============================================================================
 
-// ---------------------------------------------------------------------------
-// roundTable on a numeric div-grid — nodeValue written, node identity
-// preserved, drOriginal set, dr-ext-rounded applied.
-// ---------------------------------------------------------------------------
-(function e2e_gr1_roundTable_numericGrid_nodeValuePath() {
-  // 3-row grid. Use simplifyFirstRow:true so all rows (including row 0) are processed.
-  const grid = makeE2EGridWrapper([
-    ['8584629', '286'],
-    ['1234567', '99'],
-    ['7654321', '55'],
-  ]);
-
-  // cellEls[0] is row-0, col-0.  With simplifyFirstRow:true it will be rounded.
-  const cell0 = grid.cellEls[0];
-  const textNodeBefore = cell0.childNodes[0];
-  const childCountBefore = cell0.childNodes.length;
-  const originalValue = textNodeBefore.nodeValue;  // '8584629'
-
-  // Drive the real engine entry point with simplifyFirstRow+Column:true so row/col 0
-  // are not excluded by the default "skip header" heuristic.
-  const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
-  roundTable(grid.wrapperEl, opts);
-
-  // The cell must now carry the rounded class.
-  eq('cell[0] has dr-ext-rounded after roundTable',
-    cell0.classList.contains('dr-ext-rounded'), true);
-
-  // The text was actually changed (8584629 → some abbreviated form; check it differs).
-  eq('cell[0] text node value changed from original',
-    cell0.childNodes[0].nodeValue !== originalValue, true);
-
-  // Node identity: the SAME Text node object must hold the new value.
-  eq('Text node object identity preserved (same reference)',
-    cell0.childNodes[0] === textNodeBefore, true);
-
-  // childNodes.length must be unchanged (no appendChild / removeChild).
-  eq('cell[0] childNodes.length unchanged after roundTable',
-    cell0.childNodes.length, childCountBefore);
-
-  // The registry original must be recorded for the cell (the patch path).
-  eq('cell[0] registry original is set to original text',
-    DR_MODEL.getTableOriginalText(grid.wrapperEl, cell0), originalValue);
-})();
-
-// the registry original is stored ONCE; a second write against the
+// The registry original is stored once: a second write against the
 // patched piece lands nothing and leaves the stored original in place.
-// A re-round starts from restored text: every apply resets the table first.
-(function gr6e_drOriginal_storedOnce() {
+// A re-round starts from restored text: every apply restores the table first.
+(function gridWrite_theRegistryOriginalIsStoredOnce() {
   const grid = makeGridWrapper([['12345']]);
   const adapter = makeAdapter(grid.wrapperEl, { originalsPort: registryOriginalsPort(grid.wrapperEl) });
   const cellObj = adapter.getRows()[0].getCells()[0];
 
   // First write: original should be stored
   cellObj.applyPatches([{ index: 0, numStr: '12345', newNum: '12000' }], { value: cellObj.getText() });
-  eq('registry original stored on first write',
+  eq('grid write: the first write stores the registry original',
     DR_MODEL.getTableOriginalText(grid.wrapperEl, grid.cellEls[0]), '12345');
 
   // Second write, against the piece's patched text: the piece no longer
   // shows its stored original, so nothing lands.
-  eq('a second write into the patched piece lands nothing',
+  eq('grid write: a second write into the patched piece lands nothing',
     cellObj.applyPatches([{ index: 0, numStr: '12000', newNum: '10000' }], { value: cellObj.getText() }), 0);
-  eq('registry original NOT overwritten on second write',
+  eq('grid write: the second write leaves the registry original in place',
     DR_MODEL.getTableOriginalText(grid.wrapperEl, grid.cellEls[0]), '12345');
-  eq('nodeValue keeps the first write',
+  eq('grid write: the piece keeps the first write',
     grid.cellEls[0].childNodes[0].nodeValue, '12000');
 })();
 
-(function e2e_gridMarksOnlyConfirmedWrites() {
+(function gridWrite_marksOnlyConfirmedWrites() {
   const grid = makeE2EGridWrapper([
     ['8584629', '286'],
   ]);
@@ -2931,11 +1900,11 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   try {
     const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
     const result = roundTable(grid.wrapperEl, opts);
-    eq('grid-honesty: a write that lands nothing adds no marker through roundTable',
+    eq('grid patch: a write that lands nothing adds no marker through roundTable',
       grid.cellEls[0].classList.contains('dr-ext-rounded'), false);
-    eq('grid-honesty: a grid whose every write skipped shows its originals',
+    eq('grid patch: a grid whose every write skipped shows its originals',
       showsSimplified(grid.wrapperEl), false);
-    eq('grid-honesty: the pass counts the skipped writes as left as written for a text mismatch',
+    eq('grid patch: the pass counts the skipped writes as left as written for a text mismatch',
       result.leftAsWritten.textMismatch > 0, true);
   } finally {
     DR_MODEL.setTableMaxMagnitude = setMaxMagnitude;
@@ -2944,104 +1913,40 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 })();
 
 // ---------------------------------------------------------------------------
-// resetTable after roundTable — Text node restored in place, class
-// removed, drOriginal cleared, childNodes.length still unchanged.
-// ---------------------------------------------------------------------------
-(function e2e_gr2_resetTable_restoresNodeValue() {
-  const grid = makeE2EGridWrapper([
-    ['8584629', '286'],
-    ['1234567', '99'],
-  ]);
-
-  const cell0 = grid.cellEls[0];
-  const textNodeBefore = cell0.childNodes[0];
-  const childCountBefore = cell0.childNodes.length;
-  const originalValue = textNodeBefore.nodeValue;  // '8584629'
-
-  // Round first — use simplifyFirstRow+Column:true so row/col 0 are not excluded.
-  const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
-  roundTable(grid.wrapperEl, opts);
-
-  // Confirm the cell is rounded before we reset (pre-condition).
-  eq('(pre): cell[0] is rounded before resetTable',
-    cell0.classList.contains('dr-ext-rounded'), true);
-
-  // Now reset.
-  resetTable(grid.wrapperEl);
-
-  // nodeValue must be back to the original on the SAME Text node.
-  eq('Text node nodeValue restored to original value',
-    textNodeBefore.nodeValue, originalValue);
-
-  // The SAME node object must still be in childNodes[0].
-  eq('Text node identity preserved through reset (same reference)',
-    cell0.childNodes[0] === textNodeBefore, true);
-
-  // dr-ext-rounded class must be removed.
-  eq('dr-ext-rounded removed after resetTable',
-    cell0.classList.contains('dr-ext-rounded'), false);
-
-  // The registry original must be cleared.
-  eq('registry original cleared after resetTable',
-    DR_MODEL.getTableOriginal(grid.wrapperEl, cell0), undefined);
-
-  // childNodes.length still unchanged (no innerHTML write at any point).
-  eq('childNodes.length unchanged throughout (no innerHTML write)',
-    cell0.childNodes.length, childCountBefore);
-})();
-
-// ---------------------------------------------------------------------------
 // A grid under the defaults: the first row and the first column stay as
 // written, and a number in the second column rounds.
 // ---------------------------------------------------------------------------
-(function e2e_gr4_firstColumnHeldOnGrid() {
-  // Two rows so simplifyFirstRow:false (default) does not exclude everything.
-  // Row 0: excluded (simplifyFirstRow:false).
-  // Row 1: "abc 1234567 def" sits in the first column (simplifyFirstColumn:false);
-  //        "9876543" sits in the second column and rounds.
+(function grid_theFirstRowAndColumnStayUnderTheDefaults() {
+  // Row 0 sits under the first-row exclusion. In row 1, "abc 1234567 def"
+  // sits under the first-column exclusion, and 9876543 in the second column
+  // rounds.
   const grid = makeE2EGridWrapper([
-    ['placeholder', '0'],             // row 0: excluded by simplifyFirstRow:false
-    ['abc 1234567 def', '9876543'],   // row 1: exercised
+    ['placeholder', '0'],
+    ['abc 1234567 def', '9876543'],
   ]);
+  const extractedCell = grid.cellEls[2];
+  const pureCell = grid.cellEls[3];
 
-  // cellEls[2] = row1/col0 (mixed), cellEls[3] = row1/col1 (numeric)
-  const mixedCell   = grid.cellEls[2];
-  const numericCell = grid.cellEls[3];
+  roundTable(grid.wrapperEl, Object.assign({}, DR_DEFAULTS));
 
-  const mixedTextBefore   = mixedCell.childNodes[0].nodeValue;
-  const numericTextBefore = numericCell.childNodes[0].nodeValue;
-
-  // simplifyFirstRow:false (default) so row 0 is excluded (standard behaviour).
-  const opts = Object.assign({}, DR_DEFAULTS);
-  roundTable(grid.wrapperEl, opts);
-
-  eq('grid: "abc 1234567 def" in the first column is not rounded',
-    mixedCell.classList.contains('dr-ext-rounded'), false);
-
-  eq('mixed-text cell text node unchanged',
-    mixedCell.childNodes[0].nodeValue, mixedTextBefore);
-
-  // Pure-numeric cell must be rounded.
-  eq('pure-numeric cell IS rounded on grid',
-    numericCell.classList.contains('dr-ext-rounded'), true);
-
-  eq('pure-numeric cell text changed from original',
-    numericCell.childNodes[0].nodeValue !== numericTextBefore, true);
-
-  // Registry original set on numeric, not on mixed.
-  eq('registry original set on pure-numeric cell',
-    DR_MODEL.getTableOriginalText(grid.wrapperEl, numericCell), numericTextBefore);
-
-  eq('registry original NOT set on mixed-text cell',
-    DR_MODEL.getTableOriginal(grid.wrapperEl, mixedCell), undefined);
+  eq('grid under the defaults: "abc 1234567 def" in the first column is not rounded',
+    extractedCell.classList.contains('dr-ext-rounded'), false);
+  eq('grid under the defaults: the extracted cell in the first column keeps its text',
+    extractedCell.childNodes[0].nodeValue, 'abc 1234567 def');
+  eq('grid under the defaults: the pure cell 9876543 in the second column carries the marker',
+    pureCell.classList.contains('dr-ext-rounded'), true);
+  eq('grid under the defaults: the pure cell 9876543 rounds to 10,000,000',
+    pureCell.childNodes[0].nodeValue, '10,000,000');
+  eq('grid under the defaults: the pure cell stores its registry original',
+    DR_MODEL.getTableOriginalText(grid.wrapperEl, pureCell), '9876543');
+  eq('grid under the defaults: the extracted cell in the first column stores no registry original',
+    DR_MODEL.getTableOriginal(grid.wrapperEl, extractedCell), undefined);
 })();
 
 // ---------------------------------------------------------------------------
-// Grid write honesty: the per-cell write reports whether it landed,
-// and only a confirmed write marks the cell — the same rule as the
-// extracted-cell fix. A grid cell can classify as roundable through
-// the whole-text fallback yet hold no text piece for the nodeValue write to
-// patch; such a write skips, and a skipped write must not mark the cell.
+// A grid cell's write reports whether it landed, and only a confirmed write
+// marks the cell. A grid cell can hold a number yet no text piece for the
+// nodeValue write to patch; such a write skips and leaves no marker.
 // ---------------------------------------------------------------------------
 
 (function gridApplyPatchesReturnsLanded() {
@@ -3053,43 +1958,29 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   const adapter = new GridAdapter({}, { originalsPort: port });
 
   const withNode = makeCellObj(makeGridCellWithTextNode('8584629'), adapter.originalsPort);
-  eq('grid-honesty: applyPatches returns a landed count when the write lands',
+  eq('grid patch: applyPatches returns a landed count when the write lands',
     withNode.applyPatches([{ index: 0, numStr: '8584629', newNum: '8,500,000' }], { value: withNode.getText() }), 1);
 
   const bareEl = makeElementNode('', []);
   bareEl.textContent = '8584629';
   const bare = makeCellObj(bareEl, adapter.originalsPort);
-  eq('grid-honesty: applyPatches returns zero when the cell has no text piece',
+  eq('grid patch: applyPatches returns zero when the cell has no text piece',
     bare.applyPatches([{ index: 0, numStr: '8584629', newNum: '8,500,000' }], { value: bare.getText() }), 0);
-  eq('grid-honesty: a skipped write adds no marker and no record',
+  eq('grid patch: a skipped write adds no marker and no record',
     { marked: bareEl.classList.contains('dr-ext-rounded'), recorded: port.has(bareEl) },
     { marked: false, recorded: false });
 })();
 
 // =============================================================================
-// Grid-virtualization re-apply tests
-// Commit: a65129c added GRID_REAPPLY_DEBOUNCE_MS, reapplyObservers, reapplyTimers,
-// computeGridCellRoundedValue, reapplyRounding, observer attachment in roundTable,
-// and teardown in resetTable + removed-node observer.
-//
-// Timer/observer control mechanism:
-//   - Before each test, override global.MutationObserver with a capturing stub that
-//     stores the callback so tests can fire it manually (simulating DOM mutations).
-//   - Override global.setTimeout with a synchronous capture: store {fn, ms} in a
-//     local array; call fn() directly to "advance past the debounce".
-//   - Override global.clearTimeout with a no-op that marks the captured timer cancelled.
-//   - Restore all globals in a finally block.
-//
-// The capturing MutationObserver must be installed BEFORE roundTable is called so that
-// roundTable's `new MutationObserver(cb)` instantiates the capturing class, not the
-// no-op stub that was installed at eval time.
+// The re-apply observer on both table kinds
 // =============================================================================
 
 // ---------------------------------------------------------------------------
-// GV1: Recycle (childList) — new row appended while grid is rounded;
-// observer + debounce fires; new row's numeric cells become rounded.
+// A grid that reuses its row elements appends a new row while the grid is
+// rounded: the observer's pass, once the settle delay passes, rounds the new
+// row's cells.
 // ---------------------------------------------------------------------------
-(function gv1_recycle_newRowRounded() {
+(function reapplyObserver_aNewRowRounds() {
   let ctx;
   try {
     // 2-row grid with big numbers so rounding changes the value.
@@ -3099,11 +1990,10 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     ]);
     const { grid, pendingTimers } = ctx;
 
-    // Pre-condition: existing cells are rounded.
-    eq('GV1 (pre): existing cell[0] is rounded after roundTable',
+    eq('re-apply observer new row (setup): an existing cell is rounded',
       grid.cellEls[0].classList.contains('dr-ext-rounded'), true);
 
-    // Simulate row recycling: append a new unrounded row.
+    // The grid appends a new, unrounded row.
     const newCell0 = makeGridCellWithTextNode('9876543');
     const newCell1 = makeGridCellWithTextNode('3456789');
     const newRow = makeElementNode('row', [newCell0, newCell1]);
@@ -3123,43 +2013,30 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
       return [];
     };
 
-    // Trigger the observer callback (simulating a childList mutation).
     const obs = ctx.capturedObserver;
-    eq('GV1 (pre): capturing observer was created',
+    eq('re-apply observer new row (setup): the grid holds a re-apply observer',
       obs !== null, true);
 
     obs.trigger([{ type: 'childList' }]);
-
-    // The observer callback schedules a debounce timer — flush it.
     flushTimers(pendingTimers);
 
-    // The new cells should now be rounded.
-    eq('GV1: new row cell[0] is rounded after recycle + re-apply',
+    eq('re-apply observer new row: the first new cell is rounded',
       newCell0.classList.contains('dr-ext-rounded'), true);
-
-    eq('GV1: new row cell[1] is rounded after recycle + re-apply',
+    eq('re-apply observer new row: the second new cell is rounded',
       newCell1.classList.contains('dr-ext-rounded'), true);
-
-    // The text node value must have changed from the original unrounded value.
-    eq('GV1: new row cell[0] text node value differs from original unrounded value',
-      newCell0.childNodes[0].nodeValue !== '9876543', true);
-
+    eq('re-apply observer new row: the new 9876543 rounds to 10,000,000 under the frozen max magnitude',
+      newCell0.childNodes[0].nodeValue, '10,000,000');
   } finally {
-    if (ctx) {
-      global.MutationObserver = ctx.origMO;
-      global.setTimeout = ctx.origSetTimeout;
-      global.clearTimeout = ctx.origClearTimeout;
-    }
+    restoreVirtGridGlobals(ctx);
   }
 })();
 
 // ---------------------------------------------------------------------------
-// GV2: Sort revert (characterData) — the headline test.
-// Round a grid; rewrite a rounded cell's text node back to its original value
-// (simulating an in-place sort: same Text node, class .dr-ext-rounded retained).
-// Trigger observer + debounce; assert cell is re-rounded.
+// The page redraws a rounded cell's piece to its original in place, as a
+// sort does: same text node, marker still on. The observer's pass rounds the
+// cell again.
 // ---------------------------------------------------------------------------
-(function gv2_sortRevert_cellReRounded() {
+(function reapplyObserver_aPieceRedrawnToItsOriginalRoundsAgain() {
   let ctx;
   try {
     ctx = setupVirtGrid([
@@ -3168,54 +2045,39 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     ]);
     const { grid, pendingTimers } = ctx;
 
-    // cell[0] is a big numeric cell — it should be rounded.
     const cell0 = grid.cellEls[0];
-    eq('GV2 (pre): cell[0] carries dr-ext-rounded after initial roundTable',
+    eq('re-apply observer redraw (setup): the first cell carries the marker after the first simplification',
       cell0.classList.contains('dr-ext-rounded'), true);
 
     const tn0 = cell0.childNodes[0];
-    const roundedValue = tn0.nodeValue;   // e.g. '8600000'
-    const originalValue = DR_MODEL.getTableOriginalText(grid.wrapperEl, cell0);  // e.g. '8584629'
+    const roundedValue = tn0.nodeValue;
+    const originalValue = DR_MODEL.getTableOriginalText(grid.wrapperEl, cell0);
 
-    eq('GV2 (pre): roundedValue differs from original',
+    eq('re-apply observer redraw (setup): the rounded value differs from the original',
       roundedValue !== originalValue, true);
 
-    // Simulate an in-place sort: framework rewrites text node back to original
-    // but the cell KEEPS our .dr-ext-rounded class (node identity preserved).
     tn0.nodeValue = originalValue;
-    // Class is still present (as in real sort behaviour).
-    eq('GV2 (pre): class still present after sort-revert (simulated)',
+    eq('re-apply observer redraw (setup): the marker stays on through the redraw',
       cell0.classList.contains('dr-ext-rounded'), true);
 
-    // Trigger characterData mutation.
     const obs = ctx.capturedObserver;
     obs.trigger([{ type: 'characterData', target: tn0 }]);
-
-    // Flush the debounce timer.
     flushTimers(pendingTimers);
 
-    // The cell must be re-rounded: its text node value must equal the rounded value again.
-    eq('GV2: cell[0] text node value re-rounded after sort-revert + re-apply',
+    eq('re-apply observer redraw: the cell shows its rounded value again',
       cell0.childNodes[0].nodeValue, roundedValue);
-
-    eq('GV2: cell[0] still carries dr-ext-rounded after re-apply',
+    eq('re-apply observer redraw: the cell still carries the marker',
       cell0.classList.contains('dr-ext-rounded'), true);
-
   } finally {
-    if (ctx) {
-      global.MutationObserver = ctx.origMO;
-      global.setTimeout = ctx.origSetTimeout;
-      global.clearTimeout = ctx.origClearTimeout;
-    }
+    restoreVirtGridGlobals(ctx);
   }
 })();
 
 // ---------------------------------------------------------------------------
-// GV3: Debounce — N rapid mutations result in reapplyRounding running once.
-// Fire the observer callback 5 times in quick succession; assert that only
-// one non-cancelled timer fires (earlier ones are cancelled by the debounce).
+// A burst of page changes runs one pass: five rapid changes leave one live
+// settle-delay timer, and its pass schedules no further timer.
 // ---------------------------------------------------------------------------
-(function gv3_debounce_nMutationsFireReapplyOnce() {
+(function reapplyObserver_aBurstRunsOnePass() {
   let ctx;
   try {
     ctx = setupVirtGrid([
@@ -3225,42 +2087,28 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     const { pendingTimers } = ctx;
     const obs = ctx.capturedObserver;
 
-    // Fire observer callback 5 times rapidly.
     for (let i = 0; i < 5; i++) {
       obs.trigger([{ type: 'childList' }]);
     }
 
-    // Count how many timers were NOT cancelled (should be exactly 1 — the last scheduled one).
     const activeCnt = pendingTimers.filter(function(t) { return !t.cancelled; }).length;
-    eq('GV3: exactly 1 active (non-cancelled) debounce timer after 5 rapid mutations',
+    eq('re-apply observer burst: five rapid changes leave exactly one live settle-delay timer',
       activeCnt, 1);
 
-    // Track re-apply call count by spying on reapplyTimers writes inside flush.
-    let reapplyCalls = 0;
-    const origRAGR = global.reapplyRounding;
-    // We cannot easily intercept the closure directly; instead count timer fires.
-    // Each non-cancelled timer fires reapplyRounding once.
     flushTimers(pendingTimers);
-    // If any additional timers were scheduled by the re-apply itself, they would appear here.
     const newTimers = pendingTimers.filter(function(t, i) { return i >= 5; });
-    eq('GV3: no additional debounce timers spawned by the single re-apply (bounded)',
+    eq('re-apply observer burst: the one pass schedules no further timer',
       newTimers.filter(function(t) { return !t.cancelled; }).length, 0);
-
   } finally {
-    if (ctx) {
-      global.MutationObserver = ctx.origMO;
-      global.setTimeout = ctx.origSetTimeout;
-      global.clearTimeout = ctx.origClearTimeout;
-    }
+    restoreVirtGridGlobals(ctx);
   }
 })();
 
 // ---------------------------------------------------------------------------
-// GV4: No self-trigger loop — a single re-apply does not schedule an unbounded
-// cascade. After flushing the debounce timer once, no further timers should be
-// pending (disconnect/reconnect guard prevents our own writes from re-triggering).
+// The pass's own writes schedule no pass: the pass disconnects the observer
+// before it writes and reconnects it after.
 // ---------------------------------------------------------------------------
-(function gv4_noSelfTriggerLoop() {
+(function reapplyObserver_ownWritesScheduleNoPass() {
   let ctx;
   try {
     ctx = setupVirtGrid([
@@ -3270,40 +2118,27 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     const { pendingTimers } = ctx;
     const obs = ctx.capturedObserver;
 
-    // Trigger once and flush — this runs reapplyRounding.
     obs.trigger([{ type: 'childList' }]);
-    const countBefore = pendingTimers.length;  // should be 1
+    const countBefore = pendingTimers.length;
 
     flushTimers(pendingTimers);
 
-    // reapplyRounding disconnects observer before writes and reconnects after.
-    // Its own nodeValue writes must NOT schedule a new debounce timer.
-    const countAfter = pendingTimers.length;
-    eq('GV4: no new timer scheduled during re-apply (self-trigger loop prevented)',
-      countAfter, countBefore);
-
-    // Also assert the observer was disconnected during the write pass and reconnected.
-    eq('GV4: observer disconnected at least once during re-apply (write guard)',
+    eq('re-apply observer own writes: the pass schedules no new timer',
+      pendingTimers.length, countBefore);
+    eq('re-apply observer own writes: the pass disconnects the observer before it writes',
       obs.disconnectCount >= 1, true);
-
-    eq('GV4: observer reconnected after re-apply',
+    eq('re-apply observer own writes: the observer is connected again after the pass',
       obs.reconnectCount >= 2, true);  // once in roundTable, once in reapplyRounding
-
   } finally {
-    if (ctx) {
-      global.MutationObserver = ctx.origMO;
-      global.setTimeout = ctx.origSetTimeout;
-      global.clearTimeout = ctx.origClearTimeout;
-    }
+    restoreVirtGridGlobals(ctx);
   }
 })();
 
 // ---------------------------------------------------------------------------
-// GV5: After resetTable — a subsequent mutation does NOT trigger rounding.
-// Observer disconnected + timer cleared on reset; subsequent observer trigger
-// must not schedule a new debounce timer.
+// After a restore, a page change rounds nothing: the restore disconnects the
+// observer and clears its timer.
 // ---------------------------------------------------------------------------
-(function gv5_afterResetTable_noReTrigger() {
+(function reapplyObserver_afterARestoreRoundsNothing() {
   let ctx;
   try {
     ctx = setupVirtGrid([
@@ -3313,65 +2148,46 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     const { grid, pendingTimers } = ctx;
     const obs = ctx.capturedObserver;
 
-    // Pre-condition: observer is set up.
-    eq('GV5 (pre): reapplyObservers has entry for wrapperEl',
+    eq('re-apply observer restore (setup): the grid holds an observer entry',
       reapplyObservers.has(grid.wrapperEl), true);
 
-    // Reset the table — should disconnect the observer and clear any pending timer.
     resetTable(grid.wrapperEl);
 
-    eq('GV5: reapplyObservers entry removed after resetTable',
+    eq('re-apply observer restore: the restore removes the observer entry',
       reapplyObservers.has(grid.wrapperEl), false);
-
-    eq('GV5: reapplyTimers entry removed after resetTable',
+    eq('re-apply observer restore: the restore removes the timer entry',
       reapplyTimers.has(grid.wrapperEl), false);
-
-    // Observer should be disconnected.
-    eq('GV5: observer disconnected after resetTable',
+    eq('re-apply observer restore: the restore disconnects the observer',
       obs.disconnectCount >= 1, true);
 
-    // Now simulate a mutation — the observer callback fires (it is the same object,
-    // but it has been disconnected so in the real DOM it would not fire; here we
-    // call it manually to prove the debounce logic does NOT schedule a new timer
-    // because reapplyObservers no longer has the wrapper).
-    const timerCountBefore = pendingTimers.length;
+    // A disconnected observer fires no callback on a real page; the stub
+    // fires it anyway. The pass then finds no observer entry and writes
+    // nothing.
     obs.trigger([{ type: 'childList' }]);
-    // The callback still fires (we are calling it directly), but reapplyRounding
-    // will bail harmlessly because reapplyObservers no longer has the wrapper.
-    // The debounce timer IS still scheduled by the closure (the closure holds wrapperEl).
-    // Flush it and confirm no rounding occurred.
     flushTimers(pendingTimers);
 
-    // After flush, cell[0] should be unrounded (resetTable restored originals).
-    eq('GV5: cell[0] is NOT rounded after resetTable (dr-ext-rounded removed)',
+    eq('re-apply observer restore: a later page change leaves the first cell without the marker',
       grid.cellEls[0].classList.contains('dr-ext-rounded'), false);
-
-    // Original value must be restored.
-    eq('GV5: cell[0] text node value is restored to original after resetTable',
+    eq('re-apply observer restore: a later page change leaves the first cell at its original',
       grid.cellEls[0].childNodes[0].nodeValue, '8584629');
-
   } finally {
-    if (ctx) {
-      global.MutationObserver = ctx.origMO;
-      global.setTimeout = ctx.origSetTimeout;
-      global.clearTimeout = ctx.origClearTimeout;
-    }
+    restoreVirtGridGlobals(ctx);
   }
 })();
 
 // ---------------------------------------------------------------------------
-// GV5b: a press turning simplification off on a virtualized grid restores
-// pristine values; a grid re-apply observer must NOT re-round them. An
-// observer that saw the restore writes' characterData mutations would
-// re-round the cells ~100ms later, making them flash original then snap back
-// to simplified while the table is off.
+// A press turning simplification off on a virtualized grid restores the
+// original values, and the re-apply observer does not round them again. An
+// observer that saw the restore writes' characterData mutations would round
+// the cells again about 100 milliseconds later, so they would flash the
+// original and then show simplified values while the table is off.
 //
-// Off is a reset, which disconnects the observer. This
-// test drives a mutation through anyway — the stub calls the callback whether
-// or not the observer was disconnected, so the re-apply's own bail is still
-// what the assertions read.
+// Off is a restore, which disconnects the observer. This test drives a
+// mutation through anyway — the stub calls the callback whether or not the
+// observer was disconnected, so the re-apply's own bail is still what the
+// assertions read.
 // ---------------------------------------------------------------------------
-(function gv5b_pressOff_observerDoesNotReRound() {
+(function reapplyObserver_aPressOffRoundsNothingAgain() {
   let ctx;
   try {
     ctx = setupVirtGrid([
@@ -3381,29 +2197,27 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     const { grid, pendingTimers } = ctx;
     const obs = ctx.capturedObserver;
 
-    // Pre-condition: cells are rounded after roundTable.
-    eq('GV5b (pre): cell[0] is rounded after roundTable',
+    eq('re-apply observer press off (setup): the first cell is rounded after the first simplification',
       grid.cellEls[0].classList.contains('dr-ext-rounded'), true);
 
     // The user presses the grid's table pillbox to turn simplification off.
     resetTable(grid.wrapperEl);
 
-    // Originals restored.
-    eq('GV5b: the grid shows its originals after the press turns simplification off',
+    eq('re-apply observer press off: the grid shows its originals after the press turns simplification off',
       showsSimplified(grid.wrapperEl), false);
-    eq('GV5b: cell[0] text node restored to original',
+    eq('re-apply observer press off: the first cell shows its original',
       grid.cellEls[0].childNodes[0].nodeValue, '8584629');
 
-    // The restore writes fire characterData mutations the observer listens for.
-    // Simulate that, then flush the debounce timer.
+    // The restore writes fire characterData mutations the observer listens
+    // for; the stub fires one, and the settle-delay timer runs.
     obs.trigger([{ type: 'characterData' }]);
     flushTimers(pendingTimers);
 
-    // The cell must STILL show the original value — the re-apply bails
-    // because the reset removed the table's watcher.
-    eq('GV5b: cell[0] still original after observer fires (no re-round)',
+    // The re-apply bails because the restore removed the table's re-apply
+    // observer.
+    eq('re-apply observer press off: the first cell still shows its original after the observer fires',
       grid.cellEls[0].childNodes[0].nodeValue, '8584629');
-    eq('GV5b: cell[1] still original after observer fires (no re-round)',
+    eq('re-apply observer press off: the second cell still shows its original after the observer fires',
       grid.cellEls[1].childNodes[0].nodeValue, '100');
 
     // A press back on runs the apply, which re-simplifies from the table's
@@ -3413,30 +2227,23 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     DR_MODEL.setTableSettings(grid.wrapperEl,
       { simplifyFirstRow: true, simplifyFirstColumn: true, enabled: true }, 'page');
     applyTableSettings(grid.wrapperEl);
-    eq('GV5b: the grid shows simplified values after the press turns simplification back on',
+    eq('re-apply observer press off: the grid shows simplified values after the press turns simplification back on',
       showsSimplified(grid.wrapperEl), true);
-    eq('GV5b: cell[0] re-simplified after the press turns simplification back on',
-      grid.cellEls[0].childNodes[0].nodeValue !== '8584629', true);
-
+    eq('re-apply observer press off: the first cell rounds to 8,500,000 after the press turns simplification back on',
+      grid.cellEls[0].childNodes[0].nodeValue, '8,500,000');
   } finally {
-    if (ctx) {
-      global.MutationObserver = ctx.origMO;
-      global.setTimeout = ctx.origSetTimeout;
-      global.clearTimeout = ctx.origClearTimeout;
-    }
+    restoreVirtGridGlobals(ctx);
   }
 })();
 
 // ---------------------------------------------------------------------------
-// GV6: a native <table> gets the same re-apply observer a grid gets,
-// watching the table element itself.
+// A native <table> gets the same re-apply observer a grid gets, watching the
+// table element itself.
 // ---------------------------------------------------------------------------
-(function gv6_nativeTable_getsTheReapplyObserver() {
-  // Build a minimal native table stub that isDataTable and roundTable can process.
+(function reapplyObserver_aNativeTableGetsOne() {
   const origMO = global.MutationObserver;
   const origSetTimeout = global.setTimeout;
   try {
-    // Count MutationObserver instantiations to ensure none happen for native tables.
     let moConstructCount = 0;
     global.MutationObserver = class {
       constructor(cb) { moConstructCount++; this._cb = cb; }
@@ -3445,36 +2252,21 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     };
     global.setTimeout = () => 99;
 
-    // Use the existing makeMockTable-level helper if available, or build manually.
-    // We need a table with rows and cells that roundTable can process.
-    // The simplest approach: build with the pattern used by existing native-table tests.
-    const cell00 = { innerHTML: '8584629', textContent: '8584629', dataset: {}, classList: { _c: [], add(x){this._c.push(x);}, remove(x){this._c=this._c.filter(v=>v!==x);}, contains(x){return this._c.includes(x);} }, getAttribute: () => null };
-    const cell01 = { innerHTML: '1234567', textContent: '1234567', dataset: {}, classList: { _c: [], add(x){this._c.push(x);}, remove(x){this._c=this._c.filter(v=>v!==x);}, contains(x){return this._c.includes(x);} }, getAttribute: () => null };
-    const row0 = { cells: [cell00, cell01], tagName: 'TR', rowIndex: 0 };
-    const cell10 = { innerHTML: '7654321', textContent: '7654321', dataset: {}, classList: { _c: [], add(x){this._c.push(x);}, remove(x){this._c=this._c.filter(v=>v!==x);}, contains(x){return this._c.includes(x);} }, getAttribute: () => null };
-    const cell11 = { innerHTML: '2345678', textContent: '2345678', dataset: {}, classList: { _c: [], add(x){this._c.push(x);}, remove(x){this._c=this._c.filter(v=>v!==x);}, contains(x){return this._c.includes(x);} }, getAttribute: () => null };
-    const row1 = { cells: [cell10, cell11], tagName: 'TR', rowIndex: 1 };
-    const nativeTable = {
-      tagName: 'TABLE',
-      rows: [row0, row1],
-      classList: { _c: [], add(x){this._c.push(x);}, remove(x){this._c=this._c.filter(v=>v!==x);}, contains(x){return this._c.includes(x);} },
-      dataset: {},
-      querySelector: () => null,
-      querySelectorAll: () => [],
-      getBoundingClientRect: () => ({ top: 0, left: 0, width: 100, height: 40 }),
-    };
+    const nativeTable = makeTablePillboxTestTable([
+      [{ tag: 'td', text: '8584629' }, { tag: 'td', text: '1234567' }],
+      [{ tag: 'td', text: '7654321' }, { tag: 'td', text: '2345678' }],
+    ]);
+    withCreateTreeWalker(() => {
+      roundTable(nativeTable, Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true }));
+    });
 
-    const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true });
-    roundTable(nativeTable, opts);
-
-    eq('GV6: a native <table> holds a re-apply observer after roundTable',
+    eq('re-apply observer native table: a native <table> holds a re-apply observer after roundTable',
       reapplyObservers.has(nativeTable), true);
-    eq('GV6: the observer watches the native table element itself',
+    eq('re-apply observer native table: the observer watches the native table element itself',
       (reapplyObservers.get(nativeTable) || {}).target === nativeTable, true);
-    eq('GV6: one MutationObserver is instantiated for the native table',
+    eq('re-apply observer native table: one MutationObserver is built for the native table',
       moConstructCount, 1);
     resetTable(nativeTable);
-
   } finally {
     global.MutationObserver = origMO;
     global.setTimeout = origSetTimeout;
@@ -3482,10 +2274,10 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 })();
 
 // ---------------------------------------------------------------------------
-// GV7 (Adversarial): Removed-grid teardown — simulate the removed-node observer
-// path for an observed grid; assert its observer is disconnected + timer cleared.
+// A grid the page removes: the teardown disconnects its re-apply observer
+// and cancels its pending timer.
 // ---------------------------------------------------------------------------
-(function gv7_removedGrid_teardown() {
+(function reapplyObserver_aRemovedGridTearsDown() {
   let ctx;
   try {
     ctx = setupVirtGrid([
@@ -3495,69 +2287,38 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     const { grid, pendingTimers } = ctx;
     const obs = ctx.capturedObserver;
 
-    // Schedule a pending debounce timer by triggering the observer.
     obs.trigger([{ type: 'childList' }]);
 
-    eq('GV7 (pre): a debounce timer is pending',
+    eq('re-apply observer removed grid (setup): a settle-delay timer is pending',
       pendingTimers.filter(function(t) { return !t.cancelled; }).length, 1);
-
-    eq('GV7 (pre): reapplyObservers has entry for grid',
+    eq('re-apply observer removed grid (setup): the grid holds an observer entry',
       reapplyObservers.has(grid.wrapperEl), true);
 
-    // The removed-node observer path in content.js (the tableObserver that watches
+    // The removed-node observer in content.js (the tableObserver that watches
     // document.body) runs teardownTableEntry when it detects a tracked table was
     // removed from the DOM. In the test harness the tableObserver is a no-op
     // stub, so the teardown runs directly.
     teardownTableEntry(grid.wrapperEl);
 
-    // Assert cleanup.
-    eq('GV7: observer disconnected after removed-node teardown',
+    eq('re-apply observer removed grid: the teardown disconnects the observer',
       obs.disconnectCount >= 1, true);
-
-    eq('GV7: reapplyObservers entry deleted after removed-node teardown',
+    eq('re-apply observer removed grid: the teardown deletes the observer entry',
       reapplyObservers.has(grid.wrapperEl), false);
-
-    eq('GV7: reapplyTimers entry deleted after removed-node teardown',
+    eq('re-apply observer removed grid: the teardown deletes the timer entry',
       reapplyTimers.has(grid.wrapperEl), false);
-
-    // Previously-pending timer must now be cancelled.
-    eq('GV7: pending debounce timer was cancelled during teardown',
+    eq('re-apply observer removed grid: the teardown cancels the pending timer',
       pendingTimers.filter(function(t) { return !t.cancelled; }).length, 0);
-
   } finally {
-    if (ctx) {
-      global.MutationObserver = ctx.origMO;
-      global.setTimeout = ctx.origSetTimeout;
-      global.clearTimeout = ctx.origClearTimeout;
-    }
+    restoreVirtGridGlobals(ctx);
   }
 })();
 
 // ---------------------------------------------------------------------------
-// GV8: Exclusion-gate parity — re-apply HONORS firstRow / firstColumn gates.
-//
-// Excluded cells get no patches and are never written by reapplyRounding,
-// and the max magnitude comes from the filtered cell set.
-//
-// Grid layout (2 rows × 2 cols):
-//   row 0:  'Header'     '999999'     ← row 0 excluded by simplifyFirstRow:false
-//   row 1:  '12345678'   '87654321'   ← row 1 data; col 0 excluded by simplifyFirstColumn:false
-//
-// Round with simplifyFirstRow:false, simplifyFirstColumn:false (the real defaults).
-// After initial roundTable:
-//   - cellEls[0] (row0,col0) = excluded (firstRow)   → NOT rounded
-//   - cellEls[1] (row0,col1) = excluded (firstRow)   → NOT rounded
-//   - cellEls[2] (row1,col0) = excluded (firstColumn)→ NOT rounded
-//   - cellEls[3] (row1,col1) = in-range numeric      → IS rounded
-//
-// Then simulate a sort-revert on cellEls[3] (revert text to original).
-// Trigger observer + flush.
-// Assert:
-//   - cellEls[0] still NOT rounded (text unchanged, no dr-ext-rounded)
-//   - cellEls[2] still NOT rounded (text unchanged, no dr-ext-rounded)
-//   - cellEls[3] IS re-rounded (text equals initial rounded value)
+// The re-apply honors the first-row and first-column exclusions: an excluded
+// cell is never written, and the max magnitude comes from the cells the
+// exclusions leave in.
 // ---------------------------------------------------------------------------
-(function gv8_reapply_honorsExclusionGates_firstRowFirstColumn() {
+(function reapplyObserver_honorsTheFirstRowAndColumnExclusions() {
   let ctx;
   try {
     ctx = setupVirtGrid(
@@ -3565,102 +2326,63 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
         ['Header', '999999'],
         ['12345678', '87654321'],
       ],
-      // Override the setupVirtGrid defaults: exclusions must be ON (false = exclude).
       { simplifyFirstRow: false, simplifyFirstColumn: false }
     );
     const { grid, pendingTimers } = ctx;
 
-    // cellEls layout (row-major): [row0col0, row0col1, row1col0, row1col1]
-    const cell_r0c0 = grid.cellEls[0];  // 'Header'    — excluded firstRow
-    const cell_r0c1 = grid.cellEls[1];  // '999999'    — excluded firstRow
-    const cell_r1c0 = grid.cellEls[2];  // '12345678'  — excluded firstColumn
-    const cell_r1c1 = grid.cellEls[3];  // '87654321'  — should be rounded
+    const cell_r0c0 = grid.cellEls[0];  // 'Header'    — first row
+    const cell_r0c1 = grid.cellEls[1];  // '999999'    — first row
+    const cell_r1c0 = grid.cellEls[2];  // '12345678'  — first column
+    const cell_r1c1 = grid.cellEls[3];  // '87654321'  — rounds
 
-    // --- Pre-conditions after initial roundTable ---
-    eq('GV8 (pre): row-0 col-0 is NOT rounded by initial pass (firstRow excluded)',
+    eq('re-apply exclusions (setup): row 0 column 0 is not rounded by the first pass (first row)',
       cell_r0c0.classList.contains('dr-ext-rounded'), false);
-
-    eq('GV8 (pre): row-0 col-1 is NOT rounded by initial pass (firstRow excluded)',
+    eq('re-apply exclusions (setup): row 0 column 1 is not rounded by the first pass (first row)',
       cell_r0c1.classList.contains('dr-ext-rounded'), false);
-
-    eq('GV8 (pre): row-1 col-0 is NOT rounded by initial pass (firstColumn excluded)',
+    eq('re-apply exclusions (setup): row 1 column 0 is not rounded by the first pass (first column)',
       cell_r1c0.classList.contains('dr-ext-rounded'), false);
-
-    eq('GV8 (pre): row-1 col-1 IS rounded by initial pass (in-range data cell)',
+    eq('re-apply exclusions (setup): row 1 column 1 is rounded by the first pass',
       cell_r1c1.classList.contains('dr-ext-rounded'), true);
 
-    // Capture the rounded value so we can verify re-apply restores it.
     const tn_r1c1 = cell_r1c1.childNodes[0];
     const roundedValue_r1c1 = tn_r1c1.nodeValue;
-    const originalValue_r1c1 = DR_MODEL.getTableOriginalText(grid.wrapperEl, cell_r1c1);  // '87654321'
+    const originalValue_r1c1 = DR_MODEL.getTableOriginalText(grid.wrapperEl, cell_r1c1);
 
-    eq('GV8 (pre): row-1 col-1 rounded value differs from original',
+    eq('re-apply exclusions (setup): row 1 column 1 rounded value differs from the original',
       roundedValue_r1c1 !== originalValue_r1c1, true);
 
-    // Simulate a sort-revert on the in-range cell: framework rewrites the text
-    // node back to the original value (node identity preserved, class retained).
+    // The page redraws the rounded cell's piece to its original.
     tn_r1c1.nodeValue = originalValue_r1c1;
 
-    eq('GV8 (pre): row-1 col-1 class still present after sort-revert',
+    eq('re-apply exclusions (setup): row 1 column 1 keeps the marker through the redraw',
       cell_r1c1.classList.contains('dr-ext-rounded'), true);
 
-    // Trigger observer and flush debounce.
     const obs = ctx.capturedObserver;
     obs.trigger([{ type: 'characterData', target: tn_r1c1 }]);
     flushTimers(pendingTimers);
 
-    // --- Post-conditions: excluded cells must NOT be rounded ---
-    eq('GV8: row-0 col-0 text unchanged after re-apply (firstRow exclusion honored)',
+    eq('re-apply exclusions: row 0 column 0 keeps its text after the re-apply (first row)',
       cell_r0c0.childNodes[0].nodeValue, 'Header');
-
-    eq('GV8: row-0 col-0 does NOT carry dr-ext-rounded after re-apply',
+    eq('re-apply exclusions: row 0 column 0 carries no marker after the re-apply',
       cell_r0c0.classList.contains('dr-ext-rounded'), false);
-
-    eq('GV8: row-1 col-0 text unchanged after re-apply (firstColumn exclusion honored)',
+    eq('re-apply exclusions: row 1 column 0 keeps its text after the re-apply (first column)',
       cell_r1c0.childNodes[0].nodeValue, '12345678');
-
-    eq('GV8: row-1 col-0 does NOT carry dr-ext-rounded after re-apply',
+    eq('re-apply exclusions: row 1 column 0 carries no marker after the re-apply',
       cell_r1c0.classList.contains('dr-ext-rounded'), false);
-
-    // --- Post-condition: the in-range data cell MUST be re-rounded ---
-    eq('GV8: row-1 col-1 re-rounded after sort-revert + re-apply',
+    eq('re-apply exclusions: row 1 column 1, redrawn to its original, rounds again',
       cell_r1c1.childNodes[0].nodeValue, roundedValue_r1c1);
-
-    eq('GV8: row-1 col-1 still carries dr-ext-rounded after re-apply',
+    eq('re-apply exclusions: row 1 column 1 still carries the marker after the re-apply',
       cell_r1c1.classList.contains('dr-ext-rounded'), true);
-
   } finally {
-    if (ctx) {
-      global.MutationObserver = ctx.origMO;
-      global.setTimeout = ctx.origSetTimeout;
-      global.clearTimeout = ctx.origClearTimeout;
-    }
+    restoreVirtGridGlobals(ctx);
   }
 })();
 
 // ---------------------------------------------------------------------------
-// GV9: Held-sign parity — re-apply HONORS the percent and currency switches.
-//
-// Grid layout (2 rows × 2 cols):
-//   row 0:  '75%'        '50%'        ← % numbers held by simplifyMixedPercent:false
-//   row 1:  '12345678'   '$9,999,999' ← col 1 currency held by simplifyMixedCurrency:false
-//
-// Round with simplifyFirstRow:true, simplifyFirstColumn:true (skip those gates),
-// simplifyMixedPercent:false, simplifyMixedCurrency:false.
-//
-// After initial roundTable:
-//   - cellEls[0] (row0,col0) = % held      → NOT rounded
-//   - cellEls[1] (row0,col1) = % held      → NOT rounded
-//   - cellEls[2] (row1,col0) = plain int   → IS rounded
-//   - cellEls[3] (row1,col1) = $ held      → NOT rounded
-//
-// Simulate sort-revert on cellEls[2]; trigger observer + flush.
-// Assert:
-//   - cellEls[0] and cellEls[1] still NOT rounded (percent switch honored)
-//   - cellEls[3] still NOT rounded (currency switch honored)
-//   - cellEls[2] IS re-rounded (plain numeric, in-range)
+// The re-apply honors the percent and currency switches: with both off, a
+// percent cell and a currency cell stay as written through the re-apply.
 // ---------------------------------------------------------------------------
-(function gv9_reapply_honorsHeldSigns_percentCurrency() {
+(function reapplyObserver_honorsThePercentAndCurrencySwitches() {
   let ctx;
   try {
     ctx = setupVirtGrid(
@@ -3679,106 +2401,88 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 
     const cell_r0c0 = grid.cellEls[0];  // '75%'       — percent switch off
     const cell_r0c1 = grid.cellEls[1];  // '50%'       — percent switch off
-    const cell_r1c0 = grid.cellEls[2];  // '12345678'  — should be rounded
+    const cell_r1c0 = grid.cellEls[2];  // '12345678'  — rounds
     const cell_r1c1 = grid.cellEls[3];  // '$9999999'  — currency switch off
 
-    // --- Pre-conditions after initial roundTable ---
-    eq('GV9 (pre): row-0 col-0 (75%) is NOT rounded by initial pass (percent switch off)',
+    eq('re-apply switches (setup): row 0 column 0 (75%) is not rounded by the first pass (percent switch off)',
       cell_r0c0.classList.contains('dr-ext-rounded'), false);
-
-    eq('GV9 (pre): row-0 col-1 (50%) is NOT rounded by initial pass (percent switch off)',
+    eq('re-apply switches (setup): row 0 column 1 (50%) is not rounded by the first pass (percent switch off)',
       cell_r0c1.classList.contains('dr-ext-rounded'), false);
-
-    eq('GV9 (pre): row-1 col-0 IS rounded by initial pass (plain numeric)',
+    eq('re-apply switches (setup): row 1 column 0 is rounded by the first pass',
       cell_r1c0.classList.contains('dr-ext-rounded'), true);
-
-    eq('GV9 (pre): row-1 col-1 ($9999999) is NOT rounded by initial pass (currency switch off)',
+    eq('re-apply switches (setup): row 1 column 1 ($9999999) is not rounded by the first pass (currency switch off)',
       cell_r1c1.classList.contains('dr-ext-rounded'), false);
 
-    // Capture the rounded value for re-apply verification.
     const tn_r1c0 = cell_r1c0.childNodes[0];
     const roundedValue_r1c0 = tn_r1c0.nodeValue;
     const originalValue_r1c0 = DR_MODEL.getTableOriginalText(grid.wrapperEl, cell_r1c0);
 
-    eq('GV9 (pre): row-1 col-0 rounded value differs from original',
+    eq('re-apply switches (setup): row 1 column 0 rounded value differs from the original',
       roundedValue_r1c0 !== originalValue_r1c0, true);
 
-    // Simulate sort-revert on the plain numeric cell.
+    // The page redraws the rounded cell's piece to its original.
     tn_r1c0.nodeValue = originalValue_r1c0;
 
-    // Trigger observer and flush debounce.
     const obs = ctx.capturedObserver;
     obs.trigger([{ type: 'characterData', target: tn_r1c0 }]);
     flushTimers(pendingTimers);
 
-    // --- Post-conditions: held numbers must NOT be rounded ---
-    eq('GV9: row-0 col-0 text unchanged after re-apply (percent switch honored)',
+    eq('re-apply switches: row 0 column 0 keeps its text after the re-apply (percent switch off)',
       cell_r0c0.childNodes[0].nodeValue, '75%');
-
-    eq('GV9: row-0 col-0 does NOT carry dr-ext-rounded after re-apply',
+    eq('re-apply switches: row 0 column 0 carries no marker after the re-apply',
       cell_r0c0.classList.contains('dr-ext-rounded'), false);
-
-    eq('GV9: row-0 col-1 text unchanged after re-apply (percent switch honored)',
+    eq('re-apply switches: row 0 column 1 keeps its text after the re-apply (percent switch off)',
       cell_r0c1.childNodes[0].nodeValue, '50%');
-
-    eq('GV9: row-1 col-1 text unchanged after re-apply (currency switch honored)',
+    eq('re-apply switches: row 1 column 1 keeps its text after the re-apply (currency switch off)',
       cell_r1c1.childNodes[0].nodeValue, '$9999999');
-
-    eq('GV9: row-1 col-1 does NOT carry dr-ext-rounded after re-apply',
+    eq('re-apply switches: row 1 column 1 carries no marker after the re-apply',
       cell_r1c1.classList.contains('dr-ext-rounded'), false);
-
-    // --- Post-condition: the plain numeric cell MUST be re-rounded ---
-    eq('GV9: row-1 col-0 re-rounded after sort-revert + re-apply',
+    eq('re-apply switches: row 1 column 0, redrawn to its original, rounds again',
       cell_r1c0.childNodes[0].nodeValue, roundedValue_r1c0);
-
-    eq('GV9: row-1 col-0 still carries dr-ext-rounded after re-apply',
+    eq('re-apply switches: row 1 column 0 still carries the marker after the re-apply',
       cell_r1c0.classList.contains('dr-ext-rounded'), true);
-
   } finally {
-    if (ctx) {
-      global.MutationObserver = ctx.origMO;
-      global.setTimeout = ctx.origSetTimeout;
-      global.clearTimeout = ctx.origClearTimeout;
-    }
+    restoreVirtGridGlobals(ctx);
   }
 })();
 
-// Behavior: the header row holds because it is the literal first row; the
-// first data row and the summary row round. The first column still holds.
-(function gridRowUniverse_headerHolds_dataAndSummaryRound() {
+// The pass reads every row of a grid with a row group. The header row holds
+// because it is the literal first row; the first data row and the summary
+// row round. The first column still holds.
+(function gridEveryRowIsRead_headerHolds_dataAndSummaryRound() {
   const g = makeRowgroupRoleGrid(
     ['Region', '999999'],
     [['North', '1482391'], ['South', '918554']],
     ['Total', '2400945']
   );
-  const { cells: results } = simplifyTableCells(g.wrapperEl, registryAdapter(g.wrapperEl).getRows(), Object.assign({}, DR_DEFAULTS), { frozenMaxMag: null, writes: 'none' });
+  const { cells: results } = planTablePass(g.wrapperEl, Object.assign({}, DR_DEFAULTS));
   // results are row-major over all rows: [header c0, header c1, r1c0, r1c1, r2c0, r2c1, total c0, total c1]
-  eq('row-universe: every cell of every row is classified',
+  eq('every row is read: every cell of every row is classified',
     results.length, 8);
-  eq('row-universe: the header row\'s numeric cell holds under the first-row default',
+  eq('every row is read: the header row\'s numeric cell holds under the first-row default',
     results[1] && results[1].patches.length, 0);
-  eq('row-universe: the first data row rounds under defaults',
+  eq('every row is read: the first data row rounds under defaults',
     !!(results[3] && results[3].patches.length > 0), true);
-  eq('row-universe: the first column of a data row still holds',
+  eq('every row is read: the first column of a data row still holds',
     results[2] && results[2].patches.length, 0);
-  eq('row-universe: the summary row below the group rounds with the data',
+  eq('every row is read: the summary row below the group rounds with the data',
     !!(results[7] && results[7].patches.length > 0), true);
 })();
 
-// Behavior: with the rowgroup first (no header row outside), the first data
-// row IS the grid's literal first row and holds under the default.
-(function gridRowUniverse_groupAtTop_firstDataRowHolds() {
+// With the row group first (no header row outside it), the first data row is
+// the grid's literal first row and holds under the default.
+(function gridEveryRowIsRead_groupAtTop_firstDataRowHolds() {
   const g = makeRowgroupRoleGrid(
     null,
     [['1111111', '1482391'], ['2222222', '918554']],
     ['Total', '2400945']
   );
-  const { cells: results } = simplifyTableCells(g.wrapperEl, registryAdapter(g.wrapperEl).getRows(), Object.assign({}, DR_DEFAULTS), { frozenMaxMag: null, writes: 'none' });
-  eq('row-universe: rowgroup-first grid holds its first data row',
+  const { cells: results } = planTablePass(g.wrapperEl, Object.assign({}, DR_DEFAULTS));
+  eq('every row is read: a grid with its row group first holds its first data row',
     results[1] && results[1].patches.length, 0);
-  eq('row-universe: rowgroup-first grid rounds its second data row',
+  eq('every row is read: a grid with its row group first rounds its second data row',
     !!(results[3] && results[3].patches.length > 0), true);
-  eq('row-universe: rowgroup-first grid rounds its summary row',
+  eq('every row is read: a grid with its row group first rounds its summary row',
     !!(results[5] && results[5].patches.length > 0), true);
 })();
 
@@ -3792,44 +2496,42 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     [['North', '1,482,391'], ['South', '918,554']],
     ['Total', '24,009,450']
   );
-  const { cells: results, maxMag } = simplifyTableCells(g.wrapperEl, registryAdapter(g.wrapperEl).getRows(), Object.assign({}, DR_DEFAULTS), { frozenMaxMag: null, writes: 'none' });
+  const { cells: results, maxMag } = planTablePass(g.wrapperEl, Object.assign({}, DR_DEFAULTS));
   eq('outside-row: the outside summary row sets the max magnitude',
     maxMag, 7);
   eq('outside-row: the outside row still rounds',
     !!(results[7] && results[7].patches.length > 0), true);
 })();
 
-// #513: on the order-summary shape, the shipped defaults hold the header
-// row and the label column and round every amount. Results are row-major
-// over six rows of two cells. Invented values: under -0.5 at max magnitude
-// 1, $48.60 → $50, $12.00 → $10, $7.35 → $7.5, $9.84 → $10, CAD$77.79 → CAD$80.
+// On the order-summary shape, the shipped defaults hold the header row and
+// the label column and round every amount. Results are row-major over six
+// rows of two cells. Invented values: under -0.5 at max magnitude 1,
+// $48.60 → $50, $12.00 → $10, $7.35 → $7.5, $9.84 → $10, CAD$77.79 → CAD$80.
 (function gridHeaderRoles_amountsRoundUnderDefaults() {
   const g = rwBuildLabelledGrid();
-  const { cells: results, maxMag } = simplifyTableCells(g.table, registryAdapter(g.table).getRows(),
-    Object.assign({}, DR_DEFAULTS), { frozenMaxMag: null, writes: 'none' });
-  eq('#513 defaults: six rows of two cells are classified', results.length, 12);
-  eq('#513 defaults: the max magnitude comes from the amounts', maxMag, 1);
-  eq('#513 defaults: the header row holds',
+  const { cells: results, maxMag } = planTablePass(g.table, Object.assign({}, DR_DEFAULTS));
+  eq('order summary under the defaults: six rows of two cells are classified', results.length, 12);
+  eq('order summary under the defaults: the max magnitude comes from the amounts', maxMag, 1);
+  eq('order summary under the defaults: the header row holds',
     [0, 1].map((i) => results[i] && results[i].patches.length), [0, 0]);
-  eq('#513 defaults: the label column holds on every body row',
+  eq('order summary under the defaults: the label column holds on every body row',
     [2, 4, 6, 8, 10].map((i) => results[i] && results[i].patches.length), [0, 0, 0, 0, 0]);
-  eq('#513 defaults: every amount rounds',
+  eq('order summary under the defaults: every amount rounds',
     [3, 5, 7, 9, 11].map((i) => !!(results[i] && results[i].patches.length > 0)), [true, true, true, true, true]);
 })();
 
-// #513: with the first-column switch on, the label column is the column the
-// switch releases: the label sits at column 0 of each result row, and the
-// amounts round as before.
+// With the first-column switch on, the label column is the column the switch
+// releases: the label sits at column 0 of each result row, and the amounts
+// still round.
 (function gridHeaderRoles_firstColumnSwitchReachesTheLabels() {
   const g = rwBuildLabelledGrid();
   const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstColumn: true });
-  const { cells: results } = simplifyTableCells(g.table, registryAdapter(g.table).getRows(), opts,
-    { frozenMaxMag: null, writes: 'none' });
-  eq('#513 first column on: the subtotal label is the first cell of the first body row',
+  const { cells: results } = planTablePass(g.table, opts);
+  eq('order summary, first column on: the subtotal label is the first cell of the first body row',
     !!results[2] && results[2].classifiedCell.cellObj.getText().trim().startsWith('Subtotal'), true);
-  eq('#513 first column on: the labels take no change',
+  eq('order summary, first column on: the labels take no change',
     [2, 4, 6, 8, 10].map((i) => results[i] && results[i].patches.length), [0, 0, 0, 0, 0]);
-  eq('#513 first column on: the amounts still round',
+  eq('order summary, first column on: the amounts still round',
     [3, 5, 7, 9, 11].map((i) => !!(results[i] && results[i].patches.length > 0)), [true, true, true, true, true]);
 })();
 
@@ -3848,31 +2550,6 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     cells.some(function(c) { return c.num === 2400945; }), true);
 })();
 
-// A header-section row's td values feed the dataset. The offsets are pulled
-// apart: with the thead value (magnitude 8) in the basis, the body value
-// (magnitude 7) is the other band (nearest 1M → 88,000,000); a header row
-// left out of the dataset would put it on the top band (nearest 5M →
-// 90,000,000).
-(function nativeHeaderRow_staysInDataset() {
-  withCreateTreeWalker(function() {
-    const table = makeMockTable([
-      [{ tag: 'td', text: '987,654,321' }],
-      [{ tag: 'td', text: '87,654,321' }],
-    ]);
-    table.rows[0].parentElement = { tagName: 'THEAD' };
-    const opts = {
-      enabled: true, simplifyDates: false, simplifyTimes: false,
-      simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyMixedPercent: false, simplifyMixedCurrency: false,
-      offsetTop: -0.5, offsetOther: -1, numTop: 1,
-      rangeExpr: ''
-    };
-    roundTable(table, opts);
-    eq('outside-row (native): a header-section value still feeds the dataset',
-      table.rows[1].cells[0].innerText, '88,000,000');
-  });
-})();
-
 // When a table's only number sits in an outside row, that row alone makes
 // the dataset: it sets the max magnitude, so the value is the top band and
 // takes the top-band offset (nearest 5M → 25,000,000), never the other-band
@@ -3884,7 +2561,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     ['Total', '24,009,450']
   );
   const opts = Object.assign({}, DR_DEFAULTS, { offsetTop: -0.5, offsetOther: -1 });
-  const { cells: results, maxMag } = simplifyTableCells(g.wrapperEl, registryAdapter(g.wrapperEl).getRows(), opts, { frozenMaxMag: null, writes: 'none' });
+  const { cells: results, maxMag } = planTablePass(g.wrapperEl, opts);
   eq('outside-row: an outside row alone sets the max magnitude',
     maxMag, 7);
   eq('outside-row: an outside row alone takes the top-band offset',
@@ -3892,10 +2569,10 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 })();
 
 // Outside rows, native analog: a footer-section row rounds and joins the
-// dataset. The offsets are pulled apart so the basis is visible in the
-// output: with the footer value (magnitude 8) in the basis, the body value
+// dataset. The offsets are pulled apart so the dataset shows in the output:
+// with the footer value (magnitude 8) in the dataset, the body value
 // (magnitude 7) is the other band and takes offset_other (nearest 1M →
-// 88,000,000); a footer left out of the basis would put the body value on
+// 88,000,000); a footer left out of the dataset would put the body value on
 // the top band (nearest 5M → 90,000,000).
 (function nativeFooterRow_joinsTheDataset() {
   withCreateTreeWalker(function() {
@@ -3904,14 +2581,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
       [{ tag: 'td', text: '987,654,321' }],
     ]);
     table.rows[1].parentElement = { tagName: 'TFOOT' };
-    const opts = {
-      enabled: true, simplifyDates: false, simplifyTimes: false,
-      simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyMixedPercent: false, simplifyMixedCurrency: false,
-      offsetTop: -0.5, offsetOther: -1, numTop: 1,
-      rangeExpr: ''
-    };
-    roundTable(table, opts);
+    roundTable(table, roundTableOpts({ offsetOther: -1 }));
     eq('outside-row (native): the body value rounds on the other band, because the footer value raised the max magnitude',
       table.rows[0].cells[0].innerText, '88,000,000');
     eq('outside-row (native): the footer row still rounds',
@@ -3951,8 +2621,7 @@ function everyRowRead(kind, largeIn) {
   withRewritePage(() => {
     const table = everyRowDraw(kind, largeIn);
     try {
-      const { maxMag } = simplifyTableCells(table, registryAdapter(table).getRows(), EVERY_ROW_OPTS,
-        { frozenMaxMag: null, writes: 'none' });
+      const { maxMag } = planTablePass(table, EVERY_ROW_OPTS);
       roundTableUnder(table, EVERY_ROW_OPTS);
       const bodyValue = tkCellTexts(table).find((cell) => cell.at === '1:1');
       reading = { maxMag, bodyValue: bodyValue ? bodyValue.text : null };
@@ -3994,27 +2663,11 @@ function everyRowRead(kind, largeIn) {
 })();
 
 // -------------------------------------------------------------------------
-// embedded-in-text numbers feed maxMag.
-// A table whose only large values are embedded in mixed-text cells (like
-// "₹2,000 crore") must produce maxMag=3 (from 2,000) even when a stand-alone
-// small numeric cell (e.g. "5") is also present.
+// Numbers inside words feed the max magnitude. A table whose only large
+// value sits inside words ("₹2,000 crore") has a max magnitude of 3, from
+// the 2,000, beside a pure cell holding 5.
 // -------------------------------------------------------------------------
-(function ac3_embeddedInTextMaxMag() {
-  function tdCell(text) {
-    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
-  }
-  function thCell(text) {
-    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
-  }
-
-  // The large number is embedded inside prose; the small number is pure-numeric.
-  // "₹2,000 crore": toNumber returns null (not a pure number), so
-  // extractNumbersInText extracts 2000 → magnitude 3.
-  // "5": toNumber returns 5 → magnitude 0.
-  //
-  // A header row + label column keep the data off row 0 / column 0
-  // (DR_DEFAULTS excludes both by default; see the merge-ladder divergence
-  // tests below).
+(function lensPreview_aNumberInsideWordsFeedsTheMaxMagnitude() {
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B')] },
@@ -4024,16 +2677,16 @@ function everyRowRead(kind, largeIn) {
 
   const result = extractPreviewSamples(table);
 
-  eq('maxMag is 3 (from embedded 2,000, not suppressed by stand-alone 5)',
+  eq('lens preview of "₹2,000 crore" and 5: maxMag is 3, from the 2,000 inside words',
     result.maxMag, 3);
 
-  eq('top band contains the large embedded number',
+  eq('lens preview of "₹2,000 crore" and 5: the top band holds a sample',
     result.samples.top.length >= 1, true);
 
-  eq('top band num is 2000 (the embedded value)',
+  eq('lens preview of "₹2,000 crore" and 5: the top-band sample is 2000',
     result.samples.top[0] && result.samples.top[0].num, 2000);
 
-  // Complementary: a pure-number table still works as before (regression guard).
+  // A table of pure cells alone.
   const pureTable = {
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B')] },
@@ -4041,86 +2694,26 @@ function everyRowRead(kind, largeIn) {
     ],
   };
   const pureResult = extractPreviewSamples(pureTable);
-  eq('regression: pure-number table maxMag is 7 (27M)',
+  eq('lens preview of the pure cells 27M and 286: maxMag is 7',
     pureResult.maxMag, 7);
 
-  // Also verify that collectNumericCells picks up the embedded number from
-  // the mixed-text cell, proving the extraction path is exercised.
+  // The pool holds the number inside words beside a pure cell.
   const mixedTable = {
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B')] },
       { cells: [thCell('Row'), tdCell('Revenue: ₹2,000 crore'), tdCell('5')] },
     ],
   };
-  const cells = collectNumericCells(mixedTable);
-  // Should find at least 2000 among the collected cells.
-  const nums = cells.map(c => c.num);
-  eq('collect: collectNumericCells finds 2000 from embedded text',
+  const nums = collectNumericCells(mixedTable).map(c => c.num);
+  eq('lens preview of "Revenue: ₹2,000 crore" and 5: the pool holds 2000',
     nums.includes(2000), true);
 })();
 
 // -------------------------------------------------------------------------
-// Era-marked years are dates, not offset-rounded numbers.
-// getEraYearMaskedRanges locates each year token bound to an era marker;
-// collectNumericCells / extractPreviewSamples must exclude such tokens from
-// magnitude detection and the preview examples.
+// Era-marked years are dates, not offset-rounded numbers: the lens preview
+// leaves them out of the max magnitude and the samples.
 // -------------------------------------------------------------------------
-(function eraYearDetection() {
-  // The number at [index, index + numStr.length) sits in an era-year range.
-  const isEraYear = (text, index, numStr) =>
-    overlapsMaskedRange(getEraYearMaskedRanges(text), index, index + numStr.length);
-
-  // The digit token bound to a marker (either order) is an era year.
-  eq('era: "Kalki 2898 AD" → 2898 is an era year',
-    isEraYear('Kalki 2898 AD', 'Kalki '.length, '2898'), true);
-  eq('era: "500 BC" → 500 is an era year',
-    isEraYear('500 BC', 0, '500'), true);
-  eq('era: "AD 79" → 79 is an era year',
-    isEraYear('AD 79', 'AD '.length, '79'), true);
-  // Both orders take the same spacing and the same larger-number guard.
-  eq('era: "AD79" (no space) → 79 is an era year, like "2898AD"',
-    [isEraYear('AD79', 'AD'.length, '79'), isEraYear('2898AD', 0, '2898')], [true, true]);
-  eq('era: "AD 79.5" and "1.2898 AD" → a decimal is NOT an era year',
-    [isEraYear('AD 79.5', 'AD '.length, '79.5'), isEraYear('1.2898 AD', 0, '1.2898')], [false, false]);
-  eq('era: "Founded AD 79." → a sentence-ending period keeps 79 an era year',
-    isEraYear('Founded AD 79.', 'Founded AD '.length, '79'), true);
-  eq('era: "1200 CE" → 1200 is an era year',
-    isEraYear('1200 CE', 0, '1200'), true);
-  eq('era: "2,898 BCE" → comma year is an era year',
-    isEraYear('2,898 BCE', 0, '2,898'), true);
-
-  // Negatives: plain numbers, and marker letters embedded in a word.
-  eq('era: plain "Revenue 3,000,000" is NOT an era year',
-    isEraYear('Revenue 3,000,000', 'Revenue '.length, '3,000,000'), false);
-  eq('era: bare "2898" (no marker) is NOT an era year',
-    isEraYear('2898', 0, '2898'), false);
-  eq('era: "ADELAIDE 12" does NOT match (AD inside a word)',
-    isEraYear('ADELAIDE 12', 'ADELAIDE '.length, '12'), false);
-
-  // Lowercase, period-less marker letters are ordinary words/abbreviations, not
-  // eras: "3,420 ad hoc", "120 bp" (basis points), "5 ah", "12 ce", "9 bc".
-  // These must NOT be read as years (they'd otherwise be excluded from rounding).
-  eq('era: "3,420 ad hoc" → "ad" is a word, NOT an era year',
-    isEraYear('3,420 ad hoc', 0, '3,420'), false);
-  eq('era: "120 bp" (basis points) is NOT an era year',
-    isEraYear('120 bp', 0, '120'), false);
-  eq('era: "5 ah" is NOT an era year',
-    isEraYear('5 ah', 0, '5'), false);
-  // Period-punctuated lowercase forms stay unambiguous and DO match.
-  eq('era: "79 a.d." (dotted, lowercase) is still an era year',
-    isEraYear('79 a.d.', 0, '79'), true);
-
-  function tdCell(text) {
-    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
-  }
-  function thCell(text) {
-    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
-  }
-
-  // A header row + label column keep the data off row 0 / column 0
-  // throughout this block (DR_DEFAULTS excludes both by default; see the
-  // merge-ladder divergence tests below).
-
+(function lensPreview_leavesEraYearsOut() {
   // collectNumericCells: the era year is dropped, real numbers are kept.
   const cells = collectNumericCells({
     rows: [
@@ -4149,7 +2742,7 @@ function everyRowRead(kind, largeIn) {
     adHocNums.includes(30800), true);
 
   // extractPreviewSamples: maxMag comes from the real number, not the era year,
-  // and no sample row carries the era-year value.
+  // and no sample carries the era-year value.
   const result = extractPreviewSamples({
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B'), thCell('C')] },
@@ -4159,7 +2752,7 @@ function everyRowRead(kind, largeIn) {
   eq('era-samples: maxMag is 9 (from 1.05B, not the 2898 AD year)',
     result.maxMag, 9);
   const sampleNums = result.samples.top.concat(result.samples.other).map(r => r.num);
-  eq('era-samples: no example row is the 2898 AD year',
+  eq('era-samples: no sample is the 2898 AD year',
     sampleNums.includes(2898), false);
 })();
 
@@ -4178,10 +2771,6 @@ function everyRowRead(kind, largeIn) {
     dataset: {},
     childNodes: [{ nodeType: 3, nodeValue: '3,000,000' }],
   };
-  // A header row + label column keep the cell off row 0 / column 0
-  // (DR_DEFAULTS excludes both by default; see the merge-ladder divergence
-  // tests below) so this stays a test of the registry original read path,
-  // not an incidental first-row/first-column exclusion.
   const labelCell = { tagName: 'TH', innerText: '', textContent: '' };
   const headerCell = { tagName: 'TH', innerText: 'A', textContent: 'A' };
   const rowLabelCell = { tagName: 'TH', innerText: 'Row', textContent: 'Row' };
@@ -4252,147 +2841,125 @@ function everyRowRead(kind, largeIn) {
   });
 })();
 
-// On an HTML table a unit number rounds; only its
+// On a native table a unit number rounds; only its
 // digits change. Dataset: 4.91 (magnitude 0) and 45.67 (magnitude 1), so
 // 45.67 takes the top band (step 5) and 4.91 the other band (step 0.5).
-(function nativeTable_unitNumbersRoundWithWordsOff() {
+(function nativeTable_unitNumbersRoundAndAnIdentifierStays() {
   withCreateTreeWalker(function () {
     const table = makeMockTable([[
       { tag: 'td', text: '4.91tn' }, { tag: 'td', text: 'CAD45.67m' }, { tag: 'td', text: 'DT1234' },
     ]]);
     roundTable(table, Object.assign({}, DR_DEFAULTS, {
-      simplifyFirstRow: true, simplifyFirstColumn: true, 
+      simplifyFirstRow: true, simplifyFirstColumn: true,
     }));
-    eq('HTML table: unit numbers round and an identifier stays',
+    eq('native table: unit numbers round and an identifier stays',
       table.rows[0].cells.map((cell) => cell.innerText), ['5tn', 'CAD45m', 'DT1234']);
   });
 })();
 
-// --- 3. Divergence tests: merged (engine-wins) preview behavior ---
-//
-// Every fixture below hides its numeric data behind a TH header row and a TH
-// label column so the first-row/first-column rule (itself one of the
-// divergences, tested explicitly first) does not confound the others.
+// The lens preview pool takes the numbers the simplification pass rounds:
+// each rule below that holds a number back in the pass holds it out of the
+// pool.
 
-(function mergeLadderDivergence_outOfRange() {
-  // The preview honours the sidebar's range restriction: the merged ladder
-  // applies isInRanges exactly like the engine.
-  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
-  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
+(function lensPreviewPool_outOfRange() {
+  // The pool follows the range expression, as the pass does.
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B')] },
       { cells: [thCell('Row'), tdCell('123'), tdCell('456')] },
     ],
   };
-  eq('merge-ladder divergence (no range restriction): both columns are sampled',
+  eq('lens preview pool (no range restriction): both columns are sampled',
     collectNumericCells(table).map((c) => c.num).sort(), [123, 456]);
-  eq('merge-ladder divergence (out-of-range): a rangeExpr restricts the sample to the in-range column',
+  eq('lens preview pool (out-of-range): a rangeExpr restricts the sample to the in-range column',
     collectNumericCells(table, { rangeExpr: 'B:B' }).map((c) => c.num), [123]);
-  eq('merge-ladder divergence (invalid range): an invalid range expression yields no samples, matching the engine which rounds nothing',
+  eq('lens preview pool (invalid range): an invalid range expression yields no samples, as the pass rounds nothing',
     collectNumericCells(table, { rangeExpr: 'not a range' }).length, 0);
 })();
 
-(function mergeLadderDivergence_firstRow() {
-  // A numeric header-row <td> is not sampled: the merged ladder applies
-  // getExclusionReason's first-row rule exactly like the
-  // engine, whose DR_DEFAULTS ships simplifyFirstRow: false.
-  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
+(function lensPreviewPool_firstRow() {
+  // A numeric header-row <td> is not sampled: DR_DEFAULTS ship
+  // simplifyFirstRow: false, and the pool follows the first-row exclusion.
   const table = {
     rows: [
       { cells: [tdCell('label'), tdCell('777')] }, // row 0
       { cells: [tdCell('label'), tdCell('888')] }, // row 1
     ],
   };
-  eq('merge-ladder divergence (first-row): the row-0 numeric cell is excluded even though its column is not first',
+  eq('lens preview pool (first-row): the row-0 numeric cell is excluded even though its column is not first',
     collectNumericCells(table).map((c) => c.num), [888]);
 })();
 
-(function mergeLadderDivergence_firstColumn() {
+(function lensPreviewPool_firstColumn() {
   // Same rule, isolated to the column axis (DR_DEFAULTS ships
   // simplifyFirstColumn: false too).
-  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
   const table = {
     rows: [
       { cells: [tdCell('999'), tdCell('999')] },  // row 0 — excluded by first-row regardless
       { cells: [tdCell('111'), tdCell('222')] },  // row 1: column 0 vs column 1
     ],
   };
-  eq('merge-ladder divergence (first-column): the column-0 numeric cell is excluded even in a non-first row',
+  eq('lens preview pool (first-column): the column-0 numeric cell is excluded even in a non-first row',
     collectNumericCells(table).map((c) => c.num), [222]);
 })();
 
-(function mergeLadderDivergence_percentGating() {
-  // With the sidebar's percent switch off, a percent cell is not sampled: the
-  // merged ladder applies the percent switch to the number the sign touches.
-  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
-  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
+(function lensPreviewPool_percentGating() {
+  // With the percent switch off, a percent cell is not sampled: the number
+  // the sign touches stays as written.
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A')] },
       { cells: [thCell('Row'), tdCell('50%')] },
     ],
   };
-  eq('merge-ladder divergence (percent on): percent cell is sampled',
+  eq('lens preview pool (percent on): percent cell is sampled',
     collectNumericCells(table, { simplifyMixedPercent: true }).map((c) => c.num), [50]);
-  eq('merge-ladder divergence (percent off): percent cell is excluded from samples',
+  eq('lens preview pool (percent off): percent cell is excluded from samples',
     collectNumericCells(table, { simplifyMixedPercent: false }).length, 0);
 })();
 
-(function mergeLadderDivergence_currencyGating() {
+(function lensPreviewPool_currencyGating() {
   // Same rule, currency symbols.
-  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
-  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A')] },
       { cells: [thCell('Row'), tdCell('$100')] },
     ],
   };
-  eq('merge-ladder divergence (currency on): currency cell is sampled',
+  eq('lens preview pool (currency on): currency cell is sampled',
     collectNumericCells(table, { simplifyMixedCurrency: true }).map((c) => c.num), [100]);
-  eq('merge-ladder divergence (currency off): currency cell is excluded from samples',
+  eq('lens preview pool (currency off): currency cell is excluded from samples',
     collectNumericCells(table, { simplifyMixedCurrency: false }).length, 0);
 })();
 
-(function mergeLadderDivergence_quotedCell() {
-  // OLD preview copy had no whole-cell-quote check — toNumber('"12345"')
-  // fails (quotes are not stripped), so it fell into the mixed-text fallback
-  // and extractNumbersInText happily found "12345" inside the quotes,
-  // sampling a cell the engine treats as literal text and never touches.
-  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
-  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
+(function lensPreviewPool_quotedCell() {
+  // A quoted cell stays as written, so its number is not sampled.
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A')] },
       { cells: [thCell('Row'), tdCell('"12345"')] },
     ],
   };
-  eq('merge-ladder divergence (quoted cell): a whole-cell-quoted number is excluded from samples',
+  eq('lens preview pool (quoted cell): a whole-cell-quoted number is excluded from samples',
     collectNumericCells(table).length, 0);
 })();
 
-(function mergeLadderDivergence_quotedNumberInMixedText() {
-  // OLD preview copy's mixed-text fallback never applied quote masking —
-  // 'Product "42" ships in 10 days' would surface 42 (a quoted, literal
-  // value) as a would-change sample alongside the real number 10.
-  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
-  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
+(function lensPreviewPool_quotedNumberInMixedText() {
+  // A quoted number inside words stays as written: in
+  // 'Product "42" ships in 10 days' only the 10 is sampled.
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A')] },
       { cells: [thCell('Row'), tdCell('Product "42" ships in 10 days')] },
     ],
   };
-  eq('merge-ladder divergence (quoted number in mixed text): only the unquoted number is sampled',
+  eq('lens preview pool (quoted number in mixed text): only the unquoted number is sampled',
     collectNumericCells(table).map((c) => c.num), [10]);
 })();
 
-(function mergeLadderDivergence_wholeCellLink() {
-  // A pure numeric cell whose entire visible text is a hyperlink (e.g. a
-  // linked page number) is not sampled, because the engine leaves it
-  // untouched.
-  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
+(function lensPreviewPool_wholeCellLink() {
+  // A pure cell whose whole visible text is a link (e.g. a linked page
+  // number) is not sampled, because the pass leaves it as written.
   const linkCell = makeLinkCell(['42'], null);
   const table = {
     rows: [
@@ -4400,15 +2967,13 @@ function everyRowRead(kind, largeIn) {
       { cells: [thCell('Row'), linkCell] },
     ],
   };
-  eq('merge-ladder divergence (whole-cell link): a whole-cell-link number is excluded from samples',
+  eq('lens preview pool (whole-cell link): a whole-cell-link number is excluded from samples',
     collectNumericCells(table).length, 0);
 })();
 
-(function mergeLadderDivergence_mixedTextLinkedNumber() {
-  // OLD preview copy's mixed-text fallback never applied the link rule —
-  // "<text> 42" with "42" wrapped in <a> would surface 42 as a sample the
-  // engine never touches (its markup range holds it).
-  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
+(function lensPreviewPool_mixedTextLinkedNumber() {
+  // A number inside a link sits in a markup range, so the pass leaves it as
+  // written and the pool leaves it out.
   const mixedLinkCell = makeLinkCell(['42'], 'See page for details');
   const table = {
     rows: [
@@ -4417,17 +2982,16 @@ function everyRowRead(kind, largeIn) {
     ],
   };
   withLinkCreateTreeWalker(() => {
-    eq('merge-ladder divergence (linked number in mixed text): a number inside <a> is excluded from samples',
+    eq('lens preview pool (linked number in mixed text): a number inside <a> is excluded from samples',
       collectNumericCells(table).length, 0);
   });
 })();
 
-(function mergeLadderDivergence_superscriptMasking() {
+(function lensPreviewPool_superscriptMasking() {
   // A whole-cell exponent like "10<sup>12</sup>" (flattened innerText
-  // "1012") must not be sampled as the single pure number 1012, a wrong value
-  // the engine never produces (the engine masks the exponent and, finding
-  // nothing left to round, leaves the cell untouched entirely).
-  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
+  // "1012") must not be sampled as the single pure number 1012: the pass
+  // masks the exponent and, finding nothing left to round, leaves the cell
+  // as written.
   withSupCreateTreeWalker(() => {
     const supCell = makeSuperscriptCell([
       { text: '10', inSup: false },
@@ -4439,60 +3003,43 @@ function everyRowRead(kind, largeIn) {
         { cells: [thCell('Row'), supCell] },
       ],
     };
-    eq('merge-ladder divergence (superscript exponent): a whole-cell exponent is excluded, not misread as 1012',
+    eq('lens preview pool (superscript exponent): a whole-cell exponent is excluded, not misread as 1012',
       collectNumericCells(table).length, 0);
   });
 })();
 
-(function mergeLadderDivergence_embeddedNumber() {
-  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
-  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
+(function lensPreviewPool_embeddedNumber() {
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A')] },
       { cells: [thCell('Row'), tdCell('Revenue: 5,000 units')] },
     ],
   };
-  eq('merge-ladder divergence (embedded number): the number in a cell with words is sampled',
+  eq('lens preview pool (embedded number): the number in a cell with words is sampled',
     collectNumericCells(table).map((c) => c.num), [5000]);
 })();
 
-(function mergeLadderParity_datesAndTimesStillExcludedFromPreview() {
-  // Deliberate, UNCHANGED scope restriction (not a divergence fix): the
-  // lens preview is about numeric magnitude/offset, so date and
-  // time stretches from the ladder are excluded from the sample pool
-  // even though the ladder classifies them and the engine would simplify
-  // them.
-  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
-  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
+(function lensPreviewPool_datesAndTimesStayOut() {
+  // Dates and times stay out of the pool; the reason sits on
+  // numericPreviewCells in content.js.
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B')] },
       { cells: [thCell('Row'), tdCell('2020-01-01'), tdCell('3:45 PM')] },
     ],
   };
-  eq('merge-ladder parity (dates/times): date and time cells are still excluded from preview samples',
+  eq('lens preview pool (dates/times): date and time cells are still excluded from preview samples',
     collectNumericCells(table, { simplifyTimes: true }).length, 0);
 })();
 
-// --- 4. Engine-path equivalence pin ---
-//
-// The divergence tests above pin the PREVIEW path against the merged ladder.
-// They say nothing about the ENGINE path (roundTable's native-table loop),
-// which is what actually writes values into a page; classifyCell makes every
-// one of those classifications there too. A single fixture that
+// The tests above read the lens preview pool. This one reads what the
+// simplification pass writes into a native table: a single fixture that
 // exercises several rules together, with the exact applied cell text pinned,
-// catches a future change to the ladder's shared logic (rule order,
-// max_mag interaction, formatting) that a per-rule unit test run in
-// isolation would not: rules here interact through one shared max_mag pass
-// and one shared column post-pass, same as on a real page.
-//
-// These values were captured by running this exact fixture through
-// roundTable on both this branch and its pre-ladder parent branch (the two
-// hand-kept-in-sync copies), confirming byte-identical output. This test
-// pins that already-verified behavior against future drift; it does not
-// re-derive it.
-(function mergeLadderEnginePin_multiRuleNativeTable() {
+// catches a change to the ladder's shared logic (rule order, max_mag
+// interaction, formatting) that a per-rule unit test run in isolation would
+// not: rules here interact through one shared max_mag pass and one shared
+// column post-pass, same as on a real page.
+(function severalRules_onANativeTable() {
   withCreateTreeWalker(function() {
     const table = makeMockTable([
       [{ tag: 'th', text: '' }, { tag: 'th', text: 'A' }, { tag: 'th', text: 'B' },
@@ -4511,16 +3058,14 @@ function everyRowRead(kind, largeIn) {
        { tag: 'td', text: '312' },                        // plain, shares max_mag with row 1
        { tag: 'td', text: '' }, { tag: 'td', text: '' }, { tag: 'td', text: '' }],
     ]);
-    const opts = {
-      enabled: true, simplifyFirstRow: false, simplifyFirstColumn: false,
+    roundTable(table, roundTableOpts({
+      simplifyFirstRow: false, simplifyFirstColumn: false,
       simplifyMixedPercent: true, simplifyMixedCurrency: true,
-      simplifyDates: true, simplifyTimes: true, 
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
+      simplifyDates: true, simplifyTimes: true,
       dateGranularity: 'month', timeGranularity: 'hour',
-    };
-    roundTable(table, opts);
+    }));
     const applied = table.rows.map((row) => row.cells.map((c) => c.textContent));
-    eq('merge-ladder engine pin: multi-rule fixture applies the exact pinned values',
+    eq('several rules on a native table: the pass writes the exact pinned values',
       applied, [
         ['', 'A', 'B', 'C', 'D', 'E', 'F'],
         ['Row', '25,000,000', '4,000', '50%', '$1,000,000', '"98765"', '2020-01'],
@@ -4556,15 +3101,13 @@ function everyRowRead(kind, largeIn) {
     DR_MODEL.unregisterTable(grid.wrapperEl);
   }
 
-  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
-  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   const previewTable = {
     rows: [
       { cells: [thCell(''), ...identifiers.map(() => thCell('A')), thCell('B')] },
       { cells: [thCell('Row'), ...identifiers.map(tdCell), tdCell(quantity)] },
     ],
   };
-  eq('identifier shape (sidebar preview): only the quantity is sampled',
+  eq('identifier shape (lens preview): only the quantity is sampled',
     collectNumericCells(previewTable).map((c) => c.num), [1613245]);
 })();
 
@@ -4630,31 +3173,17 @@ function everyRowRead(kind, largeIn) {
 })();
 
 // ---------------------------------------------------------------------------
-// The engine runs end-to-end with NO `chrome`
-// global present at all — not even a stub. This loads the real content-script
-// bundle in a vm sandbox that never defines `chrome`. The only top-level
-// statement in content.js that unconditionally touches chrome — registering
-// the runtime message listener, controller wiring unrelated to the engine —
-// is neutralized to a no-op so the module can load; every other chrome.*
-// reference in content.js lives inside a function body this test never calls.
-// If roundTable (or anything it reaches) touched chrome, loading or calling
-// it here would throw ReferenceError: chrome is not defined.
+// The rounding pass runs with NO `chrome` global present at all — not even a
+// stub. This loads the real content-script bundle, unpatched, in a vm
+// sandbox that never defines `chrome`: every chrome.* reference in the
+// content scripts sits inside a function body this test never calls. If
+// roundTable (or anything it reaches) touched chrome, loading or calling it
+// here would throw ReferenceError: chrome is not defined.
 // ---------------------------------------------------------------------------
-(function engineRunsWithNoChromeGlobal() {
-  const contentSrc = sourceByName('content.js');
-  if (contentSrc === null) {
-    eq('no-chrome e2e: source file content.js present in manifest', false, true);
-    return;
-  }
-
-  // No patch needed: every remaining chrome.* reference in content.js sits
-  // inside a function body this test never calls. Loading the file unpatched
-  // is a stronger check than loading a patched copy.
-  const noChromeContentSrc = contentSrc;
-
+(function roundingPassRunsWithNoChromeGlobal() {
   // Sandbox has NO `chrome` property whatsoever — only the DOM/browser
-  // primitives the engine's non-controller code paths actually touch
-  // (document.createTreeWalker via collectTextPieces, NodeFilter).
+  // primitives the rounding pass touches (document.createTreeWalker via
+  // collectTextPieces, NodeFilter).
   const sandbox = {
     document: {
       addEventListener() {},
@@ -4682,21 +3211,16 @@ function everyRowRead(kind, largeIn) {
 
   const vm = require('vm');
   const ctx = vm.createContext(sandbox);
-  // Load the content scripts in manifest order (same order contentScriptBundle
-  // uses), substituting the neutralized content.js source for the real one.
-  const bundle = contentScriptFiles
-    .map((file) => (file === 'content.js' ? noChromeContentSrc : contentScriptSources.get(file)))
-    .join('\n');
 
   let threw = null;
   try {
-    vm.runInContext(bundle + '\nthis.__roundTable = roundTable;', ctx);
+    vm.runInContext(contentScriptBundle + '\nthis.__roundTable = roundTable;', ctx);
   } catch (e) {
     threw = e.message;
   }
-  eq('no-chrome e2e: the engine bundle loads with no `chrome` global defined anywhere',
+  eq('no chrome global: the content-script bundle loads with no `chrome` global defined anywhere',
     threw, null);
-  eq('no-chrome e2e: `chrome` is genuinely absent from the sandbox',
+  eq('no chrome global: `chrome` is genuinely absent from the sandbox',
     'chrome' in sandbox, false);
   if (threw !== null || typeof sandbox.__roundTable !== 'function') return;
 
@@ -4704,44 +3228,30 @@ function everyRowRead(kind, largeIn) {
   let callThrew = null;
   let result;
   try {
-    result = sandbox.__roundTable(table, {
-      enabled: true, simplifyDates: false, simplifyTimes: false,
-      // The fixture's only row is row 0 — simplifyFirstRow/Column must be true
-      // or getExclusionReason would exclude the only cell under test.
-      simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyMixedPercent: false, simplifyMixedCurrency: false,
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
-    });
+    result = sandbox.__roundTable(table, roundTableOpts());
   } catch (e) {
     callThrew = e.message;
   }
 
-  eq('no-chrome e2e: calling roundTable on a fixture does not throw with no chrome global present',
+  eq('no chrome global: calling roundTable on a fixture does not throw with no chrome global present',
     callThrew, null);
-  eq('no-chrome e2e: roundTable returns rangeStatus "ok"',
+  eq('no chrome global: roundTable returns rangeStatus "ok"',
     result && result.rangeStatus, 'ok');
-  eq('no-chrome e2e: roundTable actually rounded the fixture cell',
+  eq('no chrome global: roundTable actually rounded the fixture cell',
     table.rows[0].cells[0].classList.contains('dr-ext-rounded'), true);
 })();
 
-// --- (i) Off-and-on round trip under grid row recycling: round -> off press
-// -> the host virtualization library recycles ONE cell (same row, a
-// genuinely NEW element takes that grid position — the documented "element
-// replaced" pattern, distinct from this extension's own nodeValue-patch-in-
-// place write model) -> on press.
+// An off and on round trip on a grid that reuses its cells: round, press
+// off, the grid puts a new element in one cell's place, press on.
 //
-// Off resets, which restores every cell still in the grid and drops its
-// record. A brand-new element was never in the registry, and the last
-// assertion below pins that the recycled-away cell's record is dropped at
-// the off press rather than surviving until the element is collectible.
+// Off restores every cell still in the grid and drops its record, so the
+// replaced cell's record is gone at the off press. The new element was never
+// in the registry and rounds from its own text at the on press.
 //
-// Uses a live-scanning querySelectorAll (walks wrapper.children -> row
-// .children each call) instead of makeE2EGridWrapper's snapshot list, so
-// the recycled cell is genuinely undiscoverable via '.dr-ext-rounded' the
-// way a real detached-and-replaced DOM node would be — makeE2EGridWrapper's
-// fixed `allCells` array would otherwise still "see" the old cell and mask
-// the scenario this test exists to exercise. ---
-(function registrySprint_offAndOnRoundTripUnderGridRecycling() {
+// The wrapper's querySelectorAll walks the live rows on each call, so the
+// replaced cell drops out of '.dr-ext-rounded' the way a detached element
+// does; makeE2EGridWrapper's fixed cell list would still find it.
+(function gridReuse_offAndOnRoundTripWithAReplacedCell() {
   const grid = makeGridWrapper([['87654321', '1234567']]);
   grid.wrapperEl.querySelectorAll = function(sel) {
     if (sel !== '.dr-ext-rounded') return [];
@@ -4760,76 +3270,60 @@ function everyRowRead(kind, largeIn) {
   const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
   roundTable(grid.wrapperEl, opts);
 
-  const cellA = grid.cellEls[0]; // will be recycled away
+  const cellA = grid.cellEls[0]; // replaced while the grid is off
   const cellSurvivor = grid.cellEls[1]; // stays in place across the whole cycle
 
-  eq('recycling: both cells round on the initial pass (pre-condition)',
+  eq('reused grid cell: both cells round on the first pass (pre-condition)',
     cellA.classList.contains('dr-ext-rounded') && cellSurvivor.classList.contains('dr-ext-rounded'), true);
 
   resetTable(grid.wrapperEl); // the press that turns simplification off
-  eq('recycling: the off press restores cellA\'s display text',
+  eq('reused grid cell: the off press restores the first cell\'s text',
     cellA.childNodes[0].nodeValue, '87654321');
 
-  // Simulate the host grid recycling row 0's first cell: a brand-new element
-  // (never seen by this extension) occupies that position; cellA is no
-  // longer reachable from the table at all.
+  // The grid puts a new element, never seen by this extension, in the first
+  // cell's place; the first cell is no longer reachable from the table.
   const cellB = makeGridCellWithTextNode('99999999');
   grid.rowEls[0].children = [cellB, cellSurvivor];
 
   roundTable(grid.wrapperEl, opts); // the press that turns it back on
 
-  // Functional correctness: the recycled cell is treated as any other live
-  // cell on the re-round — it rounds fresh from ITS OWN content, not
-  // corrupted and not skipped. This matches what the parent (dataset-based)
-  // branch would also do on the same scenario: a genuinely new element has
-  // no dataset either, so both designs re-detect it from scratch. FAITHFUL
-  // MATCH, not a regression.
-  eq('recycling: the recycled cell (cellB) is picked up and rounded on the on press, not skipped',
+  // The new cell rounds from its own text like any other live cell.
+  eq('reused grid cell: the new element in the first cell\'s place rounds on the on press',
     cellB.classList.contains('dr-ext-rounded'), true);
-  eq('recycling: the recycled cell\'s rounded value differs from its own live text',
-    cellB.childNodes[0].nodeValue !== '99999999', true);
-  eq('recycling: the surviving cell also re-rounds correctly on the on press',
+  eq('reused grid cell: the new element\'s 99999999 rounds to 100,000,000',
+    cellB.childNodes[0].nodeValue, '100,000,000');
+  eq('reused grid cell: the cell that stayed rounds again on the on press',
     cellSurvivor.classList.contains('dr-ext-rounded'), true);
 
   // The registry's per-table `originals` is a WeakMap keyed by cell element
-  // (app/model.js). cellA was still in the grid at the off press, so the
-  // restore visited it and dropped its record there — before the recycling
-  // took the element out of the grid. Nothing is keyed to a cell the grid no
-  // longer holds, and a cell the restore never reaches is collectible once
-  // the page stops referencing it.
-  eq('recycling: the off press drops the recycled-away cell\'s registry original',
+  // (app/model.js). The first cell was still in the grid at the off press, so
+  // the restore visited it and dropped its record there, before the grid
+  // took the element out. Nothing is keyed to a cell the grid no longer
+  // holds, and a cell the restore never reaches is collectible once the page
+  // stops referencing it.
+  eq('reused grid cell: the off press drops the replaced cell\'s registry original',
     DR_MODEL.hasTableOriginal(grid.wrapperEl, cellA), false);
 })();
 
-// --- (j) Content-script re-injection: DR_MODEL lives in the content script's
-// JS heap, which a re-injection (extension reload/update while a tab stays
-// open) throws away and rebuilds from scratch — the live PAGE DOM survives
-// untouched (classes, text, everything the OLD script instance wrote stay
-// exactly as they were). The bundle is eval'd TWICE here against the SAME
-// fixture tables/document, each eval producing its own independent DR_MODEL
-// (direct eval gives let/const their own lexical environment per call — the
-// same mechanism runContextmenuFixture above already relies on), to model
-// exactly that: instance 1 rounds the tables; instance 2 (fresh registry,
-// same already-rounded DOM) is what a real re-injected script would face.
-//
-// A re-injected instance cannot recover the true original from its own
-// (empty) registry — the KNOWN ACCEPTED COST comment on restoreTable
-// (content.js). Scenario A pins the reset: an unrestorable cell is left
-// exactly as found — marker, title, and text untouched — instead of
-// resetTable stripping the marker and title off a cell it could not
-// actually restore. Scenario B pins the accepted cost of an apply with the
-// table on: the pass reads the cell's simplified text as its own, simplifies
-// it again, and records that text as the original. ---
-(function registrySprint_reinjectionUnrestorableResetStaysTruthful() {
+// Content-script re-injection. The bundle is eval'd twice against the same
+// fixture tables and document, each eval with its own DR_MODEL (direct eval
+// gives let/const their own lexical environment per call): instance 1
+// rounds the tables, and instance 2, with an empty registry and the same
+// rounded page, stands for the re-injected script. The cost this pins is
+// the KNOWN ACCEPTED COST comment on restoreTable (content.js).
+//   A: a restore leaves an unrestorable cell exactly as found.
+//   B: a sidebar apply simplifies the unrestorable cell again.
+//   C: the table pillbox shows off for an unrounded table and on for one
+//      instance 2 rounded.
+(function reinjection_anUnrestorableCellStaysAsFound() {
   function makeReinjectionFixtureTable(dataText) {
     const table = makeTablePillboxTestTable([
       [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
       [{ tag: 'td', text: 'Row' },   { tag: 'td', text: dataText }],
     ]);
-    // Link innerHTML/innerText/textContent to one backing value on the data
-    // cell, matching a real <td>'s single-node-tree-backed semantics (same
-    // fix angle (f)'s test needed, for the same reason: restoreTable writes
-    // innerHTML only, and getText()/the fake tree walker below read innerText).
+    // Link innerHTML, innerText, and textContent to one backing value on the
+    // data cell, as a real <td> holding one text node links them, so a write
+    // through any one of them shows in the other two.
     const dataCell = table._cells[3];
     let _text = dataCell.innerHTML;
     Object.defineProperties(dataCell, {
@@ -4847,20 +3341,20 @@ function everyRowRead(kind, largeIn) {
     return { table, dataCell };
   }
 
-  const { table: table1, dataCell: dataCell1 } = makeReinjectionFixtureTable('12,345');
-  const { table: table3, dataCell: dataCell3 } = makeReinjectionFixtureTable('54,321');
-  // Scenario C fixture: table6 starts unrounded and is later rounded BY
-  // instance 2 itself.
-  const { table: table6 } = makeReinjectionFixtureTable('8,765');
-  const trueOriginal1 = '12,345';
-  const trueOriginal3 = '54,321';
+  const { table: restoreCaseTable, dataCell: restoreCaseCell } = makeReinjectionFixtureTable('12,345');
+  const { table: applyCaseTable, dataCell: applyCaseCell } = makeReinjectionFixtureTable('54,321');
+  // Scenario C fixture: starts unrounded and is later rounded by instance 2
+  // itself.
+  const { table: pillboxCaseTable } = makeReinjectionFixtureTable('8,765');
+  const restoreCaseOriginal = '12,345';
+  const applyCaseOriginal = '54,321';
 
   // A minimal document shared by every eval'd instance below — this is the
   // "live page" that persists across the simulated re-injection.
   // createTreeWalker mirrors withCreateTreeWalker's single-fake-text-node
   // approach, reading and writing through the SAME linked innerText/
   // innerHTML property. createElement/head back ensureHighlightStyleInjected,
-  // which scenario B (the real click path) exercises for real.
+  // which scenario B, the sidebar apply, reaches.
   const sharedDoc = {
     addEventListener() {},
     querySelectorAll: () => [],
@@ -4903,32 +3397,29 @@ function everyRowRead(kind, largeIn) {
     eval(contentScriptBundle + `
       globalThis.__ri1_roundTable = roundTable;
     `);
-    global.__ri1_roundTable(table1, DR_DEFAULTS);
-    global.__ri1_roundTable(table3, DR_DEFAULTS);
-    const roundedText1 = dataCell1.innerText;
-    const roundedTitle1 = dataCell1.title;
-    const roundedText3 = dataCell3.innerText;
-    const roundedTitle3 = dataCell3.title;
+    global.__ri1_roundTable(restoreCaseTable, DR_DEFAULTS);
+    global.__ri1_roundTable(applyCaseTable, DR_DEFAULTS);
+    const restoreCaseRoundedText = restoreCaseCell.innerText;
+    const restoreCaseRoundedTitle = restoreCaseCell.title;
+    const applyCaseRoundedText = applyCaseCell.innerText;
+    const applyCaseRoundedTitle = applyCaseCell.title;
 
     eq('re-injection (pre): instance 1 actually rounded the sidebar-scenario cell away from the true original',
-      roundedText3 !== trueOriginal3, true);
+      applyCaseRoundedText !== applyCaseOriginal, true);
     eq('re-injection (pre): the sidebar-scenario cell\'s title holds the true original',
-      roundedTitle3, `Original: ${trueOriginal3}`);
+      applyCaseRoundedTitle, `Original: ${applyCaseOriginal}`);
 
     eq('re-injection (pre): instance 1 actually rounded the cell away from the true original',
-      roundedText1 !== trueOriginal1, true);
+      restoreCaseRoundedText !== restoreCaseOriginal, true);
     eq('re-injection (pre): instance 1 reports the table as rounded',
-      showsSimplified(table1), true);
+      showsSimplified(restoreCaseTable), true);
     eq('re-injection (pre): the title attribute holds the true original',
-      roundedTitle1, `Original: ${trueOriginal1}`);
+      restoreCaseRoundedTitle, `Original: ${restoreCaseOriginal}`);
 
-    // --- Instance 2: simulates re-injection. The DOM is untouched (both
-    // data cells still show their rounded text, still carry
-    // dr-ext-rounded) but this eval's DR_MODEL is BRAND NEW — instance 1's
-    // registry (and its stored true originals) is unreachable garbage now,
-    // exactly as a real content-script reload would leave it. Its bus
-    // listener is kept, so scenario B can deliver the sidebar's apply the
-    // way Chrome does. ---
+    // --- Instance 2: the re-injected script. The page still shows instance
+    // 1's rounded text and markers, and this eval's DR_MODEL starts empty.
+    // Its bus listener is kept, so scenario B can deliver the sidebar's
+    // apply the way Chrome does. ---
     let ri2Listener = null;
     global.chrome.runtime.onMessage.addListener = (fn) => { ri2Listener = fn; };
     eval(contentScriptBundle + `
@@ -4939,19 +3430,17 @@ function everyRowRead(kind, largeIn) {
       globalThis.__ri2_tablePillboxes = tablePillboxButtons(tablePillboxViews);
     `);
 
+    // --- Scenario A: a restore. The screen still shows rounded text, so the
+    // marker stays to match it, and the title, the last copy of the true
+    // original, stays too. ---
+    global.__ri2_resetTable(restoreCaseTable);
 
-    // --- Scenario A: the user's most natural recovery action is "reset"
-    // (or an equivalent toggle-to-original click). Drive the SAME
-    // production primitive (resetTable) the restoreTable KNOWN ACCEPTED COST
-    // comment discusses. ---
-    global.__ri2_resetTable(table1);
-
-    eq('re-injection reset: the dr-ext-rounded marker SURVIVES — the screen still shows rounded text, so the marker must stay truthful instead of claiming a clean reset that did not happen',
-      dataCell1.classList.contains('dr-ext-rounded'), true);
-    eq('re-injection reset: the title attribute SURVIVES — it is the last remaining copy of the true original and must not be stripped when nothing was actually restored',
-      dataCell1.title, roundedTitle1);
-    eq('re-injection reset: the displayed text is unchanged — not falsely "restored"',
-      dataCell1.innerText, roundedText1);
+    eq('re-injection restore: the unrestorable cell keeps its marker',
+      restoreCaseCell.classList.contains('dr-ext-rounded'), true);
+    eq('re-injection restore: the unrestorable cell keeps its title',
+      restoreCaseCell.title, restoreCaseRoundedTitle);
+    eq('re-injection restore: the unrestorable cell keeps its rounded text',
+      restoreCaseCell.innerText, restoreCaseRoundedText);
 
     // --- Scenario B: the sidebar apply with the table on, on a table holding
     // an unrestorable cell. Drives the real wiring end to end: a sidebar
@@ -4963,38 +3452,38 @@ function everyRowRead(kind, largeIn) {
     //
     // The new settings differ from the ones instance 1 rounded with:
     // re-rounding under identical settings is a value-preserving no-op the
-    // engine skips. offsetTop 1 re-rounds instance 1's text to a coarser
+    // simplification pass skips. offsetTop 1 re-rounds instance 1's text to a coarser
     // value, so the second simplification shows in the cell and its title. ---
     const sentMessages = [];
     global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
-    global.__ri2_DR_MODEL.setActiveTable(table3);
+    global.__ri2_DR_MODEL.setActiveTable(applyCaseTable);
     ri2Listener({ topic: 'request:applySettings', settings: Object.assign({}, DR_DEFAULTS, { enabled: true, offsetTop: 1 }) },
       {}, () => {});
 
     eq('re-injection sidebar apply: the apply simplifies the unrestorable cell\'s displayed text again',
-      dataCell3.innerText !== roundedText3, true);
+      applyCaseCell.innerText !== applyCaseRoundedText, true);
     eq('re-injection sidebar apply: the registry records the simplified text as the cell\'s original',
-      global.__ri2_DR_MODEL.getTableOriginalText(table3, dataCell3), roundedText3);
+      global.__ri2_DR_MODEL.getTableOriginalText(applyCaseTable, applyCaseCell), applyCaseRoundedText);
     eq('re-injection sidebar apply: the title holds the simplified text as the original',
-      dataCell3.title, `Original: ${roundedText3}`);
+      applyCaseCell.title, `Original: ${applyCaseRoundedText}`);
     eq('re-injection sidebar apply: the cell keeps the simplified marker',
-      dataCell3.classList.contains('dr-ext-rounded'), true);
+      applyCaseCell.classList.contains('dr-ext-rounded'), true);
     eq('re-injection sidebar apply: the apply runs the simplification pass, which sends the range status',
       sentMessages.some((m) => m.topic === 'state:rangeOk' || m.topic === 'state:rangeError'), true);
 
     // --- Scenario C: the table pillbox sync on fresh and simplified tables. ---
-    const stub6 = makeMockButton();
-    global.__ri2_tablePillboxes.set(table6, stub6);
-    global.__ri2_syncTablePillbox(table6);
+    const pillboxStub = makeMockButton();
+    global.__ri2_tablePillboxes.set(pillboxCaseTable, pillboxStub);
+    global.__ri2_syncTablePillbox(pillboxCaseTable);
     eq('re-injection table pillbox: an unrounded table renders off',
-      stub6.getAttribute('aria-pressed'), 'false');
+      pillboxStub.getAttribute('aria-pressed'), 'false');
 
-    global.__ri2_DR_MODEL.setTableSettings(table6, { enabled: true }, 'page');
-    global.__ri2_roundTable(table6, DR_DEFAULTS);
-    global.__ri2_syncTablePillbox(table6);
+    global.__ri2_DR_MODEL.setTableSettings(pillboxCaseTable, { enabled: true }, 'page');
+    global.__ri2_roundTable(pillboxCaseTable, DR_DEFAULTS);
+    global.__ri2_syncTablePillbox(pillboxCaseTable);
     eq('re-injection table pillbox: a table THIS instance rounded renders on',
-      stub6.getAttribute('aria-pressed'), 'true');
-    } finally {
+      pillboxStub.getAttribute('aria-pressed'), 'true');
+  } finally {
     global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
     global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
     global.Node = saved.Node; global.NodeFilter = saved.NodeFilter;
@@ -5006,7 +3495,7 @@ function everyRowRead(kind, largeIn) {
 (function bracketedCellRoundsAcrossPieces() {
   withSupCreateTreeWalker(function() {
     const cell = makeExtractedCell([{ text: '(' }, { text: '1,234' }, { text: ')' }]);
-    roundTable({ rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} }, supTestOpts);
+    roundTable(makeTableOfCells([[cell]]), supTestOpts);
     eq('bracketed: the digits round and the brackets stay in their own pieces',
       cell._textNodes.map((n) => n.nodeValue), ['(', '1,000', ')']);
   });
@@ -5015,7 +3504,7 @@ function everyRowRead(kind, largeIn) {
 (function bracketedCellKeepsItsCurrencySign() {
   withSupCreateTreeWalker(function() {
     const cell = makeExtractedCell([{ text: '$(1,234)' }]);
-    roundTable({ rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} }, supTestOpts);
+    roundTable(makeTableOfCells([[cell]]), supTestOpts);
     eq('bracketed: a currency sign outside the brackets stays put',
       cell._textNodes[0].nodeValue, '$(1,000)');
   });
@@ -5027,7 +3516,7 @@ function everyRowRead(kind, largeIn) {
   withSupCreateTreeWalker(function() {
     const big = makeExtractedCell([{ text: '(12,345)' }]);
     const small = makeExtractedCell([{ text: '678' }]);
-    const table = { rows: [{ cells: [big, small] }], querySelector: () => null, dataset: {} };
+    const table = makeTableOfCells([[big, small]]);
     roundTable(table, Object.assign({}, supTestOpts, { offsetOther: -2 }));
     eq('bracketed: a bracketed number sets the max magnitude and rounds in the top band',
       big._textNodes[0].nodeValue, '(10,000)');
@@ -5087,7 +3576,7 @@ function everyRowRead(kind, largeIn) {
   withCreateTreeWalker(function () {
     const table = makeMergedSpanTable();
     roundTable(table, Object.assign({}, DR_DEFAULTS));
-    eq('#330: the cell after a downward merge is not read as the first column',
+    eq('merged cells: the cell after a downward merge is not read as the first column',
       table.rows[2].cells[0].classList.contains('dr-ext-rounded'), true);
   });
 })();
@@ -5106,9 +3595,9 @@ function everyRowRead(kind, largeIn) {
     roundTable(merged, opts);
     roundTable(unmerged, opts);
     const textsOf = (table, r) => table.rows[r].cells.map((cell) => cell.textContent);
-    eq('#330: the merged table rounds its first data row like the unmerged one',
+    eq('merged cells: the merged table rounds its first data row like the unmerged one',
       textsOf(merged, 1), textsOf(unmerged, 1));
-    eq('#330: the merged table rounds its second data row like the unmerged one',
+    eq('merged cells: the merged table rounds its second data row like the unmerged one',
       textsOf(merged, 2), textsOf(unmerged, 2).slice(1));
   });
 })();
@@ -5160,7 +3649,7 @@ const rwRows = (level, pattern) => rwLogged
 
 const RW_CAP_ROW = /^Dynamic Rounding: above cell cap · cells: [\d,]+$/;
 
-// --- Test 1: a cell the extension holds, unchanged: the pass writes nothing. ---
+// --- A cell the extension holds, unchanged: the pass writes nothing. ---
 (function rewrite01_aHeldCellTakesNoWrite() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const t = build(RW_ROWS);
@@ -5169,45 +3658,24 @@ const RW_CAP_ROW = /^Dynamic Rounding: above cell cap · cells: [\d,]+$/;
     const writesBefore = held.writes;
     t.write(1, 0, '4,321');
     page.settle();
-    eq(`#421 held cell (${kind}): the pass ran on the page edit elsewhere in the table`,
+    eq(`held cell (${kind}): the pass ran on the page edit elsewhere in the table`,
       t.text(1, 0), '4,300');
-    eq(`#421 held cell (${kind}): the pass writes nothing into a held cell`,
+    eq(`held cell (${kind}): the pass writes nothing into a held cell`,
       { text: t.text(0, 1), writes: held.writes - writesBefore }, { text: '5,700', writes: 0 });
   });
 })();
 
-// --- Test 2: a piece the page redrew to its original takes the patch again. ---
+// --- A piece the page redrew to its original takes the patch again. ---
 (function rewrite02_aPieceRedrawnToItsOriginalTakesThePatchAgain() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const t = build(RW_ROWS);
     roundTableUnder(t.table, RW_OPTS);
     t.write(0, 0, '1,234');
     page.settle();
-    eq(`#421 redraw (${kind}): a piece redrawn to its original shows the simplified value again`,
+    eq(`redraw (${kind}): a piece redrawn to its original shows the simplified value again`,
       t.text(0, 0), '1,200');
-    eq(`#421 redraw (${kind}): the stored original stays the original`,
+    eq(`redraw (${kind}): the stored original stays the original`,
       DR_MODEL.getTableOriginalText(t.table, t.cell(0, 0)), '1,234');
-  });
-})();
-
-// --- Test 3: a native table gains a row with a larger value. The table keeps
-// the max magnitude it took at its first simplification: the cells the
-// extension holds keep their text, the new row rounds under that magnitude,
-// and the stored originals stay the true originals. ---
-(function rewrite03_aNativeTableThatGainsALargerValueKeepsItsFrozenMaxMagnitude() {
-  eachRewriteKind(['native'], (kind, page, build) => {
-    const t = build(RW_ROWS);
-    roundTableUnder(t.table, RW_OPTS);
-    eq('#421 larger value (native, precondition): the first simplification rounds at magnitude 3',
-      t.rowTexts(), [['1,200', '5,700'], ['2,500', '3,600']]);
-    t.addRow(['98,765', '1,111']);
-    page.settle();
-    eq('#421 larger value (native): the held cells keep their text and the new row rounds under the frozen max magnitude',
-      t.rowTexts(), [['1,200', '5,700'], ['2,500', '3,600'], ['99,000', '1,100']]);
-    eq('#421 larger value (native): the stored originals stay the true originals',
-      [t.cell(0, 0), t.cell(0, 1), t.cell(1, 0), t.cell(1, 1)]
-        .map((cell) => DR_MODEL.getTableOriginalText(t.table, cell)),
-      ['1,234', '5,678', '2,468', '3,579']);
   });
 })();
 
@@ -5223,6 +3691,8 @@ const RW_CAP_ROW = /^Dynamic Rounding: above cell cap · cells: [\d,]+$/;
     page.settle();
     eq(`magnitude freeze (${kind}): a larger value in a cell rounds under the top band's offset and the other cells keep their text`,
       cellCase.rowTexts(), [['99,000', '5,700'], ['2,500', '3,600']]);
+    eq(`magnitude freeze (${kind}): after a larger value in a cell the max magnitude stays 3`,
+      DR_MODEL.getTableMaxMagnitude(cellCase.table), 3);
 
     const rowCase = build(RW_ROWS);
     roundTableUnder(rowCase.table, RW_OPTS);
@@ -5230,6 +3700,10 @@ const RW_CAP_ROW = /^Dynamic Rounding: above cell cap · cells: [\d,]+$/;
     page.settle();
     eq(`magnitude freeze (${kind}): a larger value in an added row rounds under the top band's offset and the other cells keep their text`,
       rowCase.rowTexts(), [['1,200', '5,700'], ['2,500', '3,600'], ['99,000', '1,100']]);
+    eq(`magnitude freeze (${kind}): after an added row the stored originals stay the true originals`,
+      [rowCase.cell(0, 0), rowCase.cell(0, 1), rowCase.cell(1, 0), rowCase.cell(1, 1)]
+        .map((cell) => DR_MODEL.getTableOriginalText(rowCase.table, cell)),
+      ['1,234', '5,678', '2,468', '3,579']);
   });
 })();
 
@@ -5302,23 +3776,23 @@ const RW_CAP_ROW = /^Dynamic Rounding: above cell cap · cells: [\d,]+$/;
   });
 })();
 
-// --- #281: a first simplification that finds no number stores no max
+// --- A first simplification that finds no number stores no max
 // magnitude, so the next pass computes it from the numbers that arrive. ---
 (function freeze03_aFirstSimplificationWithNoNumberFreezesNothing() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const t = build([['pending', 'n/a'], ['tbd', 'none']]);
     roundTableUnder(t.table, RW_OPTS);
-    eq(`#281 (${kind}): a table with no number holds no max magnitude`,
+    eq(`no number at the first simplification (${kind}): a table with no number holds no max magnitude`,
       DR_MODEL.getTableMaxMagnitude(t.table) == null, true);
     t.write(0, 0, '1,234');
     t.write(0, 1, '5,678');
     page.settle();
-    eq(`#281 (${kind}): the next pass computes the max magnitude from the numbers that arrive`,
+    eq(`no number at the first simplification (${kind}): the next pass computes the max magnitude from the numbers that arrive`,
       t.rowTexts(), [['1,200', '5,700'], ['tbd', 'none']]);
   });
 })();
 
-// --- Test 4: the page writes a new number. The cell simplifies it, and a
+// --- The page writes a new number. The cell simplifies it, and a
 // restore puts back the new number. ---
 (function rewrite04_aNewNumberSimplifiesAndRestoresToItself() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
@@ -5326,15 +3800,15 @@ const RW_CAP_ROW = /^Dynamic Rounding: above cell cap · cells: [\d,]+$/;
     roundTableUnder(t.table, RW_OPTS);
     t.write(0, 0, '4,321');
     page.settle();
-    eq(`#421 new number (${kind}): the cell simplifies the page's new value`, t.text(0, 0), '4,300');
-    eq(`#421 new number (${kind}): the stored original is the page's new value`,
+    eq(`new number (${kind}): the cell simplifies the page's new value`, t.text(0, 0), '4,300');
+    eq(`new number (${kind}): the stored original is the page's new value`,
       DR_MODEL.getTableOriginalText(t.table, t.cell(0, 0)), '4,321');
     resetTable(t.table);
-    eq(`#421 new number (${kind}): a restore puts back the page's new value`, t.text(0, 0), '4,321');
+    eq(`new number (${kind}): a restore puts back the page's new value`, t.text(0, 0), '4,321');
   });
 })();
 
-// --- Test 5: the page writes a number that needs no rounding. The marker and
+// --- The page writes a number that needs no rounding. The marker and
 // the stored originals go, and a restore leaves the page's number. ---
 (function rewrite05_anAlreadyRoundNumberReleasesTheCell() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
@@ -5342,17 +3816,17 @@ const RW_CAP_ROW = /^Dynamic Rounding: above cell cap · cells: [\d,]+$/;
     roundTableUnder(t.table, RW_OPTS);
     t.write(0, 0, '100');
     page.settle();
-    eq(`#421 round number (${kind}): the cell shows the page's number`, t.text(0, 0), '100');
-    eq(`#421 round number (${kind}): the marker and the stored originals go`,
+    eq(`round number (${kind}): the cell shows the page's number`, t.text(0, 0), '100');
+    eq(`round number (${kind}): the marker and the stored originals go`,
       { marked: t.cell(0, 0).classList.contains('dr-ext-rounded'),
         stored: DR_MODEL.hasTableOriginal(t.table, t.cell(0, 0)) },
       { marked: false, stored: false });
     resetTable(t.table);
-    eq(`#421 round number (${kind}): a restore leaves the page's number`, t.text(0, 0), '100');
+    eq(`round number (${kind}): a restore leaves the page's number`, t.text(0, 0), '100');
   });
 })();
 
-// --- Test 6: the page writes text that is not a number. The cell is
+// --- The page writes text that is not a number. The cell is
 // released, its hover text goes, and the page's text stays. ---
 (function rewrite06_aWordReleasesTheCell() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
@@ -5360,12 +3834,12 @@ const RW_CAP_ROW = /^Dynamic Rounding: above cell cap · cells: [\d,]+$/;
     roundTableUnder(t.table, RW_OPTS);
     t.write(0, 0, 'pending');
     page.settle();
-    eq(`#421 word (${kind}): the cell is released and keeps the page's text`,
+    eq(`word (${kind}): the cell is released and keeps the page's text`,
       { text: t.text(0, 0), marked: t.cell(0, 0).classList.contains('dr-ext-rounded'),
         stored: DR_MODEL.hasTableOriginal(t.table, t.cell(0, 0)), title: t.cell(0, 0).title },
       { text: 'pending', marked: false, stored: false, title: '' });
     resetTable(t.table);
-    eq(`#421 word (${kind}): a restore leaves the page's text`, t.text(0, 0), 'pending');
+    eq(`word (${kind}): a restore leaves the page's text`, t.text(0, 0), 'pending');
   });
 })();
 
@@ -5503,7 +3977,7 @@ const RW_CAP_ROW = /^Dynamic Rounding: above cell cap · cells: [\d,]+$/;
   });
 })();
 
-// --- Test 7: the page rewrites one piece of a cell with several pieces. The
+// --- The page rewrites one piece of a cell with several pieces. The
 // other pieces show their original text again before the cell simplifies
 // fresh, so the stored originals hold no text the extension wrote. ---
 (function rewrite07_onePieceOfSeveralRewritten() {
@@ -5513,101 +3987,104 @@ const RW_CAP_ROW = /^Dynamic Rounding: above cell cap · cells: [\d,]+$/;
       ['3,579', '4,321'],
     ]);
     roundTableUnder(t.table, RW_OPTS);
-    eq(`#421 one piece (${kind}, precondition): both numbers of the cell round`,
+    eq(`one piece (${kind}, precondition): both numbers of the cell round`,
       t.pieces(0, 0).map((p) => p.nodeValue), ['1,200', ' to ', '5,700']);
     t.write(0, 0, '2,222', 0);
     page.settle();
-    eq(`#421 one piece (${kind}): the cell simplifies the page's new value and its other piece`,
+    eq(`one piece (${kind}): the cell simplifies the page's new value and its other piece`,
       t.pieces(0, 0).map((p) => p.nodeValue), ['2,200', ' to ', '5,700']);
-    eq(`#421 one piece (${kind}): the stored originals hold no extension-written text`,
+    eq(`one piece (${kind}): the stored originals hold no extension-written text`,
       ((DR_MODEL.getTableOriginal(t.table, t.cell(0, 0)) || {}).pieces || []).map((p) => p.text),
       ['2,222', ' to ', '5,678']);
   });
 })();
 
-// --- #399: a number that appears twice in a cell takes the verdict of its own
-// piece. Invented values at magnitude 3 under RW_OPTS: 1,234 -> 1,200 and
+// --- A number that appears twice in a cell rounds or stays by its own
+// piece: a piece inside a markup range stays, and a plain piece rounds.
+// Invented values at magnitude 3 under RW_OPTS: 1,234 -> 1,200 and
 // 9,850 -> 9,900. ---
-const LF_ROWS = (cell) => [[cell, '2,468'], ['3,579', '4,321']];
-const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
+// The rows of a table with the given cell at (0, 0).
+const rowsAroundCell = (cell) => [[cell, '2,468'], ['3,579', '4,321']];
+// The texts of the pieces of the cell at (r, c).
+const cellPieceTexts = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
 
-(function linkFilter_aNumberTwiceOnePlainOneLinked() {
+(function markupRange_aNumberTwiceOnePlainOneLinked() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
-    const plainThenLinked = build(LF_ROWS(['1,234 items, see ', { tag: 'a', text: '1,234' }]));
+    const plainThenLinked = build(rowsAroundCell(['1,234 items, see ', { tag: 'a', text: '1,234' }]));
     roundTableUnder(plainThenLinked.table, RW_OPTS);
-    eq(`#399 plain then linked (${kind}): the plain 1,234 rounds and the linked 1,234 holds`,
-      lfPieces(plainThenLinked, 0, 0), ['1,200 items, see ', '1,234']);
-    eq(`#399 plain then linked (${kind}): the rest of the table rounds`,
+    eq(`a number twice, plain then linked (${kind}): the plain 1,234 rounds and the linked 1,234 holds`,
+      cellPieceTexts(plainThenLinked, 0, 0), ['1,200 items, see ', '1,234']);
+    eq(`a number twice, plain then linked (${kind}): the rest of the table rounds`,
       [plainThenLinked.text(0, 1), plainThenLinked.text(1, 0)], ['2,500', '3,600']);
     reapplyRounding(plainThenLinked.table);
-    eq(`#399 plain then linked (${kind}): the same holds after a re-apply`,
-      lfPieces(plainThenLinked, 0, 0), ['1,200 items, see ', '1,234']);
+    eq(`a number twice, plain then linked (${kind}): the same holds after a re-apply`,
+      cellPieceTexts(plainThenLinked, 0, 0), ['1,200 items, see ', '1,234']);
   });
 })();
 
-(function linkFilter_aNumberTwiceOneLinkedOnePlain() {
+(function markupRange_aNumberTwiceOneLinkedOnePlain() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
-    const linkedThenPlain = build(LF_ROWS([{ tag: 'a', text: '1,234' }, ' items, total 1,234']));
+    const linkedThenPlain = build(rowsAroundCell([{ tag: 'a', text: '1,234' }, ' items, total 1,234']));
     roundTableUnder(linkedThenPlain.table, RW_OPTS);
-    eq(`#399 linked then plain (${kind}): the linked 1,234 holds and the plain 1,234 rounds`,
-      lfPieces(linkedThenPlain, 0, 0), ['1,234', ' items, total 1,200']);
+    eq(`a number twice, linked then plain (${kind}): the linked 1,234 holds and the plain 1,234 rounds`,
+      cellPieceTexts(linkedThenPlain, 0, 0), ['1,234', ' items, total 1,200']);
     reapplyRounding(linkedThenPlain.table);
-    eq(`#399 linked then plain (${kind}): the same holds after a re-apply`,
-      lfPieces(linkedThenPlain, 0, 0), ['1,234', ' items, total 1,200']);
+    eq(`a number twice, linked then plain (${kind}): the same holds after a re-apply`,
+      cellPieceTexts(linkedThenPlain, 0, 0), ['1,234', ' items, total 1,200']);
   });
 })();
 
-(function linkFilter_aNumberTwiceBothPlainOrBothLinked() {
+(function markupRange_aNumberTwiceBothPlainOrBothLinked() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
-    const bothPlain = build(LF_ROWS(['1,234 and ', { tag: 'b', text: '1,234' }]));
+    const bothPlain = build(rowsAroundCell(['1,234 and ', { tag: 'b', text: '1,234' }]));
     roundTableUnder(bothPlain.table, RW_OPTS);
-    eq(`#399 both plain (${kind}): both occurrences round`,
-      lfPieces(bothPlain, 0, 0), ['1,200 and ', '1,200']);
-    const bothLinked = build(LF_ROWS([{ tag: 'a', text: '1,234' }, ' and ', { tag: 'a', text: '1,234' }]));
+    eq(`a number twice, both plain (${kind}): both occurrences round`,
+      cellPieceTexts(bothPlain, 0, 0), ['1,200 and ', '1,200']);
+    const bothLinked = build(rowsAroundCell([{ tag: 'a', text: '1,234' }, ' and ', { tag: 'a', text: '1,234' }]));
     roundTableUnder(bothLinked.table, RW_OPTS);
-    eq(`#399 both linked (${kind}): both occurrences hold`,
-      lfPieces(bothLinked, 0, 0), ['1,234', ' and ', '1,234']);
+    eq(`a number twice, both linked (${kind}): both occurrences hold`,
+      cellPieceTexts(bothLinked, 0, 0), ['1,234', ' and ', '1,234']);
   });
 })();
 
 // A number whose digits span two pieces sits in no single piece: it stays
 // unchanged.
-(function linkFilter_aSplitNumberStaysUnchanged() {
+(function splitNumber_aNumberAcrossTwoPiecesStaysUnchanged() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
-    const t = build(LF_ROWS(['ref 1,2', { tag: 'b', text: '34' }]));
+    const t = build(rowsAroundCell(['ref 1,2', { tag: 'b', text: '34' }]));
     roundTableUnder(t.table, RW_OPTS);
-    eq(`#399 split number (${kind}): the number across two pieces stays unchanged`,
-      lfPieces(t, 0, 0), ['ref 1,2', '34']);
+    eq(`split number (${kind}): the number across two pieces stays unchanged`,
+      cellPieceTexts(t, 0, 0), ['ref 1,2', '34']);
   });
 })();
 
 // A pretty-printed native cell: whitespace between the pieces makes the
 // rendered text differ from the flat text, so the number positions convert
 // from the rendered text to the pieces.
-(function linkFilter_aPrettyPrintedCellWithADuplicateNumber() {
+(function markupRange_aPrettyPrintedCellWithADuplicateNumber() {
   eachRewriteKind(['native'], (kind, page, build) => {
-    const t = build(LF_ROWS(['\n      1,234 items\n      see ', { tag: 'a', text: '1,234' }, '\n    ']));
+    const t = build(rowsAroundCell(['\n      1,234 items\n      see ', { tag: 'a', text: '1,234' }, '\n    ']));
     const cell = t.cell(0, 0);
     Object.defineProperty(cell, 'innerText', {
       get() { return t.pieces(0, 0).map((p) => p.nodeValue).join('').replace(/\s+/g, ' ').trim(); },
       configurable: true,
     });
     roundTableUnder(t.table, RW_OPTS);
-    eq(`#399 pretty-printed (${kind}): the plain 1,234 rounds and the linked 1,234 holds`,
-      lfPieces(t, 0, 0), ['\n      1,200 items\n      see ', '1,234', '\n    ']);
+    eq(`a number twice, pretty-printed (${kind}): the plain 1,234 rounds and the linked 1,234 holds`,
+      cellPieceTexts(t, 0, 0), ['\n      1,200 items\n      see ', '1,234', '\n    ']);
     reapplyRounding(t.table);
-    eq(`#399 pretty-printed (${kind}): the same holds after a re-apply`,
-      lfPieces(t, 0, 0), ['\n      1,200 items\n      see ', '1,234', '\n    ']);
+    eq(`a number twice, pretty-printed (${kind}): the same holds after a re-apply`,
+      cellPieceTexts(t, 0, 0), ['\n      1,200 items\n      see ', '1,234', '\n    ']);
   });
 })();
 
 (function record_holdsValuePiecesAndPageTitleAlone() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
-    const t = build(LF_ROWS(['Total 9,850 kg ', { tag: 'sup', text: '7' }, ' ref ', { tag: 'a', text: '12' }]));
+    const t = build(rowsAroundCell(['Total 9,850 kg ', { tag: 'sup', text: '7' }, ' ref ', { tag: 'a', text: '12' }]));
     roundTableUnder(t.table, RW_OPTS);
     const record = DR_MODEL.getTableOriginal(t.table, t.cell(0, 0));
     eq(`record (${kind}): the cell with a link and a footnote simplified (precondition)`,
-      lfPieces(t, 0, 0), ['Total 9,900 kg ', '7', ' ref ', '12']);
+      cellPieceTexts(t, 0, 0), ['Total 9,900 kg ', '7', ' ref ', '12']);
     eq(`record (${kind}): the record holds value, pieces, and pageTitle alone`,
       Object.keys(record).sort(), ['pageTitle', 'pieces', 'value']);
   });
@@ -5618,16 +4095,16 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
 // footnote digit hold and the plain numbers stay rounded.
 (function reapply_aSimplifiedCellKeepsItsLinkAndFootnote() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
-    const t = build(LF_ROWS(['Total 9,850 kg ', { tag: 'sup', text: '7' }, ' ref ', { tag: 'a', text: '12' }, ' and 5,678']));
+    const t = build(rowsAroundCell(['Total 9,850 kg ', { tag: 'sup', text: '7' }, ' ref ', { tag: 'a', text: '12' }, ' and 5,678']));
     roundTableUnder(t.table, RW_OPTS);
-    eq(`#399 re-apply (${kind}, precondition): the plain numbers round, the footnote and the link hold`,
-      lfPieces(t, 0, 0), ['Total 9,900 kg ', '7', ' ref ', '12', ' and 5,700']);
+    eq(`re-apply of a cell with a link and a footnote (${kind}, precondition): the plain numbers round, the footnote and the link hold`,
+      cellPieceTexts(t, 0, 0), ['Total 9,900 kg ', '7', ' ref ', '12', ' and 5,700']);
     t.write(1, 0, '4,321');
     page.settle();
-    eq(`#399 re-apply (${kind}): the pass ran on the other cell's rewrite`,
+    eq(`re-apply of a cell with a link and a footnote (${kind}): the pass ran on the other cell's rewrite`,
       t.text(1, 0), '4,300');
-    eq(`#399 re-apply (${kind}): the linked number and the footnote digit hold and the plain numbers stay rounded`,
-      lfPieces(t, 0, 0), ['Total 9,900 kg ', '7', ' ref ', '12', ' and 5,700']);
+    eq(`re-apply of a cell with a link and a footnote (${kind}): the linked number and the footnote digit hold and the plain numbers stay rounded`,
+      cellPieceTexts(t, 0, 0), ['Total 9,900 kg ', '7', ' ref ', '12', ' and 5,700']);
   });
 })();
 
@@ -5636,35 +4113,18 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
 // linked number still holds.
 (function reapply_aRewrittenCellKeepsItsLink() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
-    const t = build(LF_ROWS(['1,234 items, see ', { tag: 'a', text: '1,234' }]));
+    const t = build(rowsAroundCell(['1,234 items, see ', { tag: 'a', text: '1,234' }]));
     roundTableUnder(t.table, RW_OPTS);
     t.write(0, 0, '4,321 items, see ', 0);
     page.settle();
-    eq(`#399 rewritten cell (${kind}): the new plain number rounds and the linked number holds`,
-      lfPieces(t, 0, 0), ['4,300 items, see ', '1,234']);
-    eq(`#399 rewritten cell (${kind}): the stored original is the page's new text`,
+    eq(`rewritten cell with a link (${kind}): the new plain number rounds and the linked number holds`,
+      cellPieceTexts(t, 0, 0), ['4,300 items, see ', '1,234']);
+    eq(`rewritten cell with a link (${kind}): the stored original is the page's new text`,
       DR_MODEL.getTableOriginalText(t.table, t.cell(0, 0)), '4,321 items, see 1,234');
   });
 })();
 
-// --- Test 8: a grid value above the frozen scale. The magnitude freeze
-// stays, and the value takes the largest-value rounding. ---
-(function rewrite08_aGridValueAboveTheFrozenScale() {
-  eachRewriteKind(['grid'], (kind, page, build) => {
-    const t = build(RW_ROWS);
-    roundTableUnder(t.table, RW_OPTS);
-    t.write(0, 0, '98,765');
-    page.settle();
-    eq('#421 above the freeze (grid): the value takes the largest-value rounding',
-      t.text(0, 0), '99,000');
-    eq('#421 above the freeze (grid): the magnitude freeze stays',
-      DR_MODEL.getTableMaxMagnitude(t.table), 3);
-    eq('#421 above the freeze (grid): the other cells keep their rounding',
-      t.rowTexts(), [['99,000', '5,700'], ['2,500', '3,600']]);
-  });
-})();
-
-// --- Test 9: a grid that reuses its cell elements for other rows on scroll.
+// --- A grid that reuses its cell elements for other rows on scroll.
 // Each reused cell simplifies the new row's value, and a restore puts back
 // that value, never the previous row's. ---
 (function rewrite09_aReusedGridCellShowsItsNewRow() {
@@ -5674,50 +4134,50 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
     const scrolled = [['4,321', '8,765'], ['6,543', '7,654']];
     scrolled.forEach((row, r) => row.forEach((text, c) => t.write(r, c, text)));
     page.settle();
-    eq('#421 reused cells (grid): every reused cell simplifies the new row\'s value',
+    eq('reused cells (grid): every reused cell simplifies the new row\'s value',
       t.rowTexts(), [['4,300', '8,800'], ['6,500', '7,700']]);
     resetTable(t.table);
-    eq('#421 reused cells (grid): a restore puts back the new rows\' values',
+    eq('reused cells (grid): a restore puts back the new rows\' values',
       t.rowTexts(), scrolled);
   });
 })();
 
-// --- Test 11: the extension's own writes, a restore included, run no pass,
+// --- The extension's own writes, a restore included, run no pass,
 // and a burst of page edits runs one pass. ---
 (function rewrite11_ownWritesRunNoPassAndABurstRunsOne() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const t = build(RW_ROWS);
     roundTableUnder(t.table, RW_OPTS);
     page.settle();
-    eq(`#421 own writes (${kind}): the first simplification runs no pass`, page.passes(), 0);
+    eq(`own writes (${kind}): the first simplification runs no pass`, page.passes(), 0);
     t.write(0, 0, '4,321');
     t.write(0, 1, '8,765');
     t.write(1, 0, '6,543');
     page.settle();
-    eq(`#421 own writes (${kind}): a burst of page edits runs one pass`,
+    eq(`own writes (${kind}): a burst of page edits runs one pass`,
       { passes: page.passes(), texts: t.rowTexts() },
       { passes: 1, texts: [['4,300', '8,800'], ['6,500', '3,600']] });
     page.settle();
-    eq(`#421 own writes (${kind}): the pass's own writes run no further pass`, page.passes(), 1);
+    eq(`own writes (${kind}): the pass's own writes run no further pass`, page.passes(), 1);
     resetTable(t.table);
     page.settle();
-    eq(`#421 own writes (${kind}): a restore runs no pass`, page.passes(), 1);
+    eq(`own writes (${kind}): a restore runs no pass`, page.passes(), 1);
   });
 })();
 
-// --- Test 12: an added row simplifies, on each kind. ---
+// --- An added row simplifies, on each kind. ---
 (function rewrite12_anAddedRowSimplifies() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const t = build(RW_ROWS);
     roundTableUnder(t.table, RW_OPTS);
     t.addRow(['4,321', '8,765']);
     page.settle();
-    eq(`#421 added row (${kind}): the added row simplifies`,
+    eq(`added row (${kind}): the added row simplifies`,
       t.rowTexts()[2], ['4,300', '8,800']);
   });
 })();
 
-// --- Test 13: a restore before any pass has run, after the page rewrote one
+// --- A restore before any pass has run, after the page rewrote one
 // piece of a cell. The page's text stays, and the untouched pieces show
 // their originals. ---
 (function rewrite13_aRestoreBeforeAnyPassKeepsThePagesText() {
@@ -5730,21 +4190,21 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
     t.write(0, 0, '2,222', 0);
     t.write(1, 1, '9,999');
     resetTable(t.table);
-    eq(`#421 early restore (${kind}): the rewritten piece keeps the page's text, and the untouched piece shows its original`,
+    eq(`early restore (${kind}): the rewritten piece keeps the page's text, and the untouched piece shows its original`,
       t.pieces(0, 0).map((p) => p.nodeValue), ['2,222', ' to ', '5,678']);
-    eq(`#421 early restore (${kind}): a cell the page rewrote whole keeps the page's text`,
+    eq(`early restore (${kind}): a cell the page rewrote whole keeps the page's text`,
       t.text(1, 1), '9,999');
-    eq(`#421 early restore (${kind}): the cells the extension held show their originals`,
+    eq(`early restore (${kind}): the cells the extension held show their originals`,
       [t.text(0, 1), t.text(1, 0)], ['2,468', '3,579']);
-    eq(`#421 early restore (${kind}): every cell restores, so the table shows its originals`,
+    eq(`early restore (${kind}): every cell restores, so the table shows its originals`,
       showsSimplified(t.table), false);
   });
 })();
 
-// --- Test 14: the cell cap. A table one cell over the cap writes nothing,
-// its watcher stops, and one warning row records it. A table at the cap runs
+// --- The cell cap. A table one cell over the cap writes nothing,
+// its re-apply observer stops, and one warning row records it. A table at the cap runs
 // its pass. A table over the cap at its first simplification never attaches
-// a watcher. The pass target is below every duration, so a re-apply pass
+// a re-apply observer. The pass target is below every duration, so a re-apply pass
 // row beside the stop's row would show. ---
 (function rewrite14_theCellCap() {
   const savedCap = DR_DETECTION_SETTINGS.reapplyCellCap;
@@ -5757,32 +4217,32 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
       roundTableUnder(t.table, RW_OPTS);
       t.write(0, 0, '4,321');
       page.settle();
-      eq(`#421 cell cap (${kind}): a table at the cap runs its pass`, t.text(0, 0), '4,300');
+      eq(`cell cap (${kind}): a table at the cap runs its pass`, t.text(0, 0), '4,300');
 
       const rowsBefore = rwLogged.length;
       t.addRow(['8,765']);
       t.write(0, 1, '6,543');
       page.settle();
-      eq(`#421 cell cap (${kind}): a pass over the cap writes nothing`,
+      eq(`cell cap (${kind}): a pass over the cap writes nothing`,
         [t.text(0, 1), t.rowTexts()[2][0]], ['6,543', '8,765']);
-      eq(`#421 cell cap (${kind}): the stop writes one row and no re-apply pass row`,
+      eq(`cell cap (${kind}): the stop writes one row and no re-apply pass row`,
         rwLogged.slice(rowsBefore).map((row) => row.text), ['Dynamic Rounding: above cell cap · cells: 5']);
       t.write(1, 0, '7,654');
       page.settle();
-      eq(`#421 cell cap (${kind}): the stopped watcher runs no later pass`, t.text(1, 0), '7,654');
+      eq(`cell cap (${kind}): the stopped re-apply observer runs no later pass`, t.text(1, 0), '7,654');
 
       const big = build(RW_ROWS.concat([['9,876']]));
       const rowsAtFirst = rwRows('debug', RW_CAP_ROW);
       roundTableUnder(big.table, RW_OPTS);
-      eq(`#421 cell cap (${kind}): the first simplification over the cap still simplifies`,
+      eq(`cell cap (${kind}): the first simplification over the cap still simplifies`,
         big.text(2, 0), '9,900');
-      eq(`#421 cell cap (${kind}): the first simplification over the cap records one debug row`,
+      eq(`cell cap (${kind}): the first simplification over the cap records one debug row`,
         rwRows('debug', RW_CAP_ROW) - rowsAtFirst, 1);
-      eq(`#421 cell cap (${kind}): the cap writes no warn row, so it raises no toast`,
+      eq(`cell cap (${kind}): the cap writes no warn row, so it raises no toast`,
         rwRows('warn', RW_CAP_ROW), 0);
       big.write(0, 0, '4,321');
       page.settle();
-      eq(`#421 cell cap (${kind}): a table over the cap at its first simplification runs no pass`,
+      eq(`cell cap (${kind}): a table over the cap at its first simplification runs no pass`,
         big.text(0, 0), '4,321');
     });
   } finally {
@@ -5819,7 +4279,7 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
   }
 })();
 
-// --- Test 15: page edits arriving faster than the settle delay. A pass runs
+// --- Page edits arriving faster than the settle delay. A pass runs
 // once the burst reaches the longest wait. ---
 (function rewrite15_aBurstThatNeverGoesQuietStillRunsAPass() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
@@ -5832,17 +4292,17 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
       page.advance(50);
       if (firstPassAt === null && page.passes() > 0) firstPassAt = page.now() - start;
     }
-    eq(`#421 longest wait (${kind}): a pass runs within the longest wait of the burst's start`,
+    eq(`longest wait (${kind}): a pass runs within the longest wait of the burst's start`,
       firstPassAt !== null && firstPassAt <= 1000, true);
-    eq(`#421 longest wait (${kind}): that pass simplifies the page's value`, t.text(1, 1), '4,300');
+    eq(`longest wait (${kind}): that pass simplifies the page's value`, t.text(1, 1), '4,300');
     // 20 steps of 50 ms end exactly at the longest wait, so the capped pass is
     // the last event before this check. Another step count leaves a live timer.
-    eq(`#421 longest wait (${kind}): no timer record remains for the table after the capped pass`,
+    eq(`longest wait (${kind}): no timer record remains for the table after the capped pass`,
       reapplyTimers.has(t.table), false);
   });
 })();
 
-// --- Test 16: a native cell with a link, a superscript, and several text
+// --- A native cell with a link, a superscript, and several text
 // pieces restores through the one piece restore, to markup identical to its
 // markup before simplification. ---
 (function rewrite16_aNativeCellRestoresPieceByPiece() {
@@ -5855,13 +4315,13 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
     const markupBefore = cell.innerHTML;
     const piecesBefore = t.pieces(0, 0);
     roundTableUnder(t.table, RW_OPTS);
-    eq('#421 piece restore (native, precondition): the number outside the link rounds, the link and the superscript hold',
+    eq('piece restore (native, precondition): the number outside the link rounds, the link and the superscript hold',
       t.pieces(0, 0).map((p) => p.nodeValue), ['Total ', 'note 12', ', ', '9,900', ' kg', '2']);
     const writesBefore = cell.innerHTMLWrites;
     resetTable(t.table);
-    eq('#421 piece restore (native): the markup after the restore matches the markup before simplification',
+    eq('piece restore (native): the markup after the restore matches the markup before simplification',
       cell.innerHTML, markupBefore);
-    eq('#421 piece restore (native): the restore writes no markup, so every text piece keeps its node',
+    eq('piece restore (native): the restore writes no markup, so every text piece keeps its node',
       { markupWrites: cell.innerHTMLWrites - writesBefore,
         sameNodes: t.pieces(0, 0).every((p, k) => p === piecesBefore[k]) },
       { markupWrites: 0, sameNodes: true });
@@ -5889,7 +4349,7 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
       }
     }
     roundTableUnder(t.table, RW_OPTS);
-    eq('#421 rendered text (native): the first simplification reads no rendered text after a write',
+    eq('rendered text (native): the first simplification reads no rendered text after a write',
       { readsAfterAWrite, rows: t.rowTexts() },
       { readsAfterAWrite: 0, rows: [['1,200', '5,700'], ['2,500', '3,600']] });
   });
@@ -5907,11 +4367,11 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
     roundTableUnder(t.table, RW_OPTS);
     t.redraw(0, 0, '8,765');
     page.settle();
-    eq(`#423 fewer pieces (${kind}): the redrawn cell simplifies its new value`, t.text(0, 0), '8,800');
-    eq(`#423 fewer pieces (${kind}): the stored original is the redrawn value`,
+    eq(`fewer pieces (${kind}): the redrawn cell simplifies its new value`, t.text(0, 0), '8,800');
+    eq(`fewer pieces (${kind}): the stored original is the redrawn value`,
       DR_MODEL.getTableOriginalText(t.table, t.cell(0, 0)), '8,765');
     resetTable(t.table);
-    eq(`#423 fewer pieces (${kind}): the restore leaves no cell unrestorable and puts back the redrawn value`,
+    eq(`fewer pieces (${kind}): the restore leaves no cell unrestorable and puts back the redrawn value`,
       { text: t.text(0, 0), simplified: showsSimplified(t.table) },
       { text: '8,765', simplified: false });
   });
@@ -5926,18 +4386,18 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const t = build([[[{ tag: 'b', text: '1,613,245' }, ' units'], '5,678'], ['2,468', '3,579']]);
     roundTableUnder(t.table, RW_OPTS);
-    eq(`#421 extra piece (${kind}, precondition): the first simplification rounds the bold number`,
+    eq(`extra piece (${kind}, precondition): the first simplification rounds the bold number`,
       t.text(0, 0), '1,600,000 units');
     t.redraw(0, 0, [{ tag: 'b', text: '1,600,000' }, ' units', { tag: 'i', text: ' est.' }]);
     page.settle();
     const record = DR_MODEL.getTableOriginal(t.table, t.cell(0, 0));
-    eq(`#421 extra piece (${kind}): the pass simplifies the cell from its true original`,
+    eq(`extra piece (${kind}): the pass simplifies the cell from its true original`,
       { text: t.text(0, 0), original: DR_MODEL.getTableOriginalText(t.table, t.cell(0, 0)),
         storedTexts: record && record.pieces.map((piece) => piece.text) },
       { text: '1,600,000 units est.', original: '1,613,245 units est.',
         storedTexts: ['1,613,245', ' units', ' est.'] });
     resetTable(t.table);
-    eq(`#421 extra piece (${kind}): a restore shows the true original`, t.text(0, 0), '1,613,245 units est.');
+    eq(`extra piece (${kind}): a restore shows the true original`, t.text(0, 0), '1,613,245 units est.');
   });
 })();
 
@@ -5951,12 +4411,12 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
       ['2,468', '3,579'],
     ]);
     roundTableUnder(t.table, RW_OPTS);
-    eq(`#421 duplicate written text (${kind}, precondition): both numbers show the same rounded text`,
+    eq(`duplicate written text (${kind}, precondition): both numbers show the same rounded text`,
       t.text(0, 0), '1,600,000 to 1,600,000');
     t.redraw(0, 0, [{ tag: 'b', text: '1,600,000' }, ' to ', { tag: 'b', text: '1,600,000' },
       { tag: 'i', text: ' est.' }]);
     resetTable(t.table);
-    eq(`#421 duplicate written text (${kind}): a restore before any pass puts each original back in order`,
+    eq(`duplicate written text (${kind}): a restore before any pass puts each original back in order`,
       { simplified: showsSimplified(t.table), text: t.text(0, 0) },
       { simplified: false, text: '1,613,245 to 1,587,002 est.' });
   });
@@ -5973,7 +4433,7 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
     roundTableUnder(t.table, RW_OPTS);
     t.redraw(0, 0, '8,765');
     resetTable(t.table);
-    eq(`#423 fewer pieces, early restore (${kind}): the page's text stays and no cell is unrestorable`,
+    eq(`fewer pieces, early restore (${kind}): the page's text stays and no cell is unrestorable`,
       { simplified: showsSimplified(t.table), text: t.text(0, 0), marked: t.cell(0, 0).classList.contains('dr-ext-rounded') },
       { simplified: false, text: '8,765', marked: false });
   });
@@ -5993,7 +4453,7 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
 const placeCellAfter = (build, rows, opts) => {
   const t = build(rows);
   roundTableUnder(t.table, opts || RW_OPTS);
-  return lfPieces(t, 0, 0);
+  return cellPieceTexts(t, 0, 0);
 };
 
 // A split number and a whole number in one cell: the whole number rounds and
@@ -6001,15 +4461,15 @@ const placeCellAfter = (build, rows, opts) => {
 (function placement_aWholeNumberRoundsBesideASplitNumber() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     eq(`placement split and whole (${kind}): the whole number rounds and the split number stays`,
-      placeCellAfter(build, LF_ROWS(['1,2', { tag: 'b', text: '34' }, ' to 5,678'])),
+      placeCellAfter(build, rowsAroundCell(['1,2', { tag: 'b', text: '34' }, ' to 5,678'])),
       ['1,2', '34', ' to 5,700']);
     eq(`placement whole and split (${kind}): the order of the two numbers does not matter`,
-      placeCellAfter(build, LF_ROWS(['5,678 to 1,2', { tag: 'b', text: '34' }])),
+      placeCellAfter(build, rowsAroundCell(['5,678 to 1,2', { tag: 'b', text: '34' }])),
       ['5,700 to 1,2', '34']);
     eq(`placement split only (${kind}): a cell with no whole number stays as written`,
-      placeCellAfter(build, LF_ROWS(['ref 1,2', { tag: 'b', text: '34' }])),
+      placeCellAfter(build, rowsAroundCell(['ref 1,2', { tag: 'b', text: '34' }])),
       ['ref 1,2', '34']);
-    const t = build(LF_ROWS(['1,2', { tag: 'b', text: '34' }, ' to 5,678']));
+    const t = build(rowsAroundCell(['1,2', { tag: 'b', text: '34' }, ' to 5,678']));
     roundTableUnder(t.table, RW_OPTS);
     eq(`placement split and whole (${kind}): the cell counts as simplified`,
       t.cell(0, 0).classList.contains('dr-ext-rounded'), true);
@@ -6021,11 +4481,11 @@ const placeCellAfter = (build, rows, opts) => {
 (function placement_aSignInItsOwnPieceStaysWhereItSits() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     eq(`placement sign piece (${kind}): the digits round and the dollar sign stays in its piece`,
-      placeCellAfter(build, LF_ROWS(['$', '1,234'])), ['$', '1,200']);
+      placeCellAfter(build, rowsAroundCell(['$', '1,234'])), ['$', '1,200']);
     eq(`placement sign piece (${kind}): a sign inside a styled piece stays too`,
-      placeCellAfter(build, LF_ROWS([{ tag: 'b', text: '$' }, { tag: 'i', text: '1,234' }])), ['$', '1,200']);
+      placeCellAfter(build, rowsAroundCell([{ tag: 'b', text: '$' }, { tag: 'i', text: '1,234' }])), ['$', '1,200']);
     eq(`placement sign piece (${kind}): a decimal number after the sign rounds`,
-      placeCellAfter(build, LF_ROWS(['$', '337.91'])), ['$', '300']);
+      placeCellAfter(build, rowsAroundCell(['$', '337.91'])), ['$', '300']);
   });
 })();
 
@@ -6033,37 +4493,37 @@ const placeCellAfter = (build, rows, opts) => {
 (function placement_numbersOnSeparateLinesRoundOneByOne() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     eq(`placement lines (${kind}): 1,234 above 5,678 in two pieces rounds both`,
-      placeCellAfter(build, LF_ROWS(['1,234', '\n', '5,678'])), ['1,200', '\n', '5,700']);
+      placeCellAfter(build, rowsAroundCell(['1,234', '\n', '5,678'])), ['1,200', '\n', '5,700']);
     eq(`placement lines (${kind}): 1500 above 1600 in two pieces rounds both`,
-      placeCellAfter(build, LF_ROWS(['1500\n', '1600'])), ['1,500\n', '1,600']);
+      placeCellAfter(build, rowsAroundCell(['1500\n', '1600'])), ['1,500\n', '1,600']);
     eq(`placement lines (${kind}): 125 above 126 in two pieces rounds both`,
-      placeCellAfter(build, LF_ROWS(['125\n', '126'])), ['100\n', '100']);
+      placeCellAfter(build, rowsAroundCell(['125\n', '126'])), ['100\n', '100']);
   });
 })();
 
 // Words around numbers: the numbers round under the defaults and under every
-// combination of the percentages and currencies switches. A percent cell
-// stays as written with the percentages switch off, a currency cell with the
-// currencies switch off.
+// combination of the percent and currency switches. A percent cell stays as
+// written with the percent switch off, a currency cell with the currency
+// switch off.
 (function placement_numbersInsideWordsRoundUnderEverySwitchCombination() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     for (const currency of [true, false]) {
       for (const percent of [true, false]) {
         const opts = Object.assign({}, RW_OPTS, { simplifyMixedCurrency: currency, simplifyMixedPercent: percent });
-        const label = `placement words (${kind}, currencies ${currency ? 'on' : 'off'}, percentages ${percent ? 'on' : 'off'})`;
+        const label = `placement words (${kind}, currency switch ${currency ? 'on' : 'off'}, percent switch ${percent ? 'on' : 'off'})`;
         eq(`${label}: a cell of words and plain numbers rounds`,
-          placeCellAfter(build, LF_ROWS('Revenue 1,234 units, up 5,678 units'), opts),
+          placeCellAfter(build, rowsAroundCell('Revenue 1,234 units, up 5,678 units'), opts),
           ['Revenue 1,200 units, up 5,700 units']);
         eq(`${label}: a percent cell ${percent ? 'rounds' : 'stays as written'}`,
-          placeCellAfter(build, LF_ROWS('Up 1,234% on the year'), opts),
+          placeCellAfter(build, rowsAroundCell('Up 1,234% on the year'), opts),
           [percent ? 'Up 1,200% on the year' : 'Up 1,234% on the year']);
         eq(`${label}: a currency cell ${currency ? 'rounds' : 'stays as written'}`,
-          placeCellAfter(build, LF_ROWS('Revenue $1,234 total'), opts),
+          placeCellAfter(build, rowsAroundCell('Revenue $1,234 total'), opts),
           [currency ? 'Revenue $1,200 total' : 'Revenue $1,234 total']);
       }
     }
     eq(`placement words (${kind}, shipped defaults): words around a number round`,
-      placeCellAfter(build, LF_ROWS('Revenue 1,234 units'), Object.assign({}, DR_DEFAULTS, RW_OPTS)),
+      placeCellAfter(build, rowsAroundCell('Revenue 1,234 units'), Object.assign({}, DR_DEFAULTS, RW_OPTS)),
       ['Revenue 1,200 units']);
   });
 })();
@@ -6072,9 +4532,9 @@ const placeCellAfter = (build, rows, opts) => {
 (function placement_aLinkedNumberBesideASignOutsideTheLinkStays() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     eq(`placement link (${kind}): the sign outside the link and the linked number stay`,
-      placeCellAfter(build, LF_ROWS(['$', { tag: 'a', text: '1,234' }])), ['$', '1,234']);
+      placeCellAfter(build, rowsAroundCell(['$', { tag: 'a', text: '1,234' }])), ['$', '1,234']);
     eq(`placement link (${kind}): a plain number beside the linked number rounds`,
-      placeCellAfter(build, LF_ROWS(['5,678 and ', { tag: 'a', text: '1,234' }])), ['5,700 and ', '1,234']);
+      placeCellAfter(build, rowsAroundCell(['5,678 and ', { tag: 'a', text: '1,234' }])), ['5,700 and ', '1,234']);
   });
 })();
 
@@ -6083,7 +4543,7 @@ const placeCellAfter = (build, rows, opts) => {
   for (const [name, spec] of [['split only', ['ref 1,2', { tag: 'b', text: '34' }]],
     ['split and whole', ['1,2', { tag: 'b', text: '34' }, ' to 5,678']]]) {
     eachRewriteKind(RW_KINDS, (kind, page, build) => {
-      const t = build(LF_ROWS(spec));
+      const t = build(rowsAroundCell(spec));
       eq(`placement split number (${kind}, ${name}): the pass counts one split number`,
         roundTableUnder(t.table, RW_OPTS).leftAsWritten.splitValue, 1);
     });
@@ -6103,9 +4563,9 @@ const datePlacementOpts = (dateGranularity) => Object.assign({}, RW_OPTS,
 
 // The pieces of the cell at (0, 0) and the pass's result.
 const datePlacementAfter = (build, cell, dateGranularity) => {
-  const t = build(LF_ROWS(cell));
+  const t = build(rowsAroundCell(cell));
   const result = roundTableUnder(t.table, datePlacementOpts(dateGranularity));
-  return { pieces: lfPieces(t, 0, 0), text: t.text(0, 0), splitValue: result.leftAsWritten.splitValue };
+  return { pieces: cellPieceTexts(t, 0, 0), text: t.text(0, 0), splitValue: result.leftAsWritten.splitValue };
 };
 
 (function datePlacement_aSentenceWithALinkAndAnItalicWord() {
@@ -6183,11 +4643,11 @@ const datePlacementAfter = (build, cell, dateGranularity) => {
 
 (function datePlacement_aDateFollowedByAFootnoteLink() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
-    const t = build(LF_ROWS('placeholder'));
+    const t = build(rowsAroundCell('placeholder'));
     rwSetChildren(t.cell(0, 0), [rwText('Jun 2020 '), rwEl('sup', {}, [rwEl('a', { href: '#n1' }, [rwText('[1]')])])]);
     roundTableUnder(t.table, datePlacementOpts('year'));
     eq(`date placement (${kind}): "Jun 2020 " then a superscript link "[1]" at year reads "2020 ", "[1]"`,
-      lfPieces(t, 0, 0), ['2020 ', '[1]']);
+      cellPieceTexts(t, 0, 0), ['2020 ', '[1]']);
   });
 })();
 
@@ -6221,7 +4681,7 @@ const datePlacementAfter = (build, cell, dateGranularity) => {
     ]);
     const result = roundTableUnder(t.table, datePlacementOpts('month'));
     eq(`date placement (${kind}): a column of "3/4/2024", "3/14/2024", and "13/4/" with bold "2024" at month reads "3/2024", "3/2024", "13/4/2024"`,
-      [t.text(0, 0), t.text(1, 0), lfPieces(t, 2, 0)], ['3/2024', '3/2024', ['13/4/', '2024']]);
+      [t.text(0, 0), t.text(1, 0), cellPieceTexts(t, 2, 0)], ['3/2024', '3/2024', ['13/4/', '2024']]);
     eq(`date placement (${kind}): the same column counts one split value`, result.leftAsWritten.splitValue, 1);
     const alone = build([
       ['3/4/2024', '2,468'],
@@ -6229,7 +4689,7 @@ const datePlacementAfter = (build, cell, dateGranularity) => {
     ]);
     roundTableUnder(alone.table, datePlacementOpts('month'));
     eq(`date placement (${kind}): a column of "3/4/2024" and "13/4/" with bold "2024" at month stays as written`,
-      [alone.text(0, 0), lfPieces(alone, 1, 0)], ['3/4/2024', ['13/4/', '2024']]);
+      [alone.text(0, 0), cellPieceTexts(alone, 1, 0)], ['3/4/2024', ['13/4/', '2024']]);
   });
 })();
 
@@ -6249,6 +4709,6 @@ const datePlacementAfter = (build, cell, dateGranularity) => {
     ]);
     roundTableUnder(t.table, datePlacementOpts('month'));
     eq(`date placement (${kind}): bold "3/4/" and bold "2024" then " to 5/6/2024" above "3/14/2024" at month reads "3/4/", "2024", " to 5/2024" and "3/2024"`,
-      [lfPieces(t, 0, 0), t.text(1, 0)], [['3/4/', '2024', ' to 5/2024'], '3/2024']);
+      [cellPieceTexts(t, 0, 0), t.text(1, 0)], [['3/4/', '2024', ' to 5/2024'], '3/2024']);
   });
 })();

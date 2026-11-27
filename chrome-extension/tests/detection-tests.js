@@ -713,19 +713,6 @@ const consistentCellCountStepPasses = (children) =>
 //     getMarkupRanges holds nothing)
 // ---------------------------------------------------------------------------
 
-// Standard opts for the exponent tests.
-const supTestOpts = {
-  enabled: true,
-  simplifyMixedCurrency: true,
-  simplifyMixedPercent: true,
-  simplifyFirstRow: true,
-  simplifyFirstColumn: true,
-  offsetTop: -0.5,
-  offsetOther: -0.5,
-  numTop: 1,
-  rangeExpr: '',
-};
-
 // ---------------------------------------------------------------------------
 // (getSuperscriptRanges direct unit tests)
 // ---------------------------------------------------------------------------
