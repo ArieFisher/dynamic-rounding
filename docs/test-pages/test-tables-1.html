@@ -5696,6 +5696,60 @@ TSLA,75,"248.09","18,606.75"
     </div>
   </section>
 
+  <section>
+    <h2>40. A grid inside a native table's cell</h2>
+    <details class="tester-notes">
+      <summary>Tester's notes</summary>
+      <p>A native table of units by region. The North row's
+        <span class="col">By quarter</span> cell holds a grid of units by
+        quarter.</p>
+      <p class="expect">Expect: a table pillbox on the native table and on
+        the grid at load. Right-click 3,587 inside the grid and choose
+        Simplify: 3,587 changes, and 4,821, 9,187, 2,734, and 6,051 stay as
+        written. Then right-click 2,734 and choose Simplify: 4,821, 9,187,
+        2,734, and 6,051 change. A failure shows 4,821, 9,187, 2,734, and
+        6,051 changing after the right-click inside the grid, while 3,587
+        stays as written.</p>
+    </details>
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Region</th>
+          <th scope="col">2023</th>
+          <th scope="col">2024</th>
+          <th scope="col">By quarter</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>North</td>
+          <td>4,821</td>
+          <td>9,187</td>
+          <td>
+            <div class="aria-grid" role="table" aria-label="Units by quarter, North">
+              <div role="rowgroup">
+                <div class="g-row" role="row">
+                  <span role="cell">Q1</span>
+                  <span role="cell">1,234</span>
+                </div>
+                <div class="g-row" role="row">
+                  <span role="cell">Q2</span>
+                  <span role="cell">3,587</span>
+                </div>
+              </div>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td>South</td>
+          <td>2,734</td>
+          <td>6,051</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
   <footer class="site-footer">DynamicRounding ·
     <a href="https://github.com/ArieFisher/dynamic-rounding">Source on GitHub</a></footer>
 

@@ -2243,8 +2243,6 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
       get offsetWidth() { return 0; },
       rows: [],
       dataset: {},
-      // findTargetTable uses el.closest('table') (lowercase) to find the table ancestor.
-      closest(sel) { return sel === 'table' ? this : null; },
       matches(sel) { return false; },
       querySelector() { return null; },
       querySelectorAll() { return []; },
@@ -2271,7 +2269,6 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     const nonTableTarget = {
       tagName: 'SPAN',
       classList: { contains() { return false; } },
-      closest(sel) { return null; },
       matches(sel) { return false; },
       parentElement: null,
     };
@@ -2338,7 +2335,6 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   };
   const clickTarget = {
     nodeType: 1, tagName: 'DIV', parentElement: gridEl, parentNode: gridEl,
-    closest(sel) { return null; }, // first right-click: no <table> ancestor
   };
 
   let buttonCreateCount = 0;
@@ -2382,7 +2378,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   const savedGCS = global.getComputedStyle;
   global.document = captureDoc;
   global.chrome = captureChrome;
-  // findTargetTable's walk-up (case 3) calls looksLikeGrid, which reads layout
+  // findTargetTable's geometry probe calls looksLikeGrid, which reads layout
   // via the bare `getComputedStyle` global (not the window.getComputedStyle
   // stub set up once at the top of this file). Provide a flex display so the
   // fixture clears looksLikeGrid's layout gate.
@@ -2401,9 +2397,8 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     eq('double-invocation: first contextmenu builds exactly one table pillbox',
       buttonCreateCount, 1);
 
-    // --- Second right-click on the SAME target: findTargetTable resolves
-    // this grid via case 2 (the opts.isRegistered walk-up), since it is already
-    // registered. ---
+    // --- Second right-click on the SAME target: findTargetTable's walk
+    // ends at this grid, since opts.isRegistered reports it. ---
     contextmenuHandler({ target: clickTarget });
 
     eq('double-invocation: second contextmenu on the same grid builds NO second widget',
