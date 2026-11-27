@@ -1709,7 +1709,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 
     // 2x2 so the target cell (row 1, col 1) sits outside DR_DEFAULTS's
     // simplifyFirstRow/simplifyFirstColumn: false exclusion — DR_DEFAULTS
-    // (unlike the no-chrome e2e fixture above) is used as-is here, matching
+    // (unlike the rounding pass test with no chrome global) is used as-is here, matching
     // the table's settings a press carries into the apply.
     const table = makeMockTable([
       [{ tag: 'td', text: 'label' }, { tag: 'td', text: 'header' }],

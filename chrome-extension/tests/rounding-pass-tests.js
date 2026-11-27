@@ -417,7 +417,7 @@ const EXTRACTED_PATCH_OPTS = roundTableOpts({ simplifyMixedPercent: true, simpli
 })();
 
 // =============================================================================
-// The lens preview's sample pool and sample choice
+// The lens preview's samples and sample choice
 //
 // DR_DEFAULTS leave the first row and the first column as written, and the
 // lens preview samples only the cells the table rounds, so the fixtures below
@@ -1613,8 +1613,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 
 // Cells with numbers in separate pieces that stay unchanged, and the ones that round. Dataset
 // 4.91, 125, and 126, so the max magnitude is 2.
-//   a: a number beside raised digits in a <sup>, glued together with no
-//      separator: the base number rounds and the raised digits stay,
+//   a: a number beside a superscript in a <sup>, glued together with no
+//      separator: the base number rounds and the superscript stays,
 //      exactly as a native table rounds this shape — the digit run
 //      right after the <sup> is never even a candidate match, since the
 //      number extractor never starts a match right after a letter
@@ -1633,10 +1633,10 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])], { lines: true });
   const opts = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true });
   try {
-    eq('grid separate pieces: the lens preview pool keeps the base number beside the raised digits and the years, and leaves out the split number',
+    eq('grid separate pieces: the lens preview samples keep the superscript\'s base number and the years, and leave out the split number',
       collectNumericCells(grid.wrapperEl, opts).map((sample) => sample.num).sort((x, y) => x - y), [4.91, 125, 126, 2024, 2025]);
     roundTable(grid.wrapperEl, opts);
-    eq('grid separate pieces: a cell with a <sup> rounds its base and keeps the raised digits', pieceTextsOf(a), ['5T', '12']);
+    eq('grid separate pieces: a cell with a <sup> rounds its base and keeps the superscript', pieceTextsOf(a), ['5T', '12']);
     eq('grid separate pieces: years on separate lines round, as on a native table', pieceTextsOf(b), ['2,000', '2,000']);
     eq('grid separate pieces: a number split after its grouping comma stays unchanged', pieceTextsOf(c), ['1,', '234']);
     eq('grid separate pieces: a currency code in its own piece stays and the numbers round',
@@ -2550,6 +2550,31 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     cells.some(function(c) { return c.num === 2400945; }), true);
 })();
 
+// A header-section row's td values feed the dataset. The offsets are pulled
+// apart: with the thead value (magnitude 8) in the basis, the body value
+// (magnitude 7) is the other band (nearest 1M → 88,000,000); a header row
+// left out of the dataset would put it on the top band (nearest 5M →
+// 90,000,000).
+(function nativeHeaderRow_staysInDataset() {
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([
+      [{ tag: 'td', text: '987,654,321' }],
+      [{ tag: 'td', text: '87,654,321' }],
+    ]);
+    table.rows[0].parentElement = { tagName: 'THEAD' };
+    const opts = {
+      enabled: true, simplifyDates: false, simplifyTimes: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
+      simplifyMixedPercent: false, simplifyMixedCurrency: false,
+      offsetTop: -0.5, offsetOther: -1, numTop: 1,
+      rangeExpr: ''
+    };
+    roundTable(table, opts);
+    eq('outside-row (native): a header-section value still feeds the dataset',
+      table.rows[1].cells[0].innerText, '88,000,000');
+  });
+})();
+
 // When a table's only number sits in an outside row, that row alone makes
 // the dataset: it sets the max magnitude, so the value is the top band and
 // takes the top-band offset (nearest 5M → 25,000,000), never the other-band
@@ -2697,7 +2722,7 @@ function everyRowRead(kind, largeIn) {
   eq('lens preview of the pure cells 27M and 286: maxMag is 7',
     pureResult.maxMag, 7);
 
-  // The pool holds the number inside words beside a pure cell.
+  // The samples hold the number inside words beside a pure cell.
   const mixedTable = {
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B')] },
@@ -2705,7 +2730,7 @@ function everyRowRead(kind, largeIn) {
     ],
   };
   const nums = collectNumericCells(mixedTable).map(c => c.num);
-  eq('lens preview of "Revenue: ₹2,000 crore" and 5: the pool holds 2000',
+  eq('lens preview of "Revenue: ₹2,000 crore" and 5: the samples hold 2000',
     nums.includes(2000), true);
 })();
 
@@ -2857,36 +2882,36 @@ function everyRowRead(kind, largeIn) {
   });
 })();
 
-// The lens preview pool takes the numbers the simplification pass rounds:
+// The lens preview samples are the numbers the simplification pass rounds:
 // each rule below that holds a number back in the pass holds it out of the
-// pool.
+// samples.
 
 (function lensPreviewPool_outOfRange() {
-  // The pool follows the range expression, as the pass does.
+  // The samples follow the range expression, as the pass does.
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B')] },
       { cells: [thCell('Row'), tdCell('123'), tdCell('456')] },
     ],
   };
-  eq('lens preview pool (no range restriction): both columns are sampled',
+  eq('lens preview samples (no range restriction): both columns are sampled',
     collectNumericCells(table).map((c) => c.num).sort(), [123, 456]);
-  eq('lens preview pool (out-of-range): a rangeExpr restricts the sample to the in-range column',
+  eq('lens preview samples (out-of-range): a rangeExpr restricts the sample to the in-range column',
     collectNumericCells(table, { rangeExpr: 'B:B' }).map((c) => c.num), [123]);
-  eq('lens preview pool (invalid range): an invalid range expression yields no samples, as the pass rounds nothing',
+  eq('lens preview samples (invalid range): an invalid range expression yields no samples, as the pass rounds nothing',
     collectNumericCells(table, { rangeExpr: 'not a range' }).length, 0);
 })();
 
 (function lensPreviewPool_firstRow() {
   // A numeric header-row <td> is not sampled: DR_DEFAULTS ship
-  // simplifyFirstRow: false, and the pool follows the first-row exclusion.
+  // simplifyFirstRow: false, and the samples follow the first-row exclusion.
   const table = {
     rows: [
       { cells: [tdCell('label'), tdCell('777')] }, // row 0
       { cells: [tdCell('label'), tdCell('888')] }, // row 1
     ],
   };
-  eq('lens preview pool (first-row): the row-0 numeric cell is excluded even though its column is not first',
+  eq('lens preview samples (first-row): the row-0 numeric cell is excluded even though its column is not first',
     collectNumericCells(table).map((c) => c.num), [888]);
 })();
 
@@ -2899,7 +2924,7 @@ function everyRowRead(kind, largeIn) {
       { cells: [tdCell('111'), tdCell('222')] },  // row 1: column 0 vs column 1
     ],
   };
-  eq('lens preview pool (first-column): the column-0 numeric cell is excluded even in a non-first row',
+  eq('lens preview samples (first-column): the column-0 numeric cell is excluded even in a non-first row',
     collectNumericCells(table).map((c) => c.num), [222]);
 })();
 
@@ -2912,9 +2937,9 @@ function everyRowRead(kind, largeIn) {
       { cells: [thCell('Row'), tdCell('50%')] },
     ],
   };
-  eq('lens preview pool (percent on): percent cell is sampled',
+  eq('lens preview samples (percent on): percent cell is sampled',
     collectNumericCells(table, { simplifyMixedPercent: true }).map((c) => c.num), [50]);
-  eq('lens preview pool (percent off): percent cell is excluded from samples',
+  eq('lens preview samples (percent off): percent cell is excluded from samples',
     collectNumericCells(table, { simplifyMixedPercent: false }).length, 0);
 })();
 
@@ -2926,9 +2951,9 @@ function everyRowRead(kind, largeIn) {
       { cells: [thCell('Row'), tdCell('$100')] },
     ],
   };
-  eq('lens preview pool (currency on): currency cell is sampled',
+  eq('lens preview samples (currency on): currency cell is sampled',
     collectNumericCells(table, { simplifyMixedCurrency: true }).map((c) => c.num), [100]);
-  eq('lens preview pool (currency off): currency cell is excluded from samples',
+  eq('lens preview samples (currency off): currency cell is excluded from samples',
     collectNumericCells(table, { simplifyMixedCurrency: false }).length, 0);
 })();
 
@@ -2940,7 +2965,7 @@ function everyRowRead(kind, largeIn) {
       { cells: [thCell('Row'), tdCell('"12345"')] },
     ],
   };
-  eq('lens preview pool (quoted cell): a whole-cell-quoted number is excluded from samples',
+  eq('lens preview samples (quoted cell): a whole-cell-quoted number is excluded from samples',
     collectNumericCells(table).length, 0);
 })();
 
@@ -2953,7 +2978,7 @@ function everyRowRead(kind, largeIn) {
       { cells: [thCell('Row'), tdCell('Product "42" ships in 10 days')] },
     ],
   };
-  eq('lens preview pool (quoted number in mixed text): only the unquoted number is sampled',
+  eq('lens preview samples (quoted number in mixed text): only the unquoted number is sampled',
     collectNumericCells(table).map((c) => c.num), [10]);
 })();
 
@@ -2967,13 +2992,13 @@ function everyRowRead(kind, largeIn) {
       { cells: [thCell('Row'), linkCell] },
     ],
   };
-  eq('lens preview pool (whole-cell link): a whole-cell-link number is excluded from samples',
+  eq('lens preview samples (whole-cell link): a whole-cell-link number is excluded from samples',
     collectNumericCells(table).length, 0);
 })();
 
 (function lensPreviewPool_mixedTextLinkedNumber() {
   // A number inside a link sits in a markup range, so the pass leaves it as
-  // written and the pool leaves it out.
+  // written and the samples leave it out.
   const mixedLinkCell = makeLinkCell(['42'], 'See page for details');
   const table = {
     rows: [
@@ -2982,7 +3007,7 @@ function everyRowRead(kind, largeIn) {
     ],
   };
   withLinkCreateTreeWalker(() => {
-    eq('lens preview pool (linked number in mixed text): a number inside <a> is excluded from samples',
+    eq('lens preview samples (linked number in mixed text): a number inside <a> is excluded from samples',
       collectNumericCells(table).length, 0);
   });
 })();
@@ -3003,7 +3028,7 @@ function everyRowRead(kind, largeIn) {
         { cells: [thCell('Row'), supCell] },
       ],
     };
-    eq('lens preview pool (superscript exponent): a whole-cell exponent is excluded, not misread as 1012',
+    eq('lens preview samples (superscript exponent): a whole-cell exponent is excluded, not misread as 1012',
       collectNumericCells(table).length, 0);
   });
 })();
@@ -3015,12 +3040,12 @@ function everyRowRead(kind, largeIn) {
       { cells: [thCell('Row'), tdCell('Revenue: 5,000 units')] },
     ],
   };
-  eq('lens preview pool (embedded number): the number in a cell with words is sampled',
+  eq('lens preview samples (embedded number): the number in a cell with words is sampled',
     collectNumericCells(table).map((c) => c.num), [5000]);
 })();
 
 (function lensPreviewPool_datesAndTimesStayOut() {
-  // Dates and times stay out of the pool; the reason sits on
+  // Dates and times stay out of the samples; the reason sits on
   // numericPreviewCells in content.js.
   const table = {
     rows: [
@@ -3028,11 +3053,11 @@ function everyRowRead(kind, largeIn) {
       { cells: [thCell('Row'), tdCell('2020-01-01'), tdCell('3:45 PM')] },
     ],
   };
-  eq('lens preview pool (dates/times): date and time cells are still excluded from preview samples',
+  eq('lens preview samples (dates/times): date and time cells are still excluded from preview samples',
     collectNumericCells(table, { simplifyTimes: true }).length, 0);
 })();
 
-// The tests above read the lens preview pool. This one reads what the
+// The tests above read the lens preview samples. This one reads what the
 // simplification pass writes into a native table: a single fixture that
 // exercises several rules together, with the exact applied cell text pinned,
 // catches a change to the ladder's shared logic (rule order, max_mag
@@ -4202,7 +4227,7 @@ const cellPieceTexts = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValu
 })();
 
 // --- The cell cap. A table one cell over the cap writes nothing,
-// its re-apply observer stops, and one warning row records it. A table at the cap runs
+// its re-apply observer stops, and one debug row records it. A table at the cap runs
 // its pass. A table over the cap at its first simplification never attaches
 // a re-apply observer. The pass target is below every duration, so a re-apply pass
 // row beside the stop's row would show. ---

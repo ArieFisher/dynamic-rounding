@@ -1001,7 +1001,7 @@ function makePlainBox(child) {
 // --- (h) Registry, part 2: the removed-node MutationObserver
 // callback must find and unregister a table when the removedNodes entry is
 // an ANCESTOR of the table, not the table itself — the real production
-// callback (content.js's `tableObserver`), not GV7's manual re-
+// callback (content.js's `tableObserver`), not a test's manual re-
 // implementation of its cleanup steps. Exercised by re-evaluating the
 // content-script bundle with a capturing MutationObserver installed first
 // (mirrors appModelSelection_parentEquivalence_contextmenuSelectionFlow's
