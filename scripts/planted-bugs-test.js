@@ -66,6 +66,19 @@ const PRODUCT = [
   '',
 ].join('\n');
 
+// Each suite run that calls takeSlot gets the next free number in the folder,
+// which orders runs that the script starts at the same time.
+const TAKE_SLOT = [
+  'function takeSlot(dir) {',
+  '  for (let slot = 1; slot < 1000; slot++) {',
+  "    try { fs.writeFileSync(path.join(dir, String(slot)), '', { flag: 'wx' }); return slot; } catch (error) {",
+  "      if (error.code !== 'EEXIST') throw error;",
+  '    }',
+  '  }',
+  "  throw new Error('no free slot');",
+  '}',
+];
+
 // The setup piece writes the record at process exit, so a run that stops
 // with an uncaught error still holds the assertions before the stop. The
 // flaky assertion fails in the run that takes slot 2 of the folder in
@@ -88,18 +101,9 @@ const SETUP = [
   '  entries.push({ piece: site[1], line: Number(site[2]), name, passed });',
   '  if (!passed) process.exitCode = 1;',
   '}',
-  'function flakySlot() {',
-  '  const dir = process.env.FIXTURE_FLAKY_DIR;',
-  '  if (!dir) return 0;',
-  '  for (let slot = 1; slot < 1000; slot++) {',
-  "    try { fs.writeFileSync(path.join(dir, String(slot)), '', { flag: 'wx' }); return slot; } catch (error) {",
-  "      if (error.code !== 'EEXIST') throw error;",
-  '    }',
-  '  }',
-  "  throw new Error('no free flaky slot');",
-  '}',
+    ...TAKE_SLOT,
   'function flakyFails() {',
-  '  const slot = flakySlot();',
+  '  const slot = process.env.FIXTURE_FLAKY_DIR ? takeSlot(process.env.FIXTURE_FLAKY_DIR) : 0;',
   "  return slot === 2 || (process.env.FIXTURE_FLAKY_LATER === '1' && slot > 3);",
   '}',
   'module.exports = { eq, product, flakyFails };',
@@ -128,9 +132,21 @@ const PIECE_B = [
 
 // With FIXTURE_RUNS_DIR set, each suite run writes a file named by its
 // process id there, so a case can find every suite run of one script run.
+// With FIXTURE_BAD_RECORD_DIR set, slots 1 to 3 are the clean runs, slot 4
+// is the first planted bug run, which writes {} as its record, and every
+// later run stays alive until it is killed.
+const BAD_RECORD_SLOT = 4;
 const RUNNER = [
   "'use strict';",
-  "if (process.env.FIXTURE_RUNS_DIR) require('fs').writeFileSync(`${process.env.FIXTURE_RUNS_DIR}/${process.pid}`, '');",
+  "const fs = require('fs');",
+  "const path = require('path');",
+  "if (process.env.FIXTURE_RUNS_DIR) fs.writeFileSync(`${process.env.FIXTURE_RUNS_DIR}/${process.pid}`, '');",
+  ...TAKE_SLOT,
+  'if (process.env.FIXTURE_BAD_RECORD_DIR) {',
+  '  const slot = takeSlot(process.env.FIXTURE_BAD_RECORD_DIR);',
+  `  if (slot === ${BAD_RECORD_SLOT}) { fs.writeFileSync(process.env.TEST_RECORD_PATH, '{}'); process.exit(0); }`,
+  `  if (slot > ${BAD_RECORD_SLOT}) setInterval(() => {}, 1000);`,
+  '}',
   "for (const piece of ['setup.js', 'a-tests.js', 'b-tests.js']) require(`./tests/${piece}`);",
   '',
 ].join('\n');
@@ -605,6 +621,17 @@ async function waitForLongRun(runsDir) {
   return null;
 }
 
+function suiteRunPids(runsDir) {
+  return fs.readdirSync(runsDir).map(Number);
+}
+
+// A failing case kills every suite run it started, so none outlives the self-test.
+function killSuiteRuns(runsDir) {
+  for (const pid of suiteRunPids(runsDir)) {
+    try { process.kill(pid, 'SIGKILL'); } catch { /* already ended */ }
+  }
+}
+
 async function signalCase(fixture) {
   await check('measure sent SIGTERM alone while a planted bug loops forever: no suite run and no worker copy is left', async () => {
     const runsDir = freshDir(fixture, 'signal-runs');
@@ -614,23 +641,50 @@ async function signalCase(fixture) {
       env: { ...process.env, TEST_RECORD_PATH: '', TMPDIR: fixture.scriptTemp, FIXTURE_RUNS_DIR: runsDir },
     });
     const exited = new Promise((resolve) => script.on('exit', resolve));
-    const runPids = () => fs.readdirSync(runsDir).map(Number);
     try {
       const looping = await waitForLongRun(runsDir);
       if (looping === null) return `no suite run lasted ${LONG_RUN_MS} ms within ${WAIT_LIMIT_MS} ms`;
       script.kill('SIGTERM');
       await exited;
       await sleep(SETTLE_MS);
-      const alive = runPids().filter(isAlive);
+      const alive = suiteRunPids(runsDir).filter(isAlive);
       return alive.length ? `suite runs still going: ${alive.join(', ')}` : leftovers(fixture);
     } finally {
-      for (const pid of runPids()) {
-        try { process.kill(pid, 'SIGKILL'); } catch { /* already ended */ }
-      }
+      killSuiteRuns(runsDir);
       if (script.exitCode === null && script.signalCode === null) {
         script.kill('SIGKILL');
         await exited;
       }
+    }
+  });
+}
+
+// Removes what a failing script run leaves, so the later cases start clean.
+function clearLeftovers(fixture) {
+  for (const name of fs.readdirSync(fixture.scriptTemp)) {
+    fs.rmSync(path.join(fixture.scriptTemp, name), { recursive: true, force: true });
+  }
+  git(fixture.repo, 'worktree', 'prune');
+}
+
+async function badRecordCase(fixture) {
+  await check('measure on a suite that writes {} as its record in one planted bug run while other runs go on: exits 2 naming the record, and no suite run, worker copy, or temporary folder is left', async () => {
+    const runsDir = freshDir(fixture, 'bad-record-runs');
+    const out = path.join(fixture.temp, 'bad-record-result.json');
+    try {
+      const run = runScript(fixture, measureArgs(fixture, out),
+        { FIXTURE_RUNS_DIR: runsDir, FIXTURE_BAD_RECORD_DIR: freshDir(fixture, 'bad-record-slots') });
+      await sleep(SETTLE_MS);
+      const alive = suiteRunPids(runsDir).filter(isAlive);
+      const problems = [
+        run.status === 2 && run.stderr.includes('is not a list of { piece, line, name, passed }') ? null : exitDetail(run),
+        alive.length ? `suite runs still going: ${alive.join(', ')}` : null,
+        leftovers(fixture),
+      ].filter(Boolean);
+      return problems.join('\n') || null;
+    } finally {
+      killSuiteRuns(runsDir);
+      clearLeftovers(fixture);
     }
   });
 }
@@ -674,6 +728,7 @@ async function main() {
     await measureFailureCases(fixture);
     await crossPieceCases(fixture);
     await signalCase(fixture);
+    await badRecordCase(fixture);
     await extensionCase(temp);
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
