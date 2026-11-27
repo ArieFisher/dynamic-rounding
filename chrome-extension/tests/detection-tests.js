@@ -466,6 +466,8 @@
   });
 })();
 
+// 300 rows of 10 word cells hold three budgets' worth of cells within the
+// first 1,000 children, so only the cell budget ends the read.
 (function geometryProbe_columnPlanReadsSpansWithinTheDataTestBudget() {
   const budget = DR_DETECTION_SETTINGS.dataTestCellBudget;
   const gridProbe = { getComputedStyle: () => ({ display: 'grid' }), getOffsetWidth: () => 100 };
@@ -473,18 +475,39 @@
   const grid = {
     className: '',
     getAttribute: (name) => (name === 'role' ? 'grid' : null),
-    children: Array.from({ length: budget + 50 }, () => ({
+    children: Array.from({ length: 300 }, () => ({
       className: 'row',
-      children: [withTextPiece({
+      children: Array.from({ length: 10 }, () => withTextPiece({
         textContent: 'text',
         getAttribute: (name) => { if (name === 'aria-colspan') spanReads++; return null; },
-      })],
+      })),
     })),
   };
-  eq('geometry probe: candidate rows holding no number fail the numeric step',
+  eq('geometry probe: 300 rows of 10 word cells fail the numeric step',
     looksLikeGrid(grid, { styleProbe: gridProbe }), false);
-  eq('geometry probe: the column plan reads spans within the data test budget',
+  eq('geometry probe: 300 rows of 10 word cells have spans read for no more than the data test budget of cells',
     spanReads <= budget, true);
+})();
+
+// Ten columns of 300 word items turn into 300 rows of 10 cells.
+(function geometryProbe_columnFirstColumnPlanReadsSpansWithinTheDataTestBudget() {
+  const budget = DR_DETECTION_SETTINGS.dataTestCellBudget;
+  const plan = makeColumnFirstGrid(Array.from({ length: 10 }, (_, c) =>
+    Array.from({ length: 300 }, (__, r) => `Item ${String.fromCharCode(65 + c)}${'x'.repeat(r % 3)}`)));
+  let spanReads = 0;
+  plan.itemEls.flat().forEach((item) => {
+    const read = item.getAttribute;
+    item.getAttribute = (name) => {
+      if (name === 'aria-colspan') spanReads++;
+      return typeof read === 'function' ? read.call(item, name) : null;
+    };
+  });
+  withElementDisplays(() => {
+    eq('geometry probe: ten columns of 300 word items fail the numeric step',
+      looksLikeGrid(plan.gridEl), false);
+  });
+  eq('geometry probe: ten columns of 300 word items have spans read for no more than the data test budget of cells',
+    spanReads > 0 && spanReads <= budget, true);
 })();
 
 // The removed repetition step passed when the largest first-class-token share

@@ -423,7 +423,6 @@ class GridAdapter {
       return { entries, rowCellEls: readRowCellEls(entries, readCellEls, cellBudget) };
     }
     if (scope !== 'full') throw new Error(`GridAdapter: unknown row scope "${scope}"`);
-    if (cellBudget !== undefined) throw new Error('GridAdapter: the full scope takes no cell budget');
     const scrollContainer = this._getScrollContainer();
     const pinnedPane = this._getPinnedPane(scrollContainer);
     const pinnedRows = pinnedPane ? this._getRowEntries(pinnedPane).map((entry) => entry.el) : [];
