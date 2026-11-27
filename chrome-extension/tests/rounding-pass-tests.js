@@ -217,6 +217,7 @@ const SEAT_ROWS = [
       nums({ simplifyFirstRow: true }), [195, 550, 25, 40]);
   });
 })();
+
 // --- A percent cell with the percent switch off ---
 (function roundTable_percentCellHeldWithThePercentSwitchOff() {
   withLinkCreateTreeWalker(function() {

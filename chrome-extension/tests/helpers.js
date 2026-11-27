@@ -1,8 +1,8 @@
 // Helpers every piece of the suite may call: fake tables and grids, fake
-// clicks, harnesses, and the like. They are function declarations, so the
-// joined suite can call each one from any piece, whatever the order list
-// says. A new helper goes here; a test section goes in the piece for the
-// area it tests.
+// clicks, harnesses, and the like. The function declarations can be called
+// from any piece, whatever the order list says. The constants and classes
+// can be read by any piece after this one, which runs second. A new helper
+// goes here; a test section goes in the piece for the area it tests.
 
 // Takes the same arguments as new Function, but compiles in an empty context.
 // The setup runs the content scripts in the suite's global scope, so under
