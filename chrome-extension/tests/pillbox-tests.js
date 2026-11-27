@@ -2300,8 +2300,6 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
       get offsetWidth() { return 0; },
       rows: [],
       dataset: {},
-      // findTargetTable reads the tag of each element on its walk up.
-      closest(sel) { return sel === 'table' ? this : null; },
       matches(sel) { return false; },
       querySelector() { return null; },
       querySelectorAll() { return []; },
@@ -2395,7 +2393,6 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   };
   const clickTarget = {
     nodeType: 1, tagName: 'DIV', parentElement: gridEl, parentNode: gridEl,
-    closest(sel) { return null; }, // first right-click: no <table> ancestor
   };
 
   let buttonCreateCount = 0;

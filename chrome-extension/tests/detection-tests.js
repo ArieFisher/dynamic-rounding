@@ -4040,6 +4040,39 @@ function cnAdapterCellEls(tableEl) {
     findTargetTable(outerCell, { isRegistered: () => false }) === null, true);
 })();
 
+// --- A click deep inside a cell ---
+//
+// The right-click walk climbs to the document root, so the depth of the
+// click inside a cell does not change the result on either table kind.
+
+(function cellNest_aRightClickTwentyLevelsInsideACellResolvesTheTable() {
+  // A span under 20 plain wrappers, appended to `cell`; returns the span.
+  const buryInCell = (cell) => {
+    const target = rwEl('span', {}, []);
+    let top = target;
+    for (let i = 0; i < 20; i++) top = rwEl('div', {}, [top]);
+    rwSetChildren(cell, cell.childNodes.concat([top]));
+    return target;
+  };
+
+  const grid = rwDrawTable('grid', CN_INNER.sections).table;
+  rwEl('div', {}, [grid]);
+  const inGrid = buryInCell(dgDescendantsMatching(grid, '[role="row"]')[1].children[1]);
+  const fresh = findTargetTable(inGrid, { isRegistered: () => false });
+  eq('deep click: a click 20 levels inside a grid cell resolves the grid as new',
+    fresh && [fresh.handle === grid, fresh.isNew], [true, true]);
+  const registered = findTargetTable(inGrid, { isRegistered: (el) => el === grid });
+  eq('deep click: a click 20 levels inside a registered grid\'s cell resolves the grid',
+    registered && [registered.handle === grid, registered.isNew], [true, false]);
+
+  const nativeTable = rwDrawTable('native', cnSections(undefined)).table;
+  rwEl('div', {}, [nativeTable]);
+  const inNative = buryInCell(nativeTable.rows[2].cells[1]);
+  const nativeResult = findTargetTable(inNative, { isRegistered: () => false });
+  eq('deep click: a click 20 levels inside a native table cell resolves the native table',
+    nativeResult !== null && nativeResult.handle === nativeTable, true);
+})();
+
 // =============================================================================
 // The grid adapter reads its own rows and cells
 // =============================================================================
