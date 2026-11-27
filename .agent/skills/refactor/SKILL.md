@@ -93,5 +93,5 @@ Use the `code-reviewer` agent type on Opus at high effort. Give it this section,
 The main agent then:
 
 - Fixes each defect in the branch's own changes or reverts the cleanup that caused it, reruns the suites, and sends the branch back to the same reviewer. After three BLOCKs, it reverts every cleanup that still has a defect.
-- Fixes any other finding that changes no behavior and touches only lines already in the diff.
+- Fixes every other finding that is trivial under bucket 1 of "Review findings" in `AGENTS.md`.
 - Reports every other finding in chat, in plain language, and acts on none of them.
