@@ -367,6 +367,7 @@ async function withWorkerCopies(root, commit, count, work) {
   const onSignal = () => { remove(); process.exit(130); };
   process.on('SIGINT', onSignal);
   process.on('SIGTERM', onSignal);
+  process.on('SIGHUP', onSignal);
   try {
     for (let i = 0; i < count; i++) {
       const dir = path.join(folder, `worker-${i}`);
@@ -377,6 +378,7 @@ async function withWorkerCopies(root, commit, count, work) {
   } finally {
     process.off('SIGINT', onSignal);
     process.off('SIGTERM', onSignal);
+    process.off('SIGHUP', onSignal);
     remove();
   }
 }
@@ -418,8 +420,12 @@ function runSuiteOnce(copy, command, timeCapMs) {
     child.on('close', (exitCode) => {
       clearTimeout(timer);
       liveRuns.delete(child);
-      const entries = timedOut ? null : readRecord(copy.record);
-      resolve({ timedOut, exitCode, elapsedMs: Date.now() - started, entries });
+      try {
+        const entries = timedOut ? null : readRecord(copy.record);
+        resolve({ timedOut, exitCode, elapsedMs: Date.now() - started, entries });
+      } catch (error) {
+        reject(error);
+      }
     });
   });
 }
@@ -652,8 +658,8 @@ function describeLost(result, lost) {
   ]);
 }
 
-// The joined suite is one scope, and files outside the test pieces feed
-// assertions too, so a branch that changes any test file can change what any
+// The joined suite is one scope, and some assertions read files outside the
+// test pieces, so a branch that changes any test file can change what any
 // assertion checks. prove therefore reruns every caught planted bug.
 async function prove(options) {
   const root = path.resolve(options.root || path.join(__dirname, '..'));
