@@ -19,7 +19,7 @@ jobs:
           fetch-depth: 0
 
       # The version bump self-test and the Sheets build self-test run the
-      # Sheets build.
+      # Sheets build. The planted bug script self-test runs Node.
       - uses: actions/setup-node@v7
         with:
           node-version: '26'
@@ -35,6 +35,9 @@ jobs:
 
       - name: Self-test the Sheets build
         run: node scripts/build-sheets-test.js
+
+      - name: Self-test the planted bug script
+        run: node scripts/planted-bugs-test.js
 
       - name: Gate files changed by this pull request
         if: github.event_name == 'pull_request'

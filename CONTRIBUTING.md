@@ -40,6 +40,8 @@ The Block pattern column is the whole policy, so a damaged column would let ever
 - `sort --in <file>` prints, by test piece, the assertions that catch nothing, the ones that repeat others, the unique ones, and the flaky ones.
 - `prove --in <file> --branch <ref>` exits 1 when a planted bug the result file holds as caught is no longer caught on the branch. It exits 1 with "measure again" when the branch changes product code, because the planted bugs then differ.
 
+`node scripts/planted-bugs-test.js` runs the three modes on a synthetic repository with a hand-worked answer for each, and checks that the extension suite counts the same assertions with and without a record path. Run it after any change to the script or to the runner's record; `Repo hygiene` runs it too.
+
 ## Questions
 
 Open an issue. Happy to help.
