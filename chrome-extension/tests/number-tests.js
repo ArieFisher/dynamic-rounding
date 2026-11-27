@@ -657,6 +657,30 @@ eq('resolveNumTop: "2.7" -> 2',
   }
 })();
 
+// --- Steps and their labels ---
+
+(function formatStep_labelsEachStep() {
+  eq('formatStep: 5000 -> "5k"', formatStep(5000), '5k');
+  eq('formatStep: 500 -> "500"', formatStep(500), '500');
+  eq('formatStep: 2_500_000 -> "2.5M"', formatStep(2500000), '2.5M');
+  eq('formatStep: 1e9 -> "1B"', formatStep(1e9), '1B');
+  eq('formatStep: 2.5 -> "2.5"', formatStep(2.5), '2.5');
+  eq('formatStep: 0.25 -> "0.25"', formatStep(0.25), '0.25');
+  eq('formatStep: 1 -> "1"', formatStep(1), '1');
+  eq('formatStep: 0 -> "0"', formatStep(0), '0');
+})();
+
+(function stepForOffset_stepOfEachOffset() {
+  // offset = 0 on a 5-digit number -> step = 10^4 = 10000
+  eq('stepForOffset(27136, 0) = 10000', stepForOffset(27136, 0), 10000);
+  // offset = -0.5 on a 5-digit number -> f=0.5, target_mag=4, step = 0.5*1e4
+  eq('stepForOffset(27136, -0.5) = 5000', stepForOffset(27136, -0.5), 5000);
+  // offset = -1 -> step = 10^(4-1) = 1000
+  eq('stepForOffset(27136, -1) = 1000', stepForOffset(27136, -1), 1000);
+  // num=0 -> 0
+  eq('stepForOffset(0, -0.5) = 0', stepForOffset(0, -0.5), 0);
+})();
+
 // --- Range expressions ---
 
 // lettersToColIndex
@@ -954,6 +978,56 @@ eq('parseRangeExpr: "A5:A2" -> rows 1-4 of column A',
     mxFiltered.some(m => m.num === 5), false);
   eq('scope guard: 10 outside ASCII quotes is not masked',
     mxFiltered.some(m => m.num === 10), true);
+})();
+
+// ---------------------------------------------------------------------------
+// Era-marked years: getEraYearMaskedRanges locates each year token bound to
+// an era marker.
+// ---------------------------------------------------------------------------
+(function eraYearMaskedRanges() {
+  // The number at [index, index + numStr.length) sits in an era-year range.
+  const isEraYear = (text, index, numStr) =>
+    overlapsMaskedRange(getEraYearMaskedRanges(text), index, index + numStr.length);
+
+  // The digit token bound to a marker (either order) is an era year.
+  eq('era: "Kalki 2898 AD" → 2898 is an era year',
+    isEraYear('Kalki 2898 AD', 'Kalki '.length, '2898'), true);
+  eq('era: "500 BC" → 500 is an era year',
+    isEraYear('500 BC', 0, '500'), true);
+  eq('era: "AD 79" → 79 is an era year',
+    isEraYear('AD 79', 'AD '.length, '79'), true);
+  // Both orders take the same spacing and the same larger-number guard.
+  eq('era: "AD79" (no space) → 79 is an era year, like "2898AD"',
+    [isEraYear('AD79', 'AD'.length, '79'), isEraYear('2898AD', 0, '2898')], [true, true]);
+  eq('era: "AD 79.5" and "1.2898 AD" → a decimal is NOT an era year',
+    [isEraYear('AD 79.5', 'AD '.length, '79.5'), isEraYear('1.2898 AD', 0, '1.2898')], [false, false]);
+  eq('era: "Founded AD 79." → a sentence-ending period keeps 79 an era year',
+    isEraYear('Founded AD 79.', 'Founded AD '.length, '79'), true);
+  eq('era: "1200 CE" → 1200 is an era year',
+    isEraYear('1200 CE', 0, '1200'), true);
+  eq('era: "2,898 BCE" → comma year is an era year',
+    isEraYear('2,898 BCE', 0, '2,898'), true);
+
+  // Negatives: plain numbers, and marker letters embedded in a word.
+  eq('era: plain "Revenue 3,000,000" is NOT an era year',
+    isEraYear('Revenue 3,000,000', 'Revenue '.length, '3,000,000'), false);
+  eq('era: bare "2898" (no marker) is NOT an era year',
+    isEraYear('2898', 0, '2898'), false);
+  eq('era: "ADELAIDE 12" does NOT match (AD inside a word)',
+    isEraYear('ADELAIDE 12', 'ADELAIDE '.length, '12'), false);
+
+  // Lowercase, period-less marker letters are ordinary words/abbreviations, not
+  // eras: "3,420 ad hoc", "120 bp" (basis points), "5 ah", "12 ce", "9 bc".
+  // These must NOT be read as years, which would keep them from rounding.
+  eq('era: "3,420 ad hoc" → "ad" is a word, NOT an era year',
+    isEraYear('3,420 ad hoc', 0, '3,420'), false);
+  eq('era: "120 bp" (basis points) is NOT an era year',
+    isEraYear('120 bp', 0, '120'), false);
+  eq('era: "5 ah" is NOT an era year',
+    isEraYear('5 ah', 0, '5'), false);
+  // Period-punctuated lowercase forms stay unambiguous and DO match.
+  eq('era: "79 a.d." (dotted, lowercase) is still an era year',
+    isEraYear('79 a.d.', 0, '79'), true);
 })();
 
 // =============================================================================

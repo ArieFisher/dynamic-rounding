@@ -345,6 +345,44 @@
 })();
 
 // ---------------------------------------------------------------------------
+// Settings survive a sidebar close and reopen — pulled from the model
+// (request:activeTable), not reset to DR_DEFAULTS.
+// The settings live on the active table, so the reopen's read
+// answers that table's settings.
+// ---------------------------------------------------------------------------
+(function appModelSettings_settingsSurviveSidebarReconnect() {
+  runPressFixture(() => {
+    const table = makePressTable('12,345');
+    DR_MODEL.setActiveTable(table);
+
+    // The sidebar sets a custom value (an "open" session), then — simulated by
+    // nothing happening in between — closes and reopens, pulling the model.
+    const customSettings = {
+      enabled: true, simplifyMixedCurrency: false,
+      simplifyMixedPercent: true, simplifyFirstRow: false, simplifyFirstColumn: false,
+      simplifyDates: true, simplifyTimes: false, dateGranularity: 'year', timeGranularity: 'hour',
+      offsetTop: 0.25, offsetOther: -1.5, numTop: 1, rangeExpr: 'B2:E8',
+    };
+    let applyResponse = null;
+    withCreateTreeWalker(() => {
+      applyResponse = askContentScript({ topic: 'request:applySettings', settings: customSettings });
+    });
+    eq('reconnect: request:applySettings was acknowledged before the (simulated) close',
+      applyResponse && applyResponse.ok, true);
+
+    const getResponse = askContentScript({ topic: 'request:activeTable' });
+    const pulled = (getResponse && getResponse.settings) || {};
+
+    eq('reconnect: request:activeTable returns a settings object',
+      !!(getResponse && getResponse.settings), true);
+    eq('reconnect: offsetTop survives the close/reopen', pulled.offsetTop, 0.25);
+    eq('reconnect: offsetOther survives the close/reopen', pulled.offsetOther, -1.5);
+    eq('reconnect: rangeExpr survives the close/reopen', pulled.rangeExpr, 'B2:E8');
+    eq('reconnect: a changed boolean flag survives the close/reopen', pulled.simplifyMixedCurrency, false);
+  });
+})();
+
+// ---------------------------------------------------------------------------
 // Settings live in DR_MODEL, one set per table: a table with none
 // reads as the shipped defaults, setTableSettings merges its patch onto the
 // stored settings (the defaults when none are stored) and publishes the whole

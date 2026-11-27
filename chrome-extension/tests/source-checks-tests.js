@@ -66,6 +66,13 @@
     allContentSrc.includes('cellEl.innerText || cellEl.textContent'), true);
 })();
 
+// roundTable patches each number into its text piece and assigns no markup.
+(function nativeWrite_roundTableAssignsNoMarkup() {
+  const body = sourceBodyOf(allContentSrc, 'function roundTable(');
+  eq('native write: roundTable holds no innerHTML= assignment',
+    body.length > 0 && !/innerHTML\s*=(?!=)/.test(body), true);
+})();
+
 // --- Sidebar defaults and layout ---
 
 (function sidebarDefaultsAndLayout() {
@@ -1702,7 +1709,7 @@ checkIndexDeclaresOnlyPackageObject('dr-table', 'DR_TABLE');
 
     // 2x2 so the target cell (row 1, col 1) sits outside DR_DEFAULTS's
     // simplifyFirstRow/simplifyFirstColumn: false exclusion — DR_DEFAULTS
-    // (unlike the no-chrome e2e fixture above) is used as-is here, matching
+    // (unlike the rounding pass test with no chrome global) is used as-is here, matching
     // the table's settings a press carries into the apply.
     const table = makeMockTable([
       [{ tag: 'td', text: 'label' }, { tag: 'td', text: 'header' }],

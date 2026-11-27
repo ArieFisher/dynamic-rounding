@@ -713,19 +713,6 @@ const consistentCellCountStepPasses = (children) =>
 //     getMarkupRanges holds nothing)
 // ---------------------------------------------------------------------------
 
-// Standard opts for the exponent tests.
-const supTestOpts = {
-  enabled: true,
-  simplifyMixedCurrency: true,
-  simplifyMixedPercent: true,
-  simplifyFirstRow: true,
-  simplifyFirstColumn: true,
-  offsetTop: -0.5,
-  offsetOther: -0.5,
-  numTop: 1,
-  rangeExpr: '',
-};
-
 // ---------------------------------------------------------------------------
 // (getSuperscriptRanges direct unit tests)
 // ---------------------------------------------------------------------------
@@ -4501,8 +4488,6 @@ function cnAdapterCellEls(tableEl) {
 // "700023000+2.3%" (a display:none sort key ahead of the visible percent)
 // reads as "+2.3%" — through the real adapter, and through the engine.
 (function hiddenCells_visibleCellReadsRenderedTextNotSortKey() {
-  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
-  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   const sortKeyCell = tdCell('+2.3%');
   sortKeyCell.textContent = '700023000+2.3%';
   const table = {
