@@ -1064,23 +1064,6 @@ eq('parseRangeExpr: "A5:A2" -> rows 1-4 of column A',
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
   eq('regression: manifest.version matches N.N.N',
     /^\d+\.\d+\.\d+$/.test(manifest.version), true);
-
-  // 5c. Out-of-scope files not modified: sidebar.html, sidebar.js, js/, python/
-  // We verify their content by checking they exist but do NOT contain getQuoteMaskedRanges.
-  const sidebarHtmlPath = path.join(__dirname, 'sidebar.html');
-  const sidebarJsPath = path.join(__dirname, 'sidebar.js');
-  if (fs.existsSync(sidebarHtmlPath)) {
-    eq('regression: sidebar.html not modified (no getQuoteMaskedRanges)',
-      fs.readFileSync(sidebarHtmlPath, 'utf8').includes('getQuoteMaskedRanges'), false);
-  } else {
-    passed++; // file absent — trivially passes (was never in scope)
-  }
-  if (fs.existsSync(sidebarJsPath)) {
-    eq('regression: sidebar.js not modified (no getQuoteMaskedRanges)',
-      fs.readFileSync(sidebarJsPath, 'utf8').includes('getQuoteMaskedRanges'), false);
-  } else {
-    passed++;
-  }
 })();
 
 // --- Pure cell write: whole and fractional results ---

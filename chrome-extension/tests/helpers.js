@@ -2413,7 +2413,7 @@ function recordAppendedChildren(el) {
 // to the model.
 // ---------------------------------------------------------------------------
 /**
- * @param {{captureMarks?: string[]}} [opts] captureMarks: the mark word of each capture mark element the page holds.
+ * @param {{captureMarks?: string[], pageAnswers?: boolean}} [opts] captureMarks: the mark word of each capture mark element the page holds. pageAnswers: false makes the tab answer no request, which shows the sidebar's state before any answer arrives.
  */
 function makeIssue251SidebarHarness(opts) {
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
@@ -2424,6 +2424,7 @@ function makeIssue251SidebarHarness(opts) {
 
   function makeEl() {
     const listeners = {};
+    const classes = new Set();
     return {
       addEventListener(type, fn) {
         if (!listeners[type]) listeners[type] = [];
@@ -2433,7 +2434,15 @@ function makeIssue251SidebarHarness(opts) {
       // lets a test trigger sidebar.js's applyNow path.
       fire(type, evt) { (listeners[type] || []).forEach((fn) => fn(evt)); },
       removeEventListener() {},
-      classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
+      classList: {
+        add(cls) { classes.add(cls); },
+        remove(cls) { classes.delete(cls); },
+        contains(cls) { return classes.has(cls); },
+        toggle(cls, force) {
+          const shouldHave = force === undefined ? !classes.has(cls) : !!force;
+          if (shouldHave) classes.add(cls); else classes.delete(cls);
+        },
+      },
       style: {}, value: '', checked: false, disabled: false, textContent: '', innerHTML: '',
       children: [], appendChild() {}, querySelector() { return makeEl(); }, querySelectorAll() { return []; },
       getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 }; },
@@ -2503,6 +2512,7 @@ function makeIssue251SidebarHarness(opts) {
       query(q, cb) { cb([{ id: SIDEBAR_HARNESS_TAB }]); },
       sendMessage(tabId, msg, cb) {
         tabMessages.push(msg);
+        if (opts && opts.pageAnswers === false) return;
         if (msg.topic === 'request:activeTable') {
           cb({ settings: modelSettings, samples: { top: [], other: [] }, maxMag: 0 });
         } else {

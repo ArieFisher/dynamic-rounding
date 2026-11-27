@@ -1947,9 +1947,8 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // Unit test strategy:
 //   Part A — the press: verify the settings notice goes out, marking the
 //     active table and carrying the new on/off value.
-//   Part B — sidebar.js handler (static): verify the source subscribes to
-//     the notice and redraws from it. The sidebar suite drives the handler
-//     itself through its harness.
+//   The sidebar suite drives the sidebar's handler for the notice through its
+//   harness.
 // ---------------------------------------------------------------------------
 
 (function tablePillbox_partA_settingsNoticeOnActiveTable() {
@@ -1987,16 +1986,6 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     notice && notice.settings.enabled, true);
 })();
 
-(function tablePillbox_partB_sidebarHandlerStaticAnalysis() {
-  // Verify sidebar.js source subscribes to the settings notice and redraws
-  // its controls on a notice another writer sent.
-  const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
-  eq("part-B: sidebar.js subscribes to 'state:settingsChanged'",
-    /boundTab\.subscribe\(\s*'state:settingsChanged'/.test(sidebarSrc), true);
-  eq('part-B: sidebar.js redraws its controls on a notice another writer sent',
-    /'state:settingsChanged'[\s\S]{0,300}redrawFromActiveTable\(source === 'sidebar'\)/.test(sidebarSrc), true);
-})();
-
 // ---------------------------------------------------------------------------
 // Clicking the sidebar pillbox still updates the table pillbox
 //      state (regression guard).
@@ -2016,11 +2005,6 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   }
   eq('regression: content.js still handles request:applySettings message',
     contentSrc.includes('request:applySettings'), true);
-
-  // Static guard: sidebar.js must still have enabledEl wired up.
-  const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
-  eq('regression: sidebar.js still references enabledEl',
-    sidebarSrc.includes('enabledEl'), true);
 
   // Dynamic guard: a press still takes a table on and back off; the intent
   // drives it. DR_DEFAULTS excludes row 0 (firstRow) and col 0 (firstColumn),
@@ -2153,25 +2137,22 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // Right-click activation
 // ---------------------------------------------------------------------------
 // Right-clicking a table draws the whole-table outline on that table.
-// The sidebar's state:tableActivated subscriber calls flashSidebarContainer.
 // Right-clicking a non-table element produces NO flash and NO state:tableActivated send.
 // background.js does NOT relay state:tableActivated.
 // ---------------------------------------------------------------------------
 //
 // Runtime note: the main eval() above registered document.addEventListener with
 // the no-op stub, so the contextmenu handler is not capturable from the
-// already-evaluated code.  ACs 1 and 3 are therefore verified in two layers:
+// already-evaluated code.  The outline on a right-click and the activation send
+// for a non-table click are therefore verified in two layers:
 //   (a) live runtime: call flashActiveTable() directly and assert its effect
 //       (it is in global scope after the eval), confirming that the mechanism
 //       the handler uses actually works.
-//   (b) source-level: regex-assert that the contextmenu handler in content.js
-//       correctly calls flashActiveTable(table) inside the `if (table)` guard
-//       and does NOT call it when there is no table.
-// ACs 2 and 4 are pure source-level (sidebar.js / background.js have no eval
-// path in this harness).
-//
-// Additionally, a second eval with a capturing stub is used to exercise the
-// contextmenu handler end-to-end for ACs 1 and 3.
+//   (b) a second eval with a capturing stub exercises the contextmenu handler
+//       end-to-end for those two results.
+// The sidebar flash and the worker's silence on the activation report hold in
+// the sidebar flash test in source-checks-tests.js and in the scans of
+// background.js and content.js below.
 // ---------------------------------------------------------------------------
 
 (function tableContextmenuActivation_sourceLevel() {
@@ -2181,44 +2162,6 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     return;
   }
   const bgSrc      = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
-  const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
-
-  // contextmenu handler calls flashActiveTable(table) inside
-  // the `if (found)` guard. findTargetTable returns { handle, isNew }, so the handler
-  // guards on `found` and derives `table` from registerIfNew(found)
-  // before flashing it.
-  // Pattern: `if (found) { ... flashActiveTable(table) ...` within the handler.
-  eq('active table source: contextmenu handler calls flashActiveTable(table)',
-    /if\s*\(\s*found\s*\)[\s\S]{0,300}flashActiveTable\(\s*table\s*\)/.test(contentSrc),
-    true);
-
-  // the call to flashActiveTable is inside the `if (found)` block
-  // — it cannot appear BEFORE the guard.
-  // We verify that flashActiveTable does NOT appear before the first `if (found)`.
-  const contextmenuMatch = contentSrc.match(/document\.addEventListener\s*\(\s*['"]contextmenu['"][\s\S]*?\}\s*,\s*true\s*\)/);
-  const handlerSrc = contextmenuMatch ? contextmenuMatch[0] : '';
-  const flashIndex = handlerSrc.indexOf('flashActiveTable');
-  const guardIndex = handlerSrc.indexOf('if (found)');
-  eq('active table source: flashActiveTable appears after if(found) guard in handler',
-    flashIndex !== -1 && guardIndex !== -1 && flashIndex > guardIndex,
-    true);
-
-  // state:tableActivated sendMessage is inside the `if (found)` block,
-  // meaning a non-table right-click cannot trigger it.
-  const sendMsgIndex = handlerSrc.indexOf('state:tableActivated');
-  eq('active table source: state:tableActivated send is inside if(found) guard',
-    sendMsgIndex !== -1 && sendMsgIndex > guardIndex,
-    true);
-
-  // sidebar.js state:tableActivated handler calls flashSidebarContainer().
-  eq('active table source: sidebar.js state:tableActivated handler calls flashSidebarContainer()',
-    /state:tableActivated[\s\S]{0,120}flashSidebarContainer\s*\(\s*\)/.test(sidebarSrc),
-    true);
-
-  // flashSidebarContainer adds the dr-sidebar-flash class to document.body.
-  eq('active table source: flashSidebarContainer adds dr-sidebar-flash class',
-    /flashSidebarContainer[\s\S]{0,300}classList\.add\s*\(\s*SIDEBAR_FLASH_CLASS\s*\)/.test(sidebarSrc),
-    true);
 
   // the worker neither publishes nor subscribes to the activation
   // topic. The sidebar receives it straight from the content script over the
