@@ -343,10 +343,21 @@ function listPlantedBugs(root, commit, suite, filesOption) {
 
 // --- Worker copies and suite runs ---
 
+// An interrupt sent to the script alone, or an error that ends the script,
+// would leave the suite runs going, and a run of a planted bug that loops
+// forever would never end. The script stops each one before it exits.
+const liveRuns = new Set();
+
+function stopLiveRuns() {
+  for (const child of liveRuns) child.kill('SIGKILL');
+  liveRuns.clear();
+}
+
 async function withWorkerCopies(root, commit, count, work) {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'planted-bugs-'));
   const copies = [];
   const remove = () => {
+    stopLiveRuns();
     for (const copy of copies) {
       try { git(root, 'worktree', 'remove', '--force', copy.dir); } catch { /* the prune below clears it */ }
     }
@@ -396,14 +407,17 @@ function runSuiteOnce(copy, command, timeCapMs) {
     const started = Date.now();
     const child = spawn(command[0], command.slice(1),
       { cwd: copy.dir, env: { ...process.env, TEST_RECORD_PATH: copy.record }, stdio: 'ignore' });
+    liveRuns.add(child);
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, timeCapMs);
     child.on('error', (error) => {
       clearTimeout(timer);
+      liveRuns.delete(child);
       reject(new ScriptError(`cannot run ${command.join(' ')}: ${error.message}`));
     });
     child.on('close', (exitCode) => {
       clearTimeout(timer);
+      liveRuns.delete(child);
       const entries = timedOut ? null : readRecord(copy.record);
       resolve({ timedOut, exitCode, elapsedMs: Date.now() - started, entries });
     });
