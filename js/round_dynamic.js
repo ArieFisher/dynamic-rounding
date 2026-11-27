@@ -19,8 +19,8 @@
  * global scope of whichever script holds this file.
  */
 
-// Through floating-point error, absnum / step can be just below a half
-// (1.15 / 0.1 is 11.499999999999998). Without this addition, 1.15 at offset
+// Through floating-point error, absnum / step can be just below a
+// value ending in .5 (1.15 / 0.1 is 11.499999999999998). Without this addition, 1.15 at offset
 // -1 returns 1.1, not 1.2.
 const EPSILON = 1e-9;
 // The smallest abs(trunc(offset)) at which the x-floor applies to a
@@ -118,9 +118,9 @@ function findMaxMagnitude(dataset) {
  * The number reader: the currency list, the format marks, the group shape,
  * the number shape test, and toNumber, which turns a text into a value.
  *
- * docs/design.md "How the code is shared" lists where this file loads. Must
- * remain side-effect-free: no chrome.*, no DOM access, no Node module code.
- * All symbols land on the top level of whichever script holds this file, so
+ * docs/design.md "How the code is shared" lists where this file loads, and
+ * its rules "The core and the write-back read no source" and "The plugin
+ * library is a built copy" state what it may hold. All symbols land on the top level of whichever script holds this file, so
  * the extension, the Sheets library, and the plugin share one currency list
  * and one toNumber.
  */

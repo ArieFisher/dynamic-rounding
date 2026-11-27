@@ -7,8 +7,8 @@
  * global scope of whichever script holds this file.
  */
 
-// Through floating-point error, absnum / step can be just below a half
-// (1.15 / 0.1 is 11.499999999999998). Without this addition, 1.15 at offset
+// Through floating-point error, absnum / step can be just below a
+// value ending in .5 (1.15 / 0.1 is 11.499999999999998). Without this addition, 1.15 at offset
 // -1 returns 1.1, not 1.2.
 const EPSILON = 1e-9;
 // The smallest abs(trunc(offset)) at which the x-floor applies to a
