@@ -335,7 +335,8 @@ function dropPendingTable(chainRoot) {
 // fresh registration, never on an entry whose originals and settings belong
 // to cells no longer on the screen.
 //
-// The nomination step re-runs from the nest's chain root, because a new
+// The nomination step re-runs from the nest's chain root, or from the table
+// itself when it sits in no nest, as an unmarked grid does, because a new
 // result set can change which element of the nest passes the data test, so
 // the fresh registration can land on a different element. The switch
 // publishes even where it lands on the same element: the entry is new either

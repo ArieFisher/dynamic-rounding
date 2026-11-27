@@ -499,7 +499,8 @@ function nominateNest(chainRoot, opts = {}) {
 
   // An element nested in a cell is out of a grid's nest (_depthInChain returns
   // -1), so a registered grid inside a cell never makes the grid around it
-  // read as registered.
+  // read as registered. The root's guards test no role, so an unmarked grid
+  // the shape check passes in as its own root sits in its nest at depth 0.
   const nest = chainRoot.tagName === 'TABLE' ? [{ el: chainRoot, depth: 0 }]
     : [chainRoot].filter((el) => _passesQualifyingGuards(el, isArtifact, opts))
       .concat(_qualifyingDescendants(chainRoot, isArtifact, opts))

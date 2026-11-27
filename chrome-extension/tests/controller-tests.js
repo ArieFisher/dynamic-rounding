@@ -1708,6 +1708,29 @@ function issue328SettingsOf(table) {
   });
 })();
 
+(function shapeFingerprint_anUnmarkedGridThatGainsAColumnRegistersFresh() {
+  runPressFixture(() => {
+    const rowEls = unmarkedGridRows().map((texts) =>
+      rwEl('div', {}, texts.map((text) => rwEl('span', {}, [rwText(text)]))));
+    const grid = rwEl('div', {}, rowEls);
+    rwEl('div', {}, [grid]);
+    registerFingerprintedTable(grid);
+    DR_MODEL.setActiveTable(grid);
+    eq('fingerprint unmarked: the unmarked grid registers with four columns (precondition)',
+      [DR_MODEL.hasTable(grid), (DR_MODEL.getTableFingerprint(grid) || {}).columnCount], [true, 4]);
+
+    rowEls.forEach((rowEl, i) => rwSetChildren(rowEl, rowEl.childNodes.concat([rwEl('span', {}, [rwText(String((i + 1) * 17))])])));
+    let outcome = null;
+    withTablePillboxDocumentMock(function () { outcome = revalidateTableShape(grid); });
+    eq('fingerprint unmarked: an unmarked grid that gains a column registers fresh at once',
+      [outcome.switched, outcome.table === grid, DR_MODEL.hasTable(grid)], [true, true, true]);
+    eq('fingerprint unmarked: the fresh fingerprint carries the new column count',
+      (DR_MODEL.getTableFingerprint(grid) || {}).columnCount, 5);
+
+    forgetRegisteredTable(grid);
+  });
+})();
+
 // --- changing the column set trips the fingerprint. The entry is
 // discarded, and a table pillbox press afterwards simplifies from the original. ---
 
