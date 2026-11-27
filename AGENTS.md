@@ -206,9 +206,13 @@ These rules govern all prose: chat, documents, and GitHub text.
  
 Route every review finding to exactly one place. Never leave an actionable item as a note for me to remember and re-instruct.
  
-1. **Trivial and in-scope: fix now.** Trivial means no behavior change, only files and lines already in the diff, and the green existing suite proves it. Apply the fix, re-run the tests, and mention it in one line.
+1. **Trivial and in-scope: fix now.** Trivial means no behavior change, and the green existing suite proves it. Two kinds qualify:
+   - A change to files and lines already in the diff.
+   - A correction to a false comment, test name, or test group heading in any file, when the edit changes only that text. Correct it to match the code, checked by reading the code. Delete it only when the code no longer needs it.
+
+   Apply the fix, re-run the tests, and mention it in one line.
 2. **In-scope behavior bug: fix now, with a test that fails without the fix.** Deferring it ships it.
-3. **Actionable and out-of-scope: open a GitHub issue.** This covers anything that changes behavior outside the diff, spans untouched files, needs a judgement call, or grows the diff. Search open issues first and comment on a match rather than refiling. Title prefix `[follow-up]`; label `follow-up`, plus `tech-debt` if apt; the body links the pull request and quotes the finding. Link the issues in the pull request's Reviewer notes section.
+3. **Actionable and out-of-scope: open a GitHub issue.** This covers anything that changes behavior outside the diff, spans untouched files (except a bucket 1 correction), needs a judgement call, or grows the diff. Search open issues first and comment on a match rather than refiling. Title prefix `[follow-up]`; label `follow-up`, plus `tech-debt` if apt; the body links the pull request and quotes the finding. Link the issues in the pull request's Reviewer notes section.
 4. **FYI, no action: one line** in the sprint log or the pull request notes.
 Behavior-changing pull requests get an independent code-reviewer pass before I merge; re-review through the same reviewer so it keeps its context. When a finding forces a product fork, put the options to me.
  
