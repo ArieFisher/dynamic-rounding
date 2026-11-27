@@ -1,0 +1,104 @@
+{
+  "title": "Trim the extension tests without weakening them",
+  "base_branch": "main",
+  "created": "2026-11-27",
+  "source_markdown": "docs/sprint-plans/test-dedup.md",
+  "repo_conventions": {
+    "version_files": [
+      { "path": "chrome-extension/manifest.json", "format": "semver in `version` key" },
+      { "path": "claude-code-plugin/.claude-plugin/plugin.json", "format": "semver in `version` key" },
+      { "path": "js/src/entry.js", "format": "` * [VERSION] x.y.z` comment line, carried into js/round_dynamic.js by the build" },
+      { "path": "python/pyproject.toml", "format": "`version = \"x.y.z\"`" }
+    ],
+    "version_bump_policy": "merge-workflow",
+    "test_command": "node chrome-extension/tests.js && node js/tests.js && node js/doc-tests.js && node claude-code-plugin/tests.js && node scripts/build-sheets.js --check",
+    "gate_command": "scripts/check-files.sh --staged && scripts/check-vocab.sh --staged",
+    "build_command": "node scripts/build-sheets.js",
+    "branch_naming": "<type>/<label>, type one of feature, fix, refactor, docs, chore, plan; each sprint names its branch",
+    "dependent_policy": "after-merge",
+    "base_branch_writes": "pull-request",
+    "commit_convention": "Conventional Commits",
+    "pr_template": "AGENTS.md, section \"Text on GitHub\""
+  },
+  "sprints": [
+    {
+      "label": "planted-bug-script",
+      "branch": "chore/planted-bug-script",
+      "goal": "The runner records every assertion, and one script measures, sorts, and proves as the plan's section 3 states.",
+      "scope": "Runner and `eq`: the record mode in section 3.1; the sidebar piece's direct count changes (sidebar-tests.js:523-547) become `eq` calls. `scripts/planted-bugs.js`: the lexer, the planted bug table, worker copies, the four outcomes, the three modes (measure, sort, prove), the caps in the Simplicity section. `scripts/planted-bugs-test.js`: runs the script on a synthetic product file and a synthetic suite of a few assertions, with a known answer for every mode; it runs in seconds and joins the test command. Docs (`docs:` commit): the four terms in the plan's Context section go into docs/vocabulary.md, \"Working terms\"; CONTRIBUTING.md gains how to run the three modes.",
+      "out_of_scope": "The Sheets, plugin, and Python suites; any change to a test piece beyond the sidebar count changes.",
+      "acceptance_criteria": [
+        "On the synthetic fixture, `measure` gives the known catch lists, `sort` gives the known three lists, and `prove` fails on a branch that deletes a unique assertion and passes on one that deletes a repeating assertion.",
+        "A planted bug that loops forever stops at the time cap and counts as caught by a timeout.",
+        "`prove` fails with \"measure again\" on a branch that changes product code.",
+        "The extension suite still reports 4,623 assertions, with and without a record path."
+      ],
+      "depends_on": [],
+      "version_bump": "patch",
+      "complexity": "L",
+      "dev_notes": "Write the record at process exit, so an assertion that runs after a timer is recorded. Named constants CLEAN_RUNS = 3, TIME_CAP_MULTIPLE = 3, MAX_PLANTED_BUGS = 10000, in the script. Skip js/round_dynamic.js and claude-code-plugin/hooks/library.js; plant bugs only in chrome-extension/ outside tests/. Worker copies are git worktrees in the operating system's temporary folder, removed at the end (section 3.4). Also run `measure` on one product file to confirm real runs work end to end and report the time per planted bug."
+    },
+    {
+      "label": "case-table-rule",
+      "branch": "docs/case-table-rule",
+      "goal": "AGENTS.md states that tests differing only by input and expected result share one case table per setup.",
+      "scope": "One rule under \"Code style\" in AGENTS.md; \"case table\" in docs/vocabulary.md if planted-bug-script has not merged, else no vocabulary change.",
+      "out_of_scope": "Converting any test.",
+      "acceptance_criteria": [
+        "The rule names when a case table applies (one function, one setup) and when it does not (event order, sequences, code-text checks).",
+        "The gate command passes."
+      ],
+      "depends_on": [],
+      "version_bump": "patch",
+      "complexity": "S",
+      "dev_notes": "A rule goes in one place; the refactor skill points at it, never restates it. Decision 1 in the plan."
+    },
+    {
+      "label": "first-measurement",
+      "branch": null,
+      "spike": true,
+      "goal": "Answer whether the planted bug data is good enough to drive the trimming. tests-that-catch-nothing and the trimming passes depend on the answer.",
+      "scope": "Investigate: planted bugs (total, invalid, and the share of each outcome in section 3.3); assertions per piece (catches nothing, repeats others, unique); flaky assertions and repeated assertion identities; elapsed time. Findings go in docs/sprint-logs/test-dedup-first-measurement.md with a **Result:** line of Confirmed or Amend.",
+      "out_of_scope": "Any change to code or tests.",
+      "acceptance_criteria": [
+        "Each number recorded.",
+        "A verdict on the data: if crashes and timeouts credit no assertion for most caught planted bugs, the \"repeats others\" list is too thin to act on, and the plan needs a revision."
+      ],
+      "depends_on": ["planted-bug-script"],
+      "version_bump": "none",
+      "complexity": "S",
+      "dev_notes": "The run takes hours (an estimate); start it in the background. A negative verdict leads to a new plan revision, not an edit to this one."
+    },
+    {
+      "label": "refactor-skill-test-gate",
+      "branch": "chore/refactor-skill-test-gate",
+      "goal": "A refactor pass over a test piece keeps every planted bug caught.",
+      "scope": ".agent/skills/refactor/SKILL.md. Main agent: when the input holds a test piece, it runs `measure` on the run's start commit in the background at step 1, and `sort` before the first find subagent for a test piece. Find subagent: for a test piece, it reads that piece's three lists; an assertion that repeats others is a Group A finding to drop; exception (decision 3): when its name, comment, or test group heading points to a past bug or issue, it stays, unless a kept assertion checks the exact same input, then it is a Group A drop too; merging tests into a case table is Group A only when AGENTS.md holds the case table rule; an assertion that catches nothing is a defect on main. Action subagent: after each cleanup to a test piece, it runs `prove` and reverts the cleanup on a failure. Review subagent: it runs `prove` on the branch and reports a failure as a defect in the branch's own changes.",
+      "out_of_scope": "Running a pass; any test piece.",
+      "acceptance_criteria": [
+        "Every step names the mode it runs and what a failure leads to.",
+        "No rule from AGENTS.md is restated; the skill points at it."
+      ],
+      "depends_on": ["planted-bug-script"],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "The measurement takes hours (an estimate), so the main agent starts it before the first file and waits on it only when the first test piece comes up."
+    },
+    {
+      "label": "tests-that-catch-nothing",
+      "branch": "fix/tests-that-catch-nothing",
+      "goal": "Each assertion on the spike's \"catches nothing\" list fails when its rule breaks, or goes to the product manager.",
+      "scope": "The test pieces on the list. For each assertion: when it checks a rule of the product code, change its input so the rule matters, and confirm by breaking the rule by hand that it now fails, as #824 did; when it checks code text, docs, or the manifest, leave it; otherwise list it in the pull request for the product manager, with what it checks.",
+      "out_of_scope": "Assertions that repeat others; any product code.",
+      "acceptance_criteria": [
+        "Each repaired assertion fails with its rule broken and passes on the branch; the pull request states how each was broken.",
+        "`prove` against the spike's result file passes.",
+        "The extension suite passes."
+      ],
+      "depends_on": ["first-measurement"],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "Assumes 10 to 30 assertions (an estimate); above 60, split by test piece into several pull requests. A repaired assertion changes the catch lists; that is the intent, and `prove` still passes because it checks for losses only."
+    }
+  ]
+}
