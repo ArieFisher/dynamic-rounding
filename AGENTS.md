@@ -66,7 +66,7 @@ This repository is public. Stage a new file only if it serves someone using or b
 - Type-hint every new Python parameter and return value. Write no JavaScript per-parameter doc comments, except on `ROUND_DYNAMIC`, whose JSDoc Google Sheets reads to build the help card.
 - A comment holds only what the code cannot show: a reason, a constraint, or a fact about the page or an outside caller. Never restate what the code does; the restatement goes false when the code changes. First judge whether a clearer name or a smaller function removes the need.
 - A test name holds the input and the expected result, never the mechanism. A test group heading holds the behavior its tests check. A mechanism in a name goes false when the mechanism changes, and the test still passes.
-- Tests that call one function under one setup and differ only by input and expected result share one case table, one row per case. Tests that check event order, a sequence of steps, or code text stay separate.
+- Tests that check one behavior of one function under one setup, and differ only by input and expected result, share one case table, one row per case. Each behavior holds its own case table under its own test group heading. Tests that check event order, a sequence of steps, or code text stay separate.
 ### Regression fixtures
  
 A capture from the extension holds real page content. Commit only a minimized synthetic copy: the failing structure rebuilt with invented values that still reproduce the defect. A raw capture never enters the repository.
