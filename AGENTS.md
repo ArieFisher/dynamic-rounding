@@ -1,301 +1,245 @@
 # Repository conventions for agents
-
-These conventions apply to every contributor to this repository, person or agent, whatever tool or surface runs the agent.
-
-**This file is the only copy.** Claude Code reads `CLAUDE.md`, which imports this file. Antigravity reads `.agent/rules/`, which points here. Read it in full before your first tool call, and never restate a rule from here in another file. See [Group like concepts into a single location](#group-like-concepts-into-a-single-location).
-
-**Repository specifics live beside it.** `CONTRIBUTING.md` holds this repository's setup and commit checks, and `MAINTAINERS.md` holds its release steps and changelog. Read both before your first change. Neither restates a rule from this file. Inside this file, a heading marked "(this repository)" holds material specific to this repository; delete those sections to reuse the file in another project.
-
-Rules group by reader. The contributor guide holds the rules every contributor needs, person or agent: how to branch, which checks run, how to test, and the design and content rules behind them. The maintainer guide holds the rules for whoever merges and releases. The agents section holds the rules only agents follow: communication with me, writing style, review routing, the issue format, and GitHub access. A new rule goes in the section for the reader it governs.
-
+ 
+These conventions apply to every contributor, person or agent, whatever tool runs the agent. Read this file in full before your first tool call, and read `CONTRIBUTING.md` (setup and commit checks) and `MAINTAINERS.md` (release steps and changelog) before your first change.
+ 
+**This file is the only copy.** Claude Code reads it through `CLAUDE.md`, and Antigravity through `.agent/rules/`. Never restate a rule from here in another file; see [Group like concepts into a single location](#group-like-concepts-into-a-single-location).
+ 
+Rules group by reader: the contributor guide for everyone, the maintainer guide for whoever merges and releases, and the agents section for agents only. A new rule goes in the section for the reader it governs. Delete the headings marked "(this repository)" to reuse the file in another project.
+ 
 ## Contributor guide
-
+ 
 ### Vocabulary
-
-`docs/vocabulary.md` is the term canon: one term per concept, across every platform and every document.
-
-- Read it in full when starting a branch. Use the vocabulary when writing (e.g. code, code comments, test names, the commit message, issue and pull request text, etc.). Never vary word choice for style.
-- **At every commit**, sweep the change's **new** lines and:
-  - *retired synonyms*: Replace a retired synonym with its canonical term.
-  - *new concepts*: Define new concepts in `docs/vocabulary.md` on the same branch.
-
+ 
+`docs/vocabulary.md` is the term canon: one term per concept, across every platform and document.
+ 
+- Read it in full when starting a branch. Use its terms in everything you write, from code to pull request text. Never vary word choice for style.
+- **At every commit**, sweep the change's **new** lines: replace each retired synonym with its canonical term, and define each new concept in `docs/vocabulary.md` on the same branch.
 ### Group like concepts into a single location
-
-A list belongs in exactly one place. Two copies drift apart and nothing reports the drift: whoever edits one will not know the other exists, nothing fails, and enforcement falls behind the canon.
-
-- Code that enforces something a document states reads that document. It holds no separate copy.
-- Put the machine form beside the human form — a column, a fenced block, a front-matter key — and parse it.
-- Never add a "keep in step with X" comment: it marks a duplicate that will drift. Remove the duplicate.
-- Fail closed when the parse returns nothing. On a missing file, a renamed heading, or a reshaped row, the check must exit with an error, because "found nothing" and "nothing to enforce" look identical from outside.
-- An explanation follows the same rule. Write a reason in full once, in the comment beside the code it governs. Every other place that needs the reason holds a pointer to that comment.
-
-Applies to allowlists, error codes, supported-version tables, feature flags, the reasons in code comments, and these conventions.
-
+ 
+A list, a rule, or an explanation belongs in exactly one place. Two copies drift apart silently: whoever edits one does not know the other exists, nothing fails, and enforcement falls behind the canon. This covers allowlists, error codes, supported-version tables, feature flags, code-comment reasons, and these conventions.
+ 
+- Code that enforces something a document states parses that document. Put the machine form beside the human form — a column, a fenced block, a front-matter key.
+- Fail closed: when the parse returns nothing, because of a missing file, a renamed heading, or a reshaped row, the check exits with an error. "Found nothing" and "nothing to enforce" look identical from outside.
+- Never add a "keep in step with X" comment. Remove the duplicate instead.
+- Write a reason, or a note for the next editor of a piece of code, once: in a comment beside that code. This covers review findings, warnings about a test, and constraints on how the code may change. Every other place holds only a pointer to that comment.
 ### Collapse a path before opening a second one
-
-A change that looks like it needs a second code path — a new adapter, a new branch for a new surface, a new writer — first gets one check: can the existing path widen to cover both cases instead? Treat that refactor as the default answer, not a step weighed only after the second path already stands.
-
-- When the two cannot collapse into one, build the rule they share once, and ship it to both paths in the same change.
-- Never build a rule for one path first and leave a second path to catch up in a later change.
-- When a path's code is not yet ready to run the shared rule, hold the whole rule back from every path. Do not split the rule's rollout from its scope.
-- A pull request whose whole point is bringing one path in line with another is the outcome to avoid, not a normal, expected step of the work.
-
-This extends [Group like concepts into a single location](#group-like-concepts-into-a-single-location) from documented lists to code paths and rules, and to timing: a rule staggered across paths drifts apart the same way a duplicated list does.
-
+ 
+Before adding a second code path — a new adapter, a new branch for a new surface, a new writer — check whether the existing path can widen to cover both cases. That refactor is the default answer.
+ 
+- When the paths cannot collapse, build their shared rule once and ship it to every path in the same change.
+- When one path cannot run the rule yet, hold it back from every path. A pull request whose whole point is bringing one path in line with another is the outcome to avoid.
+A rule staggered across paths drifts apart like a duplicated list.
+ 
 ### Test a plan for simplicity before it is final
-
-A plan is final only after it answers the questions below in its own section, titled "Simplicity". This covers every plan: a sprint plan, a scope document, and a plan written in chat. Answer each question from the code. A plan's own account of the code is a claim to check.
-
-1. **Size.** Is the code after the change simpler than the code before it? Name what the change adds and what it removes. When the code grows, list each addition and the requirement it implements.
-2. **Duplicates.** Which duplicated code does the change pass through? Each one is a candidate to merge first, under [Collapse a path before opening a second one](#collapse-a-path-before-opening-a-second-one). A merge that changes no behavior goes in its own `refactor/` pull request, ahead of the change that needs it, so the existing suite proves it.
+ 
+Every plan — sprint plan, scope document, or plan written in chat — is final only after a section titled "Simplicity" answers these questions. Answer each from the code, not from the plan's account of it.
+ 
+1. **Size.** Is the code after the change simpler than before? Name what the change adds and removes. When the code grows, list each addition and the requirement it implements.
+2. **Duplicates.** Which duplicated code does the change pass through? Each is a candidate to merge first, under [Collapse a path before opening a second one](#collapse-a-path-before-opening-a-second-one). A merge that changes no behavior goes in its own `refactor/` pull request, ahead of the change that needs it, so the existing suite proves it.
 3. **Removals.** Can any step, stored field, setting, or branch the plan adds come out without losing a requirement?
 4. **Orphans.** Does the change leave a function, field, or path with no reader? Remove it in the same change.
-5. **Bounds.** Does the plan hold anything unbounded: a walk over page content, a wait, a retry, a count, a queue? Each gets a cap with a stated value, a reason for the value, and the behavior when the cap is reached.
-6. **Current behavior.** Does every statement the plan makes about how the code behaves today match the code? A defect the plan describes must be reproducible on `main`.
-
-An answer that leads to a change updates the plan before it is final. When an answer needs a product choice, put the options to me.
-
+5. **Bounds.** Does the plan hold anything unbounded: a walk over page content, a wait, a retry, a count, a queue? Each gets a cap with a stated value, a reason for the value, and the behavior at the cap.
+6. **Current behavior.** Does every statement about how the code behaves today match the code? A defect the plan describes must be reproducible on `main`.
+Update the plan for any answer that leads to a change. When an answer needs a product choice, put the options to me.
+ 
 ### Table kinds behave alike
-
-A native table and a grid are one product. A reader sees a table on a page and never learns which markup drew it, so every rule reaches both kinds and produces the same result on both. A difference between the kinds needs a practical reason: something one kind's code can do that the other's cannot.
-
-- A change reaching both table kinds is this rule holding. Never report it to me as a consequence.
-- A change that leaves the two kinds behaving unlike each other is a difference. Put it to me with the reason the difference is forced, under [Surface a consequence only when it would change my decision](#chat).
-
-This gives [Collapse a path before opening a second one](#collapse-a-path-before-opening-a-second-one) its product reason, and narrows what counts as a consequence worth my attention.
-
+ 
+A native table and a grid are one product: a reader never learns which markup drew a table. Every rule reaches both kinds with the same result, unless one kind's code can do something the other's cannot.
+ 
+- A change reaching both kinds is this rule holding. Never report it to me as a consequence.
+- A change that leaves the kinds behaving differently goes to me with the reason it is forced, under [Surface a consequence only when it would change my decision](#chat).
 ### Versions
-
+ 
 Always take the newest release of an action, tool, or runtime. Read its breaking-change notes to confirm the jump, not to justify avoiding it. Report anything left behind, including a runtime whose newest line is ahead of the newest long-term-support line.
-
+ 
 ### Adding files
-
-This repository is public. Before staging a new file, answer this: does it serve someone using or building DynamicRounding? A report about a local toolchain, an agent scan, a session journal, or a scratch note is always no. One such file reached `main` once already.
-
-- **Never** `git add .` **or** `git add -A`**.** Stage the paths you meant to change, by name.
+ 
+This repository is public. Stage a new file only if it serves someone using or building DynamicRounding. A local toolchain report, an agent scan, a session journal, or a scratch note never does.
+ 
+- **Never** `git add .` **or** `git add -A`. Stage paths by name.
 - **Write scratch output to the session scratchpad**, not the repository.
-- **Never pass** `-f` **to** `git add` to defeat `.gitignore`, and never `--no-verify` to skip a commit check. If a check blocks a file that belongs, change the check's policy in the same change and say why in the pull request.
+- **Never pass** `-f` **to** `git add` or `--no-verify` to a commit. If a check blocks a file that belongs, change the check's policy in the same change and say why in the pull request.
 - Name standard repository metadata files in capitals (README, LICENSE, CHANGELOG, CONTRIBUTING, MAINTAINERS, AGENTS, CLAUDE) and every other file in lowercase.
-
 ### Code style
-
+ 
 - Keep code simple and readable.
-- Give every new Python parameter and return value a type hint. In JavaScript, write no per-parameter doc comments; a parameter's name states its meaning. The exception is `ROUND_DYNAMIC`, whose JSDoc Google Sheets reads to build the help card.
-- A comment holds only what the code cannot show: a reason, a constraint, or a fact about the page or a caller outside the file. No comment restates what the code does, because the restatement becomes false when the code changes. Before writing a comment, check whether a clearer name or a smaller function would make it unnecessary; that is a judgement, not a rule.
-- A test name holds the input and the result the test expects, never the rule or code path that produces the result. A test group's heading holds the behavior its tests check. A name that holds the mechanism becomes false when the mechanism changes, and the test still passes.
-
+- Type-hint every new Python parameter and return value. Write no JavaScript per-parameter doc comments, except on `ROUND_DYNAMIC`, whose JSDoc Google Sheets reads to build the help card.
+- A comment holds only what the code cannot show: a reason, a constraint, or a fact about the page or an outside caller. Never restate what the code does; the restatement goes false when the code changes. First judge whether a clearer name or a smaller function removes the need.
+- A test name holds the input and the expected result, never the mechanism. A test group heading holds the behavior its tests check. A mechanism in a name goes false when the mechanism changes, and the test still passes.
 ### Regression fixtures
-
-A capture from the extension holds real page content, and this repository is public. A committed regression fixture is always a minimized synthetic copy: rebuild the failing structure with invented values that still reproduce the defect, and commit only that. A raw capture never enters the repository.
-
+ 
+A capture from the extension holds real page content. Commit only a minimized synthetic copy: the failing structure rebuilt with invented values that still reproduce the defect. A raw capture never enters the repository.
+ 
 ### The manual test page
-
-`docs/test-pages/test-tables-1.html` holds one table per shape the extension handles, each with the result to expect. It is the page I load to check a change by hand, so it is the only place a manual test of the extension can name.
-
-- **Every change that adds a kind of test names the table in that page to test it on.** Give me the section number in the pull request's manual tests and in chat only when the test cannot run automatically: in the test suites, or on the page in a headless browser. Run every other test, and report it under `## Tested`. A test with no table to run it on is a test I cannot run.
-- **A change to a table shape the page already holds needs no new table.** Point at the section that holds it.
-- **A change that turns on a shape the page does not hold gets a new section, in the same branch.** Merged cells are the example: nothing on the page carried one, so no amount of simplifying it could tell the new reading from the old. The measure is whether the shape matters to someone using the extension, not whether the change was large.
-- Each new section states what the table holds and what to expect, in the section's tester's notes, which stay closed until the reader opens them. Where a passing result looks like nothing happened, it states what a failure looks like, in the present tense. It never states what a setting does to the table, what the extension did before a change, or the issue behind a fixture. A row whose result waits on an open design decision links to that decision's issue. A row label carries "rounds" or "held" only when that row is the exception to the section's expectation.
-- **A section can also be a puzzle.** A puzzle holds a question for any reader, not only a tester: what story the section's table tells once simplified. It holds the question, the data patterns, and the story, and the reader opens or hides either panel at any time. The puzzle text never states what a setting does to the table; the section's tester's notes still hold that for the tester.
-- **A manual test of the Claude Code plugin runs on the plugin test prompt.** The plugin draws no page, so the test runs on the table that the prompt in `claude-code-plugin/README.md` makes the model write, with the written text to expect under it. When a change turns on a shape the prompt's table does not hold, add the shape to that table in the same branch.
-
+ 
+`docs/test-pages/test-tables-1.html` holds one table per shape the extension handles, each with its expected result. It is the page I load to check a change by hand, and the only place a manual test of the extension can name.
+ 
+- **Every change that adds a kind of test names the table to test it on.** Run every test that can run automatically, in the suites or on the page in a headless browser, and report it under `## Tested`. Give me the section number, in the pull request's manual tests and in chat, only for a test that cannot.
+- A change to a shape the page already holds points at its section. A change that turns on a shape the page lacks, such as merged cells, adds a section in the same branch. The measure is whether the shape matters to someone using the extension, not the size of the change.
+- A section's tester's notes, closed by default, state what the table holds and what to expect. Where a pass looks like nothing happened, they state what a failure looks like, in the present tense. They never state what a setting does to the table, what the extension did before a change, or the issue behind a fixture. A row whose result waits on an open design decision links to that decision's issue. A row label carries "rounds" or "held" only when that row is the exception to the section's expectation.
+- **A section can also be a puzzle**: a question for any reader about the story the table tells once simplified, with panels for the data patterns and the story that the reader opens or hides at will. The puzzle never states what a setting does to the table.
+- **A manual test of the Claude Code plugin runs on the plugin test prompt** in `claude-code-plugin/README.md`, on the table the prompt makes the model write, with the expected text under it. When a change turns on a shape that table lacks, add the shape in the same branch.
 ### Docs track behavior
-
-Living documents: `README.md`, `CONTRIBUTING.md`, `MAINTAINERS.md`, `chrome-extension/README.md`, `claude-code-plugin/README.md`, `docs/capability-map.md`, `docs/design.md`, `docs/table-kind-pairs.md`, `docs/test-pages/test-tables-1.html`, `docs/vocabulary.md`, `js/README.md`, `js/tests-googlesheets-tab.md`, `python/README.md`, the `.agent/` instruction files, and this file. Sprint plans and logs, research notes, and released `js/CHANGELOG.md` entries are historical records. Mark them, never rewrite them.
-
-- A pull request that changes behavior updates every living document its change invalidates, in the same branch. If none apply, write "No doc impact" in the body.
-- Whoever changes code (a name, a value, a condition, or what it does) searches the repository in the same commit for the old name and for text that describes the old code: comments, test names, test group headings, and documents. Correct each one the change made false.
-- Whoever changes a rule in this file, a rule in the design document, or a term in the vocabulary searches the repository in the same branch for text written under the old rule or term: code, comments, test names, and living documents. Correct each one that no longer follows the rule or still uses the old term. Historical records stay as written.
-
+ 
+Living documents: `README.md`, `CONTRIBUTING.md`, `MAINTAINERS.md`, `chrome-extension/README.md`, `claude-code-plugin/README.md`, `docs/capability-map.md`, `docs/design.md`, `docs/table-kind-pairs.md`, `docs/test-pages/test-tables-1.html`, `docs/vocabulary.md`, `js/README.md`, `js/tests-googlesheets-tab.md`, `python/README.md`, the `.agent/` instruction files, and this file. Sprint plans and logs, research notes, and released `js/CHANGELOG.md` entries are historical records: mark them, never rewrite them.
+ 
+- A pull request that changes behavior updates every living document it invalidates, in the same branch, or says "No doc impact" in the body.
+- Whoever changes code (a name, a value, a condition, or what it does) searches the repository in the same commit for the old name and for text describing the old code. Whoever changes a rule here or in the design document, or a vocabulary term, searches in the same branch for text written under the old rule or term. Correct each code line, comment, test name, test group heading, and living document the change made false.
 ### Public repository, security disclosure
-
-A pull request body, commit message, or issue that explains an exposure is itself a disclosure, and a worse one than the artifact, because it summarizes and points.
-
+ 
+Text that explains an exposure is itself a disclosure, worse than the artifact, because it summarizes and points. Later edits leave revision history on GitHub and orphaned objects in git.
+ 
 - Say what changed and why, in neutral terms. No counts, no inventory of the exposure, no severity, no commit identifier pointing at the artifact.
-- For a weakness in this repository's own code, ship the fix with no explanation beyond the diff. Do not file a public issue diagnosing it.
-- Editing later leaves revision history on GitHub and orphaned objects in git.
-
-Never run a secret-listing or secret-reading command, including its `--help` form. When unsure whether a command touches secrets, exclude it and say why.
-
-### Notes for the next editor
-
-A note for whoever edits a piece of code goes in a comment beside that code, because that is where the editor looks. This covers review findings, warnings about a test, and any constraint on how the code may change. A pull request body, an issue, or a sprint log holds such a note only as a pointer to the comment.
-
+- Fix a weakness in this repository's own code with no explanation beyond the diff, and no public issue diagnosing it.
+- Never run a secret-listing or secret-reading command, even its `--help` form. When unsure whether a command touches secrets, exclude it and say why.
 ### Text on GitHub
-
-These rules cover every text that reaches GitHub: commit messages, pull request titles and bodies, issues, comments, and sprint logs.
-
-- **No local toolchain.** Never describe a machine's setup: which tools are installed, their paths, or which command works on one machine and not another. Include one only after I confirm it.
-- **State a fact once.** When another pull request, issue, or commit already states a fact, link to it.
-
+ 
+These rules cover commit messages, pull request titles and bodies, issues, comments, and sprint logs.
+ 
+- **No local toolchain.** Never describe a machine's setup — installed tools, their paths, or which command works on one machine and not another — unless I confirm it.
+- **State a fact once.** Link to the pull request, issue, or commit that already states it.
+- **The diff test.** A pull request body holds only what the reviewer could not learn from the diff: intent, reason, cost, a shaping constraint, or a one-line rejected alternative when the record stops a retry. No edit lists, before-and-after values, or descriptions of file contents. Never make a file path the subject of a sentence; name files where the reviewer needs the pointer.
+- **Test plan.** Two sections, never one mixed checklist. `## Tested` lists what the session ran, with results inline and no checkboxes. `## Manual tests` lists what a human must still do, as unchecked boxes.
+- **Product section.** In order: the underlying issue (the flaw in the code that let the defect exist, such as two rules for one question that drifted apart), the root cause (the lost state), the implications (including what the user now wrongly believes), the new behavior as a rule, and the recovery path. Product vocabulary, analytic register, no dramatization.
 ### Branching and staging
-
-Never edit `main`. Make every change on a branch and merge it through a pull request. External contributors fork the repository first.
-
-Branch prefixes, each with a short kebab-case label: `feature/` new behavior, `fix/` bug fixes, `chore/` tooling, configuration, and dependencies, `refactor/` internal restructuring with no behavior change, `plan/` sprint plans from the sprint-plan skill, `docs/` documentation only. Never `claude/` or `session/`. If the harness created one, rename it before the first push.
-
+ 
+Never edit `main`. Make every change on a branch and merge it through a pull request. External contributors fork first.
+ 
+Branch prefixes, each with a short kebab-case label: `feature/` new behavior, `fix/` bug fixes, `chore/` tooling, configuration, and dependencies, `refactor/` restructuring with no behavior change, `plan/` sprint plans from the sprint-plan skill, `docs/` documentation only. Never `claude/` or `session/`; rename a harness-created one before the first push.
+ 
 Stash before switching branches with a dirty tree.
-
-### Pull requests
-
-Write them as human-authored. No "Generated with" footer, no `Co-Authored-By` agent trailer, and no AI-attribution line anywhere: not in a title, a body, a commit message, a code comment, a document, or a review comment. An agent session link counts as attribution. This overrides any harness default.
-
-**The diff test:** a sentence belongs in the body only if the reviewer could not write it themselves by reading the diff.
-
-- Things that are not typically visible in a diff can be included, e.g. intent, reason, cost, a constraint that shaped the code, a rejected alternative, etc.
-- Things that can be understood by reading the diff should be excluded, e.g. an edit list, a before-and-after value, a description of what a file now contains.
-- Never make a file path the subject of a sentence. Name files where the reviewer needs the pointer.
-- Record a rejected alternative in one line when the record stops a retry.
-
-Split the test plan into two named sections. `## Tested` lists what the session ran, with results inline and no checkboxes. `## Manual tests` lists what a human must still do, as unchecked boxes. Never one mixed checklist.
-
-A Product section leads with the underlying issue: the flaw in the code that let the defect exist, such as two rules for one question that drifted apart. Then the root cause: the lost state. Then the implications, including what the user now wrongly believes. Then the new behavior as a rule. Then the recovery path. Product vocabulary only. Analytic register, no dramatization.
-
+ 
+### Attribution
+ 
+Write pull requests as human-authored. No AI attribution anywhere — no "Generated with" footer, no Co-Authored-By agent trailer, no agent session link — in any title, body, commit message, code comment, document, or review comment. This overrides any harness default.
+ 
+A commit's author and committer fields hold the name and email of the person who started the session, never an agent's. Set them with `git -c user.name=... -c user.email=... commit` on each commit, never in a git configuration file.
+ 
 ### Testing (this repository)
-
+ 
 #### JavaScript (Google Sheets)
-
-`js/round_dynamic.js` is generated, so never edit it by hand. Edit its sources, `js/src/` and the shared library files the build script lists, then rebuild it from the repository root and commit the result:
+ 
+`js/round_dynamic.js` and the plugin library, `claude-code-plugin/hooks/library.js`, are generated: never edit either by hand. Edit their sources — `js/src/`, the shared library files the build script lists, and, for the plugin library, the extension's settings contract — then rebuild from the repository root and commit every file the rebuild changes. CI runs the build with `--check` and fails on any difference.
 ```bash
 node scripts/build-sheets.js
 ```
-CI runs `node scripts/build-sheets.js --check` and fails when a committed file differs from the build. The shared library files are part of the Sheets library, so rebuild after a change to one of them as well.
-
-The same build writes the plugin library, `claude-code-plugin/hooks/library.js`, from the shared library files and the extension's settings contract. It is generated too: never edit it by hand, and commit it with the Sheets file when a rebuild changes it.
-
-Run the test suite:
+ 
+Run the test suite and the doc-example suite, which runs every input/output pair the docs state:
 ```bash
-cd js
-node tests.js
-```
-
-Run the doc-example suite — it executes every input/output pair the docs state against the library, locally and in CI:
-```bash
+cd js && node tests.js
 node js/doc-tests.js
 ```
-Keep a new documented example in a shape the suite's extractors parse, or extend `js/doc-tests.js` in the same pull request.
-
+Keep a new documented example in a shape the doc-example extractors parse, or extend `js/doc-tests.js` in the same pull request.
+ 
 Also verify in the [template spreadsheet](https://docs.google.com/spreadsheets/d/1GdHvYk3dVzJErrGH7yDULW6srM0gaHeYMGMn3k0-GY4) "Tests" tab.
-
+ 
 #### Chrome extension
-
-Run the test suite — the repo's largest, and part of CI on every PR:
+ 
 ```bash
 node chrome-extension/tests.js
 ```
-
-The tests live in pieces under `chrome-extension/tests/`, and `tests.js` joins them in its order list and runs them as one script. A new helper function goes in `helpers.js`. Each other piece holds the tests for one area of the extension, named on its first line; add a test to the piece for the area it tests. A new piece goes in the order list.
-
+ 
+Add a test to the piece under `chrome-extension/tests/` whose first line names its area, put a new helper in `helpers.js`, and add any new piece to the order list in `tests.js`.
+ 
 #### Claude Code plugin
-
-Run the Node suite, part of CI on every PR. It covers the markdown adapter, the text table step, and the plugin test prompt's table in the plugin's README:
+ 
 ```bash
 node claude-code-plugin/tests.js
 ```
-
-Run the engine's two commands before opening a pull request that touches the plugin, and report both under `## Tested`. The first reads the plugin's manifest and hooks module the way the engine will, and the second runs the engine test on each surface:
+ 
+Before opening a pull request that touches the plugin, run both engine commands and report them under `## Tested`. CI runs neither: it holds no Claude Code, and the plugin API is early access, so a Claude Code release can change either result.
 ```bash
 claude plugin validate --strict claude-code-plugin
 claude plugin test claude-code-plugin
 ```
-CI runs neither: it holds no Claude Code, and the plugin API is early access, so a Claude Code release can change either result with no change in this repository.
-
+ 
 #### Python
-
-Run the test suite:
+ 
 ```bash
 cd python
 pip install -e ".[dev]"
 pytest
 ```
-
+ 
 ## Maintainer guide
-
+ 
 ### Merge train
-
-- CI runs only on pull requests based on `main`. A pull request based on another branch never runs its required checks and stays blocked. Merge `main` into the head branch and push to start them.
-- Never delete a merged branch while an open pull request uses it as base. GitHub closes the dependent outright, and no one can reopen a closed pull request whose base is gone. Retarget dependents first.
-- Raced version-bump pull requests collapse to one per batch, each carrying the identical diff. Merge the oldest and close the duplicates with a comment.
+ 
+- CI runs only on pull requests based on `main`. To start the checks on one based elsewhere, merge `main` into its head branch and push.
+- Never delete a merged branch while an open pull request uses it as base: GitHub closes the dependent, and it cannot be reopened. Retarget dependents first.
+- Raced version-bump pull requests carry identical diffs. Merge the oldest and close the rest with a comment.
 - Never enable auto-merge. I own every merge decision.
-
 ### How versions move (this repository)
-
-The `Bump package versions on merge` workflow (`.github/workflows/bump-version.yml`) runs after every merged PR. `scripts/bump-versions.py` holds the table of packages and their version files. If the PR touched `python/**`, `chrome-extension/**`, `claude-code-plugin/**`, or `js/**` — documentation included — it bumps the patch of the matching version file, or the minor version when the merged PR carries the `minor` label (the patch then resets to 0), opens a bump PR titled `chore(version): bump after #NNN` (with the token [MAINTAINERS.md](MAINTAINERS.md#bump-workflow-token) describes), waits for the required checks, merges it, and deletes the bump branch. For JS it also runs the Sheets build (`node scripts/build-sheets.js`), so the version-bump PR carries a `js/round_dynamic.js` that matches the build, and turns the `## [Unreleased]` heading in `js/CHANGELOG.md` into the new version's heading. The plugin's version file is its manifest, `claude-code-plugin/.claude-plugin/plugin.json`; no build follows its bump, because the plugin library holds no version. A pull request that changes a shared library file holds the rebuilt Sheets file and plugin library, so the workflow bumps the extension, the Sheets library, and the plugin after it merges. Nobody edits those version lines or release headings by hand. To release a minor version, add the `minor` label to the PR before merging it.
-
+ 
+After every merged pull request, the `Bump package versions on merge` workflow (`.github/workflows/bump-version.yml`) bumps each package the pull request touched, documentation included, using the package table in `scripts/bump-versions.py`. Nobody edits version lines or release headings by hand.
+ 
+- It bumps the patch, or the minor version with the patch reset to 0 when the merged pull request carries the `minor` label. To release a minor version, add the label before merging.
+- For JS, it also runs the Sheets build and turns the `## [Unreleased]` heading in `js/CHANGELOG.md` into the new version's heading.
+- The plugin's version file is its manifest, `claude-code-plugin/.claude-plugin/plugin.json`. No build follows its bump; the plugin library holds no version.
+- A change to a shared library file touches the Sheets file and plugin library through the rebuild, so it bumps the extension, the Sheets library, and the plugin.
+- The workflow opens a bump pull request titled `chore(version): bump after #NNN`, with the token [MAINTAINERS.md](MAINTAINERS.md#bump-workflow-token) describes, waits for the required checks, merges it, and deletes the bump branch.
 ## Agents
-
+ 
 ### My role
-
-I am the product manager and do not write the code. Lead with the mechanism in plain words, name the trade-off, and give a recommendation. Keep file names, commands, and symbol names out of chat unless I ask for them. Full deliverables such as pull request bodies still name files and symbols wherever that helps the reader.
-
+ 
+I am the product manager and do not write the code. Lead with the mechanism in plain words, name the trade-off, and give a recommendation. Keep file names, commands, and symbol names out of chat unless I ask; full deliverables such as pull request bodies still name them where that helps the reader.
+ 
 ### Writing style
-
-These rules govern all prose: **chat**, **documents**, and **GitHub** (pull request titles and bodies, issues, commit messages, logs).
-
-- **Form:** plain declarative sentences in active voice, in plain words, kept short. Not epigrammatic, not aphoristic.
-- **Imagery:** no personification. Two tests.
-  - *The verb.* A part's verb names an operation the part performs, never a stance it takes. Operations pass: holds, determines, skips, detects, flags, stands for, contains, parses, publishes. Verbs of intent, awareness, or choice fail: own, know, decide, refuse, notice, warn, name, pick — examples, not the whole list; "rides", "waits", and "speaks" fail the same test. Boundary: "the script reads the file" passes because reading is the operation; "the check refuses" fails because refusal is a stance.
-  - *The subject.* An action verb (runs, reads, writes, checks, sends) takes as its subject the part that performs the action. A measure, a score, a result, a document, a label, a term, or an event such as a press performs nothing — examples, not the whole list; the script, the build, the hook, the content script, or the person does. A state verb (holds, contains, stands for) may take any subject. Boundary: "a press reads the setting" fails because a press is an event; "the press handler reads the setting" passes.
-
-  Similes are fine. State the plain meaning in place of a metaphor: write "the press handler reads the table's on/off value and writes the opposite value", never "a press picks its direction".
-- **Full words:** no contractions and no abbreviations, except i.e., e.g., etc., FYI, and TL;DR. Write "application", not "app".
-- **Checked claims:** state for each claim whether it was checked and how. Mark a guess as a guess or an estimate. Stating uncertainty is allowed.
-
+ 
+These rules govern all prose: chat, documents, and GitHub text.
+ 
+- **Form:** short, plain, declarative sentences in active voice. Not epigrammatic, not aphoristic.
+- **No personification.** Two tests, each with examples rather than a full list:
+  - *The verb* names an operation, never a stance. Pass: holds, determines, skips, detects, flags, stands for, contains, parses, publishes, reads. Fail: own, know, decide, refuse, notice, warn, name, pick, rides, waits, speaks. "The script reads the file" passes; "the check refuses" fails.
+  - *The subject* of an action verb (runs, reads, writes, checks, sends) is the part that performs it: the script, the build, the hook, the content script, or the person. A measure, score, result, document, label, term, or event performs nothing. A state verb (holds, contains, stands for) takes any subject. "A press reads the setting" fails; "the press handler reads the setting" passes.
+  Similes are fine. Replace a metaphor with its plain meaning: "the press handler reads the table's on/off value and writes the opposite value", never "a press picks its direction".
+- **Full words:** no contractions or abbreviations except i.e., e.g., etc., FYI, and TL;DR. Write "application", not "app".
+- **Checked claims:** say whether and how each claim was checked. Mark guesses and estimates as such.
 ### Chat
-
+ 
 - **TL;DR first.** Conclusion, then support.
-- **Answer only what was asked.** A narrow question gets the answer and stops. No options, no offers, no extra framing. Skip detail lists and restated reasoning.
-- **Explain ideas, not instructions.** State the problem, the change, and why the change removes the problem. Do not merely strip out the jargon: a de-jargonized instruction is still an instruction.
-- **Surface a consequence only when it would change my decision.** Flag a behavior change beyond the one I named when it does one of these: breaks something that works today, changes what a user sees on a page or a cell type I did not name, or needs a product choice. A consequence that follows directly from the change I asked for is not flagged. Put each flagged change to me before implementing, and never ship one and mention it after.
-- **No unrequested scope.** Build the rule I asked for, not the adjacent one. A related concern becomes a separate issue, never a quiet addition.
-
+- **Answer only what was asked.** A narrow question gets the answer and stops: no options, offers, framing, detail lists, or restated reasoning.
+- **Explain ideas, not instructions.** State the problem, the change, and why the change removes the problem. A de-jargonized instruction is still an instruction.
+- **Surface a consequence only when it would change my decision**: when it breaks something that works today, changes what a user sees on a page or a cell type I did not name, or needs a product choice. Do not flag a consequence that follows directly from the change I asked for. Put each flagged change to me before implementing, never after.
+- **No unrequested scope.** Build the rule I asked for, not the adjacent one. A related concern becomes a separate issue.
 ### Review findings
-
-Route every review finding to exactly one place. Never leave an actionable item as a non-blocking note for me to remember and re-instruct.
-
-1. **Trivial and in-scope: fix now.** Apply the fix in the same change, re-run the test command, and mention it in one line. Trivial means all of these: no behavior change; touches only files and lines already in the diff; the existing suite staying green proves it.
-2. **In-scope behavior bug: fix now, with a test.** A defect in what the current diff does never routes to an issue, because deferring it ships it. Add a test that fails without the fix.
-3. **Actionable and out-of-scope: open a GitHub issue.** This covers anything that changes behavior outside the diff, spans untouched files, needs a judgement call, or grows the diff. Title prefix `[follow-up]`. The body links the pull request and quotes the finding. Label `follow-up`, plus `tech-debt` if apt. Search open issues first and comment on an existing one rather than refiling. The pull request body's Reviewer notes section links the issues.
-4. **FYI, no action: one line** in the sprint log or the pull request notes. No issue.
-
-Behavior-changing pull requests get an independent code-reviewer pass before I merge. Re-review through the same reviewer so it keeps its context. When a finding forces a product fork, put the options to me instead of picking one.
-
-For sprint-stack: the reviewer subagent returns APPROVE or BLOCK and edits no files. A bucket-2 finding forces BLOCK; the orchestrator applies the fix and the test, then re-runs review. After APPROVE it applies bucket-1 fixes as a small `chore(...)` or `refactor(...)` commit, opens bucket-3 issues, writes the log, and opens the pull request.
-
+ 
+Route every review finding to exactly one place. Never leave an actionable item as a note for me to remember and re-instruct.
+ 
+1. **Trivial and in-scope: fix now.** Trivial means no behavior change, only files and lines already in the diff, and the green existing suite proves it. Apply the fix, re-run the tests, and mention it in one line.
+2. **In-scope behavior bug: fix now, with a test that fails without the fix.** Deferring it ships it.
+3. **Actionable and out-of-scope: open a GitHub issue.** This covers anything that changes behavior outside the diff, spans untouched files, needs a judgement call, or grows the diff. Search open issues first and comment on a match rather than refiling. Title prefix `[follow-up]`; label `follow-up`, plus `tech-debt` if apt; the body links the pull request and quotes the finding. Link the issues in the pull request's Reviewer notes section.
+4. **FYI, no action: one line** in the sprint log or the pull request notes.
+Behavior-changing pull requests get an independent code-reviewer pass before I merge; re-review through the same reviewer so it keeps its context. When a finding forces a product fork, put the options to me.
+ 
+For sprint-stack: the reviewer subagent returns APPROVE or BLOCK and edits no files. A bucket-2 finding forces BLOCK; the orchestrator applies the fix and the test, then re-runs review. After APPROVE, the orchestrator commits bucket-1 fixes as a small `chore(...)` or `refactor(...)` commit, opens bucket-3 issues, writes the log, and opens the pull request.
+ 
 ### Issues
-
+ 
 Explain any issue, defect, or review finding in this order:
-
+ 
 1. **TL;DR.** Defect or clutter, user impact, and the decision to make.
-2. **Vocabulary.** Each term of art in one line, in plain words, before it is used.
-3. **The problem.** What exists and why it is wrong. No file paths and no symbol names — describe a code artifact by its role.
+2. **Vocabulary.** Each term of art in one plain line, before its first use.
+3. **The problem.** What exists and why it is wrong. Describe code by its role, with no file paths or symbol names.
 4. **The change requested.** The fix, framed as paths to choose.
 5. **The consequence of doing nothing.** Who pays the cost and how.
 6. **Priority.** A plain call with its reason.
-
-In a GitHub issue this section goes on top, with the original engineering finding preserved at the bottom under an "Original finding" divider.
-
+In a GitHub issue this goes on top, with the original engineering finding below an "Original finding" divider.
+ 
 ### GitHub access model
-
-github.com is the source of truth for branch, pull request, and `main` state. How a session reaches it depends on where the session runs.
-
-**Cloud session.**
-- The `origin` remote is a proxy mirror of GitHub and can lag or diverge.
-- The HTTPS and git proxies authenticate through the connected GitHub App and ignore pasted tokens. A token in a command that goes through a proxy has no effect, so an invalid token can appear to work.
-- The GitHub MCP server and raw proxy `curl` fail on writes with `403 Resource not accessible by integration`.
-- Anonymous `curl --noproxy '*' https://api.github.com/repos/<owner>/<repo>/branches` reaches real GitHub directly and is fine for branches, pull requests, commits, compare, and events. It omits repository merge settings entirely, so read those with `gh api`.
-- Push with `git push origin <branch>`, then confirm the branch arrived with the anonymous branches read above.
-- When `gh pr create` returns 403, call the API directly with a personal access token, past the proxy: `curl --noproxy '*' -H "Authorization: Bearer <token>" https://api.github.com/repos/<owner>/<repo>/pulls -d '{"title": "...", "head": "<branch>", "base": "main", "body": "..."}'`.
-
-**Local checkout.**
-- The `origin` remote is GitHub itself. `git` and `gh` use the stored login of the person at the machine, and a pasted token works.
-- When that login has expired (`gh` returns 401, or `git push` reports "could not read Username"), pass the token to each command through the `GH_TOKEN` environment variable, and push through the `gh` credential helper: `GH_TOKEN=<token> git -c credential.helper= -c 'credential.helper=!gh auth git-credential' push -u origin <branch>`.
-- When `gh pr create` returns `HTTP 403 Forbidden` from the GraphQL endpoint, open the pull request through the REST endpoint: `GH_TOKEN=<token> gh api repos/<owner>/<repo>/pulls -X POST -f base=main -f head=<branch> -f "title=..." -F body=@<file>`. This 403 was seen on 2026-11-18 and 2026-11-24 with a fine-grained token that held pull request write permission, and the REST call succeeded with the same token.
-
-**Both.**
-- Use `gh` first for issues, pull requests, and API reads. Ask me for a personal access token only after `gh` itself fails.
-- Verify a token before first use. In a cloud session, `curl --noproxy '*' -H "Authorization: Bearer <token>" https://api.github.com/user` must return the right login. In a local checkout, `GH_TOKEN=<token> gh api user --jq .login` must print it.
-- A 403 whose body is an HTML "Access Denied" page comes from a network security layer, not from GitHub. Stop and ask me before trying another route.
-- Diagnose which layer gates a blocked call before re-sending anything.
-
-**Token hygiene.** A personal access token lives in session memory only. Never write it to `.git/config`, `~/.git-credentials`, a commit message, a git URL, or any tracked file. `git push -u <token-URL> <branch>` stores the token as the branch upstream. After any push involving one, check `.git/config` for it and unset the upstream if it landed.
+ 
+github.com is the source of truth for branch, pull request, and `main` state.
+ 
+- Use `gh` first for issues, pull requests, and API reads. Ask me for a personal access token only after `gh` fails, and verify it returns the right login before first use.
+- Diagnose which layer blocked a call before re-sending. A 403 with an HTML "Access Denied" body comes from a network security layer, not GitHub: stop and ask me.
+- **Token hygiene.** A token lives in session memory only: never in `.git/config`, `~/.git-credentials`, a commit message, a git URL, or a tracked file. `git push -u <token-URL> <branch>` stores the token as the upstream; after any push involving a token, check `.git/config` and unset the upstream if it landed.
+| | Cloud session | Local checkout |
+|---|---|---|
+| `origin` | A proxy mirror of GitHub; can lag or diverge. | GitHub itself. |
+| Authentication | The proxies use the connected GitHub App and ignore pasted tokens, so an invalid token in a proxied command can appear to work. | The stored login of the person at the machine; a pasted token works. |
+| Verify a token | `curl --noproxy '*' -H "Authorization: Bearer <token>" https://api.github.com/user` | `GH_TOKEN=<token> gh api user --jq .login` |
+| Push | `git push origin <branch>`, then confirm arrival with the anonymous branches read below. | When the login has expired (`gh` returns 401, or `git push` reports "could not read Username"), pass `GH_TOKEN` on each command and push with `GH_TOKEN=<token> git -c credential.helper= -c 'credential.helper=!gh auth git-credential' push -u origin <branch>`. |
+| `gh pr create` returns 403 | `curl --noproxy '*' -H "Authorization: Bearer <token>" https://api.github.com/repos/<owner>/<repo>/pulls -d '{"title": "...", "head": "<branch>", "base": "main", "body": "..."}'` | For a GraphQL `HTTP 403 Forbidden`: `GH_TOKEN=<token> gh api repos/<owner>/<repo>/pulls -X POST -f base=main -f head=<branch> -f "title=..." -F body=@<file>`. Seen on 2026-11-18 and 2026-11-24 with a fine-grained token holding pull request write permission; REST succeeded with the same token. |
+ 
+Cloud session only: the GitHub MCP server and proxied `curl` fail on writes with `403 Resource not accessible by integration`. Anonymous `curl --noproxy '*' https://api.github.com/repos/<owner>/<repo>/branches` reaches real GitHub for branches, pull requests, commits, compare, and events, but omits merge settings; read those with `gh api`.
+ 
