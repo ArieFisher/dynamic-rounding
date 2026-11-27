@@ -59,6 +59,13 @@
     fsStat.existsSync(pythonDir), true);
 })();
 
+// cell.innerText || cell.textContent is the read source. It lives in the cell
+// object (lib/dr-table/cells.js).
+(function cellReadSource() {
+  eq('regression: read source is cell.innerText || cell.textContent',
+    allContentSrc.includes('cellEl.innerText || cellEl.textContent'), true);
+})();
+
 // --- Sidebar defaults and layout ---
 
 (function sidebarDefaultsAndLayout() {

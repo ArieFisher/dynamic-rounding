@@ -182,6 +182,293 @@
 })();
 
 // ---------------------------------------------------------------------------
+// Lens preview layout
+// order of magnitude labels at each suffix boundary
+// the other band's preview lists its samples in the order they arrive
+// step labels in both bands' previews
+// ---------------------------------------------------------------------------
+(function advancedPreviewRedesignTests() {
+  const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+
+  // -------------------------------------------------------------------------
+  // Extract formatOomLabel, renderTopPreview, renderOtherPreview, and their
+  // helpers from sidebar.js source, and evaluate them against DOM stubs.
+  // -------------------------------------------------------------------------
+  const constBlock = sidebarSrc.match(
+    /const OOM_LABEL_CLASS\s*=[\s\S]*?const STEP_HEADER_CLASS\s*=.*?;/
+  );
+  const formatOomLabelFn = sidebarSrc.match(
+    /function formatOomLabel\([\s\S]*?\n\}/
+  );
+  const renderOtherPreviewFn = sidebarSrc.match(
+    /function renderOtherPreview\([\s\S]*?\n\}/
+  );
+  const renderTopPreviewFn = sidebarSrc.match(
+    /function renderTopPreview\([\s\S]*?\n\}/
+  );
+  const renderHelperFns = ['appendSampleRow', 'appendLabel'].map((name) =>
+    sidebarSrc.match(new RegExp('function ' + name + '\\([\\s\\S]*?\\n\\}')));
+
+  if (!constBlock || !formatOomLabelFn || !renderOtherPreviewFn || !renderTopPreviewFn ||
+    renderHelperFns.some((m) => !m)) {
+    eq('lens preview layout: formatOomLabel, renderOtherPreview, renderTopPreview and their helpers are found in sidebar.js', false, true);
+    return;
+  }
+
+  // Build a minimal DOM stub sufficient for renderOtherPreview.
+  // We collect appended children in order so we can inspect the render sequence.
+  function makeEl(tag) {
+    const children = [];
+    const el = {
+      _tag: tag,
+      _children: children,
+      _classNames: [],
+      textContent: '',
+      innerHTML: '',
+      appendChild(child) { children.push(child); return child; },
+      set className(v) { this._classNames.push(v); },
+      get className() { return this._classNames[this._classNames.length - 1] || ''; },
+    };
+    return el;
+  }
+
+  // Collect elements appended to the band container in order.
+  function makeBandEl() {
+    const appended = [];
+    return {
+      _appended: appended,
+      innerHTML: '',
+      appendChild(child) { appended.push(child); return child; },
+    };
+  }
+
+  // Stub document.createElement for the eval scope.
+  const stubDocument = {
+    createElement(tag) { return makeEl(tag); }
+  };
+
+  const renderSrc = '(function(document, formatSample, roundWithOffset, stepForOffset, formatStep, magnitudeOf) {\n' +
+    constBlock[0] + '\n' +
+    formatOomLabelFn[0] + '\n' +
+    renderHelperFns.map((m) => m[0]).join('\n') + '\n' +
+    renderTopPreviewFn[0] + '\n' +
+    renderOtherPreviewFn[0] + '\n' +
+    'return { formatOomLabel: formatOomLabel, renderOtherPreview: renderOtherPreview, renderTopPreview: renderTopPreview };\n' +
+    '})';
+
+  let renderHelpers;
+  let realFormatSample;
+  try {
+    // formatSample in sidebar.js depends on numberFormat (lib/dr-number/reader.js) and
+    // groupedNumberText (lib/dr-number/write-back.js), already on globalThis.
+    const previewConstBlock = sidebarSrc.match(
+      /const PREVIEW_DECIMAL_THRESHOLD\s*=.*?;\s*const PREVIEW_MAX_DECIMALS\s*=.*?;/
+    );
+    const formatSampleFn = sidebarSrc.match(/function formatSample\([\s\S]*?\n\}/);
+
+    const fmtSampleSrc = '(function(numberFormat, groupedNumberText) {\n' +
+      previewConstBlock[0] + '\n' +
+      formatSampleFn[0] + '\n' +
+      'return formatSample;\n' +
+      '})(numberFormat, groupedNumberText)';
+    realFormatSample = (isolatedFunction('numberFormat', 'groupedNumberText', 'return ' + fmtSampleSrc + ';'))(numberFormat, groupedNumberText);
+
+    renderHelpers = (isolatedFunction(
+      'document', 'formatSample', 'roundWithOffset', 'stepForOffset', 'formatStep', 'magnitudeOf',
+      'return ' + renderSrc + '(document, formatSample, roundWithOffset, stepForOffset, formatStep, magnitudeOf);'
+    ))(stubDocument, realFormatSample, roundWithOffset, stepForOffset, formatStep, magnitudeOf);
+  } catch (e) {
+    eq('lens preview layout: the sidebar functions evaluate', String(e), '');
+    return;
+  }
+
+  const fmtOom = renderHelpers.formatOomLabel;
+  const realRenderOtherPreview = renderHelpers.renderOtherPreview;
+  const realRenderTopPreview = renderHelpers.renderTopPreview;
+
+  // -------------------------------------------------------------------------
+  // Exhaustive formatOomLabel mapping for mag = 9,8,7,6,5,4,3,2,1,0,-1,-2
+  // Expected values derived from the pattern (10^mag with k/M/B suffix),
+  // NOT from reading the implementation.
+  // -------------------------------------------------------------------------
+  // Suffix boundaries: mag 9 → 1B+, mag 6 → 1M+, mag 3 → 1k+
+  eq('oom: mag=9 → "1B+" (1e9 boundary)', fmtOom(9), '1B+');
+  eq('oom: mag=8 → "100M+" (within B range, 1e8=100M)', fmtOom(8), '100M+');
+  eq('oom: mag=7 → "10M+" (within M range, 1e7=10M)', fmtOom(7), '10M+');
+  eq('oom: mag=6 → "1M+" (1e6 boundary)', fmtOom(6), '1M+');
+  eq('oom: mag=5 → "100k+" (within k range, 1e5=100k)', fmtOom(5), '100k+');
+  eq('oom: mag=4 → "10k+" (within k range, 1e4=10k)', fmtOom(4), '10k+');
+  eq('oom: mag=3 → "1k+" (1e3 boundary)', fmtOom(3), '1k+');
+  eq('oom: mag=2 → "100+" (1e2, no suffix)', fmtOom(2), '100+');
+  eq('oom: mag=1 → "10+" (1e1, no suffix)', fmtOom(1), '10+');
+  eq('oom: mag=0 → "1+" (1e0=1, no suffix)', fmtOom(0), '1+');
+  eq('oom: mag=-1 → "0.1+" (sub-unit, 1e-1=0.1)', fmtOom(-1), '0.1+');
+  eq('oom: mag=-2 → "0.01+" (sub-unit, 1e-2=0.01)', fmtOom(-2), '0.01+');
+
+  // -------------------------------------------------------------------------
+  // Lens control stops: the comment beside STOPS in sidebar.js holds why the
+  // stops follow the step, not the offset. Read STOPS straight from sidebar.js
+  // and assert stepForOffset strictly increases across it for several
+  // magnitudes.
+  // -------------------------------------------------------------------------
+  (function lensControlStops_stepsIncrease() {
+    const m = sidebarSrc.match(/const STOPS\s*=\s*\[([^\]]*)\]/);
+    if (!m) {
+      eq('lens control stops: STOPS array found in sidebar.js', false, true);
+      return;
+    }
+    const STOPS = m[1].split(',').map((s) => parseFloat(s.trim()));
+    eq('lens control stops: STOPS has 9 stops', STOPS.length, 9);
+
+    for (const mag of [6, 5, 3, 9]) {
+      const oomVal = Math.pow(10, mag);
+      let monotonic = true;
+      let firstBreak = null;
+      for (let i = 1; i < STOPS.length; i++) {
+        const prev = stepForOffset(oomVal, STOPS[i - 1]);
+        const cur = stepForOffset(oomVal, STOPS[i]);
+        if (!(cur > prev)) {
+          monotonic = false;
+          firstBreak = STOPS[i - 1] + '→' + STOPS[i] + ' (' + prev + '≮' + cur + ')';
+          break;
+        }
+      }
+      eq('lens control stops at mag=' + mag + ': steps at 10^mag strictly increase across the lens control\'s stops' +
+        (firstBreak ? ' [break at ' + firstBreak + ']' : ''), monotonic, true);
+    }
+
+    // Spot-check the exact step sweep at mag 6 against the worked example.
+    const expectAtMag6 = [10e3, 50e3, 100e3, 250e3, 500e3, 1e6, 2.5e6, 5e6, 10e6];
+    STOPS.forEach((offset, i) => {
+      eq('lens control stops at mag=6: offset ' + offset + ' → step ' + expectAtMag6[i],
+        stepForOffset(1e6, offset), expectAtMag6[i]);
+    });
+  })();
+
+  // -------------------------------------------------------------------------
+  // Call renderOtherPreview with rows in the order content.js sends the other
+  // band: one sample per order of magnitude, largest first.
+  // -------------------------------------------------------------------------
+  const rowsDescending = [
+    { num: 50000, original: '50,000' },
+    { num: 5000,  original: '5,000' },
+    { num: 500,   original: '500' },
+    { num: 50,    original: '50' },
+  ];
+
+  const bandEl = makeBandEl();
+  realRenderOtherPreview(bandEl, rowsDescending, -0.5, 4);
+
+  eq('other band of 50,000, 5,000, 500, and 50: 4 rows', bandEl._appended.length, 4);
+
+  function getFromText(rowEl) {
+    return rowEl._children[0] ? rowEl._children[0].textContent : '';
+  }
+
+  const renderedFromTexts = bandEl._appended.map(getFromText);
+  eq('other band of 50,000, 5,000, 500, and 50: rows show 50,000, 5,000, 500, 50 in that order',
+    renderedFromTexts, ['50,000', '5,000', '500', '50']);
+
+  // -------------------------------------------------------------------------
+  // edge: zero rows
+  // -------------------------------------------------------------------------
+  const emptyEl = makeBandEl();
+  realRenderOtherPreview(emptyEl, [], -0.5, 0);
+  eq('edge: empty rows renders nothing', emptyEl._appended.length, 0);
+
+  // -------------------------------------------------------------------------
+  // other preview examples carry a brown trailing step label "(5k)" after
+  // the rounded number, showing what the example rounds to the nearest of. The
+  // row still has three cells (from, arrow, num); the step span lives INSIDE
+  // the num span (a 4th grid child would wrap to the next row). The top example
+  // keeps its three cells and is prefixed "e.g.".
+  // -------------------------------------------------------------------------
+
+  const otherPreviewEl2 = makeBandEl();
+  realRenderOtherPreview(otherPreviewEl2, [{ num: 1000, original: '1,000' }], -0.5, 3);
+  eq('other band: a preview row has exactly 3 cells (from/arrow/num)',
+    otherPreviewEl2._appended[0]._children.length, 3);
+  const otherNumSpan = otherPreviewEl2._appended[0]._children[2];
+  eq('other band: num span has a nested step-label child',
+    otherNumSpan._children.length, 1);
+  eq('other band: step-label child has class "step-label"',
+    otherNumSpan._children[0] ? otherNumSpan._children[0].className : '', 'step-label');
+  eq('other band: step-label text is " (500)"',
+    otherNumSpan._children[0] ? otherNumSpan._children[0].textContent : '', ' (500)');
+
+  const topPreviewEl2 = makeBandEl();
+  realRenderTopPreview(topPreviewEl2, [{ num: 100000, original: '100,000' }], -0.5, 5);
+  const topExamplePair = topPreviewEl2._appended[1];
+  eq('top: top example has exactly 3 cells (from/arrow/num, no step)',
+    topExamplePair._children.length, 3);
+  eq('top: top example "from" is prefixed "e.g."',
+    topExamplePair._children[0].textContent, 'e.g. 100,000');
+  eq('top: top example num cell has no nested step label',
+    topExamplePair._children[2]._children.length, 0);
+
+  // strip: the "from" shows the bare number, not the original
+  // surrounding text. renderTopPreview keys off row.num, so a row whose original
+  // was "₹2,000 crore" still renders just "e.g. 2,000".
+  const stripBandEl = makeBandEl();
+  realRenderTopPreview(stripBandEl, [{ num: 2000, original: '₹2,000 crore' }], -0.5, 3);
+  eq('strip: top "from" strips surrounding text to bare "e.g. 2,000"',
+    stripBandEl._appended[1]._children[0].textContent, 'e.g. 2,000');
+
+  // The top preview renders the step header AND the example as two
+  // from|arrow|num rows in the same band container.
+  {
+    const topWithHdr = makeBandEl();
+    realRenderTopPreview(topWithHdr, [{ num: 8584629, original: '8,584,629' }], -0.5, 6);
+    eq('top preview appends 2 elements (step header + example)',
+      topWithHdr._appended.length, 2);
+    const stepHeaderRow = topWithHdr._appended[0];
+    const exampleRow = topWithHdr._appended[1];
+    eq('first appended element is the step header row (class "row step-header")',
+      stepHeaderRow.className, 'row step-header');
+    eq('step header row has 3 cells (from/arrow/num)',
+      stepHeaderRow._children.length, 3);
+    eq('step header "from" is the OoM label "1M+" (maxMag=6)',
+      stepHeaderRow._children[0].textContent, '1M+');
+    eq('step header "num" starts "nearest "',
+      stepHeaderRow._children[2].textContent.indexOf('nearest ') === 0, true);
+    eq('second appended element is the example row (class "row example")',
+      exampleRow.className, 'row example');
+    eq('example row has 3 cells (from/arrow/num)',
+      exampleRow._children.length, 3);
+    // The two "→" arrows sit in the same (middle) grid column so they align.
+    eq('step header arrow is in the middle cell ("→")',
+      stepHeaderRow._children[1].textContent, '→');
+    eq('example arrow is in the middle cell ("→")',
+      exampleRow._children[1].textContent, '→');
+  }
+
+  // sidebar.html lays the top preview out on the shared lens-preview grid,
+  // with no flex override. The lens preview comment in sidebar.html holds the
+  // reason.
+  const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+  eq('#topPreview element carries the lens-preview grid class',
+    /<div[^>]*id="topPreview"[^>]*class="lens-preview"|<div[^>]*class="lens-preview"[^>]*id="topPreview"/.test(sidebarHtmlSrc), true);
+  eq('#topPreview is NOT overridden to display:flex',
+    /#topPreview\s*\{[^}]*display:\s*flex/.test(sidebarHtmlSrc), false);
+  eq('#topPreview step header cells are blue (#1a73e8)',
+    /#topPreview \.step-header \.num\s*\{\s*color:\s*#1a73e8/.test(sidebarHtmlSrc), true);
+  eq('.step-label colour rule present in sidebar.html',
+    /\.step-label\s*\{\s*color:\s*#b3623d/.test(sidebarHtmlSrc), true);
+
+  // Each row of the other preview holds an oom-label span inside its
+  // from-span.
+  const oomLabelBandEl = makeBandEl();
+  realRenderOtherPreview(oomLabelBandEl, [{ num: 5000, original: '5,000' }], -0.5, 3);
+  const fromSpan = oomLabelBandEl._appended[0]._children[0];
+  eq('oom-label: from-span has oom-label child appended',
+    fromSpan._children.length >= 1, true);
+  eq('oom-label: oom-label child has class "oom-label"',
+    fromSpan._children[0] ? fromSpan._children[0].className : '', 'oom-label');
+  eq('oom-label: oom-label text contains "(1k+)"',
+    fromSpan._children[0] ? fromSpan._children[0].textContent.includes('1k+') : false, true);
+})();
+
+// ---------------------------------------------------------------------------
 // Sidebar unbound state
 // Tests for the "no table bound" state in sidebar.js.
 //
@@ -570,6 +857,136 @@
 
     eq('settings publish delivery: successful delivery clears #status',
       statusEl.textContent, '');
+  } finally {
+    global.document = savedDoc;
+    global.chrome = savedChrome;
+    global.window = savedWindow;
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// A pulled enabled:false must survive
+// sidebar reopen when the reopen lands on a TABLE THAT IS BOUND. This drives
+// sidebar.js's real redrawFromActiveTable() -> drawControls() ->
+// setTableBound() path end to end (same eval harness shape as
+// appModelSettings_settingsPublish_deliveryFeedback_behavioral above).
+//
+// The pin: redrawFromActiveTable draws the answer's settings, then calls
+// setTableBound(true) because the same answer holds a bound table's samples.
+// setTableBound's bound branch must not write the sidebar pillbox, so the
+// pulled false survives the reopen.
+// ---------------------------------------------------------------------------
+(function appModelSettings_pulledEnabledSurvivesReopenOnBoundTable() {
+  const roundingSrc = sourceByName('lib/dr-number/rounding.js');
+  const readerSrc = sourceByName('lib/dr-number/reader.js');
+  if (constantsCode === null || roundingSrc === null || readerSrc === null || busCode === null) {
+    eq('reopen-bound: source files (defaults/rounding/reader/bus) present in manifest',
+      false, true);
+    return;
+  }
+
+  // Same minimal element stub as the other full-sidebar.js eval harnesses in
+  // this piece (see appModelSettings_settingsPublish_deliveryFeedback_behavioral).
+  function makeEl() {
+    return {
+      addEventListener() {}, removeEventListener() {},
+      classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
+      style: {}, value: '', checked: false, disabled: false, textContent: '', innerHTML: '',
+      appendChild() {}, querySelector() { return makeEl(); }, querySelectorAll() { return []; },
+      getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 }; },
+      matches() { return false; }, closest() { return null; }, dataset: {},
+      setAttribute() {}, getAttribute() { return null; }, removeAttribute() {},
+    };
+  }
+
+  const statusEl = makeEl();
+  const enabledEl = makeEl();
+
+  const bodyClasses = new Set();
+  const captureBody = {
+    classList: {
+      add(cls) { bodyClasses.add(cls); },
+      remove(cls) { bodyClasses.delete(cls); },
+      contains(cls) { return bodyClasses.has(cls); },
+      toggle(cls, force) {
+        if (force === undefined) {
+          if (bodyClasses.has(cls)) bodyClasses.delete(cls); else bodyClasses.add(cls);
+        } else if (force) bodyClasses.add(cls); else bodyClasses.delete(cls);
+      },
+    },
+    addEventListener() {},
+    get offsetWidth() { return 0; },
+  };
+
+  const captureDoc = {
+    addEventListener() {},
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: captureBody,
+    getElementById(id) {
+      if (id === 'status') return statusEl;
+      if (id === 'enabled') return enabledEl;
+      return makeEl();
+    },
+    createElement() { return makeEl(); },
+  };
+
+  // The model holds enabled:false. request:activeTable answers that pulled
+  // settings object beside a non-null samples object, i.e. the reopen landed
+  // on a table that is bound. It resolves synchronously so the whole redrawFromActiveTable() path —
+  // including sidebar.js's own module-level opening read on load — settles
+  // deterministically within the single eval() call below.
+  const pulledSettings = Object.assign({}, DR_DEFAULTS, { enabled: false });
+  const captureChrome = {
+    runtime: {
+      onMessage: { addListener() {} },
+      sendMessage() {},
+      lastError: null,
+    },
+    tabs: {
+      query(q, cb) { cb([{ id: SIDEBAR_HARNESS_TAB }]); },
+      sendMessage(tabId, msg, cb) {
+        if (msg.topic === 'request:activeTable') {
+          cb({ settings: pulledSettings, samples: { top: [], other: [] }, maxMag: 0 });
+        } else {
+          // The settings apply. Chrome hands back the responder's value on
+          // success and nothing when nobody answered, which is the fact the
+          // sidebar reads to decide bound versus unbound.
+          cb(captureChrome.runtime.lastError ? undefined : { ok: true });
+        }
+      },
+    },
+  };
+
+  const savedDoc = global.document;
+  const savedChrome = global.chrome;
+  const savedWindow = global.window;
+  global.document = captureDoc;
+  global.chrome = captureChrome;
+  global.window = { addEventListener() {}, close() {}, getComputedStyle: () => ({ display: 'block' }) };
+
+  let evalError = null;
+  try {
+    try {
+      eval(
+        constantsCode + '\n' +
+        roundingSrc + '\n' +
+        readerSrc + '\n' +
+        busCode + '\n' +
+        fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8')
+      );
+    } catch (e) {
+      // The stubs above let the whole module-level redrawFromActiveTable()
+      // path run without throwing. A throw from an unstubbed DOM method is
+      // recorded, so this test fails instead of reading enabledEl.checked at
+      // its untouched initial value.
+      evalError = e;
+    }
+
+    eq('reopen-bound: sidebar.js\'s module-level pull ran to completion with no stub gaps',
+      evalError, null);
+    eq('reopen-bound: the pulled enabled:false survives the reopen when the same answer holds samples (samples !== null)',
+      enabledEl.checked, false);
   } finally {
     global.document = savedDoc;
     global.chrome = savedChrome;
@@ -1086,6 +1503,21 @@ const SINGLE_READ_SAMPLES = {
     /#optionsSection\.disabled\s*\{[^}]*opacity/.test(html), true);
   eq('section order: the capture section carries no section title',
     /id="captureSection"[^>]*>\s*<div class="capture-marks"/.test(body), true);
+})();
+
+// sidebar.html id ↔ setting key parity — each of the six switch keys must
+// appear as id="<key>" on a checkbox <input>.
+(function sidebarSwitchKeysHaveCheckboxes() {
+  const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+  const optionKeys = [
+    'simplifyMixedCurrency', 'simplifyMixedPercent',
+    'simplifyDates', 'simplifyTimes', 'simplifyFirstRow', 'simplifyFirstColumn'
+  ];
+  for (const key of optionKeys) {
+    eq(`sidebar.html: checkbox with id="${key}" present`,
+      new RegExp(`<input[^>]*type="checkbox"[^>]*id="${key}"|<input[^>]*id="${key}"[^>]*type="checkbox"`).test(sidebarHtml),
+      true);
+  }
 })();
 
 // --- sidebar: the capture section and its glue ---
