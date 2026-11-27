@@ -5,7 +5,7 @@ description: Run a refactor pass over a file, a list of files, or a directory. F
 
 ## Main agent
 
-Run to the end without stopping to ask questions. File no issues, write no memory, and keep no record of anything not done. In chat, write no preamble and no summary of the groups, except the Group B lines in step 2.
+Run to the end without stopping to ask questions. File an issue only for a defect on main, as section 3 says. Write no memory, and keep no record of anything not done: a Group B finding reaches the product manager only through chat, and is lost on purpose when no one reads it, because a later pass may resolve it. In chat, write no preamble and no summary of the groups, except the Group B lines in step 2.
 
 1. Create a branch from the latest main named `refactor/asx-<YYYYMMDD>`. Use the run's start date here and in every findings file name.
 2. For each file in the input, one at a time, skipping `js/round_dynamic.js`, run the find subagent and then the action subagent. Use the `refactor` agent type for both, and give each its section name, the input file, and the findings file's path.
@@ -88,10 +88,12 @@ Use the `code-reviewer` agent type on Opus at high effort. Give it this section,
   - changed signatures or return values whose callers were not all updated
   - comments, test names, test group headings, or docs that are now false, or that break a rule under "Docs track behavior" in `AGENTS.md`
 - Run the test suites that cover the changed files.
-- Edit no files. Return APPROVE or BLOCK, and each finding with its location, its severity, and whether it is a defect in the branch's own changes. Any such defect forces BLOCK.
+- Edit no files. Return APPROVE or BLOCK, and each finding with its location, its severity, and its kind: a defect in the branch's own changes, a defect on main (wrong behavior a user can hit today), Group A, or Group B. A defect in the branch's own changes forces BLOCK.
 
 The main agent then:
 
-- Fixes each defect in the branch's own changes or reverts the cleanup that caused it, reruns the suites, and sends the branch back to the same reviewer. After three BLOCKs, it reverts every cleanup that still has a defect.
-- Fixes every other finding that is trivial under bucket 1 of "Review findings" in `AGENTS.md`.
-- Reports every other finding in chat, in plain language, and acts on none of them.
+- Fixes each defect in the branch's own changes or reverts the cleanup that caused it.
+- Makes every Group A finding, in any file.
+- Files a `[follow-up]` issue for each defect on main, as bucket 3 of "Review findings" in `AGENTS.md` says.
+- Reports each Group B finding in chat, in plain language, and acts on none of them.
+- After any fix, reruns the suites and sends the branch back to the same reviewer. The review runs at most three rounds, because each round of fixes outside the diff can surface new findings. After the third round, it reverts every cleanup that still has a defect and reports the Group A findings it did not make in chat.
