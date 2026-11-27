@@ -217,6 +217,24 @@ const SEAT_ROWS = [
       nums({ simplifyFirstRow: true }), [195, 550, 25, 40]);
   });
 })();
+
+// --- A percent cell with the percent switch off ---
+(function roundTable_percentCellHeldWithThePercentSwitchOff() {
+  withLinkCreateTreeWalker(function() {
+    const cell = makeMockCell('td', '+2.3%');
+    cell.querySelectorAll = () => [];  // no anchors
+
+    const table = {
+      rows: [{ cells: [cell] }],
+      querySelector: () => null,
+      dataset: {},
+    };
+    roundTable(table, roundTableOpts());
+    eq('roundTable: percent cell "+2.3%" with the percent switch off is not rounded',
+      cell.classList.contains('dr-ext-rounded'), false);
+  });
+})();
+
 // --- 3. Whole-cell short-circuit via roundTable mock ---
 
 (function wholeCellQuoteShortCircuit() {
@@ -813,6 +831,261 @@ const SEAT_ROWS = [
     [27000000]);
   eq('lens preview of 27M, 4,080, and 312 under a max magnitude of 3: the other band holds 312', result.samples.other.map((row) => row.num),
     [312]);
+})();
+
+// ---------------------------------------------------------------------------
+// the lens preview and the table must round the same cell to the same
+// value once a setting changes: extractPreviewSamples and roundTable both
+// read the table's settings.
+// ---------------------------------------------------------------------------
+(function appModelSettings_previewAndTableAgreeOnLiveSettings() {
+  const customSettings = Object.assign({}, DR_DEFAULTS, {
+    simplifyFirstRow: true,
+    simplifyFirstColumn: true,
+    offsetTop: -2,
+    offsetOther: 0.25,
+    numTop: 1,
+    rangeExpr: '',
+  });
+  // Validity check on the fixture itself: these offsets must differ from
+  // DR_DEFAULTS, or a regression back to reading DR_DEFAULTS would slip
+  // through this test undetected.
+  eq('preview/table agreement: fixture offsets differ from DR_DEFAULTS (test validity check)',
+    customSettings.offsetTop !== DR_DEFAULTS.offsetTop && customSettings.offsetOther !== DR_DEFAULTS.offsetOther,
+    true);
+
+  const previewTable = makeMockTable([[
+    { tag: 'td', text: '1,000,000' },
+    { tag: 'td', text: '50' },
+  ]]);
+  DR_MODEL.setTableSettings(previewTable, customSettings, 'page');
+  const preview = extractPreviewSamples(previewTable);
+  eq('preview/table agreement: top band has the large cell',
+    preview.samples.top.length, 1);
+  eq('preview/table agreement: other band has the small cell',
+    preview.samples.other.length, 1);
+
+  const expectedTop = roundWithOffset(1000000, customSettings.offsetTop);
+  const expectedOther = roundWithOffset(50, customSettings.offsetOther);
+
+  // What the lens preview would render for these two cells,
+  // built from the same sample the model supplied.
+  eq('preview/table agreement: preview top sample rounds via the live offsetTop',
+    roundWithOffset(preview.samples.top[0].num, customSettings.offsetTop), expectedTop);
+  eq('preview/table agreement: preview other-band sample rounds via the live offsetOther',
+    roundWithOffset(preview.samples.other[0].num, customSettings.offsetOther), expectedOther);
+
+  // What the table actually renders for the identical cells, applied the
+  // way the apply does — straight from the table's settings in the model.
+  const liveTable = makeMockTable([[
+    { tag: 'td', text: '1,000,000' },
+    { tag: 'td', text: '50' },
+  ]]);
+  DR_MODEL.setTableSettings(liveTable, customSettings, 'page');
+  withCreateTreeWalker(() => {
+    roundTable(liveTable, DR_MODEL.getTableSettings(liveTable));
+  });
+  const renderedTop = toNumber(liveTable.rows[0].cells[0].innerText);
+  const renderedOther = toNumber(liveTable.rows[0].cells[1].innerText);
+
+  eq('preview/table agreement: the table cell value matches the preview-predicted top value',
+    renderedTop, expectedTop);
+  eq('preview/table agreement: the table cell value matches the preview-predicted other-band value',
+    renderedOther, expectedOther);
+  DR_MODEL.unregisterTable(previewTable);
+  DR_MODEL.unregisterTable(liveTable);
+})();
+
+// ---------------------------------------------------------------------------
+// settings survive a sidebar close and
+// reopen — pulled from the model (request:activeTable), not reset to DR_DEFAULTS.
+// The settings live on the active table, so the reopen's read
+// answers that table's settings.
+// ---------------------------------------------------------------------------
+(function appModelSettings_settingsSurviveSidebarReconnect() {
+  runPressFixture(() => {
+    const table = makePressTable('12,345');
+    DR_MODEL.setActiveTable(table);
+
+    // The sidebar sets a custom value (an "open" session), then — simulated by
+    // nothing happening in between — closes and reopens, pulling the model.
+    const customSettings = {
+      enabled: true, simplifyMixedCurrency: false,
+      simplifyMixedPercent: true, simplifyFirstRow: false, simplifyFirstColumn: false,
+      simplifyDates: true, simplifyTimes: false, dateGranularity: 'year', timeGranularity: 'hour',
+      offsetTop: 0.25, offsetOther: -1.5, numTop: 1, rangeExpr: 'B2:E8',
+    };
+    let applyResponse = null;
+    withCreateTreeWalker(() => {
+      applyResponse = askContentScript({ topic: 'request:applySettings', settings: customSettings });
+    });
+    eq('reconnect: request:applySettings was acknowledged before the (simulated) close',
+      applyResponse && applyResponse.ok, true);
+
+    const getResponse = askContentScript({ topic: 'request:activeTable' });
+    const pulled = (getResponse && getResponse.settings) || {};
+
+    eq('reconnect: request:activeTable returns a settings object',
+      !!(getResponse && getResponse.settings), true);
+    eq('reconnect: offsetTop survives the close/reopen', pulled.offsetTop, 0.25);
+    eq('reconnect: offsetOther survives the close/reopen', pulled.offsetOther, -1.5);
+    eq('reconnect: rangeExpr survives the close/reopen', pulled.rangeExpr, 'B2:E8');
+    eq('reconnect: a changed boolean flag survives the close/reopen', pulled.simplifyMixedCurrency, false);
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// Adversarial: the full cross-context message path, not the application model
+// directly. appModelSettings_previewAndTableAgreeOnLiveSettings (above) calls
+// DR_MODEL.setTableSettings() straight from the test — it never exercises
+// content.js's own onMessage listener or the settings apply's responder,
+// which is the actual code path a real request:applySettings message
+// drives. This test dispatches that message through the captured listener
+// (the pattern) against a table already bound as active, lets the
+// real responder write the table's settings and apply them, and checks the
+// resulting cells against extractPreviewSamples on the same table, which
+// classifies each simplified cell's stored original — so the assertion
+// covers the message arriving, not just the pure math agreeing.
+// ---------------------------------------------------------------------------
+(function appModelSettings_crossContextMessageAppliesLiveSettingsToBoundTableAndPreviewAgrees() {
+  function makeWiredMockTable(rowsSpec) {
+    const table = makeMockTable(rowsSpec);
+    table.classList = { remove() {}, add() {}, contains() { return false; } };
+    table.offsetWidth = 0;
+    table.querySelectorAll = () => [];
+    return table;
+  }
+
+  // Values chosen so the offsets below visibly change them (unlike, say,
+  // 1,000,000 / 50 at offsetTop -2 / offsetOther 0.25, which round to
+  // themselves and would pass this test even if rounding silently no-op'd).
+  const rowsSpec = [[
+    { tag: 'td', text: '1,234,567' },
+    { tag: 'td', text: '37' },
+  ]];
+  const CUSTOM_OFFSET_TOP = -2;
+  const CUSTOM_OFFSET_OTHER = 0.25;
+
+  // Chrome hands an arriving message to every registered listener, so collect
+  // them all and fan out the same way. The bundle registers one today, the
+  // bus's; keeping only the last registration would silently skip whichever
+  // listener registers first should a second one ever appear.
+  const capturedListeners = [];
+  function capturedListener(req, sender, respond) {
+    // Chrome keeps the reply port open when ANY listener returns true, and
+    // closes it otherwise. Returning nothing here would make the
+    // synchronous-answer assertions below unfalsifiable.
+    let keepOpen = false;
+    for (const fn of capturedListeners) {
+      if (fn(req, sender, respond || function () {}) === true) keepOpen = true;
+    }
+    return keepOpen;
+  }
+  let wiredDR_MODEL = null;
+  let wiredExtractPreviewSamples = null;
+  let boundTable = null;
+  let ackResponse = null;
+
+  const captureChrome = {
+    runtime: {
+      onMessage: { addListener(fn) { capturedListeners.push(fn); } },
+      sendMessage: () => {},
+      lastError: null,
+    },
+  };
+  const captureDoc = {
+    addEventListener: () => {},
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    // The range pulse at the end of applyTableSettings adds the highlight
+    // stylesheet and needs these.
+    createElement: () => ({ textContent: '', appendChild() {} }),
+    head: { appendChild() {} },
+    documentElement: { appendChild() {} },
+    body: { appendChild: () => {}, observe: () => {} },
+  };
+  const captureWindow = {
+    addEventListener: () => {},
+    getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
+  };
+
+  const saved = { chrome: global.chrome, document: global.document, window: global.window };
+  global.chrome = captureChrome;
+  global.document = captureDoc;
+  global.window = captureWindow;
+
+  try {
+    withCreateTreeWalker(() => {
+      try {
+        eval(contentScriptBundle + `
+          wiredDR_MODEL = DR_MODEL;
+          wiredExtractPreviewSamples = extractPreviewSamples;
+        `);
+      } catch (e) {
+        // module-level init may fail against the stub DOM; the onMessage
+        // listener and the two wiring assignments above both run before any
+        // dynamic/async code.
+      }
+
+      if (capturedListeners.length === 0 || !wiredDR_MODEL) return;
+
+      // Bind a table as active — mirrors what the contextmenu handler
+      // does for real, so the settings apply has an active table to write
+      // the incoming message to.
+      boundTable = makeWiredMockTable(rowsSpec);
+      wiredDR_MODEL.setActiveTable(boundTable);
+
+      const customSettings = Object.assign({}, DR_DEFAULTS, {
+        simplifyFirstRow: true, simplifyFirstColumn: true,
+        offsetTop: CUSTOM_OFFSET_TOP, offsetOther: CUSTOM_OFFSET_OTHER,
+        numTop: 1, rangeExpr: '', enabled: true,
+      });
+
+      capturedListener(
+        { topic: 'request:applySettings', settings: customSettings },
+        {},
+        (r) => { ackResponse = r; }
+      );
+    });
+  } finally {
+    global.chrome = saved.chrome;
+    global.document = saved.document;
+    global.window = saved.window;
+  }
+
+  eq('cross-context apply: content.js onMessage listener was captured',
+    capturedListeners.length > 0, true);
+  eq('cross-context apply: request:applySettings was acknowledged',
+    ackResponse && ackResponse.ok, true);
+  if (!boundTable) return;
+
+  // The responder applied the message straight to the bound table — no
+  // separate "apply" call from the test.
+  const renderedTop = toNumber(boundTable.rows[0].cells[0].innerText);
+  const renderedOther = toNumber(boundTable.rows[0].cells[1].innerText);
+  eq('cross-context apply: the fixture top value actually changed under rounding (test validity check)',
+    renderedTop !== 1234567, true);
+  eq('cross-context apply: the fixture other-band value actually changed under rounding (test validity check)',
+    renderedOther !== 37, true);
+  eq('cross-context apply: the bound table was actually rounded by the real responder path',
+    boundTable.rows[0].cells[0].classList.contains('dr-ext-rounded'), true);
+
+  // The preview extractor reads the bound table's own settings and each
+  // simplified cell's stored original, so the rounded text on the screen
+  // stays out of its read.
+  const preview = wiredExtractPreviewSamples(boundTable);
+  eq('cross-context apply: preview top band has the large cell',
+    preview.samples.top.length, 1);
+  eq('cross-context apply: preview other band has the small cell',
+    preview.samples.other.length, 1);
+
+  const previewTop = roundWithOffset(preview.samples.top[0].num, CUSTOM_OFFSET_TOP);
+  const previewOther = roundWithOffset(preview.samples.other[0].num, CUSTOM_OFFSET_OTHER);
+
+  eq('cross-context apply: the table cell the real message pipeline rendered matches the preview-predicted top value',
+    renderedTop, previewTop);
+  eq('cross-context apply: the table cell the real message pipeline rendered matches the preview-predicted other-band value',
+    renderedOther, previewOther);
 })();
 
 // ---------------------------------------------------------------------------

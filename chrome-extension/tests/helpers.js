@@ -1,8 +1,8 @@
 // Helpers every piece of the suite may call: fake tables and grids, fake
-// clicks, harnesses, and the like. They are function declarations, so the
-// joined suite can call each one from any piece, whatever the order list
-// says. A new helper goes here; a test section goes in the piece for the
-// area it tests.
+// clicks, harnesses, and the like. The function declarations can be called
+// from any piece, whatever the order list says. The constants and classes
+// can be read by any piece after this one, which runs second. A new helper
+// goes here; a test section goes in the piece for the area it tests.
 
 // Takes the same arguments as new Function, but compiles in an empty context.
 // The setup runs the content scripts in the suite's global scope, so under
@@ -22,6 +22,55 @@ function expectedNumberStretch(start, numStr, num) {
 function stretchTexts(text, classification) {
   return classification.stretches.map((stretch) => text.slice(stretch.start, stretch.end));
 }
+
+// The text with every number in it rounded at offset -0.5 against the text's
+// own max magnitude, each written back in its place.
+function roundEveryNumberInText(text) {
+  const matches = extractNumbersInText(text);
+  const maxMag = findMaxMagnitude([matches.map((m) => m.num)]);
+  let out = text;
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const m = matches[i];
+    const rounded = roundValueSetAware(m.num, maxMag, -0.5, -0.5, 1);
+    if (rounded === m.num) continue;
+    out = out.substring(0, m.index) + formatNumber(rounded, m.numStr) + out.substring(m.index + m.numStr.length);
+  }
+  return out;
+}
+
+// The digits of each number extractNumbersInText finds in text, in order.
+function numStrs(text) {
+  return extractNumbersInText(text).map((m) => m.numStr);
+}
+
+// A pure cell's write: the one write-back over the cell's number span, with
+// the characters around the span left in place.
+function writePureCell(rounded, text) {
+  const span = pureNumberSpan(text);
+  return text.slice(0, span.index) + formatNumber(rounded, span.numStr) +
+    text.slice(span.index + span.numStr.length);
+}
+
+// A text with each date written in its place as roundDate returns it, the
+// way the table step's per-date patches write a date cell. A text holding an
+// all-numeric or impossible date comes back unchanged.
+function roundDateText(text, granularity, dates) {
+  const list = dates || findDates(text);
+  if (!list || list.some((d) => d.impossible || isAmbiguousDate(d))) return text;
+  return list.reduceRight(
+    (out, d) => out.slice(0, d.start) + roundDate(text, d, granularity) + out.slice(d.end), text);
+}
+
+const LADDER_OPTS = {
+  simplifyFirstRow: false,
+  simplifyFirstColumn: false,
+  simplifyMixedPercent: true,
+  simplifyMixedCurrency: true,
+  simplifyDates: true,
+  simplifyTimes: false,
+};
+
+const LADDER_OPTS_CURRENCY_OFF = Object.assign({}, LADDER_OPTS, { simplifyMixedCurrency: false });
 
 // One cell at row 1, column 1 with no range expression, through the
 // classification ladder.
@@ -113,6 +162,16 @@ function makeMockTable(rowsSpec, querySelectorResult) {
 function roundTableUnder(table, opts) {
   DR_MODEL.setTableSettings(table, opts, 'page');
   return roundTable(table, DR_MODEL.getTableSettings(table));
+}
+
+// Settings for a roundTable call with the first row and column simplified,
+// every other switch off, and the given settings on top.
+function roundTableOpts(patch) {
+  return Object.assign({
+    enabled: true, simplifyFirstRow: true, simplifyFirstColumn: true,
+    simplifyDates: false, simplifyTimes: false, simplifyMixedPercent: false, simplifyMixedCurrency: false,
+    offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
+  }, patch);
 }
 
 function withCreateTreeWalker(fn) {
@@ -2840,6 +2899,25 @@ function declareGridSpans(grid, spansByCellIndex) {
 
 function adapterColumnsOf(el) {
   return makeAdapter(el).getRows().map((row) => row.getCells().map((cell) => cell.columnIndex));
+}
+
+// The observers the page model reports to. The harness clears the list.
+const rwObservers = [];
+
+let rwDeliveringToObserver = false;
+
+class RewriteObserver {
+  constructor(callback) { this.callback = callback; this.target = null; this.queue = []; }
+  observe(target) {
+    this.target = target;
+    if (!rwObservers.includes(this)) rwObservers.push(this);
+  }
+  disconnect() {
+    this.target = null;
+    this.queue = [];
+    const at = rwObservers.indexOf(this);
+    if (at >= 0) rwObservers.splice(at, 1);
+  }
 }
 
 function rwRecordMutation(node) {

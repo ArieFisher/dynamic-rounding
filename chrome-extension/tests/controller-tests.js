@@ -345,6 +345,57 @@
 })();
 
 // ---------------------------------------------------------------------------
+// Settings live in DR_MODEL, one set per table: a table with none
+// reads as the shipped defaults, setTableSettings merges its patch onto the
+// stored settings (the defaults when none are stored) and publishes the whole
+// new value, and
+// getTableSettings reads back a copy.
+// ---------------------------------------------------------------------------
+(function appModelSettings_storeTableSettings() {
+  const table = { tagName: 'TABLE' };
+  eq('DR_MODEL.getTableSettings: a table with no settings reads as the shipped defaults',
+    DR_MODEL.getTableSettings(table), Object.assign({}, DR_DEFAULTS));
+
+  let stateChangePayload = 'NOT_CALLED';
+  const unsubscribe = DR_BUS.subscribe('state:settingsChanged', (payload) => {
+    stateChangePayload = payload;
+  });
+  try {
+    DR_MODEL.setTableSettings(table, { offsetTop: 0.25, rangeExpr: 'A1:C9' }, 'page');
+  } finally {
+    unsubscribe();
+  }
+  eq('DR_MODEL.setTableSettings: getTableSettings reflects the new value',
+    DR_MODEL.getTableSettings(table).offsetTop, 0.25);
+  eq('DR_MODEL.setTableSettings: the stored settings carry the shipped defaults for every key not written',
+    DR_MODEL.getTableSettings(table).simplifyDates, DR_DEFAULTS.simplifyDates);
+  eq('DR_MODEL.setTableSettings: the resulting state-change carries the whole new value, not a delta',
+    stateChangePayload && stateChangePayload.settings,
+    Object.assign({}, DR_DEFAULTS, { offsetTop: 0.25, rangeExpr: 'A1:C9' }));
+
+  // getTableSettings returns a copy — mutating what a caller read must not
+  // corrupt the application model's own value (immutability convention).
+  const read = DR_MODEL.getTableSettings(table);
+  read.offsetTop = 999;
+  eq('DR_MODEL.getTableSettings: mutating the settings it returns does not affect the application model',
+    DR_MODEL.getTableSettings(table).offsetTop, 0.25);
+  DR_MODEL.unregisterTable(table);
+})();
+
+(function appModelSettings_secondPartialWriteKeepsFirst() {
+  const table = { tagName: 'TABLE' };
+  DR_MODEL.setTableSettings(table, { offsetTop: 0.25 }, 'page');
+  DR_MODEL.setTableSettings(table, { rangeExpr: 'A1:C9' }, 'page');
+  eq('DR_MODEL.setTableSettings: a second partial write keeps the first write\'s key',
+    DR_MODEL.getTableSettings(table).offsetTop, 0.25);
+  eq('DR_MODEL.setTableSettings: a second partial write stores its own key',
+    DR_MODEL.getTableSettings(table).rangeExpr, 'A1:C9');
+  eq('DR_MODEL.setTableSettings: a key neither write holds keeps the shipped default',
+    DR_MODEL.getTableSettings(table).simplifyDates, DR_DEFAULTS.simplifyDates);
+  DR_MODEL.unregisterTable(table);
+})();
+
+// ---------------------------------------------------------------------------
 // Publishing intent:toggleTable is content.js's only
 // path to running a press — prove the wiring end to end (mirrors the
 // intent:activateTable behavioral pin in the app-model-selection block above).

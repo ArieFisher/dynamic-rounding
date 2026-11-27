@@ -2,14 +2,14 @@
 
 // --- extractNumbersInText (multi-match) ---
 
-eq('extractNumbersInText: range with en-dash',
+eq('extractNumbersInText: "₹615.71–623.33 crore" yields 615.71 and 623.33',
   extractNumbersInText('₹615.71–623.33 crore'),
   [
     { numStr: '615.71', num: 615.71, index: 1 },
     { numStr: '623.33', num: 623.33, index: 8 }
   ]);
 
-eq('extractNumbersInText: two-number sentence',
+eq('extractNumbersInText: "between 1,200 and 3,400 units" yields 1,200 and 3,400',
   extractNumbersInText('between 1,200 and 3,400 units'),
   [
     { numStr: '1,200', num: 1200, index: 8 },
@@ -24,10 +24,27 @@ eq('extractNumbersInText: text with no digits yields no numbers',
   extractNumbersInText('N/A'),
   []);
 
+eq('extractNumbersInText: three numbers in a sentence',
+  extractNumbersInText('grew from 10 to 200 in 3,000 days').map(m => m.num),
+  [10, 200, 3000]);
+
+eq('extractNumbersInText: decimal followed by integer',
+  extractNumbersInText('avg 4.5, peak 9'),
+  [
+    { numStr: '4.5', num: 4.5, index: 4 },
+    { numStr: '9', num: 9, index: 14 }
+  ]);
+
+eq('extractNumbersInText: "a 100 b 200 c" yields each number\'s index',
+  extractNumbersInText('a 100 b 200 c').map(m => ({ s: m.numStr, i: m.index })),
+  [{ s: '100', i: 2 }, { s: '200', i: 8 }]);
+
+eq('extractNumbersInText: "range 0 to 500" yields no zero',
+  extractNumbersInText('range 0 to 500').map(m => m.num),
+  [500]);
+
 // --- Digits joined to letters yield no number ---
 // NUMBER_IN_TEXT_PATTERN (numbers-in-text.js) holds the reason.
-
-const numStrs = text => extractNumbersInText(text).map(m => m.numStr);
 
 eq('extractNumbersInText: application number "XR47182913MKB07" yields no numbers',
   numStrs('XR47182913MKB07'),
@@ -91,19 +108,11 @@ eq('extractNumbersInText: caret exponent notation yields two numbers',
 
 // --- formatNumber: the one write-back ---
 
-// A pure cell's write: the one write-back over the cell's number span, with
-// the characters around the span left in place.
-function writePureCell(rounded, text) {
-  const span = pureNumberSpan(text);
-  return text.slice(0, span.index) + formatNumber(rounded, span.numStr) +
-    text.slice(span.index + span.numStr.length);
-}
-
-eq('format: large number gets commas matching original',
+eq('format: 8500000 over "8,584,629" writes "8,500,000"',
   formatNumber(8500000, '8,584,629'),
   '8,500,000');
 
-eq('format: small int no commas',
+eq('format: 300 over "286" writes "300"',
   formatNumber(300, '286'),
   '300');
 
@@ -123,10 +132,9 @@ eq('toNumber: "(500)" reads as -500', toNumber('(500)'), -500);
 
 eq('toNumber: "286k" reads as no number', toNumber('286k'), null);
 
-eq('toNumber: pure text -> null', toNumber('N/A'), null);
+eq('toNumber: "N/A" reads as no number', toNumber('N/A'), null);
 
 // --- End-to-end magnitude + rounding parity with example table ---
-// Original | excludeWords=false expected
 // 8,584,629           -> 8,500,000
 // 286                 -> 300
 // 8,584,629 USD       -> 8,500,000 USD
@@ -136,91 +144,37 @@ eq('toNumber: pure text -> null', toNumber('N/A'), null);
   const cells = ['8,584,629', '286', '8,584,629 USD', '286k'];
   const infos = cells.map(text => {
     const num = toNumber(text);
-    if (num !== null) return { mode: 'pure', num, text };
+    if (num !== null) return { kind: 'pure', num, text };
     const ex = extractNumbersInText(text)[0];
-    if (ex) return { mode: 'extracted', num: ex.num, numStr: ex.numStr, index: ex.index, text };
-    return { mode: 'skip', num: null, text };
+    if (ex) return { kind: 'extracted', num: ex.num, numStr: ex.numStr, index: ex.index, text };
+    return { kind: 'skip', num: null, text };
   });
 
   const dataset = [infos.map(i => i.num)];
   const maxMag = findMaxMagnitude(dataset);
-  eq('e2e: max magnitude across mixed cells', maxMag, 6);
+  eq('end to end: the max magnitude of "8,584,629", "286", "8,584,629 USD" and "286k" is 6', maxMag, 6);
 
   const out = infos.map(info => {
-    if (info.mode === 'skip') return info.text;
+    if (info.kind === 'skip') return info.text;
     const rounded = roundValueSetAware(info.num, maxMag, -0.5, -0.5, 1);
     if (rounded === info.num) return info.text;
-    if (info.mode === 'pure') return writePureCell(rounded, info.text);
+    if (info.kind === 'pure') return writePureCell(rounded, info.text);
     const num = formatNumber(rounded, info.numStr);
     return info.text.substring(0, info.index) + num + info.text.substring(info.index + info.numStr.length);
   });
 
-  eq('e2e: full table output', out,
+  eq('end to end: "8,584,629", "286", "8,584,629 USD" and "286k" round to "8,500,000", "300", "8,500,000 USD" and "300k"', out,
     ['8,500,000', '300', '8,500,000 USD', '300k']);
 })();
 
 // --- Range cell: every number in the cell must round ---
 (function rangeCell() {
   const text = '₹615.71–623.33 crore';
-  const matches = extractNumbersInText(text);
-  const allNums = matches.map(m => m.num);
-  const maxMag = findMaxMagnitude([allNums]);
-
-  let out = text;
-  for (let i = matches.length - 1; i >= 0; i--) {
-    const m = matches[i];
-    const rounded = roundValueSetAware(m.num, maxMag, -0.5, -0.5, 1);
-    if (rounded === m.num) continue;
-    const newNum = formatNumber(rounded, m.numStr);
-    out = out.substring(0, m.index) + newNum + out.substring(m.index + m.numStr.length);
-  }
+  const out = roundEveryNumberInText(text);
 
   eq('range cell: both numbers in "₹615.71–623.33 crore" round',
     out, '₹600–600 crore');
 })();
-
-// --- excludeWords=true path: extracted cells skipped, pure cells still round ---
-(function excludeWordsOn() {
-  const cells = ['8,584,629', '286', '8,584,629 USD', '286k'];
-  const infos = cells.map(text => {
-    const num = toNumber(text);
-    if (num !== null) return { mode: 'pure', num, text };
-    return { mode: 'skip', num: null, text };
-  });
-
-  const dataset = [infos.map(i => i.num)];
-  const maxMag = findMaxMagnitude(dataset);
-
-  const out = infos.map(info => {
-    if (info.mode === 'skip') return info.text;
-    const rounded = roundValueSetAware(info.num, maxMag, -0.5, -0.5, 1);
-    return info.mode === 'pure' ? writePureCell(rounded, info.text) : info.text;
-  });
-
-  eq('excludeWords=true: only pure-numeric cells round',
-    out, ['8,500,000', '300', '8,584,629 USD', '286k']);
-})();
-
-// --- Additional extractNumbersInText cases ---
-
-eq('extractNumbersInText: three numbers in a sentence',
-  extractNumbersInText('grew from 10 to 200 in 3,000 days').map(m => m.num),
-  [10, 200, 3000]);
-
-eq('extractNumbersInText: decimal followed by integer',
-  extractNumbersInText('avg 4.5, peak 9'),
-  [
-    { numStr: '4.5', num: 4.5, index: 4 },
-    { numStr: '9', num: 9, index: 14 }
-  ]);
-
-eq('extractNumbersInText: "a 100 b 200 c" yields each number\'s index',
-  extractNumbersInText('a 100 b 200 c').map(m => ({ s: m.numStr, i: m.index })),
-  [{ s: '100', i: 2 }, { s: '200', i: 8 }]);
-
-eq('extractNumbersInText: zero is excluded',
-  extractNumbersInText('range 0 to 500').map(m => m.num),
-  [500]);
 
 // --- A comma that ends a number is punctuation, not a separator ---
 // The match string ends in a digit. DIGIT_RUN_PATTERN (numbers-in-text.js)
@@ -239,18 +193,7 @@ eq('extractNumbersInText: a list of grouped numbers keeps each number\'s own sep
 // --- Range cell with mixed magnitudes ---
 (function rangeMixedMagnitudes() {
   const text = '50–5,000 range';
-  const matches = extractNumbersInText(text);
-  const allNums = matches.map(m => m.num);
-  const maxMag = findMaxMagnitude([allNums]);
-
-  let out = text;
-  for (let i = matches.length - 1; i >= 0; i--) {
-    const m = matches[i];
-    const rounded = roundValueSetAware(m.num, maxMag, -0.5, -0.5, 1);
-    if (rounded === m.num) continue;
-    const newNum = formatNumber(rounded, m.numStr);
-    out = out.substring(0, m.index) + newNum + out.substring(m.index + m.numStr.length);
-  }
+  const out = roundEveryNumberInText(text);
 
   // maxMag = 3 (from 5000). 50 is magnitude 1, far from top -> uses offset_other (=top, both -0.5),
   // so 50 rounds toward step = 10^1 * 0.5 = 5 -> 50.
@@ -261,21 +204,9 @@ eq('extractNumbersInText: a list of grouped numbers keeps each number\'s own sep
 
 // --- Two numbers in one text, one longer once rounded, both round in place ---
 (function spliceSafety() {
-  // Numbers that change length when rounded: 8,584,629 (9 chars) -> 8,500,000 (9 chars, same).
-  // Pick one that changes length: 286 (3) -> 300 (3) same. Use 9,876 -> 10,000 (length grows).
+  // 9,876 rounds to 10,000, one character longer.
   const text = '9,876 then 1,234';
-  const matches = extractNumbersInText(text);
-  const allNums = matches.map(m => m.num);
-  const maxMag = findMaxMagnitude([allNums]);
-
-  let out = text;
-  for (let i = matches.length - 1; i >= 0; i--) {
-    const m = matches[i];
-    const rounded = roundValueSetAware(m.num, maxMag, -0.5, -0.5, 1);
-    if (rounded === m.num) continue;
-    const newNum = formatNumber(rounded, m.numStr);
-    out = out.substring(0, m.index) + newNum + out.substring(m.index + m.numStr.length);
-  }
+  const out = roundEveryNumberInText(text);
 
   // Both magnitude 3. step = 500. 9876/500=19.75->20*500=10,000. 1234/500=2.47->2*500=1,000.
   eq('two numbers in place: "9,876 then 1,234" rounds to "10,000 then 1,000"',
@@ -283,19 +214,19 @@ eq('extractNumbersInText: a list of grouped numbers keeps each number\'s own sep
 })();
 
 // --- The number reader: brackets, and texts with no digits ---
-eq('toNumber: parens with comma', toNumber('(1,234)'), -1234);
+eq('toNumber: the bracketed number "(1,234)" reads as -1234', toNumber('(1,234)'), -1234);
 
-eq('toNumber: empty string returns null', toNumber(''), null);
+eq('toNumber: an empty string reads as no number', toNumber(''), null);
 
-eq('toNumber: whitespace only returns null', toNumber('   '), null);
+eq('toNumber: whitespace only reads as no number', toNumber('   '), null);
 
-eq('toNumber: dollar sign only returns null', toNumber('$'), null);
+eq('toNumber: a dollar sign alone reads as no number', toNumber('$'), null);
 
-eq('toNumber: euro sign only returns null', toNumber('€'), null);
+eq('toNumber: a euro sign alone reads as no number', toNumber('€'), null);
 
 eq('toNumber: " $ " reads as no number', toNumber(' $ '), null);
 
-// --- Pure cell writes for common shapes ---
+// --- Pure cell writes: common shapes, whole and fractional results ---
 eq('pure cell write: pure integer keeps commas',
   writePureCell(8500000, '8,584,629'), '8,500,000');
 
@@ -305,97 +236,104 @@ eq('pure cell write: currency prefix preserved',
 eq('pure cell write: percent suffix preserved',
   writePureCell(12, '12.34%'), '12%');
 
-eq('pure cell write: parens-negative preserved',
+eq('pure cell write: a bracketed number keeps its brackets',
   writePureCell(-500, '(523)'), '(500)');
 
-// --- Exclusion checkboxes ---
+eq('pure cell write: whole number 1 from "1.04" -> "1"',
+  writePureCell(1, '1.04'), '1');
 
-eq('findDates: bare 4-digit year', findDates('2018') !== null, true);
+eq('pure cell write: whole number 2 from "1.5" -> "2"',
+  writePureCell(2, '1.5'), '2');
 
-eq('findDates: bare year out of range', findDates('1899') !== null, false);
+eq('pure cell write: 0 from "0.04" -> "0"',
+  writePureCell(0, '0.04'), '0');
 
-eq('findDates: bare year out of range', findDates('2100') !== null, false);
+eq('pure cell write: negative whole number -5 from "-5.2" -> "-5"',
+  writePureCell(-5, '-5.2'), '-5');
 
-eq('findDates: ISO date', findDates('2024-03-14') !== null, true);
+// A fractional result keeps its own decimals
+eq('pure cell write: 1.5 from "1.4" -> "1.5"',
+  writePureCell(1.5, '1.4'), '1.5');
 
-eq('findDates: US slash date', findDates('3/14/2024') !== null, true);
+eq('pure cell write: 1.25 from "1.234" -> "1.25"',
+  writePureCell(1.25, '1.234'), '1.25');
 
-eq('findDates: dash date', findDates('3-14-2024') !== null, true);
+// A whole result keeps the cell's format marks and brackets
+eq('pure cell write: whole number with percent -> "1%"',
+  writePureCell(1, '1.04%'), '1%');
 
-eq('findDates: "March 14, 2024"', findDates('March 14, 2024') !== null, true);
+eq('pure cell write: whole number with currency -> "$2"',
+  writePureCell(2, '$1.99'), '$2');
 
-eq('findDates: "14 March 2024"', findDates('14 March 2024') !== null, true);
+eq('pure cell write: a whole result from the bracketed number "(2.85)" -> "(3)"',
+  writePureCell(-3, '(2.85)'), '(3)');
 
-eq('findDates: "Mar 2024"', findDates('Mar 2024') !== null, true);
+// --- Finding dates ---
 
-eq('findDates: "Sept 2024"', findDates('Sept 2024') !== null, true);
+eq('findDates: the bare year "2018" is a date', findDates('2018') !== null, true);
 
-eq('findDates: plain number not a year -> false', findDates('1234') !== null, false);
+eq('findDates: the bare year "1899" is no date', findDates('1899') !== null, false);
 
-eq('findDates: random text -> false', findDates('hello') !== null, false);
+eq('findDates: the bare year "2100" is no date', findDates('2100') !== null, false);
 
-eq('findDates: empty -> false', findDates('') !== null, false);
+eq('findDates: "2024-03-14" is a date', findDates('2024-03-14') !== null, true);
+
+eq('findDates: "3/14/2024" is a date', findDates('3/14/2024') !== null, true);
+
+eq('findDates: "3-14-2024" is a date', findDates('3-14-2024') !== null, true);
+
+eq('findDates: "March 14, 2024" is a date', findDates('March 14, 2024') !== null, true);
+
+eq('findDates: "14 March 2024" is a date', findDates('14 March 2024') !== null, true);
+
+eq('findDates: "Mar 2024" is a date', findDates('Mar 2024') !== null, true);
+
+eq('findDates: "Sept 2024" is a date', findDates('Sept 2024') !== null, true);
+
+eq('findDates: plain number "1234" is no date', findDates('1234') !== null, false);
+
+eq('findDates: "hello" is no date', findDates('hello') !== null, false);
+
+eq('findDates: empty text is no date', findDates('') !== null, false);
+
+// --- Exclusions ---
 
 (function exclusionFirstColumn() {
-  const opts = Object.assign({}, {
-    simplifyDates: false, simplifyTimes: false,
-    simplifyFirstColumn: false
-  });
-  eq('exclude: first column with flag on', getExclusionReason(0, opts), 'first-column');
+  const opts = { simplifyFirstColumn: false };
+  eq('exclude: column 0 with simplifyFirstColumn off -> "first-column"', getExclusionReason(0, opts), 'first-column');
   eq('exclude: non-first column ignores flag', getExclusionReason(1, opts), null);
 })();
 
 // --- simplifyFirstRow ---
 
 (function simplifyFirstRowTests() {
-  // simplifyFirstRow=false: row 0 must be excluded regardless of cell content
   eq('simplifyFirstRow: row 0 excluded when flag is false',
     getExclusionReason(1, { simplifyFirstRow: false }, 0), 'first-row');
-  // simplifyFirstRow=false: row 1 is not affected
   eq('simplifyFirstRow: row 1 not excluded when flag is false',
     getExclusionReason(1, { simplifyFirstRow: false }, 1), null);
-  // simplifyFirstRow=true: row 0 is NOT excluded
   eq('simplifyFirstRow: row 0 not excluded when flag is true',
     getExclusionReason(1, { simplifyFirstRow: true }, 0), null);
-  // simplifyFirstRow unset (default): row 0 IS excluded (!undefined = true, same as simplifyFirstRow=false)
   eq('simplifyFirstRow: row 0 excluded when flag is unset (default)',
     getExclusionReason(1, {}, 0), 'first-row');
-  // simplifyFirstRow takes priority over the first-column check
-  eq('simplifyFirstRow: first-row beats first-column when both apply',
-    getExclusionReason(0, { simplifyFirstRow: false, simplifyFirstColumn: false }, 0), 'first-row');
 })();
 
 // First-match-wins priority: first-row beats first-column
 (function exclusionPriority() {
-  const opts = {
-    simplifyFirstRow: false, simplifyFirstColumn: false, simplifyDates: true, simplifyTimes: true,
-    simplifyMixedPercent: false, simplifyMixedCurrency: false
-  };
+  const opts = { simplifyFirstRow: false, simplifyFirstColumn: false };
   eq('priority: row 0, column 0 -> first row',
     getExclusionReason(0, opts, 0), 'first-row');
   eq('priority: row 1, column 0 -> first column',
     getExclusionReason(0, opts, 1), 'first-column');
-  eq('priority: row 1, column 1 -> no exclusion, with every other switch off',
+  eq('priority: row 1, column 1 -> no exclusion',
     getExclusionReason(1, opts, 1), null);
 })();
 
 // --- Per-type granularity ---
 
-// A text with each date written in its place as roundDate returns it, the
-// way the table step's per-date patches write a date cell. A text holding an
-// all-numeric or impossible date comes back unchanged.
-function roundDateText(text, granularity, dates) {
-  const list = dates || findDates(text);
-  if (!list || list.some((d) => d.impossible || isAmbiguousDate(d))) return text;
-  return list.reduceRight(
-    (out, d) => out.slice(0, d.start) + roundDate(text, d, granularity) + out.slice(d.end), text);
-}
-
 // Date granularity
 // CONTRACT: roundDateText drops the parts of the date finer than the granularity
 // and changes only the date portion of the cell text. For mixed cells (label +
 // date) the surrounding text is preserved.
-// The caller (roundTable) compares formattedValue === originalValue to detect no-ops.
 eq('roundDateText: year granularity returns a 4-digit year string',
   roundDateText('2018', 'year'), '2018');
 
@@ -417,7 +355,7 @@ eq('roundDateText: decade in ISO date "2024-03-14" returns "2020"',
 eq('roundDateText: unparseable input returns the original text unchanged',
   roundDateText('hello world', 'decade'), 'hello world');
 
-eq('roundDateText: 2020 at decade granularity still returns "2020" (caller handles no-op)',
+eq('roundDateText: 2020 at decade granularity still returns "2020"',
   roundDateText('2020', 'decade'), '2020');
 
 eq('roundDateText: mixed cell preserves label, replaces date (ISO dash, decade)',
@@ -481,8 +419,8 @@ eq('roundDateText: mixed cell preserves label at month granularity',
 
 // An ordinal suffix on any part of a date keeps the cell a date, and the
 // suffix goes with the part it follows.
-eq('findDates: "2020th" (ordinal on a bare year) -> true', (findDates('2020th') !== null), true);
-eq('findDates: "7/21st/2020" (ordinal on a numeric part) -> true', (findDates('7/21st/2020') !== null), true);
+eq('findDates: "2020th" (ordinal on a bare year) is a date', (findDates('2020th') !== null), true);
+eq('findDates: "7/21st/2020" (ordinal on a numeric part) is a date', (findDates('7/21st/2020') !== null), true);
 eq('roundDateText: "Jun 2015th" at decade -> "2010"', roundDateText('Jun 2015th', 'decade'), '2010');
 eq('roundDateText: "2015-07-21st" at month -> "2015-07"', roundDateText('2015-07-21st', 'month'), '2015-07');
 eq('roundDateText: "2015-07-21st" at year -> "2015"', roundDateText('2015-07-21st', 'year'), '2015');
@@ -498,10 +436,10 @@ eq('roundDateText: "2019-03-02 and 2096-12-13" at decade -> "2010 and 2090"',
   roundDateText('2019-03-02 and 2096-12-13', 'decade'), '2010 and 2090');
 
 // A month word must be a month name or its short form.
-eq('findDates: "market 21, 2015" (word starting like a month) -> false', (findDates('market 21, 2015') !== null), false);
-eq('findDates: "Marching 4, 2015" -> false', (findDates('Marching 4, 2015') !== null), false);
-eq('findDates: "Sept. 4, 1998" -> true', (findDates('Sept. 4, 1998') !== null), true);
-eq('findDates: "MAY 4, 1998" -> true', (findDates('MAY 4, 1998') !== null), true);
+eq('findDates: "market 21, 2015" (word starting like a month) is no date', (findDates('market 21, 2015') !== null), false);
+eq('findDates: "Marching 4, 2015" is no date', (findDates('Marching 4, 2015') !== null), false);
+eq('findDates: "Sept. 4, 1998" is a date', (findDates('Sept. 4, 1998') !== null), true);
+eq('findDates: "MAY 4, 1998" is a date', (findDates('MAY 4, 1998') !== null), true);
 
 // A date that cannot exist is found, and marked so the cell holds.
 eq('findDates: "2020-13-45" is impossible', findDates('2020-13-45')[0].impossible, true);
@@ -908,52 +846,19 @@ eq('parseRangeExpr: "A5:A2" -> rows 1-4 of column A',
   eq('parseRangeExpr: "{A1:E8, G3:G}" -> 2 ranges', r.ranges && r.ranges.length, 2);
 })();
 
-// --- Hidden-sortkey regression guard ---
-// A cell like <td><span style="display:none">700023000</span>+2.3%</td>
-// The implementation reads cell.innerText (which browsers exclude hidden text from).
-// We model this by making cell.innerText = '+2.3%' only (hidden span excluded).
-// toNumber('+2.3%') -> 2.3, and with simplifyMixedPercent unset the cell is excluded entirely.
-(function ac4_hiddenSortkeyNotExtracted() {
-  // Simulate: innerText is what the browser returns (no hidden text).
-  // Browsers exclude hidden (display:none) content from innerText, so the cell's
-  // innerText is just '+2.3%'; the 700023000 sortkey never reaches the rounding logic.
-  const cellText = '+2.3%';
-
-  // The visible text IS numeric (toNumber strips % via CLEAN_REGEX -> 2.3),
-  // but with the percent switch unset its percent sign holds the number.
-  eq('percent cell held with the percent switch unset (regression guard: no spurious rounding)',
-    classifyAt(cellText, {}).stretches, []);
-})();
-
-// via roundTable: confirm the cell is skipped, not rounded.
-(function ac4_roundTable_hiddenSortkeyNotRounded() {
-  withLinkCreateTreeWalker(function() {
-    // Cell whose innerText (visible) is '+2.3%'; hidden sortkey not visible.
-    const cell = makeMockCell('td', '+2.3%');
-    cell.querySelectorAll = () => [];  // no anchors
-
-    const table = {
-      rows: [{ cells: [cell] }],
-      querySelector: () => null,
-      dataset: {},
-    };
-    const opts = {
-      enabled: true, simplifyDates: false, simplifyTimes: false,
-      simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
-      rangeExpr: '',
-    };
-    roundTable(table, opts);
-    eq('percent cell with hidden sortkey is NOT rounded',
-      cell.classList.contains('dr-ext-rounded'), false);
-  });
+// --- A percent cell with the percent switch off ---
+// toNumber reads "+2.3%" as 2.3, but with the percent switch off its percent
+// sign holds the number.
+(function percentCellHeldWithThePercentSwitchUnset() {
+  eq('percent cell "+2.3%" held with the percent switch unset',
+    classifyAt('+2.3%', {}).stretches, []);
 })();
 
 // ---------------------------------------------------------------------------
 // Numbers inside quotes
 // ---------------------------------------------------------------------------
 
-// --- 1. getQuoteMaskedRanges unit tests ---
+// --- getQuoteMaskedRanges unit tests ---
 
 (function quoteMaskedRangesUnit() {
   // Single quoted span at position 0
@@ -995,7 +900,7 @@ eq('parseRangeExpr: "A5:A2" -> rows 1-4 of column A',
     getQuoteMaskedRanges('').length, 0);
 })();
 
-// --- 2. Inline filtering: only 7 remains after quoting "the answer is 42" ---
+// --- Inline filtering: only 7 remains after quoting "the answer is 42" ---
 
 (function quoteInlineFilter() {
   const text = 'He said "the answer is 42", but 7 disagreed.';
@@ -1014,17 +919,17 @@ eq('parseRangeExpr: "A5:A2" -> rows 1-4 of column A',
     filtered.length, 1);
 })();
 
-// --- 4. Scope guards ---
+// --- Scope guards ---
 
 (function quoteScopeGuards() {
-  // Single quotes: numbers inside '...' are NOT excluded (out of scope)
+  // Single quotes: numbers inside '...' are not masked (out of scope)
   const singleQuote = "He said '42' and 7.";
   const sqMatches = extractNumbersInText(singleQuote);
   // getQuoteMaskedRanges only handles ASCII double-quotes — single quotes ignored
   const sqRanges = getQuoteMaskedRanges(singleQuote);
   eq('scope guard: single quotes not masked (zero quote ranges)',
     sqRanges.length, 0);
-  eq('scope guard: 42 inside single quotes NOT excluded by filter',
+  eq('scope guard: 42 inside single quotes is not masked',
     sqMatches.filter(m => !overlapsMaskedRange(sqRanges, m.index, m.index + m.numStr.length))
       .some(m => m.num === 42), true);
 
@@ -1036,7 +941,7 @@ eq('parseRangeExpr: "A5:A2" -> rows 1-4 of column A',
   // Both 42 and 7 survive unfiltered
   const tqMatches = extractNumbersInText(typoQuote);
   const tqFiltered = tqMatches.filter(m => !overlapsMaskedRange(tqRanges, m.index, m.index + m.numStr.length));
-  eq('scope guard: 42 inside typographic quotes NOT excluded',
+  eq('scope guard: 42 inside typographic quotes is not masked',
     tqFiltered.some(m => m.num === 42), true);
 
   // Mixed: one balanced ASCII pair and a bare number
@@ -1045,57 +950,11 @@ eq('parseRangeExpr: "A5:A2" -> rows 1-4 of column A',
   const mxRanges = getQuoteMaskedRanges(mixed);
   const mxMatches = extractNumbersInText(mixed);
   const mxFiltered = mxMatches.filter(m => !overlapsMaskedRange(mxRanges, m.index, m.index + m.numStr.length));
-  eq('scope guard: 5 inside ASCII quotes IS excluded',
+  eq('scope guard: 5 inside ASCII quotes is masked',
     mxFiltered.some(m => m.num === 5), false);
-  eq('scope guard: 10 outside ASCII quotes NOT excluded',
+  eq('scope guard: 10 outside ASCII quotes is not masked',
     mxFiltered.some(m => m.num === 10), true);
 })();
-
-// --- 5. Regression guards ---
-
-(function quoteRegressionGuards() {
-  // 5a. cell.innerText || cell.textContent is the read source (static analysis).
-  // Lives in the cell object (lib/dr-table/cells.js).
-  const contentSrc = allContentSrc;
-  eq('regression: read source is cell.innerText || cell.textContent',
-    contentSrc.includes('cellEl.innerText || cellEl.textContent'), true);
-
-  // 5b. Manifest has a valid semver version string.
-  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
-  eq('regression: manifest.version matches N.N.N',
-    /^\d+\.\d+\.\d+$/.test(manifest.version), true);
-})();
-
-// --- Pure cell write: whole and fractional results ---
-
-eq('pure cell write: whole number 1 from "1.04" -> "1"',
-  writePureCell(1, '1.04'), '1');
-
-eq('pure cell write: whole number 2 from "1.5" -> "2"',
-  writePureCell(2, '1.5'), '2');
-
-eq('pure cell write: 0 from "0.04" -> "0"',
-  writePureCell(0, '0.04'), '0');
-
-eq('pure cell write: negative whole number -5 from "-5.2" -> "-5"',
-  writePureCell(-5, '-5.2'), '-5');
-
-// A fractional result keeps its own decimals
-eq('pure cell write: 1.5 from "1.4" -> "1.5"',
-  writePureCell(1.5, '1.4'), '1.5');
-
-eq('pure cell write: 1.25 from "1.234" -> "1.25" (trailing zeros stripped)',
-  writePureCell(1.25, '1.234'), '1.25');
-
-// Trim plays nicely with format affixes
-eq('pure cell write: whole number with percent -> "1%"',
-  writePureCell(1, '1.04%'), '1%');
-
-eq('pure cell write: whole number with currency -> "$2"',
-  writePureCell(2, '$1.99'), '$2');
-
-eq('pure cell write: whole negative in parens -> "(3)"',
-  writePureCell(-3, '(2.85)'), '(3)');
 
 // =============================================================================
 // Date rounding to year display tests
@@ -1103,7 +962,6 @@ eq('pure cell write: whole negative in parens -> "(3)"',
 
 // ---------------------------------------------------------------------------
 // Worked-examples table
-// Each row: [input, granularity, expected-year-string]
 // ---------------------------------------------------------------------------
 (function dateRoundWorkedExamples() {
   const cases = [
@@ -1152,10 +1010,10 @@ eq('pure cell write: whole negative in parens -> "(3)"',
     '2020 June 21',
     '21 June 2020',
   ];
-  // Note: '06-21-2020' is an ambiguous numeric date (handled by column auto-detect,
-  // not directly by roundDateText, which holds an all-numeric date it is not given a reading for).
-  // It is tested end-to-end via roundTable below — a single-row column with n2=21>12
-  // forces MDY → June 21 → identical rounding to the other shapes.
+  // '06-21-2020' is an all-numeric date, which the column post-pass reads and
+  // roundDateText holds. The roundTable check below covers it: in a one-row
+  // column, a second part above 12 makes the format hint month-first, so the
+  // date reads as June 21 and rounds like the other shapes.
 
   for (const shape of shapes) {
     eq(`shape-equiv: "${shape}" year -> "2020"`,   roundDateText(shape, 'year'),    '2020');
@@ -1163,19 +1021,12 @@ eq('pure cell write: whole negative in parens -> "(3)"',
     eq(`shape-equiv: "${shape}" century -> "2000"`,roundDateText(shape, 'century'), '2000');
   }
 
-  // End-to-end check for the ambiguous-numeric form: '06-21-2020' via roundTable.
+  // The all-numeric form '06-21-2020' through roundTable.
   withCreateTreeWalker(function() {
     function runDateCell(text, gran) {
       const tbl = makeMockTable([[{ tag: 'td', text }]]);
       tbl.rows[0].cells[0].querySelectorAll = () => [];
-      roundTable(tbl, {
-        enabled: true, simplifyDates: true, simplifyTimes: false,
-        simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
-        simplifyFirstRow: true,
-        offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
-        rangeExpr: '',
-        dateGranularity: gran,
-      });
+      roundTable(tbl, roundTableOpts({ simplifyDates: true, dateGranularity: gran }));
       return tbl.rows[0].cells[0].innerText;
     }
     eq('shape-equiv (table cell): "06-21-2020" year -> "2020"',    runDateCell('06-21-2020', 'year'),    '2020');
@@ -1193,44 +1044,36 @@ eq('pure cell write: whole negative in parens -> "(3)"',
     const d = { year, start: 0, end: 10, dayCut: { start: 7, end: 10 } };
     for (const gran of ['year', 'decade', 'century']) {
       const result = roundDateText(`${year}-12-31`, gran, [d]);
-      eq(`roundDateText always returns string: passed ${year}-12-31 at ${gran}`,
+      eq(`roundDateText: a passed date ${year}-12-31 at ${gran} returns a four-digit year`,
         typeof result === 'string' && /^\d{4}$/.test(result), true);
     }
   }
 })();
 
 // ---------------------------------------------------------------------------
-// Bare-year no-op short-circuit — "2020" at decade granularity.
-// roundDateText returns "2020", originalValue is "2020" → formattedValue === originalValue
-// → roundTable skips it (no DOM rewrite, no dr-ext-rounded class).
+// A bare year already on its decade — "2020" at decade granularity — keeps
+// its text, and roundTable leaves the cell unmarked.
 // ---------------------------------------------------------------------------
 (function dateRoundBareYearNoOp() {
   // Via roundTable: the cell should NOT get the rounded class.
   withCreateTreeWalker(function() {
     const tbl = makeMockTable([[{ tag: 'td', text: '2020' }]]);
     tbl.rows[0].cells[0].querySelectorAll = () => [];
-    roundTable(tbl, {
-      enabled: true, simplifyDates: true, simplifyTimes: false,
-      simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
-      simplifyFirstRow: true,
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
-      rangeExpr: '',
-      dateGranularity: 'decade',
-    });
-    eq('bare-year no-op: "2020" at decade not marked as rounded (short-circuit)',
+    roundTable(tbl, roundTableOpts({ simplifyDates: true, dateGranularity: 'decade' }));
+    eq('bare-year no-op: "2020" at decade not marked as rounded',
       tbl.rows[0].cells[0].classList.contains('dr-ext-rounded'), false);
   });
 })();
 
 // ---------------------------------------------------------------------------
-// findDates accepts newly added shapes.
+// findDates finds a date in each of these shapes.
 // ---------------------------------------------------------------------------
-(function dateRoundIsDateLikeNewShapes() {
-  eq('findDates: "2020/07/21" (ISO slash) -> true',  (findDates('2020/07/21') !== null), true);
-  eq('findDates: "2020 June 21" (Year Month Day) -> true', (findDates('2020 June 21') !== null), true);
-  eq('findDates: "3/14/24" (two-digit year) -> true', (findDates('3/14/24') !== null), true);
-  eq('findDates: "06/21/2020" (MDY slash) -> true',  (findDates('06/21/2020') !== null), true);
-  eq('findDates: "21 June 2020" (DMY named) -> true', (findDates('21 June 2020') !== null), true);
+(function findDates_dateShapes() {
+  eq('findDates: "2020/07/21" (ISO slash) is a date',  (findDates('2020/07/21') !== null), true);
+  eq('findDates: "2020 June 21" (year-month-day, named month) is a date', (findDates('2020 June 21') !== null), true);
+  eq('findDates: "3/14/24" (two-digit year) is a date', (findDates('3/14/24') !== null), true);
+  eq('findDates: "06/21/2020" (month-day-year slash) is a date',  (findDates('06/21/2020') !== null), true);
+  eq('findDates: "21 June 2020" (day-month-year, named month) is a date', (findDates('21 June 2020') !== null), true);
 })();
 
 // ---------------------------------------------------------------------------
@@ -1246,9 +1089,9 @@ eq('pure cell write: whole negative in parens -> "(3)"',
 // Sign-aware half-step, value-OoM floor, and a fractional offset above 1 in
 // size never returning less than the integer offset nearer zero
 // ---------------------------------------------------------------------------
-(function halfStepFloorGrid() {
-  // 27-cell grid: {87M, 47M, 17M} x {+2, +1.5, +1, +0.5, 0, -0.5, -1, -1.5, -2}
-  const grid = [
+(function halfStepFloorCases() {
+  // 27 cases: {87M, 47M, 17M} x {+2, +1.5, +1, +0.5, 0, -0.5, -1, -1.5, -2}
+  const cases = [
     { v: 87054321, expected: { '2': 10000000, '1.5': 100000000, '1': 100000000,
       '0.5': 100000000, '0': 90000000, '-0.5': 85000000, '-1': 87000000,
       '-1.5': 87000000, '-2': 87100000 } },
@@ -1260,24 +1103,23 @@ eq('pure cell write: whole negative in parens -> "(3)"',
       '-1.5': 17000000, '-2': 17100000 } },
   ];
   const offsets = [2, 1.5, 1, 0.5, 0, -0.5, -1, -1.5, -2];
-  for (const row of grid) {
+  for (const row of cases) {
     for (const off of offsets) {
       const key = String(off);
-      eq(`half-step grid: roundWithOffset(${row.v}, ${off}) returns ${row.expected[key]}`,
+      eq(`half-step cases: roundWithOffset(${row.v}, ${off}) returns ${row.expected[key]}`,
         roundWithOffset(row.v, off), row.expected[key]);
     }
   }
 
-  eq('half-step grid: -87054321 at -0.5 returns -85000000',
+  eq('half-step cases: -87054321 at -0.5 returns -85000000',
     roundWithOffset(-87054321, -0.5), -85000000);
-  eq('half-step grid: 0 at 1.5 returns 0',
+  eq('half-step cases: 0 at 1.5 returns 0',
     roundWithOffset(0, 1.5), 0);
 })();
 
-(function quarterStepGrid() {
-  // Generalized fractional formula: any non-integer offset uses
-  // step = f * 10^(current_mag + ceil(offset)) where f = |offset - trunc(offset)|.
-  // Quarter-step (f = 0.25) spot checks across 87M / 47M / 17M.
+(function quarterStepCases() {
+  // stepForOffset (lib/dr-number/rounding.js) holds the step for a fractional
+  // offset. Quarter-step spot checks across 87M / 47M / 17M.
   const cases = [
     [87054321,  0.25,  75000000],
     [87054321, -0.25,  87500000],
@@ -1290,7 +1132,7 @@ eq('pure cell write: whole negative in parens -> "(3)"',
     [87054321, -1.25,  87000000],  // very fine step, x-floor at rd(87M, -1) = 87M
   ];
   for (const [v, off, expected] of cases) {
-    eq(`quarter-step grid: roundWithOffset(${v}, ${off}) returns ${expected}`,
+    eq(`quarter-step cases: roundWithOffset(${v}, ${off}) returns ${expected}`,
       roundWithOffset(v, off), expected);
   }
 })();
@@ -1336,113 +1178,74 @@ eq('pure cell write: whole negative in parens -> "(3)"',
 })();
 
 // ---------------------------------------------------------------------------
-// IsDateLike with adjacent text and markers
+// findDates with words and marks beside the date
 // ---------------------------------------------------------------------------
 
-(function dateTolerance() {
-
-  // --- Positive cases ---
-
-  // ISO date with trailing word
-  eq('date detection: findDates("2020-03-14 sales") -> true',
+(function findDates_wordsAndMarksBesideTheDate() {
+  eq('findDates: "2020-03-14 sales" is a date',
     (findDates('2020-03-14 sales') !== null), true);
 
-  // Named-month date with trailing superscript digit (footnote ref)
-  eq('date detection: findDates("March 14, 2024¹") -> true',
+  eq('findDates: "March 14, 2024¹" is a date',
     (findDates('March 14, 2024¹') !== null), true);
 
-  // Ordinal day in standard month-day-year form
-  eq('date detection: findDates("Jun 1st, 2020") -> true',
+  eq('findDates: "Jun 1st, 2020" is a date',
     (findDates('Jun 1st, 2020') !== null), true);
 
-  // Day-month-year with ordinal day
-  eq('date detection: findDates("21st June 2020") -> true',
+  eq('findDates: "21st June 2020" is a date',
     (findDates('21st June 2020') !== null), true);
 
-  // --- Negative cases (false-positive guards) ---
-
-  // "Sales: 2020" — label before bare year must NOT be a date
-  eq('date detection: findDates("Sales: 2020") -> false',
+  eq('findDates: "Sales: 2020" is no date',
     (findDates('Sales: 2020') !== null), false);
 
-  // "$2,020.00" — currency amount containing a year-like number
-  eq('date detection: findDates("$2,020.00") -> false',
+  eq('findDates: "$2,020.00" is no date',
     (findDates('$2,020.00') !== null), false);
 
-  // "version 2020.1.3" — version string with year-like first component
-  eq('date detection: findDates("version 2020.1.3") -> false',
+  eq('findDates: "version 2020.1.3" is no date',
     (findDates('version 2020.1.3') !== null), false);
 
-  // --- Adversarial: multiple superscripts ---
-  eq('dateTolerance: multiple superscripts "March 14, 2024¹²" -> true',
+  eq('findDates: multiple superscripts "March 14, 2024¹²" is a date',
     (findDates('March 14, 2024¹²') !== null), true);
 
-  // --- Adversarial: footnote markers ---
-  eq('dateTolerance: footnote asterisk "March 14, 2024*" -> true',
+  eq('findDates: footnote asterisk "March 14, 2024*" is a date',
     (findDates('March 14, 2024*') !== null), true);
 
-  eq('dateTolerance: footnote dagger "March 14, 2024†" -> true',
+  eq('findDates: footnote dagger "March 14, 2024†" is a date',
     (findDates('March 14, 2024†') !== null), true);
 
-  // --- Adversarial: leading label before full date ---
-  eq('dateTolerance: leading label "Date: 2020-03-14" -> true',
+  eq('findDates: leading label "Date: 2020-03-14" is a date',
     (findDates('Date: 2020-03-14') !== null), true);
 
-  // --- Adversarial: ordinal in the middle (no comma) ---
-  eq('dateTolerance: "June 1st 2020" -> true',
+  eq('findDates: "June 1st 2020" is a date',
     (findDates('June 1st 2020') !== null), true);
 
-  // --- Adversarial: bare year remains strict ---
-
-  // "Q4 2020" — adjacent non-date word; bare-year strict anchors must block this
-  eq('dateTolerance: bare-year strict "Q4 2020" -> false',
+  eq('findDates: bare-year strict "Q4 2020" is no date',
     (findDates('Q4 2020') !== null), false);
 
-  // "2020 revenue" — trailing word on bare year must also be blocked
-  eq('dateTolerance: bare-year strict "2020 revenue" -> false',
+  eq('findDates: bare-year strict "2020 revenue" is no date',
     (findDates('2020 revenue') !== null), false);
 
-  // --- Adversarial: empty / whitespace ---
-  eq('dateTolerance: whitespace only "   " -> false',
+  eq('findDates: whitespace only "   " is no date',
     (findDates('   ') !== null), false);
-
-  // --- Regression: plain dates still work after the relaxation ---
-  eq('dateTolerance regression: findDates("2020-03-14") -> true',
-    (findDates('2020-03-14') !== null), true);
-
-  eq('dateTolerance regression: findDates("2020") -> true',
-    (findDates('2020') !== null), true);
-
 })();
 
 // ---------------------------------------------------------------------------
-// Simplify naming — contract lock-in
+// First-column exclusion and the switch defaults
 // ---------------------------------------------------------------------------
 
-(function simplifyNamingUnification() {
+(function firstColumnExclusionAndSwitchDefaults() {
 
   // -------------------------------------------------------------------------
   // simplifyFirstColumn polarity — mirror of the first-row case.
   // -------------------------------------------------------------------------
 
-  // Case 1: flag true → col 0 IS simplified (not excluded)
   eq('simplifyFirstColumn: true + col 0 → null (col IS simplified)',
     getExclusionReason(0, { simplifyFirstColumn: true, simplifyFirstRow: true }, 1), null);
 
-  // Case 2: flag false → col 0 excluded
-  eq('simplifyFirstColumn: false + col 0 → "first-column"',
-    getExclusionReason(0, { simplifyFirstRow: true, simplifyFirstColumn: false }, 1), 'first-column');
-
-  // Case 3: flag unset → col 0 excluded (intentional default change)
-  eq('simplifyFirstColumn: unset + col 0 → "first-column" (new default semantics)',
+  eq('simplifyFirstColumn: unset + col 0 → "first-column"',
     getExclusionReason(0, { simplifyFirstRow: true }, 1), 'first-column');
 
-  // Case 4: flag false but col 1 → null (only col 0 is affected)
-  eq('simplifyFirstColumn: false + col 1 → null (non-first column unaffected)',
-    getExclusionReason(1, { simplifyFirstRow: true, simplifyFirstColumn: false }, 1), null);
-
   // -------------------------------------------------------------------------
-  // DR_DEFAULTS snapshot — all six keys with exact default values.
+  // DR_DEFAULTS snapshot — the six switch defaults.
   // -------------------------------------------------------------------------
   eq('DR_DEFAULTS: simplifyMixedCurrency = true',
     DR_DEFAULTS.simplifyMixedCurrency, true);
@@ -1456,372 +1259,9 @@ eq('pure cell write: whole negative in parens -> "(3)"',
     DR_DEFAULTS.simplifyFirstRow, false);
   eq('DR_DEFAULTS: simplifyFirstColumn = false',
     DR_DEFAULTS.simplifyFirstColumn, false);
-
-  // -------------------------------------------------------------------------
-  // sidebar.html id ↔ setting key parity — each of the six keys must
-  // appear as id="<key>" on a checkbox <input>.
-  // -------------------------------------------------------------------------
-  const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
-  const optionKeys = [
-    'simplifyMixedCurrency', 'simplifyMixedPercent',
-    'simplifyDates', 'simplifyTimes', 'simplifyFirstRow', 'simplifyFirstColumn'
-  ];
-  for (const key of optionKeys) {
-    // Match <input ... type="checkbox" ... id="<key>"> (or id before type)
-    eq(`sidebar.html: checkbox with id="${key}" present`,
-      new RegExp(`<input[^>]*type="checkbox"[^>]*id="${key}"|<input[^>]*id="${key}"[^>]*type="checkbox"`).test(sidebarHtml),
-      true);
-  }
-
 })();
 
-// ---------------------------------------------------------------------------
-// Lens preview layout
-// order of magnitude labels at each suffix boundary
-// the other band's preview lists its samples in the order they arrive
-// step labels in both bands' previews
-// ---------------------------------------------------------------------------
-(function advancedPreviewRedesignTests() {
-  const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
-
-  // -------------------------------------------------------------------------
-  // Extract formatOomLabel from sidebar.js source. It depends on formatStep
-  // (from rounding.js), which we pass as a parameter to isolatedFunction.
-  // -------------------------------------------------------------------------
-  const constBlock = sidebarSrc.match(
-    /const OOM_LABEL_CLASS\s*=[\s\S]*?const STEP_HEADER_CLASS\s*=.*?;/
-  );
-  const formatOomLabelFn = sidebarSrc.match(
-    /function formatOomLabel\([\s\S]*?\n\}/
-  );
-
-  if (!constBlock || !formatOomLabelFn) {
-    eq('sidebar-ap-extract: able to extract formatOomLabel', false, true);
-    return;
-  }
-
-  // Build a helper bundle: rounding helpers + sidebar functions.
-  // formatStep comes from rounding.js (already evaled into the test scope's
-  // globalThis; we pass it in to avoid scope issues).
-  const apHelperSrc = '(function(formatStep) {\n' +
-    constBlock[0] + '\n' +
-    formatOomLabelFn[0] + '\n' +
-    'return { formatOomLabel: formatOomLabel };\n' +
-    '})(formatStep)';
-
-  let apHelpers;
-  try {
-    apHelpers = (isolatedFunction('formatStep',
-      'return ' + apHelperSrc + ';'
-    ))(formatStep);
-  } catch (e) {
-    eq('sidebar-ap-extract: isolatedFunction eval succeeded', false, true);
-    return;
-  }
-
-  const fmtOom = apHelpers.formatOomLabel;
-
-  // -------------------------------------------------------------------------
-  // Exhaustive formatOomLabel mapping for mag = 9,8,7,6,5,4,3,2,1,0,-1,-2
-  // Expected values derived from the pattern (10^mag with k/M/B suffix),
-  // NOT from reading the implementation.
-  // -------------------------------------------------------------------------
-  // Suffix boundaries: mag 9 → 1B+, mag 6 → 1M+, mag 3 → 1k+
-  eq('oom: mag=9 → "1B+" (1e9 boundary)', fmtOom(9), '1B+');
-  eq('oom: mag=8 → "100M+" (within B range, 1e8=100M)', fmtOom(8), '100M+');
-  eq('oom: mag=7 → "10M+" (within M range, 1e7=10M)', fmtOom(7), '10M+');
-  eq('oom: mag=6 → "1M+" (1e6 boundary)', fmtOom(6), '1M+');
-  eq('oom: mag=5 → "100k+" (within k range, 1e5=100k)', fmtOom(5), '100k+');
-  eq('oom: mag=4 → "10k+" (within k range, 1e4=10k)', fmtOom(4), '10k+');
-  eq('oom: mag=3 → "1k+" (1e3 boundary)', fmtOom(3), '1k+');
-  eq('oom: mag=2 → "100+" (1e2, no suffix)', fmtOom(2), '100+');
-  eq('oom: mag=1 → "10+" (1e1, no suffix)', fmtOom(1), '10+');
-  eq('oom: mag=0 → "1+" (1e0=1, no suffix)', fmtOom(0), '1+');
-  eq('oom: mag=-1 → "0.1+" (sub-unit, 1e-1=0.1)', fmtOom(-1), '0.1+');
-  eq('oom: mag=-2 → "0.01+" (sub-unit, 1e-2=0.01)', fmtOom(-2), '0.01+');
-
-  // -------------------------------------------------------------------------
-  // STRATEGY-MONOTONIC: the comment beside STOPS in sidebar.js holds why the
-  // stops follow the step, not the offset. Read STOPS straight from sidebar.js
-  // and assert stepForOffset strictly increases across it for several
-  // magnitudes.
-  // -------------------------------------------------------------------------
-  (function strategyMonotonic() {
-    const src = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
-    const m = src.match(/const STOPS\s*=\s*\[([^\]]*)\]/);
-    if (!m) {
-      eq('mono: STOPS array found in sidebar.js', false, true);
-      return;
-    }
-    const STOPS = m[1].split(',').map((s) => parseFloat(s.trim()));
-    eq('mono: STOPS has 9 stops', STOPS.length, 9);
-
-    for (const mag of [6, 5, 3, 9]) {
-      const oomVal = Math.pow(10, mag);
-      let monotonic = true;
-      let firstBreak = null;
-      for (let i = 1; i < STOPS.length; i++) {
-        const prev = stepForOffset(oomVal, STOPS[i - 1]);
-        const cur = stepForOffset(oomVal, STOPS[i]);
-        if (!(cur > prev)) {
-          monotonic = false;
-          firstBreak = STOPS[i - 1] + '→' + STOPS[i] + ' (' + prev + '≮' + cur + ')';
-          break;
-        }
-      }
-      eq('mono mag=' + mag + ': steps at 10^mag strictly increase across the lens control\'s stops' +
-        (firstBreak ? ' [break at ' + firstBreak + ']' : ''), monotonic, true);
-    }
-
-    // Spot-check the exact step sweep at mag 6 against the worked example.
-    const expectAtMag6 = [10e3, 50e3, 100e3, 250e3, 500e3, 1e6, 2.5e6, 5e6, 10e6];
-    STOPS.forEach((offset, i) => {
-      eq('mono mag=6: offset ' + offset + ' → step ' + expectAtMag6[i],
-        stepForOffset(1e6, offset), expectAtMag6[i]);
-    });
-  })();
-
-  // -------------------------------------------------------------------------
-  // Extract renderOtherPreview from sidebar.js, provide DOM stubs, and call it
-  // with rows in the order content.js sends the other band: one sample per
-  // order of magnitude, largest first.
-  // -------------------------------------------------------------------------
-  const renderOtherPreviewFn = sidebarSrc.match(
-    /function renderOtherPreview\([\s\S]*?\n\}/
-  );
-  const renderTopPreviewFn = sidebarSrc.match(
-    /function renderTopPreview\([\s\S]*?\n\}/
-  );
-  const renderHelperFns = ['appendSampleRow', 'appendLabel'].map((name) =>
-    sidebarSrc.match(new RegExp('function ' + name + '\\([\\s\\S]*?\\n\\}')));
-
-  if (!renderOtherPreviewFn || !renderTopPreviewFn || renderHelperFns.some((m) => !m)) {
-    eq('sidebar-ap-extract: able to extract renderOtherPreview + renderTopPreview and their helpers', false, true);
-    return;
-  }
-
-  // Build a minimal DOM stub sufficient for renderOtherPreview.
-  // We collect appended children in order so we can inspect the render sequence.
-  function makeEl(tag) {
-    const children = [];
-    const el = {
-      _tag: tag,
-      _children: children,
-      _classNames: [],
-      className: '',
-      textContent: '',
-      innerHTML: '',
-      appendChild(child) { children.push(child); return child; },
-      set className(v) { this._classNames.push(v); },
-      get className() { return this._classNames[this._classNames.length - 1] || ''; },
-    };
-    return el;
-  }
-
-  // Collect elements appended to the band container in order.
-  function makeBandEl() {
-    const appended = [];
-    return {
-      _appended: appended,
-      innerHTML: '',
-      appendChild(child) { appended.push(child); return child; },
-    };
-  }
-
-  // Stub document.createElement for the eval scope.
-  const stubDocument = {
-    createElement(tag) { return makeEl(tag); }
-  };
-
-  // Extract the sidebar consts and render functions + their helpers.
-  // We need: OOM_LABEL_CLASS, STEP_HEADER_CLASS, formatOomLabel,
-  //          appendSampleRow, appendLabel, renderTopPreview, renderOtherPreview.
-  // External deps we pass in: formatSample, roundWithOffset, stepForOffset,
-  //                            formatStep, magnitudeOf.
-  const renderSrc = '(function(document, formatSample, roundWithOffset, stepForOffset, formatStep, magnitudeOf) {\n' +
-    constBlock[0] + '\n' +
-    formatOomLabelFn[0] + '\n' +
-    renderHelperFns.map((m) => m[0]).join('\n') + '\n' +
-    renderTopPreviewFn[0] + '\n' +
-    renderOtherPreviewFn[0] + '\n' +
-    'return { renderOtherPreview: renderOtherPreview, renderTopPreview: renderTopPreview };\n' +
-    '})';
-
-  let renderHelpers;
-  let realFormatSample;
-  try {
-    // formatSample in sidebar.js depends on numberFormat and groupedNumberText (from content.js,
-    // already on globalThis). Extract it from sidebar.js source.
-    const sidebarConstBlock2 = sidebarSrc.match(
-      /const PREVIEW_DECIMAL_THRESHOLD\s*=.*?;\s*const PREVIEW_MAX_DECIMALS\s*=.*?;/
-    );
-    const formatSampleFn2 = sidebarSrc.match(/function formatSample\([\s\S]*?\n\}/);
-
-    const fmtSampleSrc = '(function(numberFormat, groupedNumberText) {\n' +
-      sidebarConstBlock2[0] + '\n' +
-      formatSampleFn2[0] + '\n' +
-      'return formatSample;\n' +
-      '})(numberFormat, groupedNumberText)';
-    realFormatSample = (isolatedFunction('numberFormat', 'groupedNumberText', 'return ' + fmtSampleSrc + ';'))(numberFormat, groupedNumberText);
-
-    renderHelpers = (isolatedFunction(
-      'document', 'formatSample', 'roundWithOffset', 'stepForOffset', 'formatStep', 'magnitudeOf',
-      'return ' + renderSrc + '(document, formatSample, roundWithOffset, stepForOffset, formatStep, magnitudeOf);'
-    ))(stubDocument, realFormatSample, roundWithOffset, stepForOffset, formatStep, magnitudeOf);
-  } catch (e) {
-    eq('sidebar-ap-extract: renderOtherPreview eval succeeded', String(e), '');
-    return;
-  }
-
-  const realRenderOtherPreview = renderHelpers.renderOtherPreview;
-  const realRenderTopPreview = renderHelpers.renderTopPreview;
-
-  const rowsDescending = [
-    { num: 50000, original: '50,000' },
-    { num: 5000,  original: '5,000' },
-    { num: 500,   original: '500' },
-    { num: 50,    original: '50' },
-  ];
-
-  const bandEl = makeBandEl();
-  realRenderOtherPreview(bandEl, rowsDescending, -0.5, 4);
-
-  eq('other band of 50,000, 5,000, 500, and 50: 4 rows', bandEl._appended.length, 4);
-
-  // Each row div contains children: from-span, arrow-span, num-span, step-span.
-  // The from-span's textContent reflects the original number.
-  // We can extract the rendered order by reading from-span textContent on each row.
-  function getFromText(rowEl) {
-    // first child is the "from" span
-    return rowEl._children[0] ? rowEl._children[0].textContent : '';
-  }
-
-  const renderedFromTexts = bandEl._appended.map(getFromText);
-  eq('other band of 50,000, 5,000, 500, and 50: rows show 50,000, 5,000, 500, 50 in that order',
-    renderedFromTexts, ['50,000', '5,000', '500', '50']);
-
-  // -------------------------------------------------------------------------
-  // edge: zero rows
-  // -------------------------------------------------------------------------
-  const emptyEl = makeBandEl();
-  realRenderOtherPreview(emptyEl, [], -0.5, 0);
-  eq('edge: empty rows renders nothing', emptyEl._appended.length, 0);
-
-  // -------------------------------------------------------------------------
-  // other preview examples carry a brown trailing step label "(5k)" after
-  // the rounded number, showing what the example rounds to the nearest of. The
-  // row still has three cells (from, arrow, num); the step span lives INSIDE
-  // the num span (a 4th grid child would wrap to the next row). The top example
-  // keeps its three cells and is prefixed "e.g.".
-  // -------------------------------------------------------------------------
-
-  // other preview row has 3 cells (from/arrow/num); the brown step label
-  // is nested in the num span, not a 4th grid child.
-  const otherPreviewEl2 = makeBandEl();
-  realRenderOtherPreview(otherPreviewEl2, [{ num: 1000, original: '1,000' }], -0.5, 3);
-  eq('other band: a preview row has exactly 3 cells (from/arrow/num)',
-    otherPreviewEl2._appended[0]._children.length, 3);
-  const otherNumSpan = otherPreviewEl2._appended[0]._children[2];
-  eq('other band: num span has a nested step-label child',
-    otherNumSpan._children.length, 1);
-  eq('other band: step-label child has class "step-label"',
-    otherNumSpan._children[0] ? otherNumSpan._children[0].className : '', 'step-label');
-  // 1,000 at offset -0.5 rounds to the nearest 500 → label "(500)".
-  eq('other band: step-label text is " (500)"',
-    otherNumSpan._children[0] ? otherNumSpan._children[0].textContent : '', ' (500)');
-
-  // top preview example row is prefixed "e.g." and has no step label.
-  const topPreviewEl2 = makeBandEl();
-  realRenderTopPreview(topPreviewEl2, [{ num: 100000, original: '100,000' }], -0.5, 5);
-  const topExamplePair = topPreviewEl2._appended[1];
-  eq('top: top example has exactly 3 cells (from/arrow/num, no step)',
-    topExamplePair._children.length, 3);
-  eq('top: top example "from" is prefixed "e.g."',
-    topExamplePair._children[0].textContent, 'e.g. 100,000');
-  // Top-band num cell carries no nested step label.
-  eq('top: top example num cell has no nested step label',
-    topExamplePair._children[2]._children.length, 0);
-
-  // strip: the "from" shows the bare number, not the original
-  // surrounding text. renderTopPreview keys off row.num, so a row whose original
-  // was "₹2,000 crore" still renders just "e.g. 2,000".
-  const stripBandEl = makeBandEl();
-  realRenderTopPreview(stripBandEl, [{ num: 2000, original: '₹2,000 crore' }], -0.5, 3);
-  eq('strip: top "from" strips surrounding text to bare "e.g. 2,000"',
-    stripBandEl._appended[1]._children[0].textContent, 'e.g. 2,000');
-
-  // source-level constant values are correct (structural).
-  eq('src: OOM_LABEL_CLASS constant is "oom-label" in source',
-    /const OOM_LABEL_CLASS\s*=\s*['"]oom-label['"]/.test(sidebarSrc), true);
-  eq('src: STEP_HEADER_CLASS constant is "step-header" in source',
-    /const STEP_HEADER_CLASS\s*=\s*['"]step-header['"]/.test(sidebarSrc), true);
-  eq('src: STEP_LABEL_CLASS constant is "step-label" in source',
-    /const STEP_LABEL_CLASS\s*=\s*['"]step-label['"]/.test(sidebarSrc), true);
-
-  // The top preview renders the step header AND the example as two
-  // from|arrow|num rows in the same band container.
-  {
-    const topWithHdr = makeBandEl();
-    realRenderTopPreview(topWithHdr, [{ num: 8584629, original: '8,584,629' }], -0.5, 6);
-    eq('top preview appends 2 elements (step header + example)',
-      topWithHdr._appended.length, 2);
-    const stratRow = topWithHdr._appended[0];
-    const exampleRow = topWithHdr._appended[1];
-    eq('first appended element is the step header row (class "row step-header")',
-      stratRow.className, 'row step-header');
-    eq('step header row has 3 cells (from/arrow/num)',
-      stratRow._children.length, 3);
-    eq('step header "from" is the OoM label "1M+" (maxMag=6)',
-      stratRow._children[0].textContent, '1M+');
-    eq('step header "num" starts "nearest "',
-      stratRow._children[2].textContent.indexOf('nearest ') === 0, true);
-    eq('second appended element is the example row (class "row example")',
-      exampleRow.className, 'row example');
-    eq('example row has 3 cells (from/arrow/num)',
-      exampleRow._children.length, 3);
-    // The two "→" arrows sit in the same (middle) grid column so they align.
-    eq('step header arrow is in the middle cell ("→")',
-      stratRow._children[1].textContent, '→');
-    eq('example arrow is in the middle cell ("→")',
-      exampleRow._children[1].textContent, '→');
-  }
-
-  // sidebar.html lays the top preview out on the shared lens-preview grid,
-  // with no flex override. The lens preview comment in sidebar.html holds the
-  // reason.
-  const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
-  eq('#topPreview element carries the lens-preview grid class',
-    /<div[^>]*id="topPreview"[^>]*class="lens-preview"|<div[^>]*class="lens-preview"[^>]*id="topPreview"/.test(sidebarHtmlSrc), true);
-  eq('#topPreview is NOT overridden to display:flex',
-    /#topPreview\s*\{[^}]*display:\s*flex/.test(sidebarHtmlSrc), false);
-  eq('#topPreview step header cells are blue (#1a73e8)',
-    /#topPreview \.step-header \.num\s*\{\s*color:\s*#1a73e8/.test(sidebarHtmlSrc), true);
-  eq('.step-label colour rule present in sidebar.html',
-    /\.step-label\s*\{\s*color:\s*#b3623d/.test(sidebarHtmlSrc), true);
-
-  // Each row of the other preview holds an oom-label span inside its
-  // from-span.
-  const oomLabelBandEl = makeBandEl();
-  realRenderOtherPreview(oomLabelBandEl, [{ num: 5000, original: '5,000' }], -0.5, 3);
-  const fromSpan = oomLabelBandEl._appended[0]._children[0];
-  eq('oom-label: from-span has oom-label child appended',
-    fromSpan._children.length >= 1, true);
-  eq('oom-label: oom-label child has class "oom-label"',
-    fromSpan._children[0] ? fromSpan._children[0].className : '', 'oom-label');
-  eq('oom-label: oom-label text contains "(1k+)"',
-    fromSpan._children[0] ? fromSpan._children[0].textContent.includes('1k+') : false, true);
-})();
-
-// --- 2. classifyCell unit tests (pure, no DOM) ---
-
-const LADDER_OPTS = {
-  simplifyFirstRow: false,
-  simplifyFirstColumn: false,
-  simplifyMixedPercent: true,
-  simplifyMixedCurrency: true,
-  simplifyDates: true,
-  simplifyTimes: false,
-};
+// --- Unit numbers, currency codes, identifier shapes, and currency signs ---
 
 // A unit number: one number with a magnitude suffix after it, a listed
 // currency code before or after it, or both. The match reports the number's
@@ -1858,13 +1298,12 @@ const LADDER_OPTS = {
 })();
 
 (function currencyCodes_holdANumberWithCurrencyOff() {
-  const currencyOff = Object.assign({}, LADDER_OPTS, { simplifyMixedCurrency: false });
   eq('currency code: "CAD45.67m" holds its number with currency off',
-    classifyAt('CAD45.67m', currencyOff).stretches, []);
+    classifyAt('CAD45.67m', LADDER_OPTS_CURRENCY_OFF).stretches, []);
   eq('currency code: "CADENCE 12" rounds its number with currency off',
-    stretchTexts('CADENCE 12', classifyAt('CADENCE 12', currencyOff)), ['12']);
+    stretchTexts('CADENCE 12', classifyAt('CADENCE 12', LADDER_OPTS_CURRENCY_OFF)), ['12']);
   eq('currency code: "usd 12" rounds its number with currency off',
-    stretchTexts('usd 12', classifyAt('usd 12', currencyOff)), ['12']);
+    stretchTexts('usd 12', classifyAt('usd 12', LADDER_OPTS_CURRENCY_OFF)), ['12']);
 })();
 
 // Every span pattern starts only where a shape can start and has no repeat
@@ -1914,17 +1353,16 @@ const LADDER_OPTS = {
 // proportional to its length, and a sign more than 24 characters before a
 // number no longer holds it.
 (function currencySign_inALongCell() {
-  const currencyOff = Object.assign({}, LADDER_OPTS, { simplifyMixedCurrency: false });
-  const roundedTexts = (text) => stretchTexts(text, classifyAt(text, currencyOff));
+  const roundedTexts = (text) => stretchTexts(text, classifyAt(text, LADDER_OPTS_CURRENCY_OFF));
   const text = '$1 - '.repeat(10000);
   const started = Date.now();
-  const classification = classifyAt(text, currencyOff);
+  const classification = classifyAt(text, LADDER_OPTS_CURRENCY_OFF);
   eq('currency sign: a 50,000-character cell of 10,000 "$1 - " reads in under a second with currency off',
     Date.now() - started < 1000, true);
   eq('currency sign: a cell of 10,000 "$1 - " holds every number with currency off',
     classification.stretches, []);
   eq('currency sign: "$" and 23 spaces before "12" holds the number with currency off',
-    classifyAt('$' + ' '.repeat(23) + '12', currencyOff).stretches, []);
+    classifyAt('$' + ' '.repeat(23) + '12', LADDER_OPTS_CURRENCY_OFF).stretches, []);
   eq('currency sign: "$" and 24 spaces before "12" rounds the number with currency off',
     roundedTexts('$' + ' '.repeat(24) + '12'), ['12']);
   eq('currency sign: "YEAR" and 23 spaces before "12" rounds the number with currency off',
@@ -1942,13 +1380,8 @@ const LADDER_OPTS = {
 })();
 
 // --- Shared rounding case table (js/round-dynamic-cases.json) ---
-//
-// This table is generated from this package's own parsing/rounding path (the
-// source of truth) and is also run against js/tests.js and python/tests/, so
-// the three copies of dynamic rounding stay in agreement. Running it here
-// too guards against future drift in this copy: it should pass by
-// construction, since the table was generated by calling these very
-// functions.
+// js/tests.js and python/tests/ run the same table, so Python's own copy of
+// the rounding stays in agreement with the shared library files.
 (function sharedCaseTable() {
   const sharedCaseGroups = JSON.parse(
     fs.readFileSync(path.join(__dirname, '..', 'js', 'round-dynamic-cases.json'), 'utf8')
@@ -1981,452 +1414,6 @@ const LADDER_OPTS = {
   }
 })();
 
-// ---------------------------------------------------------------------------
-// Settings live in DR_MODEL, one set per table: a table with none
-// reads as the shipped defaults, setTableSettings merges its patch onto the
-// stored settings (the defaults when none are stored) and publishes the whole
-// new value, and
-// getTableSettings reads back a copy.
-// ---------------------------------------------------------------------------
-(function appModelSettings_storeTableSettings() {
-  const table = { tagName: 'TABLE' };
-  eq('DR_MODEL.getTableSettings: a table with no settings reads as the shipped defaults',
-    DR_MODEL.getTableSettings(table), Object.assign({}, DR_DEFAULTS));
-
-  let stateChangePayload = 'NOT_CALLED';
-  const unsubscribe = DR_BUS.subscribe('state:settingsChanged', (payload) => {
-    stateChangePayload = payload;
-  });
-  try {
-    DR_MODEL.setTableSettings(table, { offsetTop: 0.25, rangeExpr: 'A1:C9' }, 'page');
-  } finally {
-    unsubscribe();
-  }
-  eq('DR_MODEL.setTableSettings: getTableSettings reflects the new value',
-    DR_MODEL.getTableSettings(table).offsetTop, 0.25);
-  eq('DR_MODEL.setTableSettings: the stored settings carry the shipped defaults for every key not written',
-    DR_MODEL.getTableSettings(table).simplifyDates, DR_DEFAULTS.simplifyDates);
-  eq('DR_MODEL.setTableSettings: the resulting state-change carries the whole new value, not a delta',
-    stateChangePayload && stateChangePayload.settings,
-    Object.assign({}, DR_DEFAULTS, { offsetTop: 0.25, rangeExpr: 'A1:C9' }));
-
-  // getTableSettings returns a copy — mutating what a caller read must not
-  // corrupt the application model's own value (immutability convention).
-  const read = DR_MODEL.getTableSettings(table);
-  read.offsetTop = 999;
-  eq('DR_MODEL.getTableSettings: returns a copy, not a live reference — mutating it does not affect the application model',
-    DR_MODEL.getTableSettings(table).offsetTop, 0.25);
-  DR_MODEL.unregisterTable(table);
-})();
-
-(function appModelSettings_secondPartialWriteKeepsFirst() {
-  const table = { tagName: 'TABLE' };
-  DR_MODEL.setTableSettings(table, { offsetTop: 0.25 }, 'page');
-  DR_MODEL.setTableSettings(table, { rangeExpr: 'A1:C9' }, 'page');
-  eq('DR_MODEL.setTableSettings: a second partial write keeps the first write\'s key',
-    DR_MODEL.getTableSettings(table).offsetTop, 0.25);
-  eq('DR_MODEL.setTableSettings: a second partial write stores its own key',
-    DR_MODEL.getTableSettings(table).rangeExpr, 'A1:C9');
-  eq('DR_MODEL.setTableSettings: a key neither write holds keeps the shipped default',
-    DR_MODEL.getTableSettings(table).simplifyDates, DR_DEFAULTS.simplifyDates);
-  DR_MODEL.unregisterTable(table);
-})();
-
-// ---------------------------------------------------------------------------
-// the lens preview and the table must round the same cell to the same
-// value once a setting changes: extractPreviewSamples and roundTable both
-// read the table's settings.
-// ---------------------------------------------------------------------------
-(function appModelSettings_previewAndTableAgreeOnLiveSettings() {
-  const customSettings = Object.assign({}, DR_DEFAULTS, {
-    simplifyFirstRow: true,
-    simplifyFirstColumn: true,
-    offsetTop: -2,
-    offsetOther: 0.25,
-    numTop: 1,
-    rangeExpr: '',
-  });
-  // Validity check on the fixture itself: these offsets must differ from
-  // DR_DEFAULTS, or a regression back to reading DR_DEFAULTS would slip
-  // through this test undetected.
-  eq('preview/table agreement: fixture offsets differ from DR_DEFAULTS (test validity check)',
-    customSettings.offsetTop !== DR_DEFAULTS.offsetTop && customSettings.offsetOther !== DR_DEFAULTS.offsetOther,
-    true);
-
-  const previewTable = makeMockTable([[
-    { tag: 'td', text: '1,000,000' },
-    { tag: 'td', text: '50' },
-  ]]);
-  DR_MODEL.setTableSettings(previewTable, customSettings, 'page');
-  const preview = extractPreviewSamples(previewTable);
-  eq('preview/table agreement: top band has the large cell',
-    preview.samples.top.length, 1);
-  eq('preview/table agreement: other band has the small cell',
-    preview.samples.other.length, 1);
-
-  const expectedTop = roundWithOffset(1000000, customSettings.offsetTop);
-  const expectedOther = roundWithOffset(50, customSettings.offsetOther);
-
-  // What the lens preview would render for these two cells,
-  // built from the same sample the model supplied.
-  eq('preview/table agreement: preview top sample rounds via the live offsetTop',
-    roundWithOffset(preview.samples.top[0].num, customSettings.offsetTop), expectedTop);
-  eq('preview/table agreement: preview other-band sample rounds via the live offsetOther',
-    roundWithOffset(preview.samples.other[0].num, customSettings.offsetOther), expectedOther);
-
-  // What the table actually renders for the identical cells, applied the
-  // way the apply does — straight from the table's settings in the model.
-  const liveTable = makeMockTable([[
-    { tag: 'td', text: '1,000,000' },
-    { tag: 'td', text: '50' },
-  ]]);
-  DR_MODEL.setTableSettings(liveTable, customSettings, 'page');
-  withCreateTreeWalker(() => {
-    roundTable(liveTable, DR_MODEL.getTableSettings(liveTable));
-  });
-  const renderedTop = toNumber(liveTable.rows[0].cells[0].innerText);
-  const renderedOther = toNumber(liveTable.rows[0].cells[1].innerText);
-
-  eq('preview/table agreement: the table cell value matches the preview-predicted top value',
-    renderedTop, expectedTop);
-  eq('preview/table agreement: the table cell value matches the preview-predicted other-band value',
-    renderedOther, expectedOther);
-  DR_MODEL.unregisterTable(previewTable);
-  DR_MODEL.unregisterTable(liveTable);
-})();
-
-// ---------------------------------------------------------------------------
-// settings survive a sidebar close and
-// reopen — pulled from the model (request:activeTable), not reset to DR_DEFAULTS.
-// The settings live on the active table, so the reopen's read
-// answers that table's settings.
-// ---------------------------------------------------------------------------
-(function appModelSettings_settingsSurviveSidebarReconnect() {
-  runPressFixture(() => {
-    const table = makePressTable('12,345');
-    DR_MODEL.setActiveTable(table);
-
-    // The sidebar sets a custom value (an "open" session), then — simulated by
-    // nothing happening in between — closes and reopens, pulling the model.
-    const customSettings = {
-      enabled: true, simplifyMixedCurrency: false,
-      simplifyMixedPercent: true, simplifyFirstRow: false, simplifyFirstColumn: false,
-      simplifyDates: true, simplifyTimes: false, dateGranularity: 'year', timeGranularity: 'hour',
-      offsetTop: 0.25, offsetOther: -1.5, numTop: 1, rangeExpr: 'B2:E8',
-    };
-    let applyResponse = null;
-    withCreateTreeWalker(() => {
-      applyResponse = askContentScript({ topic: 'request:applySettings', settings: customSettings });
-    });
-    eq('reconnect: request:applySettings was acknowledged before the (simulated) close',
-      applyResponse && applyResponse.ok, true);
-
-    // Reopen: exactly what redrawFromActiveTable's request:activeTable does.
-    const getResponse = askContentScript({ topic: 'request:activeTable' });
-    const pulled = (getResponse && getResponse.settings) || {};
-
-    eq('reconnect: request:activeTable returns a settings object',
-      !!(getResponse && getResponse.settings), true);
-    eq('reconnect: offsetTop survives the close/reopen', pulled.offsetTop, 0.25);
-    eq('reconnect: offsetOther survives the close/reopen', pulled.offsetOther, -1.5);
-    eq('reconnect: rangeExpr survives the close/reopen', pulled.rangeExpr, 'B2:E8');
-    eq('reconnect: a changed boolean flag survives the close/reopen', pulled.simplifyMixedCurrency, false);
-  });
-})();
-
-// ---------------------------------------------------------------------------
-// A pulled enabled:false must survive
-// sidebar reopen when the reopen lands on a TABLE THAT IS BOUND. This drives
-// sidebar.js's real redrawFromActiveTable() -> drawControls() ->
-// setTableBound() path end to end (same eval harness shape as
-// appModelSettings_settingsPublish_deliveryFeedback_behavioral above).
-//
-// The pin: redrawFromActiveTable draws the answer's settings, then calls
-// setTableBound(true) because the same answer holds a bound table's samples.
-// setTableBound's bound branch must not write the sidebar pillbox, so the
-// pulled false survives the reopen.
-// ---------------------------------------------------------------------------
-(function appModelSettings_pulledEnabledSurvivesReopenOnBoundTable() {
-  const roundingSrc = sourceByName('lib/dr-number/rounding.js');
-  const readerSrc = sourceByName('lib/dr-number/reader.js');
-  if (constantsCode === null || roundingSrc === null || readerSrc === null || busCode === null) {
-    eq('reopen-bound: source files (defaults/rounding/reader/bus) present in manifest',
-      false, true);
-    return;
-  }
-
-  // Same minimal element stub as the other full-sidebar.js eval harnesses in
-  // this file (see appModelSettings_settingsPublish_deliveryFeedback_behavioral).
-  function makeEl() {
-    return {
-      addEventListener() {}, removeEventListener() {},
-      classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
-      style: {}, value: '', checked: false, disabled: false, textContent: '', innerHTML: '',
-      appendChild() {}, querySelector() { return makeEl(); }, querySelectorAll() { return []; },
-      getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 }; },
-      matches() { return false; }, closest() { return null; }, dataset: {},
-      setAttribute() {}, getAttribute() { return null; }, removeAttribute() {},
-    };
-  }
-
-  const statusEl = makeEl();
-  const enabledEl = makeEl();
-
-  const bodyClasses = new Set();
-  const captureBody = {
-    classList: {
-      add(cls) { bodyClasses.add(cls); },
-      remove(cls) { bodyClasses.delete(cls); },
-      contains(cls) { return bodyClasses.has(cls); },
-      toggle(cls, force) {
-        if (force === undefined) {
-          if (bodyClasses.has(cls)) bodyClasses.delete(cls); else bodyClasses.add(cls);
-        } else if (force) bodyClasses.add(cls); else bodyClasses.delete(cls);
-      },
-    },
-    addEventListener() {},
-    get offsetWidth() { return 0; },
-  };
-
-  const captureDoc = {
-    addEventListener() {},
-    querySelectorAll: () => [],
-    readyState: 'complete',
-    body: captureBody,
-    getElementById(id) {
-      if (id === 'status') return statusEl;
-      if (id === 'enabled') return enabledEl;
-      return makeEl();
-    },
-    createElement() { return makeEl(); },
-  };
-
-  // The model holds enabled:false. request:activeTable answers that pulled
-  // settings object beside a non-null samples object, i.e. the reopen landed
-  // on a table that is bound (the reviewer's reachable end state). It
-  // resolves synchronously so the whole redrawFromActiveTable() path —
-  // including sidebar.js's own module-level opening read on load — settles
-  // deterministically within the single eval() call below.
-  const pulledSettings = Object.assign({}, DR_DEFAULTS, { enabled: false });
-  const captureChrome = {
-    runtime: {
-      onMessage: { addListener() {} },
-      sendMessage() {},
-      lastError: null,
-    },
-    tabs: {
-      query(q, cb) { cb([{ id: SIDEBAR_HARNESS_TAB }]); },
-      sendMessage(tabId, msg, cb) {
-        if (msg.topic === 'request:activeTable') {
-          cb({ settings: pulledSettings, samples: { top: [], other: [] }, maxMag: 0 });
-        } else {
-          // The settings apply. Chrome hands back the responder's value on
-          // success and nothing when nobody answered, which is the fact the
-          // sidebar reads to decide bound versus unbound.
-          cb(captureChrome.runtime.lastError ? undefined : { ok: true });
-        }
-      },
-    },
-  };
-
-  const savedDoc = global.document;
-  const savedChrome = global.chrome;
-  const savedWindow = global.window;
-  global.document = captureDoc;
-  global.chrome = captureChrome;
-  global.window = { addEventListener() {}, close() {}, getComputedStyle: () => ({ display: 'block' }) };
-
-  let evalError = null;
-  try {
-    try {
-      eval(
-        constantsCode + '\n' +
-        roundingSrc + '\n' +
-        readerSrc + '\n' +
-        busCode + '\n' +
-        fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8')
-      );
-    } catch (e) {
-      // The stubs above are built to let the whole module-level
-      // redrawFromActiveTable() path resolve
-      // synchronously and without throwing, unlike the sibling harness (which
-      // only needs the 'change' listener captured before its own pull runs).
-      // Record any throw instead of silently swallowing it — an unstubbed
-      // DOM method here must fail this test loudly, not make enabledEl.checked
-      // read its untouched initial value and pass for the wrong reason.
-      evalError = e;
-    }
-
-    eq('reopen-bound: sidebar.js\'s module-level pull ran to completion with no stub gaps',
-      evalError, null);
-    eq('reopen-bound: the pulled enabled:false survives the reopen when the same answer holds samples (samples !== null)',
-      enabledEl.checked, false);
-  } finally {
-    global.document = savedDoc;
-    global.chrome = savedChrome;
-    global.window = savedWindow;
-  }
-})();
-
-// ---------------------------------------------------------------------------
-// Adversarial: the full wire path, not the application model
-// directly. appModelSettings_previewAndTableAgreeOnLiveSettings (above) calls
-// DR_MODEL.setTableSettings() straight from the test — it never exercises
-// content.js's own onMessage listener or the settings apply's responder,
-// which is the actual code path a real request:applySettings message
-// drives. This test dispatches that message through the captured listener
-// (the pattern) against a table already bound as "selected", lets the
-// real responder write the table's settings and apply them, and checks the
-// resulting cells against extractPreviewSamples on the same table, which
-// classifies each simplified cell's stored original — so the assertion
-// covers the message arriving, not just the pure math agreeing.
-// ---------------------------------------------------------------------------
-(function appModelSettings_wireMessageAppliesLiveSettingsToBoundTableAndPreviewAgrees() {
-  function makeWiredMockTable(rowsSpec) {
-    const table = makeMockTable(rowsSpec);
-    table.classList = { remove() {}, add() {}, contains() { return false; } };
-    table.offsetWidth = 0;
-    table.querySelectorAll = () => [];
-    return table;
-  }
-
-  // Values chosen so the offsets below visibly change them (unlike, say,
-  // 1,000,000 / 50 at offsetTop -2 / offsetOther 0.25, which round to
-  // themselves and would pass this test even if rounding silently no-op'd).
-  const rowsSpec = [[
-    { tag: 'td', text: '1,234,567' },
-    { tag: 'td', text: '37' },
-  ]];
-  const CUSTOM_OFFSET_TOP = -2;
-  const CUSTOM_OFFSET_OTHER = 0.25;
-
-  // Chrome hands an arriving message to every registered listener, so collect
-  // them all and fan out the same way. The bundle registers one today, the
-  // bus's; keeping only the last registration would silently skip whichever
-  // listener registers first should a second one ever appear.
-  const capturedListeners = [];
-  function capturedListener(req, sender, respond) {
-    // Chrome keeps the reply port open when ANY listener returns true, and
-    // closes it otherwise. Returning nothing here would make the
-    // synchronous-answer assertions below unfalsifiable.
-    let keepOpen = false;
-    for (const fn of capturedListeners) {
-      if (fn(req, sender, respond || function () {}) === true) keepOpen = true;
-    }
-    return keepOpen;
-  }
-  let wiredDR_MODEL = null;
-  let wiredExtractPreviewSamples = null;
-  let boundTable = null;
-  let ackResponse = null;
-
-  const captureChrome = {
-    runtime: {
-      onMessage: { addListener(fn) { capturedListeners.push(fn); } },
-      sendMessage: () => {},
-      lastError: null,
-    },
-  };
-  const captureDoc = {
-    addEventListener: () => {},
-    querySelectorAll: () => [],
-    readyState: 'complete',
-    // The range pulse at the end of applyTableSettings adds the highlight
-    // stylesheet and needs these — the reconnect tests above never reach
-    // that call (no active table, so the subscriber's `if (selected)` guard
-    // short-circuits).
-    createElement: () => ({ textContent: '', appendChild() {} }),
-    head: { appendChild() {} },
-    documentElement: { appendChild() {} },
-    body: { appendChild: () => {}, observe: () => {} },
-  };
-  const captureWindow = {
-    addEventListener: () => {},
-    getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
-  };
-
-  const saved = { chrome: global.chrome, document: global.document, window: global.window };
-  global.chrome = captureChrome;
-  global.document = captureDoc;
-  global.window = captureWindow;
-
-  try {
-    withCreateTreeWalker(() => {
-      try {
-        eval(contentScriptBundle + `
-          wiredDR_MODEL = DR_MODEL;
-          wiredExtractPreviewSamples = extractPreviewSamples;
-        `);
-      } catch (e) {
-        // module-level init may fail against the stub DOM; the onMessage
-        // listener and the two wiring assignments above both run before any
-        // dynamic/async code (see the test).
-      }
-
-      if (capturedListeners.length === 0 || !wiredDR_MODEL) return;
-
-      // Bind a table as "selected" — mirrors what the contextmenu handler
-      // does for real, so the settings apply has an active table to write
-      // the incoming message to.
-      boundTable = makeWiredMockTable(rowsSpec);
-      wiredDR_MODEL.setActiveTable(boundTable);
-
-      const customSettings = Object.assign({}, DR_DEFAULTS, {
-        simplifyFirstRow: true, simplifyFirstColumn: true,
-        offsetTop: CUSTOM_OFFSET_TOP, offsetOther: CUSTOM_OFFSET_OTHER,
-        numTop: 1, rangeExpr: '', enabled: true,
-      });
-
-      // The real wire message, dispatched through the real onMessage
-      // listener — not DR_MODEL.setTableSettings() called directly from the
-      // test.
-      capturedListener(
-        { topic: 'request:applySettings', settings: customSettings },
-        {},
-        (r) => { ackResponse = r; }
-      );
-    });
-  } finally {
-    global.chrome = saved.chrome;
-    global.document = saved.document;
-    global.window = saved.window;
-  }
-
-  eq('wire E2E: content.js onMessage listener was captured',
-    capturedListeners.length > 0, true);
-  eq('wire E2E: request:applySettings was acknowledged',
-    ackResponse && ackResponse.ok, true);
-  if (!boundTable) return;
-
-  // The responder applied the message straight to the bound table — no
-  // separate "apply" call from the test.
-  const renderedTop = toNumber(boundTable.rows[0].cells[0].innerText);
-  const renderedOther = toNumber(boundTable.rows[0].cells[1].innerText);
-  eq('wire E2E: the fixture top value actually changed under rounding (test validity check)',
-    renderedTop !== 1234567, true);
-  eq('wire E2E: the fixture other-band value actually changed under rounding (test validity check)',
-    renderedOther !== 37, true);
-  eq('wire E2E: the bound table was actually rounded by the real responder path',
-    boundTable.rows[0].cells[0].classList.contains('dr-ext-rounded'), true);
-
-  // The preview extractor reads the bound table's own settings and each
-  // simplified cell's stored original, so the rounded text on the screen
-  // stays out of its read.
-  const preview = wiredExtractPreviewSamples(boundTable);
-  eq('wire E2E: preview top band has the large cell',
-    preview.samples.top.length, 1);
-  eq('wire E2E: preview other band has the small cell',
-    preview.samples.other.length, 1);
-
-  const previewTop = roundWithOffset(preview.samples.top[0].num, CUSTOM_OFFSET_TOP);
-  const previewOther = roundWithOffset(preview.samples.other[0].num, CUSTOM_OFFSET_OTHER);
-
-  eq('wire E2E: the table cell the real message pipeline rendered matches the preview-predicted top value',
-    renderedTop, previewTop);
-  eq('wire E2E: the table cell the real message pipeline rendered matches the preview-predicted other-band value',
-    renderedOther, previewOther);
-})();
-
 // =============================================================================
 // One currency list
 // =============================================================================
@@ -2450,11 +1437,9 @@ const LADDER_OPTS = {
 
   // Every code the list names is a currency code, so the currency switch and
   // the unit-number reader both read it.
-  const currencyOff = { simplifyFirstRow: true, simplifyFirstColumn: true,
-    simplifyMixedPercent: true, simplifyMixedCurrency: false };
   for (const { name, code } of CURRENCIES) {
     eq('currencies: the code ' + code + ' (' + name + ') holds "450 ' + code + '" with the currency setting off',
-      classifyAt('450 ' + code, currencyOff).stretches, []);
+      classifyAt('450 ' + code, LADDER_OPTS_CURRENCY_OFF).stretches, []);
   }
 
   // The data test reads a cell through the number reader, so a table whose
@@ -2512,14 +1497,12 @@ const LADDER_OPTS = {
 
   // A capital R inside a word is no currency sign, so with the setting off
   // the number beside it still rounds.
-  const currencyOff = { simplifyFirstRow: true, simplifyFirstColumn: true,
-    simplifyMixedPercent: true, simplifyMixedCurrency: false };
   eq('currencies: "Revenue 45" rounds its number with currency off',
-    stretchTexts('Revenue 45', classifyAt('Revenue 45', currencyOff)), ['45']);
+    stretchTexts('Revenue 45', classifyAt('Revenue 45', LADDER_OPTS_CURRENCY_OFF)), ['45']);
   eq('currencies: "Fresh 45" rounds its number with currency off',
-    stretchTexts('Fresh 45', classifyAt('Fresh 45', currencyOff)), ['45']);
+    stretchTexts('Fresh 45', classifyAt('Fresh 45', LADDER_OPTS_CURRENCY_OFF)), ['45']);
   eq('currencies: "R 45" holds its number with currency off',
-    classifyAt('R 45', currencyOff).stretches, []);
+    classifyAt('R 45', LADDER_OPTS_CURRENCY_OFF).stretches, []);
 })();
 
 // --- Reading the sign ---
@@ -2566,7 +1549,7 @@ eq('bracketed: an unclosed bracket leaves the number positive',
 eq('bracketed: an unopened bracket leaves the number positive',
   extractNumbersInText('1,234)').map((m) => m.num), [1234]);
 
-eq('bracketed: "(1,234)" is a bracketed negative and "(see 4)" is not',
+eq('bracketed: "(1,234)" is a bracketed number and "(see 4)" is not',
   [isBracketedNegative('(1,234)', 1, '1,234'), isBracketedNegative('(see 4)', 5, '4')],
   [true, false]);
 
@@ -2679,13 +1662,12 @@ eq('decimal comma: "1,234.56 EUR" is a unit number',
 
 (function decimalComma_ladderLeavesTheCellAsWritten() {
   const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
-  const decide = (text) => classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, opts);
   eq('decimal comma: every European-style cell holds no stretch',
     ['13,63€', '5,16 €', '1.234,56 €', '0,75', '987,5',
-      '14,37€ (includes 2,49€ VAT)'].map((text) => decide(text).stretches),
+      '14,37€ (includes 2,49€ VAT)'].map((text) => classifyAt(text, opts).stretches),
     [[], [], [], [], [], []]);
   eq('decimal comma: "1,234.56" and "0.125" each hold one number stretch',
-    ['1,234.56', '0.125'].map((text) => decide(text).stretches),
+    ['1,234.56', '0.125'].map((text) => classifyAt(text, opts).stretches),
     [[expectedNumberStretch(0, '1,234.56', 1234.56)], [expectedNumberStretch(0, '0.125', 0.125)]]);
 })();
 
@@ -2713,13 +1695,16 @@ eq('decimal comma: "1,234.56 EUR" is a unit number',
   const rows = [
     ['1 034 567', 1034567], ['1 234.56', 1234.56], ['$ 1 234', 1234], ['(1 234)', -1234],
     ['1 234 %', 1234], ['-1 234', -1234], ['−1 234', -1234],
-    ['1 034 567', 1034567], ['1 234', 1234],
     ['12 34', null], ['1 2345', null], ['2024 12', null], ['1 234,56', null],
   ];
   for (const [text, expected] of rows) {
     eq('number reader: "' + text + '" reads as ' + (expected === null ? 'no number' : expected),
       toNumber(text), expected);
   }
+  eq('number reader: "1 034 567" with narrow no-break spaces reads as 1034567',
+    toNumber('1\u202f034\u202f567'), 1034567);
+  eq('number reader: "1 234" with a no-break space reads as 1234',
+    toNumber('1\u00a0234'), 1234);
 })();
 
 eq('number reader: "125" above "126", and "1" above "234", read as no number',
@@ -2770,12 +1755,11 @@ eq('group space: "1 234 USD" is a unit number',
 
 (function groupSpace_cellReadsAlikeAloneAndInsideWords() {
   const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
-  const decide = (text) => classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, opts);
-  const texts = (text) => stretchTexts(text, decide(text));
+  const texts = (text) => stretchTexts(text, classifyAt(text, opts));
   eq('group space: a pure cell "1 034 567" reads as one number',
-    decide('1 034 567'), { stretches: [expectedNumberStretch(0, '1 034 567', 1034567)] });
+    classifyAt('1 034 567', opts), { stretches: [expectedNumberStretch(0, '1 034 567', 1034567)] });
   eq('group space: "Revenue 1 034 567 units" rounds the same one number',
-    decide('Revenue 1 034 567 units').stretches.map((s) => s.num), [1034567]);
+    classifyAt('Revenue 1 034 567 units', opts).stretches.map((s) => s.num), [1034567]);
   eq('group space: a three-digit group with a leading zero is a group, not a code',
     texts('Revenue 1 034 567 units'), ['1 034 567']);
   eq('group space: a leading-zero run after a lone digit is still a code',
@@ -2844,22 +1828,3 @@ eq('pure number span: a sign after the digits stays outside',
 
 eq('pure number span: space-grouped digits form one span',
   pureNumberSpan('1 234 567'), { numStr: '1 234 567', index: 0 });
-
-// The observers the page model reports to. The harness clears the list.
-const rwObservers = [];
-
-let rwDeliveringToObserver = false;
-
-class RewriteObserver {
-  constructor(callback) { this.callback = callback; this.target = null; this.queue = []; }
-  observe(target) {
-    this.target = target;
-    if (!rwObservers.includes(this)) rwObservers.push(this);
-  }
-  disconnect() {
-    this.target = null;
-    this.queue = [];
-    const at = rwObservers.indexOf(this);
-    if (at >= 0) rwObservers.splice(at, 1);
-  }
-}
