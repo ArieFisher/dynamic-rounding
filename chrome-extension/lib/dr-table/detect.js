@@ -46,22 +46,28 @@ function _registeredCheck(opts) {
 
 /**
  * The geometry probe: does `el` look like a grid built from generic elements?
- * An accessibility artifact fails before the first layout read.
- * firstCellsAlign is the one check that reads boxes.
+ * An accessibility artifact fails before the first layout read. The
+ * direction reader reads boxes, in the row read and again in firstCellsAlign.
+ *
+ * The probe reads at most as many children as the data test's cell budget,
+ * so a page element with millions of children costs no more than one with a
+ * thousand; every rung, the repetition share among them, reads only those
+ * children.
  *
  * @returns {boolean}
  */
 function looksLikeGrid(el, opts = {}) {
   if (!el || typeof el.children === 'undefined') return false;
   const styleProbe = _styleProbeOf(opts);
-  const children = Array.from(el.children);
+  const cellBudget = DR_DETECTION_SETTINGS.dataTestCellBudget;
+  const children = Array.prototype.slice.call(el.children, 0, cellBudget);
   if (children.length < DR_DETECTION_SETTINGS.gridMinChildren) return false;
   const { modalFreq, candidates: candidateRows } = childCountCandidates(children);
   if (modalFreq < children.length * DR_DETECTION_SETTINGS.gridRepetitionShare) return false;
   if (_artifactCheck(opts)(el, opts)) return false;
   const display = styleProbe.getComputedStyle(el)?.display || '';
   if (!DR_DETECTION_SETTINGS.gridDisplayValues.includes(display)) return false;
-  const rows = makeAdapter(el, opts).getRows(DR_DETECTION_SETTINGS.dataTestCellBudget);
+  const rows = new GridAdapter(el, opts).getRows({ scope: 'ownChildren', cellBudget });
   if (!holdsRoundableCell(rows)) return false;
   return carriesGridMark(el, opts.vendorProfiles || GRID_VENDOR_PROFILES)
     || firstCellsAlign(children, candidateRows, styleProbe);
@@ -242,9 +248,9 @@ function sitsOffscreen(el, styleProbe) {
 /**
  * Whether the rows hold a cell the extension can round: the cell read of the
  * data test (isDataTable) and of the geometry probe's numeric step
- * (looksLikeGrid), each over the rows the adapter presents, the rows the
- * rounding pass reads. classifyTableCell is the function the rounding pass
- * calls for every cell.
+ * (looksLikeGrid). The data test reads the rows the rounding pass reads; the
+ * probe reads the grid adapter's own-children scope (see GridAdapter.getRows).
+ * classifyTableCell is the function the rounding pass calls for every cell.
  *
  * The walk spends one budget of DR_DETECTION_SETTINGS.dataTestCellBudget cell
  * reads across every row, and an empty cell counts as a read. The walk holds

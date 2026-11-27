@@ -400,14 +400,104 @@
     looksLikeGrid(gridWithNumberAt(budget + 1), { styleProbe: gridProbe }), false);
 })();
 
-(function adapters_aCellBudgetEndsTheRowReadOnBothTableKinds() {
-  const texts = [['Name', 'Sales'], ['Tami', '1,234'], ['Ravi', '5,678']];
-  for (const [kind, el] of [['native', makeIsDataTable(texts)], ['grid', makeGridWrapper(texts).wrapperEl]]) {
-    eq(`adapter cell budget (${kind}): three rows of two cells under a budget of 3 read as two rows`,
-      makeAdapter(el).getRows(3).map((row) => row.getCells().length), [2, 2]);
-    eq(`adapter cell budget (${kind}): three rows of two cells with no budget read as three rows`,
-      makeAdapter(el).getRows().length, 3);
-  }
+(function gridAdapter_aCellBudgetEndsTheRowRead() {
+  const el = makeGridWrapper([['Name', 'Sales'], ['Tami', '1,234'], ['Ravi', '5,678']]).wrapperEl;
+  eq('grid adapter cell budget: three rows of two cells under a budget of 3 read as two rows',
+    new GridAdapter(el).getRows({ cellBudget: 3 }).map((row) => row.getCells().length), [2, 2]);
+  eq('grid adapter cell budget: three rows of two cells with no budget read as three rows',
+    new GridAdapter(el).getRows().length, 3);
+})();
+
+(function gridAdapter_aCellBudgetEndsARunOfEmptyRows() {
+  const budget = DR_DETECTION_SETTINGS.dataTestCellBudget;
+  const grid = rwEl('div', { role: 'grid' }, Array.from({ length: budget * 3 }, () => rwEl('div', { role: 'row' }, [])));
+  eq('grid adapter cell budget: three budgets\' worth of rows with no cells read as one budget\'s worth of rows',
+    new GridAdapter(grid).getRows({ cellBudget: budget }).length, budget);
+})();
+
+// Each child records its position when the probe reads its children.
+(function geometryProbe_readsNoChildPastTheCellBudget() {
+  const budget = DR_DETECTION_SETTINGS.dataTestCellBudget;
+  const gridProbe = { getComputedStyle: () => ({ display: 'grid' }), getOffsetWidth: () => 100 };
+  let furthestRead = -1;
+  const children = Array.from({ length: budget * 3 }, (_, i) => {
+    const cells = [withTextPiece({ textContent: '' })];
+    return {
+      className: 'row',
+      get children() { furthestRead = Math.max(furthestRead, i); return cells; },
+    };
+  });
+  const grid = { className: '', getAttribute: () => null, children };
+  eq('geometry probe: three budgets\' worth of rows of one empty cell fail the probe',
+    looksLikeGrid(grid, { styleProbe: gridProbe }), false);
+  eq('geometry probe: three budgets\' worth of rows of one empty cell are read no further than the budget',
+    furthestRead < budget, true);
+})();
+
+// A flex wrapper of word sections, laid out as repeated blocks, around a
+// table or a grid. The wrapper repeats like a grid but holds no number of its
+// own; only the table inside it does.
+function wrapperOfWordSections(inner) {
+  const breaks = (els) => els.flatMap((el, i) => (i === 0 ? [el] : [rwText('\n'), el]));
+  const block = (display, children) => {
+    const el = rwEl('div', {}, breaks(children));
+    el._display = display;
+    return el;
+  };
+  const leaf = (text) => rwEl('div', {}, [rwText(text)]);
+  const section = (a, b) => block('block', [leaf(a), leaf(b)]);
+  const first = section('Overview', 'Team totals');
+  const middle = inner.wrapped ? block('block', [inner.el]) : inner.el;
+  const wrapper = block('flex', [first, section('Filters', 'Region'), middle, section('Notes', 'Draft'), section('Help', 'Contact')]);
+  const page = rwEl('body', {}, [wrapper]);
+  return { wrapper, word: first.children[0], page, block, leaf };
+}
+
+(function geometryProbe_aWrapperOfWordSectionsFailsOnTheNumbersOfATableInside() {
+  const probe = { getComputedStyle: (el) => ({ display: (el && el._display) || 'block' }), getOffsetWidth: () => 100 };
+  const optsFor = (page) => ({ isRegistered: () => false, styleProbe: probe, doc: { body: page } });
+  const resolvedLabel = (found, wrapper) => {
+    if (!found) return 'no table';
+    return found.handle === wrapper ? 'the wrapper' : 'another element';
+  };
+
+  const gridOfSales = () => {
+    const holder = wrapperOfWordSections({ el: rwEl('div', {}, []) });
+    const rows = [['Name', 'Sales'], ['Tami', '1,234'], ['Ravi', '5,678'], ['Noa', '9,012'], ['Lior', '3,456']]
+      .map(([a, b]) => holder.block('flex', [holder.leaf(a), holder.leaf(b)]));
+    return holder.block('grid', rows);
+  };
+  const grid = gridOfSales();
+  const withGrid = wrapperOfWordSections({ el: grid });
+  const value = grid.children[1].children[1];
+  eq('geometry probe: a flex wrapper of four word sections and an unmarked grid of sales fails the probe',
+    looksLikeGrid(withGrid.wrapper, optsFor(withGrid.page)), false);
+  const found = findTargetTable(value, optsFor(withGrid.page));
+  eq('geometry probe: a right-click on a sales value in that grid resolves the grid, not the wrapper',
+    !!found && found.handle === grid, true);
+
+  const native = rwBuildTable('native', [['Tami', '1,234'], ['Ravi', '5,678']], { header: ['Name', 'Sales'] }).table;
+  const withNative = wrapperOfWordSections({ el: native, wrapped: true });
+  eq('geometry probe: a right-click on the word "Overview" beside a native table of sales, in a flex wrapper of word sections, resolves no table',
+    resolvedLabel(findTargetTable(withNative.word, optsFor(withNative.page)), withNative.wrapper), 'no table');
+
+  const marked = rwBuildTable('grid', [['Tami', '1,234'], ['Ravi', '5,678']]).table;
+  const withMarked = wrapperOfWordSections({ el: marked, wrapped: true });
+  eq('geometry probe: a right-click on the word "Overview" beside a marked grid of sales, in a flex wrapper of word sections, resolves no table',
+    resolvedLabel(findTargetTable(withMarked.word, optsFor(withMarked.page)), withMarked.wrapper), 'no table');
+})();
+
+(function rightClick_aWordBesideARegisteredNativeTableRegistersNoSecondTable() {
+  withRightClickSandbox((ctx) => {
+    const native = rwBuildTable('native', [['Tami', '1,234'], ['Ravi', '5,678']], { header: ['Name', 'Sales'] }).table;
+    const { wrapper, word } = wrapperOfWordSections({ el: native, wrapped: true });
+    wrapper.parentNode = global.document.body;
+    wrapper.parentElement = global.document.body;
+    ctx.contextmenuHandler({ target: native.rows[1].cells[1] });
+    ctx.contextmenuHandler({ target: word });
+    eq('right-click: a value in a native table of sales, then the word "Overview" in the flex wrapper around it, leave the native table as the one registered table',
+      ctx.model.getRegisteredTables().map((el) => el === native), [true]);
+  });
 })();
 
 (function geometryProbe_columnPlanReadsSpansWithinTheDataTestBudget() {
