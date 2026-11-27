@@ -163,7 +163,7 @@ const PUNCTUATORS = ['>>>=', '...', '===', '!==', '**=', '<<=', '>>=', '>>>', '&
   '&=', '|=', '^=', '**', '<<', '>>'];
 const KEYWORDS_BEFORE_REGEX = new Set(['return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete',
   'void', 'throw', 'case', 'do', 'else', 'yield', 'await']);
-const NAME = /[A-Za-z_$\u0080-￿][\w$\u0080-￿]*/y;
+const NAME = /[A-Za-z_$\u0080-\uFFFF][\w$\u0080-\uFFFF]*/y;
 const NUMBER = /(?:0[xXoObB][\da-fA-F_]+|(?:\d[\d_]*\.?[\d_]*|\.\d[\d_]*)(?:[eE][+-]?\d[\d_]*)?)n?/y;
 
 function matchAt(pattern, text, index) {
@@ -659,7 +659,7 @@ async function prove(options) {
   const root = path.resolve(options.root || path.join(__dirname, '..'));
   const result = readResult(options.in);
   const branch = resolveCommit(root, options.branch);
-  const changed = git(root, 'diff', '--name-only', '-z', result.commit, branch).split('\0').filter(Boolean);
+  const changed = git(root, 'diff', '--name-only', '--no-renames', '-z', result.commit, branch).split('\0').filter(Boolean);
   const productChanges = changed.filter((file) => isProductPath(result.suite, file));
   if (productChanges.length) {
     throw new ScriptError(`the branch changes product code (${productChanges.join(', ')}); measure again`, 1);
