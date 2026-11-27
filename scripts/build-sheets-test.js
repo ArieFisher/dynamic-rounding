@@ -504,7 +504,7 @@ function builtFileCases() {
 
   check('the Sheets file declares each top-level name once', () => {
     const names = topLevelNames(built);
-    for (const name of ['ROUND_DYNAMIC', 'roundWithOffset', 'roundValueSetAware', 'EPSILON', 'X_FLOOR_THRESHOLD']) {
+    for (const name of ['ROUND_DYNAMIC', 'roundWithOffset', 'roundValueSetAware', 'EPSILON']) {
       if (!names.includes(name)) return 'the read found no top-level ' + name;
     }
     const repeated = repeats(names);

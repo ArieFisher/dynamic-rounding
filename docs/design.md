@@ -43,8 +43,8 @@ The extension's folder names predate the groups. The library folder holds core, 
 
 - **The offset counts from the value's own order of magnitude.** Why: one offset fits every size of number in a column, and a count of decimal places cannot.
 - **The sign of a fractional offset stands for the direction of the half-step.** An offset of +0.5 rounds to half the step of the next larger order of magnitude, and -0.5 to half the step of the value's own. Why: before the 2026-05-28 release the function returned the same result for both, so the sign carried no meaning.
-- **A result never falls below the value's own order of magnitude.** Why: without this floor a value could round to 0, or a smaller value could show larger than a bigger one.
-- **At a fractional offset above 1 in size, the result is never smaller than the result at the integer offset nearer zero.** Why: at a coarse offset the step can grow past the value, and the value then drops to its own order of magnitude. Without this floor, 87,054,321 at +1.5 would return 10,000,000, below its +1 result of 100,000,000. The floor holds at fine offsets as well: at -2.5 the same value returns the -2 result, 87,100,000, not 87,050,000.
+- **A result never falls below the value's own order of magnitude.** This is the order of magnitude floor. Why: without it a value could round to 0, or a smaller value could show larger than a bigger one.
+- **At a fractional offset above 1 in size, the result is never smaller than the result at the integer offset nearer zero.** This is the integer offset floor. Why: at a coarse offset the step can grow past the value, and the value then drops to its own order of magnitude. Without it, 87,054,321 at +1.5 would return 10,000,000, below its +1 result of 100,000,000. The integer offset floor holds at fine offsets as well: at -2.5 the same value returns the -2 result, 87,100,000, not 87,050,000.
 - **Results hold at most 12 significant digits.** Why: floating-point arithmetic on a step below 1 is inexact, as 11 × 0.1 gives 1.1000000000000001. The cost is a real loss of precision at fine offsets on large inputs.
 
 ## Reading a cell

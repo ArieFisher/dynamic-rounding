@@ -17,9 +17,6 @@
 // ending in .5 (1.15 / 0.1 is 11.499999999999998). Without this addition,
 // 1.15 at offset -1 returns 1.1, not 1.2.
 const EPSILON = 1e-9;
-// The smallest abs(trunc(offset)) at which the x-floor applies to a
-// fractional offset.
-const X_FLOOR_THRESHOLD = 1;
 
 function magnitudeOf(num) {
   return Math.floor(Math.log10(Math.abs(num)));
@@ -37,10 +34,12 @@ function roundWithOffset(num, offset) {
   const floor_oom = Math.pow(10, current_mag);
   let result = Math.max(raw, floor_oom);
 
-  const x_int = Math.trunc(offset);
-  if (!Number.isInteger(offset) && Math.abs(x_int) >= X_FLOOR_THRESHOLD) {
-    const floor_x = roundWithOffset(absnum, x_int);
-    result = Math.max(result, floor_x);
+  // The integer offset floor: docs/design.md "At a fractional offset above 1
+  // in size, the result is never smaller than the result at the integer
+  // offset nearer zero".
+  const int_offset = Math.trunc(offset);
+  if (!Number.isInteger(offset) && int_offset !== 0) {
+    result = Math.max(result, roundWithOffset(absnum, int_offset));
   }
 
   if (result >= 10) {
