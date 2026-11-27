@@ -29,7 +29,6 @@ const DR_TABLE = {
   // detect.js
   looksLikeGrid,
   findTargetTable,
-  findTables,
   scanTables,
   chainRootOf,
   nominateNest,

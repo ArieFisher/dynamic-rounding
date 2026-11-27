@@ -1055,11 +1055,6 @@ const supTestOpts = {
     outer.parentNode     = document.body;
 
     // The click target is inner itself (not in any <table>).
-    // Adjust closest() on inner to use the real chain.
-    inner.closest = function(sel) {
-      if (sel === 'table') return null;
-      return null;
-    };
 
     const result = findTargetTable(inner);
 
@@ -1251,21 +1246,21 @@ const supTestOpts = {
 })();
 
 // ---------------------------------------------------------------------------
-// Right-click registration: the nomination step runs from the clicked
-// element's chain root.
+// Right-click registration: the nomination step runs from each chain root
+// around the clicked element.
 // ---------------------------------------------------------------------------
 //
 // The route these assertions pin:
-//   - A right-click resolves in four steps: each native table around the
-//     click, nearest first; the nearest already-registered ancestor; the
-//     nomination step run from the chain root of the nest the clicked element
-//     sits in; and the geometry probe.
-//   - The third step returns the element the configured nesting depth
-//     selects. That element can be a sibling of the clicked element, so a
-//     click in a database query grid's row-number gutter resolves the
-//     scrolling pane beside it.
-//   - A nest that resolves nothing falls through to the geometry probe
-//     unchanged.
+//   - A right-click resolves the nearest table of either kind: one walk up
+//     from the clicked element ends at the first registered element, or at
+//     the first native table or chain root whose nest the nomination step
+//     selects an element in. The geometry probe runs after the walk.
+//   - The step returns the element the configured nesting depth selects.
+//     That element can be a sibling of the clicked element, so a click in a
+//     database query grid's row-number gutter resolves the scrolling pane
+//     beside it.
+//   - A nest that resolves nothing, with no table around it, falls through
+//     to the geometry probe unchanged.
 //   - findTargetTable reports: it registers nothing.
 //
 // Every expected value below comes from that statement, never from the
@@ -2645,11 +2640,11 @@ const detectionSandboxCode = [
   vm.runInContext(
     detectionSandboxCode + `
     try {
-      var found = findTables(fakeDoc);
+      var found = scanTables(fakeDoc);
       results = {
         isDataTable: isDataTable(fakeTable),
         tablesFound: found.length,
-        firstIsFakeTable: found[0] === fakeTable,
+        firstIsFakeTable: found[0].outcome === 'selected' && found[0].selected === fakeTable,
       };
     } catch (e) {
       threw = e.message;
@@ -2662,9 +2657,9 @@ const detectionSandboxCode = [
     sandbox.threw, null);
   eq('jsdom-less: isDataTable finds a plain 2x2 numeric table with no getComputedStyle',
     sandbox.results && sandbox.results.isDataTable, true);
-  eq('jsdom-less: findTables finds the one plain table under a minimal fake document',
+  eq('jsdom-less: the table scan finds the one plain table under a minimal fake document',
     sandbox.results && sandbox.results.tablesFound, 1);
-  eq('jsdom-less: findTables resolves to the same table object',
+  eq('jsdom-less: the table scan selects the same table object',
     sandbox.results && sandbox.results.firstIsFakeTable, true);
 })();
 
@@ -2785,7 +2780,7 @@ const EXPECTED_DETECTION_SETTINGS = {
       outcomes.noVendorClassFailsWidthCheck = looksLikeGrid(
         Object.assign(makeEl(badWidthRows), { className: '' }), { styleProbe: gridStyleProbe });
 
-      // --- gridWalkDepthCap (findTargetTable step 4, the geometry probe): a
+      // --- gridWalkDepthCap (findTargetTable's geometry probe): a
       // 20-deep ancestor chain, every ancestor a looksLikeGrid match, is
       // bounded to the 15th ancestor (label 14, zero-indexed) ---
       function makeAncestor(label) {
@@ -2897,10 +2892,10 @@ const EXPECTED_DETECTION_SETTINGS = {
     !!(caught && /DR_DETECTION_SETTINGS/.test(caught.message)), true);
 })();
 
-// findTables' isArtifact: default (isAccessibilityArtifact) drops an accessibility
+// The table scan's isArtifact: default (isAccessibilityArtifact) drops an accessibility
 // artifact; a filter that drops nothing keeps it. Reuses makePass1DataTable / the
 // aria-hidden artifact shape from the load-time scan suite above.
-(function findTables_isArtifactDefaultVsDropsNothing() {
+(function tableScan_isArtifactDefaultVsDropsNothing() {
   const artifactTable = makePass1DataTable();
   const hiddenParent = {
     tagName: 'DIV',
@@ -2919,12 +2914,12 @@ const EXPECTED_DETECTION_SETTINGS = {
     },
   };
 
-  eq('findTables: sanity — the fixture is both a valid data table and an accessibility artifact',
+  eq('table scan: sanity — the fixture is both a valid data table and an accessibility artifact',
     isDataTable(artifactTable) && isAccessibilityArtifact(artifactTable), true);
-  eq('findTables: default isArtifact (isAccessibilityArtifact) drops an accessibility artifact',
-    findTables(root).length, 0);
-  eq('findTables: an isArtifact that drops nothing keeps the accessibility artifact',
-    findTables(root, { isArtifact: () => false }).length, 1);
+  eq('table scan: default isArtifact (isAccessibilityArtifact) drops an accessibility artifact',
+    scannedHandles(root).length, 0);
+  eq('table scan: an isArtifact that drops nothing keeps the accessibility artifact',
+    scannedHandles(root, { isArtifact: () => false }).length, 1);
 })();
 
 // =============================================================================
@@ -2965,12 +2960,12 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   eq('nesting: the scrolling pane passes the data test',
     isDataTable(grid.scrollPaneEl), true);
 
-  const fromHost = findTables(makeNestingHost([grid.wrapperEl]));
+  const fromHost = scannedHandles(makeNestingHost([grid.wrapperEl]));
   eq('nesting: a root holding the nest reports one table', fromHost.length, 1);
   eq('nesting: the reported table is the scrolling pane',
     fromHost[0] === grid.scrollPaneEl, true);
 
-  const fromWrapper = findTables(grid.wrapperEl);
+  const fromWrapper = scannedHandles(grid.wrapperEl);
   eq('nesting: the chain root as root reports one table', fromWrapper.length, 1);
   eq('nesting: the chain root as root reports the scrolling pane',
     fromWrapper[0] === grid.scrollPaneEl, true);
@@ -3032,7 +3027,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 
 (function gridNesting_depthZeroRegistersTheWrapper() {
   const grid = makeDatabaseQueryGrid();
-  const results = findTables(makeNestingHost([grid.wrapperEl]), { nestingDepth: 0 });
+  const results = scannedHandles(makeNestingHost([grid.wrapperEl]), { nestingDepth: 0 });
   eq('nesting: depth 0 reports one table', results.length, 1);
   eq('nesting: depth 0 reports the wrapper',
     results[0] === grid.wrapperEl, true);
@@ -3049,7 +3044,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   eq('nesting: a two-column pinned pane passes the data test',
     isDataTable(grid.pinnedPaneEl), true);
 
-  const results = findTables(makeNestingHost([grid.wrapperEl]));
+  const results = scannedHandles(makeNestingHost([grid.wrapperEl]));
   eq('nesting: a depth holding two elements still reports one table', results.length, 1);
   eq('nesting: the fall-back outward lands on the wrapper',
     results[0] === grid.wrapperEl, true);
@@ -3060,14 +3055,14 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 (function gridNesting_shortChainClampsToItsInnermostElement() {
   const lone = makeLoneGrid();
   eq('nesting: the lone grid passes the data test', isDataTable(lone), true);
-  const loneResults = findTables(makeNestingHost([lone]));
+  const loneResults = scannedHandles(makeNestingHost([lone]));
   eq('nesting: a one-element chain at the shipped depth reports one table',
     loneResults.length, 1);
   eq('nesting: a one-element chain at the shipped depth reports itself',
     loneResults[0] === lone, true);
 
   const grid = makeDatabaseQueryGrid();
-  const deepResults = findTables(makeNestingHost([grid.wrapperEl]), { nestingDepth: 5 });
+  const deepResults = scannedHandles(makeNestingHost([grid.wrapperEl]), { nestingDepth: 5 });
   eq('nesting: a depth past the chain reports one table', deepResults.length, 1);
   eq('nesting: a depth past the chain clamps to the scrolling pane',
     deepResults[0] === grid.scrollPaneEl, true);
@@ -3093,15 +3088,15 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   eq('nesting: the plain layer carries no grid or table role',
     grid.paneParentEl.matches(GRID_ARIA_SELECTOR_TEXT), false);
 
-  const shipped = findTables(host);
+  const shipped = scannedHandles(host);
   eq('nesting: a plain layer inside the wrapper still reports one table', shipped.length, 1);
   eq('nesting: the shipped depth reports the scrolling pane past the plain layer',
     shipped[0] === grid.scrollPaneEl, true);
 
   eq('nesting: depth 0 past the plain layer reports the wrapper',
-    findTables(host, { nestingDepth: 0 }).map((handle) => handle === grid.wrapperEl), [true]);
+    scannedHandles(host, { nestingDepth: 0 }).map((handle) => handle === grid.wrapperEl), [true]);
   eq('nesting: depth 2 past the plain layer clamps to the scrolling pane',
-    findTables(host, { nestingDepth: 2 }).map((handle) => handle === grid.scrollPaneEl), [true]);
+    scannedHandles(host, { nestingDepth: 2 }).map((handle) => handle === grid.scrollPaneEl), [true]);
 })();
 
 // --- two nests under one plain parent report separately ---
@@ -3109,7 +3104,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 (function gridNesting_siblingNestsReportSeparately() {
   const first = makeDatabaseQueryGrid();
   const second = makeDatabaseQueryGrid();
-  const results = findTables(makeNestingHost([first.wrapperEl, second.wrapperEl]));
+  const results = scannedHandles(makeNestingHost([first.wrapperEl, second.wrapperEl]));
   eq('nesting: two nests under one plain parent report two tables', results.length, 2);
   eq('nesting: each nest reports its own scrolling pane',
     results.map((handle) => handle === first.scrollPaneEl || handle === second.scrollPaneEl),
@@ -3183,13 +3178,13 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 (function gridNesting_rediscoveryIsIdempotent() {
   const grid = makeDatabaseQueryGrid();
   eq('nesting: a nest whose scrolling pane is registered reports nothing',
-    findTables(grid.wrapperEl, { isRegistered: (el) => el === grid.scrollPaneEl }).length, 0);
+    scannedHandles(grid.wrapperEl, { isRegistered: (el) => el === grid.scrollPaneEl }).length, 0);
   eq('nesting: a nest whose wrapper is registered reports nothing',
-    findTables(grid.wrapperEl, { isRegistered: (el) => el === grid.wrapperEl }).length, 0);
+    scannedHandles(grid.wrapperEl, { isRegistered: (el) => el === grid.wrapperEl }).length, 0);
   eq('nesting: a nest whose pinned pane is registered reports nothing',
-    findTables(grid.wrapperEl, { isRegistered: (el) => el === grid.pinnedPaneEl }).length, 0);
+    scannedHandles(grid.wrapperEl, { isRegistered: (el) => el === grid.pinnedPaneEl }).length, 0);
   eq('nesting: a nest holding no registered element still reports the scrolling pane',
-    findTables(grid.wrapperEl, { isRegistered: () => false }).map((handle) => handle === grid.scrollPaneEl),
+    scannedHandles(grid.wrapperEl, { isRegistered: () => false }).map((handle) => handle === grid.scrollPaneEl),
     [true]);
 })();
 
@@ -3200,7 +3195,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   let caught = null;
   let results = null;
   try {
-    results = findTables(makeNestingHost([grid.wrapperEl]));
+    results = scannedHandles(makeNestingHost([grid.wrapperEl]));
   } catch (e) {
     caught = e.message;
   }
@@ -3226,7 +3221,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 
   eq('nesting: the plain native table is no accessibility artifact (sanity)',
     isAccessibilityArtifact(nativeTable), false);
-  const results = findTables(root);
+  const results = scannedHandles(root);
   eq('nesting: a root holding one native table and one nest reports two tables',
     results.length, 2);
   eq('nesting: a native table beside a nest reports first',
@@ -3242,7 +3237,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   const nestElements = [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl];
   const before = DR_MODEL.getRegisteredTables().length;
 
-  findTables(makeNestingHost([grid.wrapperEl]));
+  scannedHandles(makeNestingHost([grid.wrapperEl]));
 
   eq('nesting: the nomination step adds no registry entry',
     DR_MODEL.getRegisteredTables().length, before);
@@ -3606,8 +3601,8 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 //   - 'registered' the nest already holds an element the caller reports as
 //                  seen, which makes a rediscovery idempotent.
 //
-// findTables keeps the 'selected' outcomes and drops the other three, so a
-// caller that acts on them reads them here.
+// The load-time scan registers the element of a 'selected' outcome alone;
+// the other three register nothing.
 
 (function nominationStep_reportsSelectedForTheDatabaseQueryShape() {
   const grid = makeDatabaseQueryGrid();
@@ -3629,8 +3624,8 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   eq('nomination: the empty outcome selects nothing', result.selected, null);
   eq('nomination: the empty outcome reports the wrapper as the chain root',
     result.chainRoot === grid.wrapperEl, true);
-  eq('nomination: findTables on a grid with no rows reports nothing',
-    findTables(grid.wrapperEl).length, 0);
+  eq('nomination: the table scan of a grid with no rows registers nothing',
+    scannedHandles(grid.wrapperEl).length, 0);
 })();
 
 (function nominationStep_reportsCrowdedWhenTheDepthHoldsTwoAndTheRootFails() {
@@ -3644,8 +3639,8 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   eq('nomination: two passing siblings with a failing root report the crowded outcome',
     result.outcome, 'crowded');
   eq('nomination: the crowded outcome selects nothing', result.selected, null);
-  eq('nomination: findTables on the crowded shape reports nothing',
-    findTables(nest.rootEl).length, 0);
+  eq('nomination: the table scan of the crowded shape registers nothing',
+    scannedHandles(nest.rootEl).length, 0);
 })();
 
 (function nominationStep_reportsRegisteredWhenTheNestHoldsASeenElement() {
@@ -3764,7 +3759,7 @@ function cnAdapterCellEls(tableEl) {
   eq('cell nest: both grids pass the data test (sanity)',
     [isDataTable(page.outer), isDataTable(page.inner)], [true, true]);
 
-  const handles = findTables(page.host);
+  const handles = scannedHandles(page.host);
   eq('cell nest: a page holding a grid inside a cell of another grid reports two tables',
     handles.length, 2);
   eq('cell nest: the two tables are the outer grid and the inner grid, in document order',
@@ -3831,12 +3826,12 @@ function cnAdapterCellEls(tableEl) {
     scanTables(page.host, { isRegistered: (el) => both.has(el) }).map((r) => r.outcome),
     ['registered', 'registered']);
   eq('cell nest: with both grids registered, a second run reports no table',
-    findTables(page.host, { isRegistered: (el) => both.has(el) }).length, 0);
+    scannedHandles(page.host, { isRegistered: (el) => both.has(el) }).length, 0);
 
-  const innerOnly = findTables(page.host, { isRegistered: (el) => el === page.inner });
+  const innerOnly = scannedHandles(page.host, { isRegistered: (el) => el === page.inner });
   eq('cell nest: a registered inner grid leaves the outer grid to register',
     innerOnly.map((handle) => handle === page.outer), [true]);
-  const outerOnly = findTables(page.host, { isRegistered: (el) => el === page.outer });
+  const outerOnly = scannedHandles(page.host, { isRegistered: (el) => el === page.outer });
   eq('cell nest: a registered outer grid leaves the inner grid to register',
     outerOnly.map((handle) => handle === page.inner), [true]);
 })();
@@ -3882,7 +3877,7 @@ function cnAdapterCellEls(tableEl) {
   rwSetChildren(holdingCell, [grid.wrapperEl]);
   const host = rwEl('div', {}, [outer]);
 
-  const handles = findTables(host);
+  const handles = scannedHandles(host);
   eq('cell nest: an outer grid holding the database query shape in a cell reports two tables',
     handles.length, 2);
   eq('cell nest: the outer grid registers',
@@ -3906,12 +3901,12 @@ function cnAdapterCellEls(tableEl) {
   eq('cell nest: a cell role above the wrapper leaves the wrapper the chain root',
     chainRootOf(grid.scrollRowEls[0].children[0]) === grid.wrapperEl, true);
   eq('cell nest: a cell role above the wrapper still selects the scrolling pane at the configured depth',
-    findTables(strayCell).map((handle) => handle === grid.scrollPaneEl), [true]);
+    scannedHandles(strayCell).map((handle) => handle === grid.scrollPaneEl), [true]);
   const result = nominateNest(grid.wrapperEl);
   eq('cell nest: a cell role above the wrapper still reports the selected outcome',
     result.outcome, 'selected');
   eq('cell nest: depth 0 still selects the wrapper',
-    findTables(strayCell, { nestingDepth: 0 }).map((handle) => handle === grid.wrapperEl), [true]);
+    scannedHandles(strayCell, { nestingDepth: 0 }).map((handle) => handle === grid.wrapperEl), [true]);
 
   const lone = makeLoneGrid();
   rwEl('div', { role: 'gridcell' }, [lone]);
@@ -3938,7 +3933,7 @@ function cnAdapterCellEls(tableEl) {
   eq('cell nest: the fixture nests three grids, each inside a cell of the one around it (sanity)',
     [middle.parentElement.getAttribute('role'), innermost.parentElement.getAttribute('role')], ['cell', 'cell']);
 
-  const handles = findTables(host);
+  const handles = scannedHandles(host);
   eq('cell nest: three nested grids report three tables', handles.length, 3);
   eq('cell nest: the three tables are the three grids, outermost first',
     handles.length === 3 && handles[0] === outer && handles[1] === middle && handles[2] === innermost, true);
@@ -3964,24 +3959,19 @@ function cnAdapterCellEls(tableEl) {
 
   const all = new Set([outer, middle, innermost]);
   eq('cell nest: with all three grids registered, a second run reports no table',
-    findTables(host, { isRegistered: (el) => all.has(el) }).length, 0);
+    scannedHandles(host, { isRegistered: (el) => all.has(el) }).length, 0);
 })();
 
 // --- A grid inside a cell of a native table ---
 //
 // A native cell carries no cell role, so the walk up from the grid passes
-// through it and the grid stays its own chain root. Both tables register.
-// The right-click route for this shape stays out: its first step returns the
-// nearest native table, and the mixed-kind case is not decided (issue #600).
+// through it and the grid stays its own chain root. Both tables register,
+// and a right-click resolves the nearest table of either kind (issue #600).
 
 (function cellNest_aGridInsideANativeCellRegistersBesideTheNativeTable() {
-  const nativeTable = rwDrawTable('native', cnSections(undefined)).table;
-  const grid = rwDrawTable('grid', CN_INNER.sections).table;
-  const holdingCell = nativeTable.rows[1].cells[2];
-  rwSetChildren(holdingCell, [grid]);
-  const host = rwEl('div', {}, [nativeTable]);
+  const { host, nativeTable, grid } = makeGridInNativeCell();
 
-  const handles = findTables(host);
+  const handles = scannedHandles(host);
   eq('cell nest: a native table holding a grid in a cell reports two tables', handles.length, 2);
   eq('cell nest: the native table reports first and the grid second',
     handles.length === 2 && handles[0] === nativeTable && handles[1] === grid, true);
@@ -3992,6 +3982,95 @@ function cnAdapterCellEls(tableEl) {
     [['Region', '2023'], ['North', '4,821'], ['South', '2,734']]);
   eq('cell nest: the grid inside the native cell reads its own two rows',
     cnAdapterTexts(grid), [['Q1', '1,234'], ['Q2', '3,587']]);
+})();
+
+(function cellNest_aRightClickInsideAGridInANativeCellResolvesTheGrid() {
+  const page = makeGridInNativeCell();
+  const fresh = { isRegistered: () => false };
+
+  const inGrid = findTargetTable(page.gridCell, fresh);
+  eq('grid in a native cell: a right-click inside the grid resolves the grid as new',
+    inGrid && [inGrid.handle === page.grid, inGrid.isNew], [true, true]);
+  const inNative = findTargetTable(page.nativeCell, fresh);
+  eq('grid in a native cell: a right-click in another cell of the native table resolves the native table',
+    inNative !== null && inNative.handle === page.nativeTable, true);
+  const onHoldingCell = findTargetTable(page.holdingCell, fresh);
+  eq('grid in a native cell: a right-click on the cell holding the grid, outside the grid, resolves the native table',
+    onHoldingCell !== null && onHoldingCell.handle === page.nativeTable, true);
+
+  const registered = new Set([page.nativeTable, page.grid]);
+  const inGridRegistered = findTargetTable(page.gridCell, { isRegistered: (el) => registered.has(el) });
+  eq('grid in a native cell: with both tables registered, a right-click inside the grid resolves the grid',
+    inGridRegistered && [inGridRegistered.handle === page.grid, inGridRegistered.isNew], [true, false]);
+})();
+
+// --- A grid with nothing to simplify, nested in a grid's cell ---
+//
+// The right-click walk passes over a nest that selects nothing for the table
+// around it, as it passes over a native table with nothing to simplify.
+
+(function cellNest_aRightClickInAGridWithNothingToSimplifyResolvesTheDataGridAroundIt() {
+  const words = { sections: [{ part: 'body', rows: [['Q1', 'alpha'], ['Q2', 'bravo']], grouped: true }] };
+  const outer = rwDrawTable('grid', cnSections(words)).table;
+  rwEl('div', {}, [outer]);
+  const inner = outer.querySelectorAll(GRID_ARIA_SELECTOR_TEXT)[0];
+  const innerCell = dgDescendantsMatching(inner, '[role="row"]')[1].children[1];
+
+  eq('cell nest: the inner grid fails the data test and the outer grid passes it (sanity)',
+    [isDataTable(inner), isDataTable(outer)], [false, true]);
+  const result = findTargetTable(innerCell, { isRegistered: () => false });
+  eq('cell nest: a click in a grid with nothing to simplify, inside a data grid\'s cell, resolves the data grid',
+    result !== null && result.handle === outer, true);
+})();
+
+(function cellNest_aRightClickInAGridWithNothingToSimplifyResolvesNothingInItsCells() {
+  const outer = rwDrawTable('grid', [
+    { part: 'body', rows: [
+      ['North', 'alpha', { pieces: [], nested: CN_INNER }],
+      ['South', 'bravo', ''],
+    ], grouped: true },
+  ]).table;
+  rwEl('div', {}, [outer]);
+  const inner = outer.querySelectorAll(GRID_ARIA_SELECTOR_TEXT)[0];
+  const outerCell = dgDescendantsMatching(outer, '[role="row"]').filter((row) => !inner.contains(row))[1].children[1];
+
+  eq('cell nest: the outer grid fails the data test and the inner grid passes it (sanity)',
+    [isDataTable(outer), isDataTable(inner)], [false, true]);
+  eq('cell nest: a click in a grid with nothing to simplify, holding a data grid in another cell, resolves nothing',
+    findTargetTable(outerCell, { isRegistered: () => false }) === null, true);
+})();
+
+// --- A click deep inside a cell ---
+//
+// The right-click walk climbs to the document root, so the depth of the
+// click inside a cell does not change the result on either table kind.
+
+(function cellNest_aRightClickTwentyLevelsInsideACellResolvesTheTable() {
+  // A span under 20 plain wrappers, appended to `cell`; returns the span.
+  const buryInCell = (cell) => {
+    const target = rwEl('span', {}, []);
+    let top = target;
+    for (let i = 0; i < 20; i++) top = rwEl('div', {}, [top]);
+    rwSetChildren(cell, cell.childNodes.concat([top]));
+    return target;
+  };
+
+  const grid = rwDrawTable('grid', CN_INNER.sections).table;
+  rwEl('div', {}, [grid]);
+  const inGrid = buryInCell(dgDescendantsMatching(grid, '[role="row"]')[1].children[1]);
+  const fresh = findTargetTable(inGrid, { isRegistered: () => false });
+  eq('deep click: a click 20 levels inside a grid cell resolves the grid as new',
+    fresh && [fresh.handle === grid, fresh.isNew], [true, true]);
+  const registered = findTargetTable(inGrid, { isRegistered: (el) => el === grid });
+  eq('deep click: a click 20 levels inside a registered grid\'s cell resolves the grid',
+    registered && [registered.handle === grid, registered.isNew], [true, false]);
+
+  const nativeTable = rwDrawTable('native', cnSections(undefined)).table;
+  rwEl('div', {}, [nativeTable]);
+  const inNative = buryInCell(nativeTable.rows[2].cells[1]);
+  const nativeResult = findTargetTable(inNative, { isRegistered: () => false });
+  eq('deep click: a click 20 levels inside a native table cell resolves the native table',
+    nativeResult !== null && nativeResult.handle === nativeTable, true);
 })();
 
 // =============================================================================
@@ -4098,8 +4177,8 @@ function cnAdapterCellEls(tableEl) {
   const PARENT_EXPECTED_SEQUENCE = [{ topic: 'state:tableActivated' }];
 
   // Minimal fixture the contextmenu handler's findTargetTable() walk-up
-  // recognizes immediately as a table (closest('table') returns itself) —
-  // same shape the existing table-contextmenu-activation runtime test uses.
+  // recognizes immediately as a table (its tag is TABLE) — same shape the
+  // existing table-contextmenu-activation runtime test uses.
   function makeFixtureTarget() {
     return {
       tagName: 'TABLE',
@@ -4187,7 +4266,7 @@ function cnAdapterCellEls(tableEl) {
 // falls back to the raw text only when the rendered text is empty, which
 // covers those two cases. Every assertion below drives the real adapter,
 // the real data test, or the real engine (isDataTable, roundTable,
-// resetTable, collectNumericCells, findTables); none pins the source text
+// resetTable, collectNumericCells, scanTables); none pins the source text
 // of detect.js or content.js.
 // ---------------------------------------------------------------------------
 
@@ -4323,12 +4402,12 @@ function cnAdapterCellEls(tableEl) {
   eq('hidden cells: isAccessibilityArtifact flags the artifact',
     isAccessibilityArtifact(artifactTable), true);
 
-  // findTables is where detection combines the two: its default isArtifact
+  // The table scan is where detection combines the two: its default isArtifact
   // is isAccessibilityArtifact, applied before any candidate is kept.
   const root = makeStubEl({ tagName: 'DIV' });
   root.querySelectorAll = (sel) => (sel === 'table' ? [artifactTable] : []);
   eq('hidden cells: detection skips the accessibility artifact despite its hidden numeric cells',
-    findTables(root).length, 0);
+    scannedHandles(root).length, 0);
 
   // Control: the identical row shape, minus the accessibility signal, is a
   // real candidate — isolating the guard as the reason for the exclusion
@@ -4340,7 +4419,7 @@ function cnAdapterCellEls(tableEl) {
   const root2 = makeStubEl({ tagName: 'DIV' });
   root2.querySelectorAll = (sel) => (sel === 'table' ? [onScreenTable] : []);
   eq('hidden cells: detection keeps the same row shape without the accessibility signal',
-    findTables(root2).length, 1);
+    scannedHandles(root2).length, 1);
 })();
 
 // --- Placement: a bracket may hold its own text piece ---
@@ -4877,13 +4956,10 @@ function makeSparselyBoxedGrid(boxed) {
     for (const form of AF_ARTIFACT_FORMS) {
       const grid = afTable('grid', role);
       const page = afPage([form.place(grid)]);
-      const probe = makeArtifactStyleProbe();
       afScan(page);
       eq(`artifact filter, ${role} role, ${form.name}: the load-time scan registers nothing and draws no table pillbox`,
         afRegistered(page).length, 0);
       afForget(page);
-      eq(`artifact filter, ${role} role, ${form.name}: findTables lists nothing`,
-        findTables(page, { styleProbe: probe }).length, 0);
       eq(`artifact filter, ${role} role, ${form.name}: the right-click resolves nothing`,
         afRightClick(page, grid) === null, true);
       eq(`artifact filter, ${role} role, ${form.name}: the right-click path registers nothing`,
@@ -4912,8 +4988,6 @@ function makeSparselyBoxedGrid(boxed) {
     afScan(page);
     eq(`artifact filter, native, ${form.name}: the load-time scan registers nothing`,
       afRegistered(page).length, 0);
-    eq(`artifact filter, native, ${form.name}: findTables lists nothing`,
-      findTables(page, { styleProbe: inlineStyleProbe }).length, 0);
     afForget(page);
   }
   for (const form of AF_VISIBLE_FORMS) {
@@ -5045,8 +5119,6 @@ function makeSparselyBoxedGrid(boxed) {
       afScan(page);
       eq(`artifact filter, ${kind}: ${name} registers on the load-time scan`, afSame(afRegistered(page), [table]), true);
       afForget(page);
-      eq(`artifact filter, ${kind}: ${name} is listed by findTables`,
-        afSame(findTables(page, { styleProbe: inlineStyleProbe }), [table]), true);
     }
   }
 })();
@@ -5081,8 +5153,6 @@ function makeSparselyBoxedGrid(boxed) {
   try { afScan(page); } finally { createTablePillbox = savedCreate; }
   eq('native load-time scan: the data tables register in document order and the artifacts stay out',
     afSame(order, [first, second, third.querySelectorAll('table')[0]]), true);
-  eq('native load-time scan: findTables lists the same tables in the same order',
-    afSame(findTables(page, { styleProbe: inlineStyleProbe }), order), true);
   afForget(page);
 })();
 

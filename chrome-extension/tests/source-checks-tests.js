@@ -601,8 +601,8 @@
 
 // ---------------------------------------------------------------------------
 // Static purity scan.
-// Detection functions (findTargetTable, findTables, looksLikeGrid, isDataTable,
-// isAccessibilityArtifact) must never write to the page — no classList.add,
+// Detection functions (findTargetTable, scanTables, nominateNest,
+// looksLikeGrid, isDataTable, isAccessibilityArtifact) must never write to the page — no classList.add,
 // createElement, appendChild, or createTablePillbox inside their bodies.
 // Write-layer helpers (writePatches,
 // restoreTextPieces, GridAdapter's applyPatches) legitimately create/mutate nodes and are correctly
@@ -616,7 +616,7 @@
     return;
   }
   const FORBIDDEN = ['classList.add', 'createElement', 'appendChild', 'createTablePillbox'];
-  const DETECTION_FNS = ['findTargetTable', 'findTables', 'looksLikeGrid', 'isDataTable', 'isAccessibilityArtifact'];
+  const DETECTION_FNS = ['findTargetTable', 'scanTables', 'nominateNest', 'looksLikeGrid', 'isDataTable', 'isAccessibilityArtifact'];
 
   // Extract a top-level `function name(` body by brace-matching from the
   // opening brace to its balanced close. Good enough for this file's flat,
@@ -1285,7 +1285,7 @@ checkPackageObjectMatchesDeclarations('dr-number', 'DR_NUMBER',
 //      helpers that DR_TABLE leaves out.
 //   2. The jsdom-less criterion: detection runs with no Chrome globals at all.
 //   3. VendorProfiles: a custom list replaces (not merges with) the default.
-//   4. findTables' isArtifact: the default drops accessibility artifacts; a
+//   4. The table scan's isArtifact: the default drops accessibility artifacts; a
 //      filter that drops nothing keeps it.
 // ---------------------------------------------------------------------------
 (function drTableBundleIsPublished() {
@@ -1304,7 +1304,6 @@ checkPackageObjectMatchesDeclarations('dr-number', 'DR_NUMBER',
     'sortCellByRecord',
     'looksLikeGrid',
     'findTargetTable',
-    'findTables',
     'scanTables',
     'chainRootOf',
     'nominateNest',

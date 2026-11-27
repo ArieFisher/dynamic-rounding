@@ -25,6 +25,14 @@ function _carriesGridRole(el) {
 // context holds no `Node` global.
 const DR_TABLE_ELEMENT_NODE = 1;
 
+// The cap of a walk from an element up to the document root: none. The page's
+// depth bounds the walk, one step per ancestor, so it ends on every page. A
+// count cap would change results rather than bound work: a table more than
+// that many levels under an aria-hidden ancestor, such as a page root hidden
+// behind a dialog, would stop counting as an accessibility artifact and would
+// register, and a right-click that many levels inside a table would miss it.
+const WALK_TO_ROOT = Infinity;
+
 // Every "simplify" switch in the settings contract, on, so a table passes the
 // data test whatever its own switches hold, and a new switch reaches the test
 // with no edit here. The read runs at load, so a missing DR_DEFAULTS fails
@@ -110,13 +118,21 @@ function firstCellsAlign(children, candidateRows, styleProbe) {
 }
 
 /**
- * Find the grid or table root for the element `el` was right-clicked inside.
- * Four routes apply in order: the nomination step over each <table> ancestor,
- * nearest first; the nearest registered ancestor; the nomination step over
- * the nest `el` sits in, which finds a marked grid the load-time scan missed;
- * and the outermost looksLikeGrid match above `el`. A native table that is an
- * accessibility artifact or fails the data test is passed over for the table
- * around it, the way a grid nest that selects nothing falls to the next route.
+ * Find the table the element `el` was right-clicked inside: the nearest table
+ * of either kind around it. One walk goes up from `el` and ends at the first
+ * element that opts.isRegistered reports, or at the first native table or
+ * chain root whose nest the nomination step selects an element in. The step
+ * applies the configured nesting depth to the whole nest, so the selected
+ * element can be a sibling of the clicked one: a click in a vendor grid's
+ * row-number gutter resolves the scrolling pane beside it.
+ *
+ * The walk passes over a nest the step selects nothing in and goes on to the
+ * table around it: a native table that is an accessibility artifact or fails
+ * the data test, a grid nest with no data table at its depth, and a nest that
+ * holds a registered element off the walk's path, as after a click in a
+ * sibling pane of a registered scrolling pane. When the walk ends with no
+ * table, the geometry probe returns the outermost looksLikeGrid match above
+ * `el`.
  *
  * `isNew` is true when the caller still has to register the element and build
  * its table pillbox. Without opts.isRegistered every result reports isNew:
@@ -129,56 +145,33 @@ function findTargetTable(el, opts = {}) {
   if (!el) return null;
   const isRegistered = _registeredCheck(opts);
   const docBody = _documentBody(opts);
-
-  for (let table = _tableAtOrAbove(el); table; table = _tableAtOrAbove(parentOf(table))) {
-    const { outcome } = nominateNest(table, opts);
-    if (outcome === 'selected' || outcome === 'registered') {
-      return { handle: table, isNew: outcome === 'selected' };
-    }
-  }
-  const registered = registeredAncestor(el, docBody, isRegistered);
-  if (registered) return { handle: registered, isNew: false };
-  const nominated = nominatedInNest(el, opts);
-  if (nominated) return { handle: nominated, isNew: true };
+  let found = null;
+  walkUp(el, WALK_TO_ROOT, (node) => node === docBody, (node) => {
+    found = _targetAt(node, isRegistered, opts);
+    return found !== null;
+  });
+  if (found) return found;
   const outermost = outermostGridAbove(el, docBody, opts);
   return outermost && { handle: outermost, isNew: !isRegistered(outermost) };
 }
 
-function _tableAtOrAbove(node) {
-  return node && typeof node.closest === 'function' ? node.closest('table') : null;
+// The right-click target at one step of findTargetTable's walk, or null.
+function _targetAt(node, isRegistered, opts) {
+  if (isRegistered(node)) return { handle: node, isNew: false };
+  if (!_isNestRoot(node, opts)) return null;
+  const { selected } = nominateNest(node, opts);
+  return selected ? { handle: selected, isNew: true } : null;
+}
+
+// A native table or a chain root: the element the nomination step runs from.
+function _isNestRoot(node, opts) {
+  if (node.tagName === 'TABLE') return true;
+  return _isQualifyingElement(node, _artifactCheck(opts), opts) && chainRootOf(node, opts, true) === node;
 }
 
 function _documentBody(opts) {
   const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
   return doc && doc.body;
-}
-
-/**
- * The nearest ancestor of `el`, or `el` itself, that isRegistered reports as
- * registered. A walk up, not a closest() query, because isRegistered is an
- * arbitrary per-element check.
- * @returns {Element|null}
- */
-function registeredAncestor(el, docBody, isRegistered) {
-  return walkUp(el, DR_DETECTION_SETTINGS.gridWalkDepthCap, (node) => node === docBody,
-    (node) => node.nodeType === DR_TABLE_ELEMENT_NODE && isRegistered(node));
-}
-
-/**
- * The element the nomination step selects over the chain root of the nest `el`
- * sits in, or null. The step applies the configured nesting depth to the whole
- * nest, so the element can be a sibling of the clicked one: a click in a
- * vendor grid's row-number gutter resolves the scrolling pane beside it.
- *
- * When the step selects nothing in `el`'s nest, findTables returns the element
- * selected in the first nest inside a cell under the chain root, if any; with
- * none, the result falls to the geometry probe (issue #382 records this for a
- * click in a sibling pane of a registered nest).
- * @returns {Element|null}
- */
-function nominatedInNest(el, opts) {
-  const chainRoot = chainRootOf(el, opts);
-  return (chainRoot && findTables(chainRoot, opts)[0]) || null;
 }
 
 /**
@@ -209,7 +202,7 @@ const POSITIONED_VALUES = new Set(['relative', 'absolute', 'fixed', 'sticky']);
  */
 function _nearestPositionedAncestor(el, opts = {}) {
   const styleProbe = _styleProbeOf(opts);
-  return walkUp(el, Infinity, null, (node) => {
+  return walkUp(el, WALK_TO_ROOT, null, (node) => {
     if (typeof node.getAttribute !== 'function') return false;
     const style = styleProbe.getComputedStyle(node);
     return !!(style && POSITIONED_VALUES.has(style.position));
@@ -236,7 +229,7 @@ function isAccessibilityArtifact(el, opts = {}) {
  * @returns {boolean}
  */
 function carriesHiddenMark(el) {
-  return walkUp(el, Infinity, null,
+  return walkUp(el, WALK_TO_ROOT, null,
     (node) => typeof node.getAttribute === 'function' && node.getAttribute('aria-hidden') === 'true') !== null;
 }
 
@@ -506,7 +499,8 @@ function nominateNest(chainRoot, opts = {}) {
 
   // An element nested in a cell is out of a grid's nest (_depthInChain returns
   // -1), so a registered grid inside a cell never makes the grid around it
-  // read as registered.
+  // read as registered. The root's guards test no role, so an unmarked grid
+  // the shape check passes in as its own root sits in its nest at depth 0.
   const nest = chainRoot.tagName === 'TABLE' ? [{ el: chainRoot, depth: 0 }]
     : [chainRoot].filter((el) => _passesQualifyingGuards(el, isArtifact, opts))
       .concat(_qualifyingDescendants(chainRoot, isArtifact, opts))
@@ -544,8 +538,8 @@ function _nativeTablesIn(root) {
  * The one table scan: run the nomination step over every nest under `root`
  * and report one result per nest, native tables first, then grids, each kind
  * in document order. Both live scanners (the load-time scan and the
- * added-node pass, both in content.js) and findTables read it, and the
- * controller turns each outcome into a registration or a pending table.
+ * added-node pass, both in content.js) read it, and the controller turns
+ * each outcome into a registration or a pending table.
  *
  * A chain root can sit outside `root` (an added node inside a wrapper already
  * in the page), so a second run over the same nest evaluates the whole nest
@@ -566,23 +560,4 @@ function scanTables(root, opts = {}) {
   for (const el of qualifying) chainRoots.add(chainRootOf(el, opts, true));
 
   return Array.from(chainRoots, (chainRoot) => nominateNest(chainRoot, opts));
-}
-
-/**
- * The handles scanTables finds under `root`: the nests the nomination step
- * reports as 'selected', native tables first. A table root yields itself
- * alone among the native tables, so a shape-change re-registration covers
- * that one table. A caller that acts on the other outcomes — the
- * controller, which holds a pending table for an empty nest — reads
- * scanTables.
- *
- * The step reports a nest with a registered member as 'registered', so no
- * handle is one opts.isRegistered (e.g. DR_MODEL.hasTable) reports.
- *
- * @returns {Element[]}
- */
-function findTables(root, opts = {}) {
-  const handles = scanTables(root, opts).filter(({ outcome }) => outcome === 'selected').map(({ selected }) => selected);
-  const isTableRoot = root && root.tagName === 'TABLE';
-  return handles.filter((handle) => !isTableRoot || handle === root || handle.tagName !== 'TABLE');
 }
