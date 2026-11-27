@@ -168,6 +168,17 @@ function readNumberCell({ text, trimmedText, hasSuperscript, digitsSpanPieces })
   return extractNumbersInText(text);
 }
 
+// Where the masked ranges test a number's digits: up to its exponent. Only a
+// cell that toNumber reads as one number in scientific notation ("1.2E+05",
+// "1.2E−05", "1.2 E+05") gives a match whose text holds an exponent, and that
+// exponent is part of the number, though the identifier scan reads "05" as a
+// leading-zero code. Among words and in a cell with a superscript the reader
+// takes "1.2" and "05" as two numbers, so there "05" stays a code.
+function significandEnd(match) {
+  const exponentAt = match.numStr.search(/[eE]/);
+  return match.index + (exponentAt === -1 ? match.numStr.length : exponentAt);
+}
+
 function numberStretch(match) {
   return { kind: 'number', start: match.index, end: match.index + match.numStr.length, num: match.num };
 }
@@ -211,7 +222,7 @@ function classifyCell(input, options) {
     ? extractNumbersInText(text)
     : readNumberCell({ text, trimmedText, hasSuperscript, digitsSpanPieces });
   const numberStretches = numbers
-    .filter((m) => !overlapsMaskedRange(masked, m.index, m.index + m.numStr.length))
+    .filter((m) => !overlapsMaskedRange(masked, m.index, significandEnd(m)))
     .filter((m) => !touchesSwitchedOffSign(text, m, options))
     .map(numberStretch);
   const stretches = [...dateTimeStretches(read, options), ...numberStretches]

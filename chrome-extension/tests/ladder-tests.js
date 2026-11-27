@@ -432,12 +432,18 @@ const IDENTIFIER_SPAN_NEAR_MISSES = [
 (function leadingZeroCodesAndExponents() {
   eq('leading zero: "0012 USD" holds no stretch',
     classifyAt('0012 USD', LADDER_OPTS), { stretches: [] });
-  eq('scientific notation: "1.2E+05" gives one number stretch over the whole cell',
-    classifyAt('1.2E+05', LADDER_OPTS), { stretches: [expectedNumberStretch(0, '1.2E+05', 120000)] });
-  eq('scientific notation: "1.2E+05" has no identifier ranges',
-    getIdentifierMaskedRanges('1.2E+05'), []);
+  for (const [text, num] of [
+    ['1.2E+05', 120000], ['1.2E−05', 0.000012], ['1.2E–05', 0.000012],
+    ['1.2 E+05', 120000], ['1.2E+ 05', 120000], ['1.2E +05', 120000],
+  ]) {
+    eq(`scientific notation: "${text}" gives one number stretch over the whole cell`,
+      classifyAt(text, LADDER_OPTS), { stretches: [expectedNumberStretch(0, text, num)] });
+  }
   eq('scientific notation: "about 1.2E+05 units" gives one stretch over "1.2"',
     stretchTexts('about 1.2E+05 units', classifyAt('about 1.2E+05 units', LADDER_OPTS)), ['1.2']);
+  eq('scientific notation: "1.2E+017a" with "a" a superscript gives one stretch over "1.2"',
+    stretchTexts('1.2E+017a', classifyAt('1.2E+017a', LADDER_OPTS,
+      { superscriptRanges: [{ start: 8, end: 9 }], hasSuperscript: true })), ['1.2']);
 })();
 
 // A number right after "@" belongs to an at-name or an address, in any cell.

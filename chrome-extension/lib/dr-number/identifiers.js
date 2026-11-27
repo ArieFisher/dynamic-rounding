@@ -175,13 +175,8 @@ const POSTAL_CODE_PATTERN = [
 // ("ID 0000123, late") still ends it. A run that is one group of a larger
 // number ("034" in "1,034" or "1 034 567") is not a code either: the shape
 // is groupOfNumber, so findIdentifiers drops a match that sits inside a
-// longer number run. The exponent of a number in scientific notation that
-// fills the cell ("05" in "1.2E+05") is not a code either: the shape is
-// exponentOfCellNumber, so findIdentifiers drops that match. Inside words
-// the reader takes "1.2" and "05" as two numbers, so there the exponent stays
-// a code and keeps its digits.
+// longer number run.
 const LEADING_ZERO_PATTERN = '0\\d+(?![.,]\\d)';
-const EXPONENT_MARK_BEFORE_RE = /[\d.][eE][+-]$/;
 
 // The {start, end} of every run the pattern that finds a number inside text
 // (numbers-in-text.js) takes as one number, in text order. That pattern reads
@@ -199,10 +194,9 @@ const numberRunSpans = (text) => Array.from(text.matchAll(NUMBER_IN_TEXT_REGEX_G
 // counts only when it fills the cell, a test of the whole text for that form.
 // The test takes the text and whether the cell's digits span several text
 // pieces. A shape marked groupOfNumber drops a match that is one group of a
-// longer number run, and a shape marked exponentOfCellNumber drops a match
-// that is the exponent of a number filling the cell. findIdentifiers reads
-// the list alone, and a new shape is one more entry here. Phone numbers come
-// before grouped digits so "416 555 1234" takes the phone name.
+// longer number run. findIdentifiers reads the list alone, and a new shape
+// is one more entry here. Phone numbers come before grouped digits so
+// "416 555 1234" takes the phone name.
 const IDENTIFIER_SHAPES = [
   { name: 'phone-number', span: spanRe(PHONE_NUMBER_PATTERN) },
   { name: 'grouped-digits', fillsOnly: (text, digitsSpanPieces) => !digitsSpanPieces && GROUPED_DIGITS_RE.test(text) },
@@ -214,7 +208,7 @@ const IDENTIFIER_SHAPES = [
     fillsOnly: (text) => /[- ]/.test((ISBN_WITHOUT_WORD_RE.exec(text) || [])[1] || ''),
   },
   { name: 'postal-code', span: spanRe(POSTAL_CODE_PATTERN) },
-  { name: 'leading-zero', span: spanRe(LEADING_ZERO_PATTERN), groupOfNumber: true, exponentOfCellNumber: true },
+  { name: 'leading-zero', span: spanRe(LEADING_ZERO_PATTERN), groupOfNumber: true },
 ];
 
 /**
@@ -230,9 +224,6 @@ const IDENTIFIER_SHAPES = [
 function findIdentifiers(text, digitsSpanPieces = false, shapes = IDENTIFIER_SHAPES) {
   if (typeof text !== 'string') return [];
   const quantity = GROUPED_DIGITS_QUANTITY_RE.test(text);
-  // Read on the first exponent match only, so a long cell of codes with no
-  // exponent never runs the whole-cell number reader.
-  let isCellNumber;
   const codes = [];
   for (const shape of shapes) {
     const matches = shape.span ? Array.from(text.matchAll(shape.span)) : [];
@@ -251,10 +242,6 @@ function findIdentifiers(text, digitsSpanPieces = false, shapes = IDENTIFIER_SHA
       const run = runs[runIndex];
       // A code inside a longer number run is one group of that number.
       if (run !== undefined && run.start <= start && run.end - run.start > end - start) continue;
-      if (shape.exponentOfCellNumber && EXPONENT_MARK_BEFORE_RE.test(text.slice(Math.max(0, start - 3), start))) {
-        if (isCellNumber === undefined) isCellNumber = toNumber(text) !== null;
-        if (isCellNumber) continue;
-      }
       const fillsCell = !quantity
         && CELL_LEAD_RE.test(text.slice(0, start)) && CELL_TRAIL_RE.test(text.slice(end));
       codes.push({ name: shape.name, start, end, fillsCell, inText: !SPACED_DIGITS_ONLY_RE.test(match[0]) });
