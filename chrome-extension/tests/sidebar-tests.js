@@ -971,7 +971,7 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
 // ---------------------------------------------------------------------------
 const SINGLE_READ_SAMPLES = {
   top: [{ original: '4,236,000', num: 4236000 }],
-  bottom: [{ original: '8,120', num: 8120 }],
+  other: [{ original: '8,120', num: 8120 }],
 };
 
 (function singleRead_aRedrawSendsOneRequestAndDrawsFromItsAnswer() {
@@ -999,7 +999,7 @@ const SINGLE_READ_SAMPLES = {
     eq('single read: the bound state comes from the answer\'s samples',
       h.bodyClasses.has('unbound'), false);
     eq('single read: the lens preview draws the answer\'s samples',
-      otherRows.length, SINGLE_READ_SAMPLES.bottom.length);
+      otherRows.length, SINGLE_READ_SAMPLES.other.length);
 
     answerActiveTableRead(h, { settings: DR_DEFAULTS, samples: null, maxMag: null });
     h.tabMessages.length = 0;
@@ -1041,7 +1041,7 @@ const SINGLE_READ_SAMPLES = {
     eq('echo keeps control: the sidebar\'s own notice still reads the active table',
       h.tabMessages.map((m) => m.topic), ['request:activeTable']);
     eq('echo keeps control: the lens preview redraws from the read',
-      otherRows.length, SINGLE_READ_SAMPLES.bottom.length);
+      otherRows.length, SINGLE_READ_SAMPLES.other.length);
   } finally {
     h.restore();
   }
@@ -1582,6 +1582,16 @@ const SINGLE_READ_SAMPLES = {
       snapshotKeysRead.filter((key) => !(key in sidebarSnapshot)), []);
     eq('sidebar snapshot keys: the sidebar snapshot\'s lens preview holds every key the renderer reads',
       lensKeysRead.filter((key) => !(key in (sidebarSnapshot.lensPreview || {}))), []);
+    eq('sidebar snapshot: a finish on a sidebar bound to a table records bound as true',
+      sidebarSnapshot.bound, true);
+
+    answerActiveTableRead(h, { settings: DR_DEFAULTS, samples: null, maxMag: null });
+    h.dispatch({ topic: 'state:tableSwitched' });
+    sidebarSnapshot = null;
+    // The stub renderer's throw leaves the form open with its mark set.
+    h.el('captureSave').fire('click');
+    eq('sidebar snapshot: a finish on an unbound sidebar records bound as false',
+      sidebarSnapshot && sidebarSnapshot.bound, false);
   } finally {
     DR_CAPTURE.buildCaptureDocument = savedBuild;
     DR_LOG.warn = savedWarn;

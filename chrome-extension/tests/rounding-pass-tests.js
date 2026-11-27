@@ -580,9 +580,9 @@ const SEAT_ROWS = [
 
 (function lensPreview_extractPreviewSamples_buckets() {
   // 5 cells across 5 distinct magnitudes: 1e7, 1e6, 1e4, 1e2, 1e1.
-  // num_top = 1 (DR_DEFAULTS) -> top band picks the highest magnitude only
-  // (others differ from max_mag by >= 1). To exercise the 2-row top band,
-  // give it two cells at the same top magnitude.
+  // num_top = 1 (DR_DEFAULTS) -> the top band holds the highest magnitude only
+  // (others differ from max_mag by >= 1). Two cells share the top magnitude,
+  // and the preview still holds one top-band sample.
   //
   // The data sits at row >= 1 / column >= 1 behind a TH header row and a TH
   // label column: DR_DEFAULTS.simplifyFirstRow/simplifyFirstColumn are both
@@ -605,19 +605,18 @@ const SEAT_ROWS = [
   };
   const result = extractPreviewSamples(table);
   eq('lens preview of 27M, 18M, 4,080, 312, and 56: maxMag is 7', result.maxMag, 7);
-  eq('lens preview of 27M, 18M, 4,080, 312, and 56: the top band holds 2 samples', result.samples.top.length, 2);
-  eq('lens preview of 27M, 18M, 4,080, 312, and 56: the first top-band sample is 27M', result.samples.top[0].num, 27000000);
-  eq('lens preview of 27M, 18M, 4,080, 312, and 56: the second top-band sample is 18M', result.samples.top[1].num, 18000000);
-  eq('lens preview of 27M, 18M, 4,080, 312, and 56: the other band holds 3 samples', result.samples.bottom.length, 3);
-  eq('lens preview of 27M, 18M, 4,080, 312, and 56: the first other-band sample is 4,080', result.samples.bottom[0].num, 4080);
-  eq('lens preview of 27M, 18M, 4,080, 312, and 56: the second other-band sample is 312', result.samples.bottom[1].num, 312);
-  eq('lens preview of 27M, 18M, 4,080, 312, and 56: the third other-band sample is 56', result.samples.bottom[2].num, 56);
+  eq('lens preview of 27M, 18M, 4,080, 312, and 56: the top band holds 1 sample', result.samples.top.length, 1);
+  eq('lens preview of 27M, 18M, 4,080, 312, and 56: the top-band sample is 27M', result.samples.top[0].num, 27000000);
+  eq('lens preview of 27M, 18M, 4,080, 312, and 56: the other band holds 3 samples', result.samples.other.length, 3);
+  eq('lens preview of 27M, 18M, 4,080, 312, and 56: the first other-band sample is 4,080', result.samples.other[0].num, 4080);
+  eq('lens preview of 27M, 18M, 4,080, 312, and 56: the second other-band sample is 312', result.samples.other[1].num, 312);
+  eq('lens preview of 27M, 18M, 4,080, 312, and 56: the third other-band sample is 56', result.samples.other[2].num, 56);
 })();
 
 (function lensPreview_extractPreviewSamples_onePerOrderOfMagnitude() {
   // The other band shows one example per distinct lower order of magnitude,
   // with no cap. Negatives bucket by absolute value. For 1234 / 123 / -12 the
-  // preview is three lines: top-band 1k+ (1234) plus bottom-band 100+ (123)
+  // preview is three lines: top-band 1k+ (1234) plus other-band 100+ (123)
   // and 10+ (|-12|).
   function tdCell(text) {
     return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
@@ -635,9 +634,9 @@ const SEAT_ROWS = [
   eq('onePerOom: maxMag is 3 (1234)', result.maxMag, 3);
   eq('onePerOom: top band is the 1k+ value (1234)', result.samples.top[0].num, 1234);
   eq('onePerOom: other band has one row per lower magnitude (2)',
-    result.samples.bottom.length, 2);
-  eq('onePerOom: bottom[0] is the 100+ value (123)', result.samples.bottom[0].num, 123);
-  eq('onePerOom: bottom[1] is the 10+ value, abs of -12', result.samples.bottom[1].num, -12);
+    result.samples.other.length, 2);
+  eq('onePerOom: other[0] is the 100+ value (123)', result.samples.other[0].num, 123);
+  eq('onePerOom: other[1] is the 10+ value, abs of -12', result.samples.other[1].num, -12);
 
   // No cap: five distinct lower magnitudes yield five other-band rows.
   const deep = {
@@ -652,9 +651,9 @@ const SEAT_ROWS = [
   };
   const deepResult = extractPreviewSamples(deep);
   eq('onePerOom: uncapped other band has 5 rows (one per lower OoM)',
-    deepResult.samples.bottom.length, 5);
+    deepResult.samples.other.length, 5);
   eq('onePerOom: other-band rows are descending by magnitude',
-    deepResult.samples.bottom.map(r => r.num), [500000, 40000, 3000, 200, 10]);
+    deepResult.samples.other.map(r => r.num), [500000, 40000, 3000, 200, 10]);
 })();
 
 (function lensPreview_extractPreviewSamples_prefersDemonstrative() {
@@ -673,15 +672,15 @@ const SEAT_ROWS = [
       { cells: [thCell(''), thCell('A'), thCell('B')] },
       // Top bucket (mag 8): round value first, then a value that changes.
       { cells: [thCell('Top'), tdCell('250,000,000'), tdCell('269,690,569')] },
-      // Bottom bucket (mag 5): round value first, then a value that changes.
-      { cells: [thCell('Bottom'), tdCell('350,000'), tdCell('235,132')] },
+      // Other-band bucket (mag 5): round value first, then a value that changes.
+      { cells: [thCell('Other'), tdCell('350,000'), tdCell('235,132')] },
     ],
   };
   const result = extractPreviewSamples(table);
   eq('lens preview of 250M then 269,690,569: the first top-band sample is 269,690,569',
     result.samples.top[0].num, 269690569);
   eq('lens preview of 350,000 then 235,132: the first other-band sample is 235,132',
-    result.samples.bottom[0].num, 235132);
+    result.samples.other[0].num, 235132);
 })();
 
 (function lensPreview_extractPreviewSamples_allRoundFallback() {
@@ -719,8 +718,8 @@ const SEAT_ROWS = [
     ],
   };
   const result = extractPreviewSamples(table);
-  eq('lens preview of 27M, 18M, and 45M: the top band holds 2 samples', result.samples.top.length, 2);
-  eq('lens preview of 27M, 18M, and 45M: the other band is empty', result.samples.bottom.length, 0);
+  eq('lens preview of 27M, 18M, and 45M: the top band holds 27M alone', result.samples.top.map((row) => row.num), [27000000]);
+  eq('lens preview of 27M, 18M, and 45M: the other band is empty', result.samples.other.length, 0);
 })();
 
 (function lensPreview_extractPreviewSamples_zeroCell() {
@@ -737,10 +736,30 @@ const SEAT_ROWS = [
     ],
   };
   const result = extractPreviewSamples(table);
-  const allNums = result.samples.top.concat(result.samples.bottom).map(s => s.num);
+  const allNums = result.samples.top.concat(result.samples.other).map(s => s.num);
   eq('lens preview of 4,080, 0, and 56: no sample is 0', allNums.includes(0), false);
   eq('lens preview of 4,080, 0, and 56: the other band holds only 56',
-    result.samples.bottom.map(s => s.num), [56]);
+    result.samples.other.map(s => s.num), [56]);
+})();
+
+(function lensPreview_extractPreviewSamples_zeroCell() {
+  function tdCell(text) {
+    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
+  }
+  function thCell(text) {
+    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
+  }
+  const table = {
+    rows: [
+      { cells: [thCell(''), thCell('A'), thCell('B'), thCell('C')] },
+      { cells: [thCell('Row'), tdCell('4,080'), tdCell('0'), tdCell('56')] },
+    ],
+  };
+  const result = extractPreviewSamples(table);
+  const allNums = result.samples.top.concat(result.samples.other).map(s => s.num);
+  eq('lens preview of 4,080, 0, and 56: no sample is 0', allNums.includes(0), false);
+  eq('lens preview of 4,080, 0, and 56: the other band holds only 56',
+    result.samples.other.map(s => s.num), [56]);
 })();
 
 (function lensPreview_extractPreviewSamples_emptyTable() {
@@ -753,7 +772,7 @@ const SEAT_ROWS = [
   const result = extractPreviewSamples(table);
   eq('lens preview of a table with no numbers: maxMag is null', result.maxMag, null);
   eq('lens preview of a table with no numbers: the top band is empty', result.samples.top.length, 0);
-  eq('lens preview of a table with no numbers: the other band is empty', result.samples.bottom.length, 0);
+  eq('lens preview of a table with no numbers: the other band is empty', result.samples.other.length, 0);
 })();
 
 (function lensPreview_extractPreviewSamples_tableStepMaxMagnitude() {
@@ -761,7 +780,8 @@ const SEAT_ROWS = [
   // step's datasetMaxMagnitude returns for the classified cells, the one the
   // simplification pass rounds against. A stub returning 3 for a dataset
   // whose largest number has magnitude 7 moves 27,000,000 and 4,080 into the
-  // top band and leaves 312 in the other band.
+  // top band and leaves 312 in the other band. The top band's one sample comes
+  // from the largest order of magnitude, so 4,080 gets no top-band sample.
   function tdCell(text) {
     return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
   }
@@ -789,9 +809,9 @@ const SEAT_ROWS = [
       .filter((stretch) => stretch.kind === 'number').map((stretch) => stretch.num)),
     [27000000, 4080, 312]);
   eq('lens preview of 27M, 4,080, and 312 under a max magnitude of 3: maxMag is 3', result.maxMag, 3);
-  eq('lens preview of 27M, 4,080, and 312 under a max magnitude of 3: the top band holds 27M and 4,080', result.samples.top.map((row) => row.num),
-    [27000000, 4080]);
-  eq('lens preview of 27M, 4,080, and 312 under a max magnitude of 3: the other band holds 312', result.samples.bottom.map((row) => row.num),
+  eq('lens preview of 27M, 4,080, and 312 under a max magnitude of 3: the top band holds 27M alone', result.samples.top.map((row) => row.num),
+    [27000000]);
+  eq('lens preview of 27M, 4,080, and 312 under a max magnitude of 3: the other band holds 312', result.samples.other.map((row) => row.num),
     [312]);
 })();
 
@@ -2500,15 +2520,15 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 
   const result = extractPreviewSamples(grid.wrapperEl);
 
-  // Must return the correct shape: { samples: { top: [...], bottom: [...] }, maxMag: <number> }
+  // Must return the correct shape: { samples: { top: [...], other: [...] }, maxMag: <number> }
   eq('lens preview of a grid of 7M to 9M and 286 to 514: the result holds samples',
     typeof result.samples, 'object');
 
   eq('lens preview of a grid of 7M to 9M and 286 to 514: samples holds a top array',
     Array.isArray(result.samples.top), true);
 
-  eq('lens preview of a grid of 7M to 9M and 286 to 514: samples holds a bottom array',
-    Array.isArray(result.samples.bottom), true);
+  eq('lens preview of a grid of 7M to 9M and 286 to 514: samples holds an other array',
+    Array.isArray(result.samples.other), true);
 
   eq('lens preview of a grid of 7M to 9M and 286 to 514: maxMag is a number',
     typeof result.maxMag, 'number');
@@ -3865,7 +3885,7 @@ function everyRowRead(kind, largeIn) {
   });
   eq('era-samples: maxMag is 9 (from 1.05B, not the 2898 AD year)',
     result.maxMag, 9);
-  const sampleNums = result.samples.top.concat(result.samples.bottom).map(r => r.num);
+  const sampleNums = result.samples.top.concat(result.samples.other).map(r => r.num);
   eq('era-samples: no example row is the 2898 AD year',
     sampleNums.includes(2898), false);
 })();
@@ -4972,8 +4992,25 @@ const RW_CAP_ROW = /^Dynamic Rounding: above cell cap · cells: [\d,]+$/;
     page.settle();
     const preview = extractPreviewSamples(t.table);
     eq(`lens preview (${kind}): the preview max magnitude is the frozen one`, preview.maxMag, 3);
-    eq(`lens preview (${kind}): the top band holds the larger value and a magnitude-3 value`,
-      preview.samples.top.map((s) => s.num), [98765, 5678]);
+    eq(`lens preview (${kind}): the top band holds the larger value alone`,
+      preview.samples.top.map((s) => s.num), [98765]);
+  });
+})();
+
+(function freeze04b_aLensPreviewBelowTheFrozenMaxMagnitudeHoldsNoTopBandSample() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(RW_ROWS);
+    roundTableUnder(t.table, RW_OPTS);
+    [[0, 0, '123'], [0, 1, '567'], [1, 0, '246'], [1, 1, '357']]
+      .forEach(([row, col, text]) => t.write(row, col, text));
+    page.settle();
+    const preview = extractPreviewSamples(t.table);
+    eq(`lens preview of 123, 567, 246, and 357 under a frozen max magnitude of 3 (${kind}): maxMag is 3`,
+      preview.maxMag, 3);
+    eq(`lens preview of 123, 567, 246, and 357 under a frozen max magnitude of 3 (${kind}): the top band is empty`,
+      preview.samples.top, []);
+    eq(`lens preview of 123, 567, 246, and 357 under a frozen max magnitude of 3 (${kind}): the other band holds 123`,
+      preview.samples.other.map((s) => s.num), [123]);
   });
 })();
 
