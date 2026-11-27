@@ -1664,3 +1664,42 @@ const SIDEBAR_UNBOUND_PROMPT = 'Right-click a table to connect it here.';
     h.restore();
   }
 })();
+
+(function lensControlKeyboardRecoupling() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('lens keyboard: source files (defaults/rounding/reader/bus) present in manifest', false, true);
+    return;
+  }
+  try {
+    eq('lens keyboard: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    const topThumb = h.el('topThumb');
+    const otherThumb = h.el('otherThumb');
+    const press = (thumb, key) => thumb.fire('keydown', { key, preventDefault() {} });
+    const writeCount = () => h.tabMessages.filter((m) => m.topic === 'request:applySettings').length;
+
+    for (let i = 0; i < 12; i++) press(topThumb, 'ArrowLeft');
+    eq('lens keyboard: both thumbs rest at the low end after the top thumb is pressed left',
+      otherThumb.style.left, topThumb.style.left);
+    eq('lens keyboard: the thumbs rest on the first stop after the top thumb is pressed left',
+      topThumb.style.left, (0.5 / 9 * 100) + '%');
+
+    press(otherThumb, 'ArrowLeft');
+    press(topThumb, 'ArrowRight');
+    eq('lens keyboard: after the other thumb is pressed left at the low end, the top thumb moves it too',
+      otherThumb.style.left, topThumb.style.left);
+
+    const before = writeCount();
+    press(otherThumb, 'ArrowLeft');
+    const beforeRematch = writeCount();
+    press(otherThumb, 'ArrowRight');
+    eq('lens keyboard: one press of the other thumb sends one settings write',
+      beforeRematch - before, 1);
+    eq('lens keyboard: a press that brings the other thumb level with the top thumb sends one settings write',
+      writeCount() - beforeRematch, 1);
+  } finally {
+    h.restore();
+  }
+})();
