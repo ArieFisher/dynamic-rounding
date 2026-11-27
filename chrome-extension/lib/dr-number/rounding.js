@@ -1,12 +1,15 @@
 // Copyright (c) 2026 Arie Fisher | SPDX-License-Identifier: MIT
 /**
  * DynamicRounding shared rounding helpers: the one copy of the rounding
- * arithmetic. docs/design.md "How the code is shared" lists where it loads.
- * Must remain side-effect-free: no chrome.*, no DOM access, no Node module
- * code. All symbols land on the global scope of whichever script holds this
- * file.
+ * arithmetic. docs/design.md "How the code is shared" lists where it loads,
+ * and its rules "The core and the write-back read no source" and "The plugin
+ * library is a built copy" state what it may hold. All symbols land on the
+ * global scope of whichever script holds this file.
  */
 
+// Through floating-point error, absnum / step can be just below a value
+// ending in .5 (1.15 / 0.1 is 11.499999999999998). Without this addition,
+// 1.15 at offset -1 returns 1.1, not 1.2.
 const EPSILON = 1e-9;
 // The smallest abs(trunc(offset)) at which the x-floor applies to a
 // fractional offset.
@@ -28,8 +31,8 @@ function roundWithOffset(num, offset) {
   const floor_oom = Math.pow(10, current_mag);
   let result = Math.max(raw, floor_oom);
 
-  if (!Number.isInteger(offset) && Math.abs(Math.trunc(offset)) >= X_FLOOR_THRESHOLD) {
-    const x_int = Math.trunc(offset);
+  const x_int = Math.trunc(offset);
+  if (!Number.isInteger(offset) && Math.abs(x_int) >= X_FLOOR_THRESHOLD) {
     const floor_x = roundWithOffset(absnum, x_int);
     result = Math.max(result, floor_x);
   }
@@ -38,15 +41,13 @@ function roundWithOffset(num, offset) {
     result = Math.round(result);
   }
 
-  // Strip IEEE-754 float noise from sub-unit steps (e.g. 11 * 0.1 = 1.1000…01).
+  // docs/design.md "Results hold at most 12 significant digits".
   result = Number(result.toPrecision(12));
 
   return sign * result;
 }
 
 function roundValueSetAware(num, max_mag, offset_top, offset_other, num_top) {
-  if (num === 0) return 0;
-
   const current_mag = magnitudeOf(num);
 
   let offset = offset_other;
@@ -68,7 +69,8 @@ function stepForOffset(num, offset) {
   return f * Math.pow(10, current_mag + Math.ceil(offset));
 }
 
-// The step as the lens preview shows it.
+// A step, or the power of ten in an order of magnitude label, as the lens
+// preview shows it.
 function formatStep(step) {
   if (!isFinite(step)) return "0";
   const abs = Math.abs(step);
@@ -78,7 +80,6 @@ function formatStep(step) {
   return trimNum(step);
 }
 
-// Rounds to at most 3 decimal places.
 function trimNum(n) {
   return String(Math.round(n * 1000) / 1000);
 }

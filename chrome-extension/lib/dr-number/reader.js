@@ -3,11 +3,11 @@
  * The number reader: the currency list, the format marks, the group shape,
  * the number shape test, and toNumber, which turns a text into a value.
  *
- * docs/design.md "How the code is shared" lists where this file loads. Must
- * remain side-effect-free: no chrome.*, no DOM access, no Node module code.
- * All symbols land on the top level of whichever script holds this file, so
- * the extension, the Sheets library, and the plugin share one currency list
- * and one toNumber.
+ * docs/design.md "How the code is shared" lists where this file loads, and
+ * its rules "The core and the write-back read no source" and "The plugin
+ * library is a built copy" state what it may hold. All symbols land on the
+ * top level of whichever script holds this file, so the extension, the
+ * Sheets library, and the plugin share one currency list and one toNumber.
  */
 
 // The one currency list. Each row gives a currency's written signs and its
