@@ -548,7 +548,20 @@ function workerCount(taskCount) {
 
 // --- The three modes ---
 
+// measure writes the result file after a run of up to an hour, so a path it
+// cannot write fails before the first run.
+function checkWritable(file) {
+  try {
+    const stat = fs.statSync(file, { throwIfNoEntry: false });
+    if (stat && stat.isDirectory()) throw new Error('it is a folder');
+    fs.accessSync(stat ? file : path.dirname(path.resolve(file)), fs.constants.W_OK);
+  } catch (error) {
+    throw new ScriptError(`cannot write the result file ${file}: ${error.message}`);
+  }
+}
+
 async function measure(options) {
+  checkWritable(options.out);
   const root = path.resolve(options.root || path.join(__dirname, '..'));
   const suite = checkSuite(options.suite ? readJson(options.suite, 'suite file') : EXTENSION_SUITE,
     options.suite || 'EXTENSION_SUITE');
