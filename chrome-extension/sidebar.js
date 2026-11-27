@@ -244,7 +244,7 @@ const PREVIEW_MAX_DECIMALS = 4;
 function formatSample(num) {
   const abs = Math.abs(num);
   const marks = numberFormat();
-  const intStr = String(Math.trunc(abs)).replace(/\B(?=(\d{3})+(?!\d))/g, marks.group);
+  const intStr = groupedNumberText(Math.trunc(abs));
   // toString() gives the shortest decimal that reads back as the same value,
   // so cutting its text truncates without rounding. A value it writes in
   // exponent form, such as 1e-7, holds no digit within the decimals shown.

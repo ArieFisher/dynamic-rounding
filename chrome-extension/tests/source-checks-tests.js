@@ -240,11 +240,14 @@
 
 (function layerLoadOrderAcrossEntryPoints() {
   // The sidebar deliberately does NOT load the content-only layers — it only
-  // needs the pure domain (defaults, rounding, the number reader).
+  // needs the pure domain (defaults, rounding, the number reader) and the
+  // write-back's grouping function, which the lens preview shares.
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
   eq('sidebar.html loads lib/dr-number/reader.js after lib/dr-number/rounding.js and before sidebar.js',
     /lib\/dr-number\/rounding\.js[\s\S]*lib\/dr-number\/reader\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
-  for (const file of numberTextFiles) {
+  eq('sidebar.html loads lib/dr-number/write-back.js after lib/dr-number/reader.js and before sidebar.js',
+    /lib\/dr-number\/reader\.js[\s\S]*lib\/dr-number\/write-back\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
+  for (const file of numberTextFiles.filter((name) => name !== 'lib/dr-number/write-back.js')) {
     eq('sidebar.html does not load content-only ' + file, sidebarHtml.includes(file), false);
   }
   eq('sidebar.html does not load content-only lib/dr-number/index.js', sidebarHtml.includes('lib/dr-number/index.js'), false);
@@ -1238,7 +1241,7 @@
     'isClockTimeInRange', 'readClockTime', 'findClockTimes', 'findISODateTimes',
     'roundDate', 'roundClockTime', 'roundTime', 'getEraYearMaskedRanges',
     // write-back.js
-    'formatNumber',
+    'formatNumber', 'groupedNumberText',
     // identifiers.js
     'findIdentifiers', 'isWebOrEmailAddressCell', 'matchIdentifierShape', 'getIdentifierMaskedRanges',
   ].sort();

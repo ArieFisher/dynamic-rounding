@@ -93,7 +93,7 @@
 // --- sidebar.js: formatSample ---
 //
 // Strategy: extract the real implementation from sidebar.js source via regex
-// and eval it in this scope (where numberFormat is already available from the
+// and eval it in this scope (where numberFormat and groupedNumberText are already available from the
 // evaled reader.js / content.js block above).
 // This exercises the REAL implementation, not a reimplementation.
 // ---------------------------------------------------------------------------
@@ -101,7 +101,7 @@
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
   // Extract the two constants and the function we need from sidebar.js.
-  // numberFormat is already on globalThis from the content-script eval above.
+  // numberFormat and groupedNumberText are already on globalThis from the content-script eval above.
   const constBlock = sidebarSrc.match(
     /const PREVIEW_DECIMAL_THRESHOLD\s*=.*?;\s*const PREVIEW_MAX_DECIMALS\s*=.*?;/
   );
@@ -118,7 +118,7 @@
 
   // Eval into a local object using an IIFE so the const declarations bind in
   // function scope (not global) and the compiled function body can hold them.
-  // numberFormat is passed in from the content scripts the setup runs.
+  // numberFormat and groupedNumberText are passed in from the content scripts the setup runs.
   // Note: string concatenation is used (not a template literal) to avoid any
   // back-tick/interpolation issues with the extracted source text.
   const helperSrc = '(function() {\n' +
@@ -127,9 +127,9 @@
     'return { formatSample: formatSample };\n' +
     '})()';
   const helpers = (isolatedFunction(
-    'numberFormat',
+    'numberFormat', 'groupedNumberText',
     'return ' + helperSrc + ';'
-  ))(numberFormat);
+  ))(numberFormat, groupedNumberText);
 
   const fmtSample = helpers.formatSample;
 
@@ -144,6 +144,10 @@
      fmtSample(1000000), '1,000,000');
   eq('formatSample(-1234567) -> "-1,234,567"',
      fmtSample(-1234567), '-1,234,567');
+  eq('formatSample(1e21) -> "1,000,000,000,000,000,000,000"',
+     fmtSample(1e21), '1,000,000,000,000,000,000,000');
+  eq('formatSample(-1e22) -> "-10,000,000,000,000,000,000,000"',
+     fmtSample(-1e22), '-10,000,000,000,000,000,000,000');
 
   // -----------------------------------------------------------------
   // rounded numbers magnitude >= 100 → NO decimals.
