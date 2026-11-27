@@ -101,14 +101,14 @@ The result file goes where `--out` points; nothing enters the repository. A resu
 | Wave | Sprint | Goal | Depends on |
 | --- | --- | --- | --- |
 | 1 | `planted-bug-script` | The runner records every assertion; the script measures, sorts, and proves. | none |
-| 1 | `case-table-rule` (provisional) | Case tables become the stated pattern for input-and-result tests. | none; waits on open question 1 |
-| 2 | `first-measurement` (spike) | Measure `main` and give the product manager the numbers for the go decision. | `planted-bug-script` |
+| 1 | `case-table-rule` | Case tables become the stated pattern for input-and-result tests. | none |
+| 2 | `first-measurement` (spike) | Measure `main` and confirm the data can drive the trimming. | `planted-bug-script` |
 | 2 | `refactor-skill-test-gate` | The refactor pass proves every cleanup to a test piece with the script. | `planted-bug-script` |
 | 3 | `tests-that-catch-nothing` | Every assertion that catches nothing is repaired or listed for the product manager. | `first-measurement` |
 
-The trimming itself runs as refactor passes over test pieces, after `refactor-skill-test-gate` merges and the product manager decides to go (section 7). The refactor skill already creates its own branch and pull request, so a sprint that wraps it would open a second path.
+The trimming itself runs as refactor passes over test pieces, after `refactor-skill-test-gate` merges (section 7). The refactor skill already creates its own branch and pull request, so a sprint that wraps it would open a second path.
 
-**Why this order.** The gate sprint needs only the script, so it runs beside the spike. The repair sprint needs the spike's list. The case table rule needs only a decision.
+**Why this order.** The gate sprint needs only the script, so it runs beside the spike. The repair sprint needs the spike's list. The case table rule needs nothing.
 
 ### Dependency Graph
 
@@ -116,8 +116,8 @@ The trimming itself runs as refactor passes over test pieces, after `refactor-sk
 flowchart TD
     base[main]
     s1["planted-bug-script<br/>record, measure, sort, prove"]
-    s2["case-table-rule (provisional)<br/>case tables as the stated pattern"]
-    spike["first-measurement (spike)<br/>numbers for the go decision"]
+    s2["case-table-rule<br/>case tables as the stated pattern"]
+    spike["first-measurement (spike)<br/>confirm the data"]
     s3["refactor-skill-test-gate<br/>the refactor pass proves test cleanups"]
     s4["tests-that-catch-nothing<br/>repair or list"]
     base --> s1
@@ -151,7 +151,7 @@ flowchart TD
   - Named constants: `CLEAN_RUNS = 3`, `TIME_CAP_MULTIPLE = 3`, `MAX_PLANTED_BUGS = 10000`, in the script.
   - Skip `js/round_dynamic.js` and `claude-code-plugin/hooks/library.js`; plant bugs only in `chrome-extension/` outside `tests/`.
 
-### case-table-rule (provisional)
+### case-table-rule
 
 - **Branch:** `docs/case-table-rule`
 - **Goal:** `AGENTS.md` states that tests differing only by input and expected result share one case table per setup.
@@ -160,13 +160,13 @@ flowchart TD
 - **Acceptance criteria:**
   - The rule names when a case table applies (one function, one setup) and when it does not (event order, sequences, code-text checks).
   - The gate command passes.
-- **Depends on:** none; runs only on a yes to open question 1.
+- **Depends on:** none (decision 1).
 - **Complexity:** S.
 - **Dev notes:** a rule goes in one place; the refactor skill points at it, never restates it.
 
 ### first-measurement (spike)
 
-- **Goal:** Answer whether the trimming is worth its agent work, and whether the planted bug data is good enough to drive it. `tests-that-catch-nothing` and the trimming passes depend on the answer.
+- **Goal:** Answer whether the planted bug data is good enough to drive the trimming (decision 2 settles that the trimming runs). `tests-that-catch-nothing` and the trimming passes depend on the answer.
 - **Branch:** none. Findings go in `docs/sprint-logs/test-dedup-first-measurement.md`, committed on its own `docs/` branch.
 - **Investigate:**
   - Planted bugs: total, invalid, and the share of each outcome in section 3.3.
@@ -176,7 +176,6 @@ flowchart TD
 - **Out of scope:** any change to code or tests.
 - **Acceptance criteria:**
   - Each number above recorded.
-  - A verdict for the product manager: trim, or fix only the assertions that catch nothing. The rule of thumb from the planning discussion: trim when at least a fifth of the assertions repeat others.
   - A verdict on the data: if crashes and timeouts credit no assertion for most caught planted bugs, the "repeats others" list is too thin to act on, and the plan needs a revision.
 - **Depends on:** `planted-bug-script`.
 - **Complexity:** S.
@@ -188,14 +187,13 @@ flowchart TD
 - **Goal:** A refactor pass over a test piece keeps every planted bug caught.
 - **Scope:** `.agent/skills/refactor/SKILL.md`:
   - Main agent: when the input holds a test piece, it runs `measure` on the run's start commit in the background at step 1, and `sort` before the first find subagent for a test piece.
-  - Find subagent: for a test piece, it reads that piece's three lists. An assertion that repeats others is a Group A finding, unless its name, comment, or test group heading points to a past bug or issue, which makes it Group B. Merging tests into a case table is Group A only when `AGENTS.md` holds the case table rule. An assertion that catches nothing is a defect on main.
+  - Find subagent: for a test piece, it reads that piece's three lists. An assertion that repeats others is a Group A finding to drop. Exception (decision 3): when its name, comment, or test group heading points to a past bug or issue, it stays, unless a kept assertion checks the exact same input; then it is a Group A drop too. Merging tests into a case table is Group A only when `AGENTS.md` holds the case table rule. An assertion that catches nothing is a defect on main.
   - Action subagent: after each cleanup to a test piece, it runs `prove` and reverts the cleanup on a failure.
   - Review subagent: it runs `prove` on the branch and reports a failure as a defect in the branch's own changes.
 - **Out of scope:** running a pass; any test piece.
 - **Acceptance criteria:**
   - Every step names the mode it runs and what a failure leads to.
   - No rule from `AGENTS.md` is restated; the skill points at it.
-  - The skill never names the threshold for trimming; that is the product manager's call per pass.
 - **Depends on:** `planted-bug-script`.
 - **Complexity:** M.
 - **Dev notes:** the measurement takes hours (an estimate), so the main agent starts it before the first file and waits on it only when the first test piece comes up.
@@ -217,15 +215,21 @@ flowchart TD
 - **Complexity:** M, assuming 10 to 30 assertions (an estimate). Above 60, split by test piece into several pull requests.
 - **Dev notes:** a repaired assertion changes the catch lists; that is the intent, and `prove` still passes because it checks for losses only.
 
-## 6. Open Questions
+## 6. Decisions and Open Questions
 
-1. **Case tables as the stated pattern.** Should `AGENTS.md` state that tests differing only by input and expected result share one case table? Yes runs `case-table-rule` and lets the refactor pass merge such tests without asking.
-2. **The go decision.** After the spike, trim or fix only the assertions that catch nothing. The spike gives the numbers.
-3. **Assertions that guard a past bug.** The refactor pass lists each as Group B. You decide each one, per pass.
+### Made 2026-11-27
+
+1. **Case tables are the stated pattern.** Tests that differ only by input and expected result share one case table per setup.
+2. **Trim.** A known duplicate assertion goes unless a reason to keep it is stated. The spike confirms the data, not whether to trim.
+3. **Assertions that guard a past bug stay,** unless a kept assertion checks the exact same input.
+
+### Open
+
+None.
 
 ## 7. Out of Scope (Separate Sprint-Stack)
 
-- **The trimming passes.** After the go decision and `refactor-skill-test-gate`, refactor passes over the test pieces, one pass at a time, because a pass changes the catch lists the next pass reads. Suggested order, largest first: detection; pillbox; controller and bus; sidebar and capture log; number, ladder, and table registration; rounding pass, table step, and table kinds. Skip source checks: its assertions check code text. Estimate: 5 to 7 passes, each about the size of #824.
+- **The trimming passes.** After `refactor-skill-test-gate` merges, refactor passes over the test pieces, one pass at a time, because a pass changes the catch lists the next pass reads. Suggested order, largest first: detection; pillbox; controller and bus; sidebar and capture log; number, ladder, and table registration; rounding pass, table step, and table kinds. Skip source checks: its assertions check code text. Estimate: 5 to 7 passes, each about the size of #824.
 - **The Sheets, plugin, and Python suites.** They hold about 6% of the test lines. Measure them once the extension result shows the work pays.
 
 ## Simplicity
@@ -235,7 +239,7 @@ flowchart TD
    - one script and its test;
    - skill text;
    - four vocabulary terms;
-   - one `AGENTS.md` rule if open question 1 gets a yes.
+   - one `AGENTS.md` rule (decision 1).
    Size estimate, not measured: the script at 400 to 600 lines. The trimming passes afterwards shrink the test pieces.
 2. **Duplicates.** The script reuses the runner's piece and line mapping through the record, not a copy. The three modes share one planted-bug runner. The skill gains steps on its existing subagents, not a second skill.
 3. **Removals.**
@@ -268,3 +272,4 @@ flowchart TD
 ## Decisions Log
 
 - 2026-11-27: Initial draft generated by the sprint-plan skill, from the planning discussion with the product manager.
+- 2026-11-27: Decisions 1 to 3 made by the product manager. The case table sprint and the trimming no longer wait on a decision; past-bug guards follow a default instead of a per-pass question.
