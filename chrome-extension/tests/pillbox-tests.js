@@ -2326,7 +2326,6 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     const nonTableTarget = {
       tagName: 'SPAN',
       classList: { contains() { return false; } },
-      closest(sel) { return null; },
       matches(sel) { return false; },
       parentElement: null,
     };
