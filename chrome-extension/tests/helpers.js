@@ -2731,10 +2731,11 @@ function sidebarEventTarget(tagName, el) {
   return target;
 }
 
-// Register one element the way the page does — through the table pillbox view's
-// builder, the one writer of the shape fingerprint — and hand back the list a
-// later teardown records its table pillbox removal in. The document mock's body stub
-// carries no removeChild, so the table pillbox gets a parent stub of its own.
+// Register one element the way the page does — through the controller's
+// registration step, the one writer of the shape fingerprint — and hand back
+// the list a later teardown records its table pillbox removal in. The
+// document mock's body stub carries no removeChild, so the table pillbox gets
+// a parent stub of its own.
 function registerFingerprintedTable(table) {
   withTablePillboxDocumentMock(function () { registerDataTable(table); });
   return trackTablePillboxDetach(table);
@@ -2847,9 +2848,7 @@ function makeIsolatedModel() {
 }
 
 // ---------------------------------------------------------------------------
-// Every cross-context topic on the event bus.
-//
-// A shared sandbox harness for the bus tests below. app/bus.js has
+// A shared sandbox harness for the bus tests. app/bus.js has
 // no DOM dependency, so it runs in its own vm context with only the Chrome
 // interfaces stubbed. Each call builds a fresh bus, which matters: a responder
 // registration and a subscription both outlive the test that made them, and
@@ -2858,8 +2857,7 @@ function makeIsolatedModel() {
 //
 // opts.noTabs        omit chrome.tabs entirely — the content-script context.
 // opts.noActiveTab   chrome.tabs.query answers with no tabs.
-// opts.throwOnSend   chrome.tabs.sendMessage throws, as it does when the tab
-//                    holds no content script.
+// opts.throwOnSend   chrome.tabs.sendMessage throws from the call itself.
 // opts.reply         the value chrome.tabs.sendMessage hands its callback.
 // ---------------------------------------------------------------------------
 function makeBusSandbox(opts) {
@@ -2871,7 +2869,7 @@ function makeBusSandbox(opts) {
     query(q, cb) { sent.queries++; cb(options.noActiveTab ? [] : [{ id: 7 }]); },
     sendMessage(tabId, msg, cb) {
       sent.tabs.push({ tabId, msg });
-      if (options.throwOnSend) throw new Error('no content script');
+      if (options.throwOnSend) throw new Error('send threw');
       if (cb) cb(options.reply);
     },
   };

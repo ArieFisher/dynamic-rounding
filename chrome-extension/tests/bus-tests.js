@@ -6,7 +6,7 @@
 // header) — a subscriber that attaches AFTER a publish must never see that
 // publish, unlike an EventEmitter with replay or a BehaviorSubject.
 // ---------------------------------------------------------------------------
-(function appModelSelection_busIsStateless_lateSubscriberMissesPastPublish() {
+(function busLateSubscriberMissesPastPublish() {
   const topic = 'state:rangeOk';
   // Publish BEFORE any subscriber of this test attaches — nothing is listening
   // yet.
@@ -24,13 +24,13 @@
 
 // ---------------------------------------------------------------------------
 // Reentrancy. Same-context
-// delivery is synchronous (see app/bus.js header), so a subscribed
+// delivery is synchronous (see deliverLocally in app/bus.js), so a subscribed
 // handler may itself call DR_BUS.publish() for a different topic before
 // returning. A two-topic cycle — A's handler publishes B; B's handler
 // increments a counter and, guarded to do so only once, publishes A back —
 // must settle without an infinite loop or a stack overflow.
 // ---------------------------------------------------------------------------
-(function appModelSelection_busReentrancy_twoTopicCycleSettles() {
+(function busGuardedTwoTopicCycleSettles() {
   // The second topic is state:settingsChanged: the content script holds no
   // subscriber of its own for it, so only the fixture's handlers run here.
   // The test measures the bus's own delivery under a nested publish.
@@ -65,11 +65,55 @@
 })();
 
 // ---------------------------------------------------------------------------
+// The depth guard itself. The guarded cycle
+// above is self-limiting (a caller-side counter stops it after one bounce);
+// this one is NOT — neither handler has a stop condition, so without the
+// bus's own guard this would recurse until the real call stack overflows.
+// ---------------------------------------------------------------------------
+(function busUnguardedCycleTerminatesSafely() {
+  const TOPIC_A = 'state:rangeOk';
+  const TOPIC_B = 'state:settingsChanged';
+
+  const unsubA = DR_BUS.subscribe(TOPIC_A, () => { DR_BUS.publish(TOPIC_B, { source: 'page', settings: Object.assign({}, DR_DEFAULTS) }); });
+  const unsubB = DR_BUS.subscribe(TOPIC_B, () => { DR_BUS.publish(TOPIC_A, {}); });
+
+  let threw = null;
+  try {
+    DR_BUS.publish(TOPIC_A, {});
+  } catch (e) {
+    threw = e.message;
+  } finally {
+    unsubA();
+    unsubB();
+  }
+
+  eq('DR_BUS reentrancy (unguarded cycle): publish() throws a catchable error instead of crashing with a real stack overflow',
+    typeof threw, 'string');
+  eq('DR_BUS reentrancy (unguarded cycle): the thrown error holds "publish depth exceeded", not a raw engine stack-overflow error',
+    /publish depth exceeded/.test(threw || ''), true);
+
+  // The guard must reset cleanly — every nested publish() decrements the
+  // depth counter in a finally as the exception unwinds — so an unrelated
+  // publish afterward must behave normally, not still read as "deep".
+  let secondThrew = null;
+  const unsubCheck = DR_BUS.subscribe(TOPIC_A, () => {});
+  try {
+    DR_BUS.publish(TOPIC_A, {});
+  } catch (e) {
+    secondThrew = e.message;
+  } finally {
+    unsubCheck();
+  }
+  eq('DR_BUS reentrancy (unguarded cycle): a later unrelated publish does not throw',
+    secondThrew, null);
+})();
+
+// ---------------------------------------------------------------------------
 // The bus's topic table is the one declaration of every topic name.
 //
 // A name written out again at a call site risks a mistyped character, which
 // produces a message no listener matches, with no error and no log row. The
-// bus builds every wire message itself from its table, so no context file
+// bus builds every message itself from its table, so no context file
 // needs a name of its own. These pin both halves.
 // ---------------------------------------------------------------------------
 
@@ -87,7 +131,7 @@
   // context file writing one is reaching around the topic table.
   for (const [name, src] of Object.entries(contextFiles)) {
     const literals = (src.match(/topic(?::|\s*===)\s*['"][A-Za-z][A-Za-z0-9_:]*['"]/g) || []);
-    eq(`one topic list: ${name} builds no wire message of its own`, literals, []);
+    eq(`one topic list: ${name} builds no message of its own`, literals, []);
   }
 
   // Every name in the table is reachable: it appears in at least one context
@@ -116,8 +160,8 @@
     allHaveValidRoute, true);
 })();
 
-// --- The route picks the carrier, not the publishing context ---
-(function busRoutePicksCarrier() {
+// --- The route determines the carrier, not the publishing context ---
+(function busRouteDeterminesCarrier() {
   // The carrier never follows from which Chrome interface the publishing
   // context holds.
 
@@ -131,7 +175,7 @@
   eq('bus route: and sends to that tab', b.sent.tabs.length, 1);
   eq('bus route: aimed at the tab the query answered with',
     b.sent.tabs.length === 1 ? b.sent.tabs[0].tabId : null, 7);
-  eq('bus route: the topic name itself is the name on the wire',
+  eq('bus route: the message carries the topic name itself',
     b.sent.tabs.length === 1 ? b.sent.tabs[0].msg.topic : null, 'intent:menuClicked');
   eq('bus route: the message carries the payload beside the name, nothing else',
     b.sent.tabs.length === 1 ? Object.keys(b.sent.tabs[0].msg).sort().join(',') : null,
@@ -145,9 +189,7 @@
   eq('bus route: and addresses the tab the caller named',
     c.sent.tabs.length === 1 ? c.sent.tabs[0].tabId : null, 42);
 
-  // A tab-routed publish from a context with no chrome.tabs cannot reach its
-  // audience. Returning quietly would reproduce the silent miss the topic
-  // table exists to remove.
+  // The reason for the throw sits in sendToTab in app/bus.js.
   const d = makeBusSandbox({ noTabs: true });
   let threw = false;
   try { d.bus.publish('intent:menuClicked', {}); } catch (e) { threw = true; }
@@ -161,12 +203,12 @@
   eq('bus route: an extension-pages topic broadcasts once', f.sent.pages.length, 1);
   eq('bus route: and sends into no tab', f.sent.tabs.length, 0);
   eq('bus route: and runs no active-tab lookup', f.sent.queries, 0);
-  eq('bus route: the broadcast carries the topic name on the wire',
+  eq('bus route: the broadcast message carries the topic name',
     f.sent.pages.length === 1 ? f.sent.pages[0].topic : null, 'state:rangeOk');
 
   // An extension-pages publish from a context with no chrome.tabs reaches its
   // audience: that carrier needs none. An absent interface is no reason to
-  // pick the other carrier.
+  // send on the other carrier.
   const g = makeBusSandbox({ noTabs: true });
   g.bus.publish('state:rangeOk', {});
   eq('bus route: an extension-pages topic sends from a context with no chrome.tabs',
@@ -175,17 +217,17 @@
   // A same-context topic sends nothing either way.
   const e = makeBusSandbox();
   e.bus.publish('intent:activateTable', { table: null });
-  eq('bus route: a route-less topic makes no wire send',
+  eq('bus route: a route-less topic sends on no carrier',
     e.sent.pages.length + e.sent.tabs.length, 0);
 })();
 
 // --- publish() throws on a request topic rather than dropping its answer ---
 //
-// The ask throws on a topic recorded one-way and the answering registration
-// throws on a topic recorded as a question. The one-way send throws too:
-// handed a question, it would send the message, the responder would answer,
-// and the answer would go nowhere, with nothing logged and nothing failed.
-(function busPublishRefusesRequestTopic() {
+// request() and respond() throw on a topic outside the request family.
+// publish() throws on a request topic too: it would send the message, the
+// responder would answer, and the answer would go nowhere, with nothing logged
+// and nothing failed.
+(function busPublishOnRequestTopicThrows() {
   const a = makeBusSandbox();
   let message = '';
   try {
@@ -199,20 +241,20 @@
   eq('one-way guard: and nothing goes out on either carrier',
     a.sent.pages.length + a.sent.tabs.length, 0);
 
-  // The two siblings: each of the three pairings throws.
   const b = makeBusSandbox();
-  let askThrew = false;
-  try { b.bus.request('intent:menuClicked', {}, () => {}); } catch (e) { askThrew = true; }
-  eq('one-way guard: request() still refuses a one-way topic', askThrew, true);
+  let requestThrew = false;
+  try { b.bus.request('intent:menuClicked', {}, () => {}); } catch (e) { requestThrew = true; }
+  eq('one-way guard: request() on a one-way topic throws', requestThrew, true);
   let respondThrew = false;
   try { b.bus.respond('intent:menuClicked', () => {}); } catch (e) { respondThrew = true; }
-  eq('one-way guard: respond() still refuses a one-way topic', respondThrew, true);
+  eq('one-way guard: respond() on a one-way topic throws', respondThrew, true);
 })();
 
 // --- A subscriber learns the sending tab ---
 //
-// The sidebar reads the tab ID of the sending tab off Chrome's sender record and
-// acts only on a message from the tab it was opened for. A payload cannot
+// The bus reads the tab ID of the sending tab off Chrome's sender record and
+// hands it to each subscriber as meta.tabId. The sidebar acts only on a
+// message whose meta.tabId matches its bound tab's tab ID. A payload cannot
 // carry the number — a content script does not hold its own.
 (function busSubscriberReceivesSenderTab() {
   const a = makeBusSandbox();
@@ -226,19 +268,18 @@
   const fromTab = [];
   b.bus.subscribe('state:settingsChanged', (payload, meta) => { fromTab.push(meta); });
   b.fire({ topic: 'state:settingsChanged', settings: {} }, { tab: { id: 77 } });
-  eq('bus meta: a wire message from a content script reports its tab ID',
+  eq('bus meta: a message from a content script reports its tab ID',
     fromTab.length === 1 && fromTab[0].tabId === 77, true);
 
   const c = makeBusSandbox();
   const fromPage = [];
   c.bus.subscribe('state:settingsChanged', (payload, meta) => { fromPage.push(meta); });
   c.fire({ topic: 'state:settingsChanged', settings: {} }, {});
-  eq('bus meta: a wire message from an extension page reports no tab ID',
+  eq('bus meta: a message from an extension page reports no tab ID',
     fromPage.length === 1 && fromPage[0].tabId === null, true);
 
-  // The payload stays exactly what the publisher sent. The tab ID rides
-  // beside it, never inside it, so no handler can mistake it for data the
-  // publisher chose.
+  // The payload stays exactly what the publisher sent. The reason sits on
+  // deliverLocally in app/bus.js.
   const d = makeBusSandbox();
   let seenPayload = null;
   d.bus.subscribe('state:settingsChanged', (payload) => { seenPayload = payload; });
@@ -249,23 +290,23 @@
 
 // --- Request and respond ---
 (function busRequestReplyRoundTrip() {
-  // The asking side: the answer chrome hands back reaches the callback.
+  // The publisher's side: the answer Chrome hands back reaches the callback.
   const a = makeBusSandbox({ reply: { settings: { k: 9 } } });
   let answer = 'untouched';
   a.bus.request('request:applySettings', { settings: {} }, (x) => { answer = x; });
-  eq('bus request: the answer reaches the asker',
+  eq('bus request: the answer reaches the publisher',
     answer && answer.settings ? answer.settings.k : null, 9);
 
-  // The answering side: a responder's return value goes to Chrome's reply
+  // The responder's side: its return value goes to Chrome's reply
   // callback, unwrapped.
   const b = makeBusSandbox();
   b.bus.respond('request:applySettings', (payload) => ({ echoed: payload.n }));
   let replied = 'untouched';
   b.fire({ topic: 'request:applySettings', n: 5 }, { tab: { id: 3 } }, (r) => { replied = r; });
-  eq('bus request: the responder\'s return value is what the asker receives',
+  eq('bus request: the responder\'s return value is what the publisher receives',
     replied && replied.echoed, 5);
 
-  // A responder reads the carrier's facts the same way a subscriber does.
+  // A responder receives the sending tab's tab ID the same way a subscriber does.
   const c = makeBusSandbox();
   let responderMeta = null;
   c.bus.respond('request:applySettings', (payload, meta) => { responderMeta = meta; return {}; });
@@ -276,20 +317,18 @@
 
 (function busRequestAbsentResponder() {
   // Three ways nothing answers. Each must reach the callback with undefined,
-  // immediately — the sidebar's fallback to shipped defaults and to the
-  // unbound state has always depended on the absence arriving at once, with no
-  // waiting period.
+  // immediately. The reason sits above request() in app/bus.js.
   const noTab = makeBusSandbox({ noActiveTab: true });
   let a = 'untouched';
   let aCalled = false;
   noTab.bus.request('request:applySettings', {}, (x) => { aCalled = true; a = x; });
   eq('bus request: no active tab answers undefined', aCalled && a === undefined, true);
 
-  const noScript = makeBusSandbox({ throwOnSend: true });
+  const throwingSend = makeBusSandbox({ throwOnSend: true });
   let b = 'untouched';
   let bCalled = false;
-  noScript.bus.request('request:applySettings', {}, (x) => { bCalled = true; b = x; });
-  eq('bus request: no content script on the tab answers undefined',
+  throwingSend.bus.request('request:applySettings', {}, (x) => { bCalled = true; b = x; });
+  eq('bus request: a tab send that throws answers undefined',
     bCalled && b === undefined, true);
 
   const noResponder = makeBusSandbox();
@@ -299,10 +338,8 @@
   eq('bus request: no responder registered answers undefined',
     cCalled && c === undefined, true);
 
-  // A context with no chrome.tabs cannot ask at all. publish() throws there,
-  // because a lost one-way message is a silent miss; request() answers
-  // undefined instead, because the asker already handles an unanswered ask and
-  // that is exactly what this is.
+  // A context with no chrome.tabs cannot send a request at all. The reason
+  // request() answers undefined there sits above request() in app/bus.js.
   const noTabs = makeBusSandbox({ noTabs: true });
   let d = 'untouched';
   noTabs.bus.request('request:applySettings', {}, (x) => { d = x; });
@@ -310,17 +347,15 @@
 })();
 
 (function busRequestDeliversToOneContextOnly() {
-  // A request addresses exactly one context, the tab's, so it never runs the
-  // publishing context's own subscribers the way publish() does.
+  // The reason sits above request() in app/bus.js.
   const s = makeBusSandbox();
   let localRan = false;
   s.bus.subscribe('request:applySettings', () => { localRan = true; });
   s.bus.request('request:applySettings', {}, () => {});
   eq('bus request: a request does not deliver to same-context subscribers', localRan, false);
 
-  // An arriving request with no responder in THIS context stays silent.
-  // Answering undefined would close the asker's callback on behalf of a
-  // context holding no answer.
+  // An arriving request with no responder in THIS context stays silent. The
+  // reason sits in the onMessage listener in app/bus.js.
   const t = makeBusSandbox();
   let answered = false;
   t.fire({ topic: 'request:applySettings' }, { tab: { id: 1 } }, () => { answered = true; });
@@ -406,7 +441,7 @@
   } catch (e) {
     message = e.message;
   }
-  eq('bus request: the depth guard covers a cycle that runs only through responders',
+  eq('bus request: a responder-only request cycle throws a publish depth error',
     /depth exceeded/.test(message || ''), true);
   eq('bus request: the error says it happened while responding',
     /while responding to "request:applySettings"/.test(message || ''), true);
@@ -420,7 +455,7 @@
   } catch (e) {
     secondThrew = e.message;
   }
-  eq('bus request: the depth counter recovers on the same bus after a responder cycle',
+  eq('bus request: a publish after a responder cycle succeeds on the same bus',
     secondThrew, null);
 })();
 
@@ -432,9 +467,9 @@
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   const contentSrc = sourceByName('content.js');
 
-  eq('settings apply: the sidebar asks through request()',
+  eq('settings apply: the sidebar sends it through request()',
     /DR_BUS\.request\(\s*'request:applySettings'/.test(sidebarSrc), true);
-  eq('settings apply: the sidebar no longer publishes it one-way',
+  eq('settings apply: the sidebar does not publish it',
     /DR_BUS\.publish\(\s*'request:applySettings'/.test(sidebarSrc), false);
   eq('settings apply: the content script answers through respond()',
     /DR_BUS\.respond\(\s*'request:applySettings'/.test(contentSrc), true);
@@ -447,7 +482,7 @@
   s.bus.request('request:applySettings', { settings: {} }, (answer) => {
     sawNothing = answer === undefined;
   });
-  eq('settings apply: an unanswered apply reaches the asker with nothing, which is what unbinds the sidebar',
+  eq('settings apply: an unanswered apply reaches the publisher with nothing, which is what unbinds the sidebar',
     sawNothing, true);
 
   // And the answered case stays distinguishable from it.
@@ -485,7 +520,7 @@
   for (const topic of ['request:activeTable', 'request:captureState']) {
     eq('one mechanism: the content script answers ' + topic,
       contentSrc.includes("respond('" + topic + "'"), true);
-    eq('one mechanism: the sidebar asks ' + topic,
+    eq('one mechanism: the sidebar requests ' + topic,
       sidebarSrc.includes("request('" + topic + "'"), true);
   }
 

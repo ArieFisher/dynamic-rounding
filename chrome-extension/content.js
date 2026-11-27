@@ -30,9 +30,9 @@ function activateSwitchedTable(table) {
 
 // The controller's one write of a table's settings, followed by the apply
 // that puts them on the screen. The sidebar's apply and the table pillbox
-// press both write through it; source holds which ('sidebar' or 'page') for
-// the settings notice. The caller passes the table the shape check returns
-// (see revalidateTableShape).
+// press both write through it, each with the settings notice's source (see
+// setTableSettings in app/model.js). The caller passes the table the shape
+// check returns (see revalidateTableShape).
 function writeTableSettings(table, patch, source) {
   DR_MODEL.setTableSettings(table, patch, source);
   applyTableSettings(table);

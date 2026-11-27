@@ -105,9 +105,8 @@ const DR_BUS = (function () {
   // Chrome attaches a sender record to every arriving message. The bus passes
   // on one fact from it, the tab ID of the tab a content script sent from,
   // and keeps the rest of Chrome's record out of its own contract.
-  // The sidebar compares it with its bound tab's tab ID. A message from
-  // an extension page has no tab, so this function returns null, and
-  // publish() passes null for a same-context publish.
+  // The sidebar compares it with its bound tab's tab ID. publish() passes
+  // null for a same-context publish.
   function senderTabId(sender) {
     return sender && sender.tab && typeof sender.tab.id === 'number' ? sender.tab.id : null;
   }
@@ -175,6 +174,11 @@ const DR_BUS = (function () {
     }
   }
 
+  function hasTabCarrier() {
+    return !!chrome.tabs && typeof chrome.tabs.sendMessage === 'function' &&
+      typeof chrome.tabs.query === 'function';
+  }
+
   // A tab-routed send needs a tab ID. A caller holding one passes it as
   // opts.tabId: the service worker does, for the right-clicked tab, and the
   // sidebar does, for its bound tab. Otherwise the bus
@@ -183,11 +187,11 @@ const DR_BUS = (function () {
   // onAnswer, when given, receives the responder's answer, or undefined on
   // every failure path after the chrome.tabs check.
   function sendToTab(topic, payload, opts, onAnswer) {
-    if (!chrome.tabs || typeof chrome.tabs.sendMessage !== 'function' ||
-        typeof chrome.tabs.query !== 'function') {
+    if (!hasTabCarrier()) {
       // A tab-routed topic published from a context with no chrome.tabs (a
       // content script) cannot reach its audience. Returning quietly here
-      // would reproduce the silent miss the topic table exists to remove.
+      // would leave a silent miss: a message sent that no context receives,
+      // with no error and no log row.
       throw new Error('DR_BUS: tab-routed topic "' + topic +
         '" published from a context with no chrome.tabs');
     }
@@ -195,8 +199,8 @@ const DR_BUS = (function () {
     const deliver = (tabId) => {
       try {
         chrome.tabs.sendMessage(tabId, message, (answer) => {
-          // Read lastError on one-way publishes too, not only on requests: an
-          // unread lastError logs Chrome's "Unchecked runtime.lastError" warning.
+          // Read on one-way publishes too, not only on requests, for the
+          // reason in sendToExtensionPages.
           void chrome.runtime.lastError;
           if (onAnswer) onAnswer(answer);
         });
@@ -221,8 +225,8 @@ const DR_BUS = (function () {
         deliver(tabs[0].id);
       });
     } catch (e) {
-      // Chrome throws here when this context has lost its connection to the
-      // rest of the extension. Nothing can be sent, so the send ends quietly.
+      // The same lost connection as in sendToExtensionPages. Nothing can be
+      // sent, so a request's callback receives undefined.
       if (onAnswer) onAnswer(undefined);
     }
   }
@@ -282,9 +286,7 @@ const DR_BUS = (function () {
   function request(topic, payload, callback, opts) {
     assertKnownTopic(topic);
     assertRequestFamily(topic, 'request');
-    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.tabs ||
-        typeof chrome.tabs.sendMessage !== 'function' ||
-        typeof chrome.tabs.query !== 'function') {
+    if (typeof chrome === 'undefined' || !chrome.runtime || !hasTabCarrier()) {
       callback(undefined);
       return;
     }

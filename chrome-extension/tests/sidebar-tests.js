@@ -605,50 +605,6 @@
 })();
 
 // ---------------------------------------------------------------------------
-// The depth guard itself. The cycle
-// above is self-limiting (a caller-side counter stops it after one bounce);
-// this one is NOT — neither handler has a stop condition, so without the
-// bus's own guard this would recurse until the real call stack overflows.
-// ---------------------------------------------------------------------------
-(function appModelSettings_busReentrancy_unguardedCycleTerminatesSafely() {
-  const TOPIC_A = 'state:rangeOk';
-  const TOPIC_B = 'state:settingsChanged';
-
-  const unsubA = DR_BUS.subscribe(TOPIC_A, () => { DR_BUS.publish(TOPIC_B, { source: 'page', settings: Object.assign({}, DR_DEFAULTS) }); });
-  const unsubB = DR_BUS.subscribe(TOPIC_B, () => { DR_BUS.publish(TOPIC_A, {}); });
-
-  let threw = null;
-  try {
-    DR_BUS.publish(TOPIC_A, {});
-  } catch (e) {
-    threw = e.message;
-  } finally {
-    unsubA();
-    unsubB();
-  }
-
-  eq('DR_BUS reentrancy (unguarded cycle): publish() throws a catchable error instead of crashing with a real stack overflow',
-    typeof threw, 'string');
-  eq('DR_BUS reentrancy (unguarded cycle): the thrown error names the depth guard, not a raw engine stack-overflow error',
-    /publish depth exceeded/.test(threw || ''), true);
-
-  // The guard must reset cleanly — every nested publish() decrements the
-  // depth counter in a finally as the exception unwinds — so an unrelated
-  // publish afterward must behave normally, not still read as "deep".
-  let secondThrew = null;
-  const unsubCheck = DR_BUS.subscribe(TOPIC_A, () => {});
-  try {
-    DR_BUS.publish(TOPIC_A, {});
-  } catch (e) {
-    secondThrew = e.message;
-  } finally {
-    unsubCheck();
-  }
-  eq('DR_BUS reentrancy (unguarded cycle): the depth counter recovers — a later unrelated publish does not throw',
-    secondThrew, null);
-})();
-
-// ---------------------------------------------------------------------------
 // Adversarial: wire-payload shape of the settings apply. The message body is
 // {topic, settings}, same field names, same nesting, no extra bus-envelope
 // fields, and chrome.tabs.sendMessage receives a THIRD argument, a response
