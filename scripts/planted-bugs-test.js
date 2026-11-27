@@ -101,7 +101,7 @@ const SETUP = [
   '  entries.push({ piece: site[1], line: Number(site[2]), name, passed });',
   '  if (!passed) process.exitCode = 1;',
   '}',
-    ...TAKE_SLOT,
+  ...TAKE_SLOT,
   'function flakyFails() {',
   '  const slot = process.env.FIXTURE_FLAKY_DIR ? takeSlot(process.env.FIXTURE_FLAKY_DIR) : 0;',
   "  return slot === 2 || (process.env.FIXTURE_FLAKY_LATER === '1' && slot > 3);",

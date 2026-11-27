@@ -513,7 +513,7 @@ function classify(run, clean) {
   if (credited.size) return { outcome: 'assertions', credited: [...credited] };
   // A failing assertion with no clean identity can take no credit, so the
   // planted bug counts as caught by a crash. A failing flaky assertion
-  // explains a non-zero exit, so it is no crash.
+  // accounts for a non-zero exit, so it is no crash.
   const stoppedEarly = run.exitCode !== 0 && (run.entries.length < clean.entryCount || !failed.length);
   return { outcome: unmatched || stoppedEarly ? 'crash' : 'not caught', credited: [] };
 }
