@@ -32,6 +32,14 @@ A blocked commit prints the file, the pattern it matched, and the line. Replace 
 
 The Block pattern column is the whole policy, so a damaged column would let every line through and look the same as clean prose. To stop that, the script tests its pattern list before it reads any change, and exits 2 when it cannot read the vocabulary, when a table has no Block pattern column, when the tables yield no patterns, when a pattern is not a valid expression, or when no pattern matches a fixed sentence that holds a known retired synonym. `bash scripts/check-vocab-test.sh` plants retired synonyms, clean prose, exempt files, and damaged tables in a scratch repository and requires the right result for each. Run it after any change to a pattern or the script; `Repo hygiene` runs it too.
 
+## Measuring the extension tests
+
+`scripts/planted-bugs.js` measures which planted bugs each assertion of the extension suite catches. It runs the suite in git worktrees in the operating system's temporary folder and removes them at the end, so the checkout stays untouched. Run with no mode, the script prints its full usage.
+
+- `measure --out <file>` runs the clean suite three times, then the suite once per planted bug, at `HEAD` or `--commit <ref>`, and writes the result file. A full run takes about an hour (an estimate from a one-file run); `--files <paths>` limits the planted bugs to the named product files. Keep the result file out of the repository.
+- `sort --in <file>` prints, by test piece, the assertions that catch nothing, the ones that repeat others, the unique ones, and the flaky ones.
+- `prove --in <file> --branch <ref>` exits 1 when a planted bug the result file holds as caught is no longer caught on the branch. It exits 1 with "measure again" when the branch changes product code, because the planted bugs then differ.
+
 ## Questions
 
 Open an issue. Happy to help.
