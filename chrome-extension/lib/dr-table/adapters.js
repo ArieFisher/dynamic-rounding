@@ -177,21 +177,21 @@ function assignGridColumns(rowSpans) {
 }
 
 /**
- * Each row's cell elements, row by row, until the reads spent reach
- * `cellBudget`; the rows after that stay unread. A row spends one read per
- * cell, and a row with no cell spends one, so a run of empty rows also ends
- * at the budget. With no budget every row is read. assignGridColumns places a
- * row from the rows above it alone, so the rows read get the same grid
- * columns as in a full read.
+ * Each row's cell elements, row by row, until the count of cells read reaches
+ * `cellBudget`; the rows after that stay unread. With no budget every row is
+ * read. Every row of the own-children read holds at least one cell, so the
+ * rows read are no more than the budget. assignGridColumns places a row from
+ * the rows above it alone, so the rows read get the same grid columns as in
+ * a read of every row.
  * @returns {Element[][]}
  */
 function readRowCellEls(rows, readCellEls, cellBudget = Infinity) {
   const rowCellEls = [];
-  let readsSpent = 0;
-  for (let r = 0; r < rows.length && readsSpent < cellBudget; r++) {
-    const cellEls = readCellEls(rows[r], r);
+  let cellsRead = 0;
+  for (let r = 0; r < rows.length && cellsRead < cellBudget; r++) {
+    const cellEls = readCellEls(rows[r]);
     rowCellEls.push(cellEls);
-    readsSpent += Math.max(1, cellEls.length);
+    cellsRead += cellEls.length;
   }
   return rowCellEls;
 }
@@ -391,53 +391,53 @@ class GridAdapter {
   }
 
   /**
-   * The grid's rows, read in one of two scopes. Both turn a column-first grid
-   * and stop at `cellBudget` (see readRowCellEls).
+   * The grid's rows, read in one of two scopes. Both turn a column-first grid.
    *
    * 'full', the scope every table action reads: rows by role, vendor class,
    * or <tr> anywhere beneath the element, inside its scroll container, with a
-   * pinned pane's cells joined to each row.
+   * pinned pane's cells joined to each row. It reads every row and takes no
+   * cell budget.
    *
    * 'ownChildren', the scope the geometry probe reads: the element's own
    * repeated children as rows and their children as cells, among the first
-   * `cellBudget` children. The probe tests an element no page marked, often a
+   * `cellBudget` children, stopping at `cellBudget` cells (see
+   * readRowCellEls). The probe tests an element no page marked, often a
    * layout wrapper; a row found anywhere beneath a wrapper belongs to a table
    * inside it, so under the full scope the wrapper would pass on that
    * table's numbers and register over the same cells.
    *
    * @returns {{isOutside?: boolean, isGrouped?: boolean, getCells(): object[]}[]}
    */
-  getRows({ scope = 'full', cellBudget = Infinity } = {}) {
-    const { entries, readCellEls } = this._scopeRead(scope, cellBudget);
+  getRows({ scope = 'full', cellBudget } = {}) {
+    const { entries, rowCellEls } = this._readScope(scope, cellBudget);
     if (entries.length === 0) return [];
-    return buildRows(readRowCellEls(entries, readCellEls, cellBudget), this.originalsPort,
+    return buildRows(rowCellEls, this.originalsPort,
       entries.map(({ isOutside, isGrouped }) => ({ isOutside, isGrouped })));
   }
 
-  _scopeRead(scope, cellBudget) {
+  _readScope(scope, cellBudget) {
     if (scope === 'ownChildren') {
       const children = Array.prototype.slice.call(this.el.children || [], 0, cellBudget);
-      return {
-        entries: this._childRowEntries(children, true),
-        readCellEls: ({ el: rowEl, cellEls }) => cellEls || Array.from(rowEl.children),
-      };
+      const entries = this._childRowEntries(children, true);
+      const readCellEls = ({ el: rowEl, cellEls }) => cellEls || Array.from(rowEl.children);
+      return { entries, rowCellEls: readRowCellEls(entries, readCellEls, cellBudget) };
     }
     if (scope !== 'full') throw new Error(`GridAdapter: unknown row scope "${scope}"`);
+    if (cellBudget !== undefined) throw new Error('GridAdapter: the full scope takes no cell budget');
     const scrollContainer = this._getScrollContainer();
     const pinnedPane = this._getPinnedPane(scrollContainer);
     const pinnedRows = pinnedPane ? this._getRowEntries(pinnedPane).map((entry) => entry.el) : [];
     const pinnedByKey = new Map(pinnedRows.map((pr, idx) => [this._getRowKey(pr, idx), pr]));
-    return {
-      entries: this._getRowEntries(scrollContainer),
-      // A row read from a column-first grid has no row element, so it takes
-      // no pinned cells.
-      readCellEls: ({ el: rowEl, cellEls }, idx) => {
-        if (cellEls) return cellEls;
-        const pinnedRowEl = pinnedByKey.get(this._getRowKey(rowEl, idx)) || pinnedRows[idx];
-        const pinned = pinnedRowEl ? this._getCellEls(pinnedRowEl) : [];
-        return pinned.concat(this._getCellEls(rowEl));
-      },
-    };
+    const entries = this._getRowEntries(scrollContainer);
+    // A row read from a column-first grid has no row element, so it takes no
+    // pinned cells.
+    const rowCellEls = entries.map(({ el: rowEl, cellEls }, idx) => {
+      if (cellEls) return cellEls;
+      const pinnedRowEl = pinnedByKey.get(this._getRowKey(rowEl, idx)) || pinnedRows[idx];
+      const pinned = pinnedRowEl ? this._getCellEls(pinnedRowEl) : [];
+      return pinned.concat(this._getCellEls(rowEl));
+    });
+    return { entries, rowCellEls };
   }
 }
 

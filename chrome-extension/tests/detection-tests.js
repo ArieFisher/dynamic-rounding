@@ -400,21 +400,6 @@
     looksLikeGrid(gridWithNumberAt(budget + 1), { styleProbe: gridProbe }), false);
 })();
 
-(function gridAdapter_aCellBudgetEndsTheRowRead() {
-  const el = makeGridWrapper([['Name', 'Sales'], ['Tami', '1,234'], ['Ravi', '5,678']]).wrapperEl;
-  eq('grid adapter cell budget: three rows of two cells under a budget of 3 read as two rows',
-    new GridAdapter(el).getRows({ cellBudget: 3 }).map((row) => row.getCells().length), [2, 2]);
-  eq('grid adapter cell budget: three rows of two cells with no budget read as three rows',
-    new GridAdapter(el).getRows().length, 3);
-})();
-
-(function gridAdapter_aCellBudgetEndsARunOfEmptyRows() {
-  const budget = DR_DETECTION_SETTINGS.dataTestCellBudget;
-  const grid = rwEl('div', { role: 'grid' }, Array.from({ length: budget * 3 }, () => rwEl('div', { role: 'row' }, [])));
-  eq('grid adapter cell budget: three budgets\' worth of rows with no cells read as one budget\'s worth of rows',
-    new GridAdapter(grid).getRows({ cellBudget: budget }).length, budget);
-})();
-
 // Each child records its position when the probe reads its children.
 (function geometryProbe_readsNoChildPastTheCellBudget() {
   const budget = DR_DETECTION_SETTINGS.dataTestCellBudget;
@@ -433,25 +418,6 @@
   eq('geometry probe: three budgets\' worth of rows of one empty cell are read no further than the budget',
     furthestRead < budget, true);
 })();
-
-// A flex wrapper of word sections, laid out as repeated blocks, around a
-// table or a grid. The wrapper repeats like a grid but holds no number of its
-// own; only the table inside it does.
-function wrapperOfWordSections(inner) {
-  const breaks = (els) => els.flatMap((el, i) => (i === 0 ? [el] : [rwText('\n'), el]));
-  const block = (display, children) => {
-    const el = rwEl('div', {}, breaks(children));
-    el._display = display;
-    return el;
-  };
-  const leaf = (text) => rwEl('div', {}, [rwText(text)]);
-  const section = (a, b) => block('block', [leaf(a), leaf(b)]);
-  const first = section('Overview', 'Team totals');
-  const middle = inner.wrapped ? block('block', [inner.el]) : inner.el;
-  const wrapper = block('flex', [first, section('Filters', 'Region'), middle, section('Notes', 'Draft'), section('Help', 'Contact')]);
-  const page = rwEl('body', {}, [wrapper]);
-  return { wrapper, word: first.children[0], page, block, leaf };
-}
 
 (function geometryProbe_aWrapperOfWordSectionsFailsOnTheNumbersOfATableInside() {
   const probe = { getComputedStyle: (el) => ({ display: (el && el._display) || 'block' }), getOffsetWidth: () => 100 };
