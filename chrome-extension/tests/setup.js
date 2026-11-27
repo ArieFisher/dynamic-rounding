@@ -209,7 +209,6 @@ globalThis.DR_BUS = DR_BUS;
 // Expose grid-detection helpers for the grid-detection test suite.
 globalThis.looksLikeGrid = looksLikeGrid;
 globalThis.findTargetTable = findTargetTable;
-globalThis.findTables = findTables;
 // The shape fingerprint: the detection layer's reader and comparison, and
 // the controller's two users of them — the teardown a mismatch runs and the
 // check both entry points call.
@@ -235,8 +234,7 @@ globalThis.reapplyObservers = reapplyObservers;
 globalThis.reapplyTimers = reapplyTimers;
 globalThis.GRID_REAPPLY_DEBOUNCE_MS = DR_DETECTION_SETTINGS.settleDelayMs;
 // Expose the nomination step (lib/dr-table/detect.js) for the nesting and
-// pending-table suites. The step returns outcomes findTables drops, so the
-// suites read them here rather than through findTables.
+// pending-table suites.
 globalThis.chainRootOf = chainRootOf;
 globalThis.nominateNest = nominateNest;
 globalThis.scanTables = scanTables;

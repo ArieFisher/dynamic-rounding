@@ -1791,7 +1791,9 @@ const DR_DETECTION_SETTINGS = {
   nestingDepth: 1,
   // --- Grid detection ---
   gridMinChildren: 5,
-  // The most ancestors any detection walk climbs.
+  // The most ancestors a detection walk climbs. A walk up to the document
+  // root has no cap; the comment on WALK_TO_ROOT in
+  // chrome-extension/lib/dr-table/detect.js holds the reason.
   gridWalkDepthCap: 15,
   gridSampleSize: 10,
   gridAlignmentAgreement: 0.8,

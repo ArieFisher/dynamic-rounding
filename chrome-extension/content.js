@@ -335,7 +335,8 @@ function dropPendingTable(chainRoot) {
 // fresh registration, never on an entry whose originals and settings belong
 // to cells no longer on the screen.
 //
-// The nomination step re-runs from the nest's chain root, because a new
+// The nomination step re-runs from the nest's chain root, or from the table
+// itself when it sits in no nest, as an unmarked grid does, because a new
 // result set can change which element of the nest passes the data test, so
 // the fresh registration can land on a different element. The switch
 // publishes even where it lands on the same element: the entry is new either
@@ -366,13 +367,12 @@ function revalidateTableShape(table, opts = {}) {
   resetTable(table);
   teardownTableEntry(table);
 
-  // On a <table> root, findTables returns that table and no other native
-  // table, so one call covers a native table and a grid alike. It still
-  // returns a grid nested in the table's cells.
+  // The nomination step reads the root's own nest alone. A table inside one
+  // of its cells is a nest of its own, and registers through the load-time
+  // scan or the added-node pass.
   const root = table.tagName === 'TABLE' ? table : (chainRootOf(table) || table);
-  const handles = findTables(root, DETECT_OPTS);
-  for (const handle of handles) registerDataTable(handle, true);
-  const fresh = handles[0] || null;
+  const fresh = nominateNest(root, DETECT_OPTS).selected;
+  if (fresh) registerDataTable(fresh, true);
 
   DR_LOG.debug(DR_LOG.formatRow('shape change', { result: fresh ? 'registered' : 'none registered' }));
   if (!fresh) return { table: null, switched: false };
