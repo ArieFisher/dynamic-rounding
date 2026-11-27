@@ -319,9 +319,9 @@
   // --- (e) the model's fields: the scan above reads only content.js's
   // top-level bindings, so this one reads DR_MODEL's private field names from
   // app/model.js and checks that neither content.js nor table-pillbox-view.js
-  // assigns them. The fields sit one
-  // level inside the IIFE (2-space indent); anchoring on that indent skips
-  // the per-call locals inside the registry functions.
+  // assigns them. The fields sit one level inside the IIFE (2-space indent);
+  // anchoring on that indent skips the per-call locals inside the registry
+  // functions.
   const modelFieldNames = Array.from(modelSrc.matchAll(/^ {2}(?:let|const)\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm))
     .map((m) => m[1])
     .filter((name) => name !== 'DR_MODEL');
