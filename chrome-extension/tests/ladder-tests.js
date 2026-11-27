@@ -439,6 +439,10 @@ const IDENTIFIER_SPAN_NEAR_MISSES = [
     eq(`scientific notation: "${text}" gives one number stretch over the whole cell`,
       classifyAt(text, LADDER_OPTS), { stretches: [expectedNumberStretch(0, text, num)] });
   }
+  eq('scientific notation: "1.2E+05" with "05" a markup range holds no stretch',
+    classifyAt('1.2E+05', LADDER_OPTS, { markupRanges: [{ start: 5, end: 7 }] }), { stretches: [] });
+  eq('scientific notation: "-1.2E+12" with "12" a markup range holds no stretch',
+    classifyAt('-1.2E+12', LADDER_OPTS, { markupRanges: [{ start: 6, end: 8 }] }), { stretches: [] });
   eq('scientific notation: "about 1.2E+05 units" gives one stretch over "1.2"',
     stretchTexts('about 1.2E+05 units', classifyAt('about 1.2E+05 units', LADDER_OPTS)), ['1.2']);
   eq('scientific notation: "1.2E+017a" with "a" a superscript gives one stretch over "1.2"',

@@ -124,14 +124,15 @@ function dateTimeStretches({ isoPairs, dates, times }, options) {
  * here, and classifyCell holds every number that overlaps an entry. The
  * identifier scan reads the text with each superscript span blanked, so a
  * footnote marker right after a phone number ("416-555-1234<sup>1</sup>")
- * never joins its digits.
+ * never joins its digits. Each identifier entry holds isIdentifier: true
+ * (see isMasked).
  */
 function maskedRanges(text, superscriptRanges, markupRanges, dateTimeSpans) {
   return [
     ...markupRanges,
     ...dateTimeSpans,
     ...getQuoteMaskedRanges(text),
-    ...getIdentifierMaskedRanges(blankRanges(text, superscriptRanges)),
+    ...getIdentifierMaskedRanges(blankRanges(text, superscriptRanges)).map((r) => ({ ...r, isIdentifier: true })),
     ...superscriptRanges,
     ...getEraYearMaskedRanges(text),
   ];
@@ -168,15 +169,22 @@ function readNumberCell({ text, trimmedText, hasSuperscript, digitsSpanPieces })
   return extractNumbersInText(text);
 }
 
-// Where the masked ranges test a number's digits: up to its exponent. Only a
-// cell that toNumber reads as one number in scientific notation ("1.2E+05",
-// "1.2E−05", "1.2 E+05") gives a match whose text holds an exponent, and that
-// exponent is part of the number, though the identifier scan reads "05" as a
-// leading-zero code. Among words and in a cell with a superscript the reader
-// takes "1.2" and "05" as two numbers, so there "05" stays a code.
-function significandEnd(match) {
+// True when the match overlaps a masked range. An identifier range is tested
+// against the match's digits up to its first "E" only. A match holds an "E"
+// only when toNumber reads the whole cell as one number: in scientific
+// notation ("1.2E+05", "1.2E−05", "1.2 E+05") the "E" starts the exponent,
+// which is part of the number, though the identifier scan reads "05" as a
+// leading-zero code. In a hexadecimal number ("0x1E") the "E" is a digit, and
+// no identifier range starts inside a hexadecimal number, so the cut changes
+// nothing there. Among words and in a cell with a superscript the reader takes
+// "1.2" and "05" as two numbers, so there "05" stays a code. Every other
+// masked range (a link over the exponent digits, a superscript) is tested
+// against the whole match.
+function isMasked(masked, match) {
+  const end = match.index + match.numStr.length;
   const exponentAt = match.numStr.search(/[eE]/);
-  return match.index + (exponentAt === -1 ? match.numStr.length : exponentAt);
+  const digitsEnd = exponentAt === -1 ? end : match.index + exponentAt;
+  return masked.some((range) => overlapsMaskedRange([range], match.index, range.isIdentifier ? digitsEnd : end));
 }
 
 function numberStretch(match) {
@@ -222,7 +230,7 @@ function classifyCell(input, options) {
     ? extractNumbersInText(text)
     : readNumberCell({ text, trimmedText, hasSuperscript, digitsSpanPieces });
   const numberStretches = numbers
-    .filter((m) => !overlapsMaskedRange(masked, m.index, significandEnd(m)))
+    .filter((m) => !isMasked(masked, m))
     .filter((m) => !touchesSwitchedOffSign(text, m, options))
     .map(numberStretch);
   const stretches = [...dateTimeStretches(read, options), ...numberStretches]
