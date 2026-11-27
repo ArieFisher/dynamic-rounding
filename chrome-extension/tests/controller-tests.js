@@ -16,11 +16,11 @@
   // current value. ---
 
   eq('pull (inverted): the apply reads the table\'s own settings',
-    /function applySidebarRounding\(table\)\s*\{\s*const opts = DR_MODEL\.getTableSettings\(table\)/.test(contentSrc),
+    /function applyTableSettings\(table\)\s*\{\s*const opts = DR_MODEL\.getTableSettings\(table\)/.test(contentSrc),
     true);
 
   eq('pull (inverted): content.js answers request:activeTable with the active table\'s settings',
-    /respond\('request:activeTable'[\s\S]{0,400}const active = DR_MODEL\.getActiveTable\(\);\s*const settings = DR_MODEL\.getTableSettings\(active\)/.test(contentSrc), true);
+    /respond\('request:activeTable'[\s\S]{0,400}const active = current && revalidateTableShape\(current\)\.table;\s*const settings = DR_MODEL\.getTableSettings\(active\)/.test(contentSrc), true);
 
   // --- Unified rounding path ---
 
@@ -32,11 +32,11 @@
 
   eq('registry: the table settings are recorded via DR_MODEL.setTableSettings, in the controller\'s one write',
     /function writeTableSettings\([\s\S]{0,400}DR_MODEL\.setTableSettings\(table,/.test(contentSrc), true);
-  eq('registry: roundTable writes no settings (issue #328)',
+  eq('registry: the first simplification writes no table settings (issue #328)',
     /function roundTable\([\s\S]{0,300}setTableSettings/.test(contentSrc), false);
 
-  eq('unified: the apply re-runs roundTable rather than replaying a cached value',
-    /function applySidebarRounding[\s\S]{0,600}roundTable\(/.test(contentSrc), true);
+  eq('unified: an apply simplifies the table again rather than replaying a cached value',
+    /function applyTableSettings[\s\S]{0,600}roundTable\(/.test(contentSrc), true);
 
   // --- Display simplification: "35.0" → "35" when value unchanged but format would ---
 
@@ -501,7 +501,7 @@
       nativeCell.classList.contains('dr-ext-rounded'), true);
 
     restoreTable(table, false);
-    eq('registry restore: native cell HTML restored via the shared restoreTable() call',
+    eq('registry restore: a native cell holds its original HTML after the restore',
       nativeCell.innerHTML, '8,584,629');
     eq('registry restore: native cell no longer carries dr-ext-rounded',
       nativeCell.classList.contains('dr-ext-rounded'), false);
@@ -515,7 +515,7 @@
     gridCell.classList.contains('dr-ext-rounded'), true);
 
   restoreTable(grid.wrapperEl, false);
-  eq('registry restore: grid cell text node restored via the same restoreTable() call',
+  eq('registry restore: a grid cell\'s text node holds its original text after the restore',
     gridCell.childNodes[0].nodeValue, '8584629');
   eq('registry restore: grid cell no longer carries dr-ext-rounded',
     gridCell.classList.contains('dr-ext-rounded'), false);
@@ -697,14 +697,14 @@
       {}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true }, opts);
 
     DR_MODEL.setTableSettings(grid.wrapperEl, Object.assign({}, applyOpts, { enabled: false }), 'page');
-    applySidebarRounding(grid.wrapperEl);
+    applyTableSettings(grid.wrapperEl);
     eq('round trip: the off press clears the display back to "555"',
       cell555.childNodes[0].nodeValue, '555');
     eq('round trip: the off press clears the frozen basis',
       DR_MODEL.getTableMaxMagnitude(grid.wrapperEl), null);
 
     DR_MODEL.setTableSettings(grid.wrapperEl, Object.assign({}, applyOpts, { enabled: true }), 'page');
-    applySidebarRounding(grid.wrapperEl);
+    applyTableSettings(grid.wrapperEl);
     eq('round trip: DR_MODEL re-freezes from the now-visible magnitude-9 row (9), not the original magnitude-2 basis',
       DR_MODEL.getTableMaxMagnitude(grid.wrapperEl), 9);
     // Under the re-frozen (9) basis, current_mag(555)=2, max_mag-current_mag=7
@@ -1023,7 +1023,7 @@
     // A sidebar change runs this same apply, and it must honor the settings
     // the table pillbox just wrote — not silently re-round the table.
     withCreateTreeWalker(function () {
-      applySidebarRounding(table);
+      applyTableSettings(table);
     });
     eq('leak-1: a later apply honors the table\'s settings — the table stays on originals',
       showsSimplified(table), false);
@@ -1853,7 +1853,7 @@ function issue328SettingsOf(table) {
 (function shapeFingerprint_criterion4_aNewResultSetMovesTheRegistrationOutward() {
   runPressFixture(({ sent }) => {
     const grid = makeDatabaseQueryGrid();
-    withTablePillboxDocumentMock(function () { injectTablePillboxes(grid.wrapperEl); });
+    withTablePillboxDocumentMock(function () { scanAndRegisterTables(grid.wrapperEl); });
     eq('fingerprint move: the page registers the scrolling pane alone (precondition)',
       [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl].map((el) => DR_MODEL.hasTable(el)),
       [false, false, true]);
@@ -2294,10 +2294,9 @@ function issue328SettingsOf(table) {
   });
 })();
 
-// --- Test 10: a shape change during a pass. The table re-detects as a new
-// table and shows the original under the shipped defaults; the active table changes
-// only when the changed table was the active one. ---
-(function rewrite10_aShapeChangeDuringAPassReDetects() {
+// --- Test 10: a shape change during a pass. The table registers fresh; the
+// active table changes only when the changed table was the active one. ---
+(function rewrite10_aShapeChangeDuringAPassRegistersFresh() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const header = ['Region', 'Q1', 'Q2'];
     const rows = [['North', '1,234', '5,678'], ['South', '2,468', '3,579']];
@@ -2313,7 +2312,7 @@ function issue328SettingsOf(table) {
         DR_MODEL.setTableSettings(active.table,
           Object.assign({}, RW_OPTS, { simplifyFirstRow: false, enabled: true }), 'page');
         DR_MODEL.setActiveTable(active.table);
-        applySidebarRounding(active.table);
+        applyTableSettings(active.table);
         roundTableUnder(other.table, Object.assign({}, RW_OPTS, { simplifyFirstRow: false }));
 
         other.headerWrite(2, 'Q3');
@@ -2393,7 +2392,7 @@ const SETTINGS_CHANGE_ROWS = [[['6,7', { tag: 'b', text: '18,245' }],
       const offRow = DR_LOG.onRow((row) => rows.push(row.text));
       try {
         DR_MODEL.setTableSettings(table, opts, 'page');
-        withTablePillboxDocumentMock(() => applySidebarRounding(table));
+        withTablePillboxDocumentMock(() => applyTableSettings(table));
       } finally {
         offRow();
       }
@@ -2427,7 +2426,7 @@ const SETTINGS_CHANGE_ROWS = [[['6,7', { tag: 'b', text: '18,245' }],
     try {
       DR_MODEL.setTableSettings(t.table,
         Object.assign({}, RW_OPTS, { enabled: true, simplifyDates: true, dateGranularity: 'month' }), 'page');
-      withTablePillboxDocumentMock(() => applySidebarRounding(t.table));
+      withTablePillboxDocumentMock(() => applyTableSettings(t.table));
     } finally {
       offRow();
     }

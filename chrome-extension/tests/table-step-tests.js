@@ -163,6 +163,14 @@ function tableStepCells(api, rows) {
 // A column of all-numeric dates reads month-first when one date's second
 // number is above 12, and day-first when one date's first number is.
 
+(function pickDateFormatHint_readsTheColumn() {
+  eq('pickDateFormatHint: n1 > 12 only -> day-first', pickDateFormatHint([{ n1: 25, n2: 4 }]), 'day-first');
+  eq('pickDateFormatHint: n2 > 12 only -> month-first', pickDateFormatHint([{ n1: 3, n2: 25 }]), 'month-first');
+  eq('pickDateFormatHint: both > 12 across the column -> mixed',
+    pickDateFormatHint([{ n1: 25, n2: 4 }, { n1: 3, n2: 25 }]), 'mixed');
+  eq('pickDateFormatHint: neither > 12 -> ambiguous', pickDateFormatHint([{ n1: 3, n2: 4 }]), 'ambiguous');
+})();
+
 (function columnPostPass_settlesEachAmbiguousDate() {
   const column = (texts) => texts.map((text, rowIndex) => ({
     text, columnIndex: 0, classification: classifyCell({ text, rowIndex, columnIndex: 0, ranges: null }, TABLE_STEP_LADDER_OPTS),
@@ -315,8 +323,8 @@ function tableStepCells(api, rows) {
 (function tableStep_oneDefinitionOfEachRule() {
   const contentSrc = sourceByName('content.js');
   const DECL = (name) => new RegExp(`^\\s*function\\s+${name}\\s*\\(`, 'm');
-  const TABLE_STEP_FUNCTIONS = ['isAmbiguousDateClassification', 'resolveAmbiguousDates', 'datasetMaxMagnitude',
-    'classifiedCellPatches', 'tablePatches', 'applyPatches'];
+  const TABLE_STEP_FUNCTIONS = ['pickDateFormatHint', 'isAmbiguousDateClassification', 'resolveAmbiguousDates',
+    'datasetMaxMagnitude', 'classifiedCellPatches', 'tablePatches', 'applyPatches'];
   // Every hand-written JavaScript file the extension and the Sheets library
   // ship, outside the tests. The Sheets library itself is skipped: the Sheets
   // build writes it from these files, so it holds a copy of table.js by

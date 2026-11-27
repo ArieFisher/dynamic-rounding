@@ -874,7 +874,7 @@ const supTestOpts = {
   });
 })();
 
-// LG2: Pass — ARIA short-circuit (role="grid") skips geometry probe
+// LG2: Pass — ARIA short-circuit (role="grid") skips the alignment step
 // The alignment step is skipped when role="grid". We prove this by
 // making column-0 offsetWidths NON-uniform (all different) — if the alignment step ran,
 // the 80% alignment check would fail and return false. With the ARIA
@@ -895,12 +895,12 @@ const supTestOpts = {
   });
 })();
 
-// LG3: Pass — database query shape (library class "dg--" short-circuits geometry probe)
+// LG3: Pass — database query shape (library class "dg--" short-circuits the alignment step)
 // The wrapper contains a pinned pane and a scroll pane as children, but for
 // looksLikeGrid we test the wrapper itself: it has ≥5 row-like children,
 // repetitive structure, numeric content, and the "dg--" class which short-circuits
-// before the geometry probe. Column-0 widths are deliberately non-uniform so that
-// if the geometry probe ran it would fail — proving the short-circuit works.
+// before the alignment step. Column-0 widths are deliberately non-uniform so that
+// if the alignment step ran it would fail — proving the short-circuit works.
 (function looksLikeGrid_pass_databaseQueryClass() {
   const rows = [
     makeGridRow([{text:'Header',width:10},{text:'0'}], 'dg--row', 20),
@@ -922,7 +922,7 @@ const supTestOpts = {
 
 // LG4: Reject — CSS layout/card grid with NO numeric content
 // Repetitive card-style divs with text-only content must be rejected.
-// This proves the numeric-content step works as the mandatory false-positive guard.
+// This proves the numeric step works as the mandatory false-positive guard.
 (function looksLikeGrid_reject_cssCardGrid() {
   const rows = [
     makeGridRow([{text:'Card A',width:100},{text:'Buy now'}], 'card', 20),
@@ -955,13 +955,13 @@ const supTestOpts = {
   });
 })();
 
-// LG6: Reject — too few children (< GRID_MIN_CHILDREN = 5)
+// LG6: Reject — too few children (< DR_DETECTION_SETTINGS.gridMinChildren = 5)
 (function looksLikeGrid_reject_tooFewChildren() {
   const rows = [
     makeGridRow([{text:'Foo',width:100},{text:'1234'}], 'row', 20),
     makeGridRow([{text:'Bar',width:100},{text:'5678'}], 'row', 20),
     makeGridRow([{text:'Baz',width:100},{text:'9012'}], 'row', 20),
-    // only 3 rows — fewer than GRID_MIN_CHILDREN (5)
+    // only 3 rows — fewer than DR_DETECTION_SETTINGS.gridMinChildren (5)
   ];
   const container = makeGridContainer(rows, 'flex', null, '');
   withGridComputedStyle(container, 'flex', function() {
@@ -1082,7 +1082,7 @@ const supTestOpts = {
       makeGridRow([{text:'E',width:100},{text:'500'}], 'row', 20),
     ];
 
-    // Text-only rows: will fail looksLikeGrid at the numeric-content step (no numeric content)
+    // Text-only rows: will fail looksLikeGrid at the numeric step (no cell the data test counts)
     const noNumericRows = [
       makeGridRow([{text:'Alpha',width:100},{text:'Foo'}], 'row', 20),
       makeGridRow([{text:'Beta',width:100},{text:'Bar'}], 'row', 20),
@@ -1117,7 +1117,7 @@ const supTestOpts = {
 })();
 
 // FT3: findTargetTable — a native <table> ancestor goes through the
-// nomination step, as a nest of one, before the grid heuristic. A data table
+// nomination step, as a nest of one, before the geometry probe. A data table
 // resolves, new or registered; a table with nothing to simplify resolves
 // nothing, the way a grid nest that selects nothing does.
 (function findTargetTable_sendsANativeTableThroughTheNominationStep() {
@@ -1126,7 +1126,7 @@ const supTestOpts = {
     const words = rwBuildTable('native', [['North', 'alpha'], ['South', 'bravo']], { header: ['Region', 'Code'] });
 
     const fresh = findTargetTable(data.cell(1, 1), { isRegistered: () => false });
-    eq('findTargetTable: a native data table resolves through the nomination step',
+    eq('findTargetTable: a click in a native data table resolves the table',
       fresh && fresh.handle === data.table, true);
     eq('findTargetTable: an unregistered native data table reports isNew: true',
       fresh && fresh.isNew, true);
@@ -1151,7 +1151,7 @@ const supTestOpts = {
     rwSetChildren(outer.cell(0, 0), [inner.table]);
 
     const result = findTargetTable(inner.cell(0, 1), { isRegistered: () => false });
-    eq('findTargetTable: the walk passes over the inner table for the data table around it',
+    eq('findTargetTable: a click in a table with nothing to simplify, inside a data table\'s cell, resolves the data table',
       result && result.handle === outer.table, true);
   });
 })();
@@ -1160,7 +1160,7 @@ const supTestOpts = {
 // A click target with no grid ancestors and no <table> ancestor.
 (function findTargetTable_returnsNullWhenNothing() {
   withFindTargetEnv([], function() {
-    // Text-only rows fail looksLikeGrid (numeric-content step — no numeric content)
+    // Text-only rows fail looksLikeGrid (numeric step — no cell the data test counts)
     const noNumericRows = [
       makeGridRow([{text:'Alpha',width:100},{text:'Foo'}], 'row', 20),
       makeGridRow([{text:'Beta',width:100},{text:'Bar'}], 'row', 20),
@@ -1256,10 +1256,10 @@ const supTestOpts = {
 // ---------------------------------------------------------------------------
 //
 // The route these assertions pin:
-//   - A right-click resolves in four steps: the nearest native table, the
-//     nearest already-registered ancestor, the nomination step run from the
-//     chain root of the nest the clicked element sits in, and the geometry
-//     probe.
+//   - A right-click resolves in four steps: each native table around the
+//     click, nearest first; the nearest already-registered ancestor; the
+//     nomination step run from the chain root of the nest the clicked element
+//     sits in; and the geometry probe.
 //   - The third step returns the element the configured nesting depth
 //     selects. That element can be a sibling of the clicked element, so a
 //     click in a database query grid's row-number gutter resolves the
@@ -1269,9 +1269,8 @@ const supTestOpts = {
 //   - findTargetTable reports: it registers nothing.
 //
 // Every expected value below comes from that statement, never from the
-// detection layer's source. The fixture is makeDatabaseQueryGrid (defined
-// with the grid fixtures further down this file; a top-level function
-// declaration, so it is in scope here).
+// detection layer's source. The fixture is makeDatabaseQueryGrid, defined
+// in helpers.js.
 
 // --- a click in the scrolling pane resolves the scrolling pane ---
 
@@ -1931,7 +1930,7 @@ const supTestOpts = {
 // isAccessibilityArtifact(table) returns true when EITHER signal holds:
 //   Signal 1 – table or any ancestor has aria-hidden="true"
 //   Signal 2 – nearest positioned ancestor (or the table itself) has
-//               left <= OFFSCREEN_LEFT_PX_THRESHOLD (-9999)
+//               left <= DR_DETECTION_SETTINGS.offscreenLeftPx (-9999)
 // Returns false for an ordinary on-screen 2-column numeric table.
 //
 // Mock-building helpers:
@@ -2535,13 +2534,13 @@ const supTestOpts = {
 // ---------------------------------------------------------------------------
 // The data test spends one budget of
 // DR_DETECTION_SETTINGS.dataTestCellBudget cell reads, walked in document order and
-// stopped at the first number, on native tables and grids alike.
+// stopped at the first cell that counts, on native tables and grids alike.
 // isDataTable and DR_DETECTION_SETTINGS.dataTestCellBudget live in
 // chrome-extension/lib/dr-table/detect.js and chrome-extension/constants.js.
 // ---------------------------------------------------------------------------
 
 // a grid whose first data row leads with eleven text cells before its
-// first number. The budget walks every cell in document order, so the
+// first number. The data test walks every cell in document order, so the
 // number still falls inside it.
 (function dataTestBudget_grid_numberInTwelfthColumnPasses() {
   const header = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
@@ -2786,9 +2785,9 @@ const EXPECTED_DETECTION_SETTINGS = {
       outcomes.noVendorClassFailsWidthCheck = looksLikeGrid(
         Object.assign(makeEl(badWidthRows), { className: '' }), { styleProbe: gridStyleProbe });
 
-      // --- gridWalkDepthCap (findTargetTable step 3): a 20-deep ancestor
-      // chain, every ancestor individually a qualifying grid, is bounded to
-      // the 15th ancestor (label 14, zero-indexed) ---
+      // --- gridWalkDepthCap (findTargetTable step 4, the geometry probe): a
+      // 20-deep ancestor chain, every ancestor a looksLikeGrid match, is
+      // bounded to the 15th ancestor (label 14, zero-indexed) ---
       function makeAncestor(label) {
         return {
           label,
@@ -3133,7 +3132,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
       }
       return [];
     };
-    injectTablePillboxes();
+    scanAndRegisterTables();
   });
 
   const added = DR_MODEL.getRegisteredTables().slice(before);
@@ -3153,7 +3152,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   const before = DR_MODEL.getRegisteredTables().length;
 
   withTablePillboxDocumentMock(function () {
-    injectTablePillboxes(grid.wrapperEl);
+    scanAndRegisterTables(grid.wrapperEl);
   });
 
   const added = DR_MODEL.getRegisteredTables().slice(before);
@@ -3171,7 +3170,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   // no second registration.
   const beforeRediscovery = DR_MODEL.getRegisteredTables().length;
   withTablePillboxDocumentMock(function () {
-    injectTablePillboxes(grid.scrollPaneEl);
+    scanAndRegisterTables(grid.scrollPaneEl);
   });
   eq('nesting: a node added inside a registered nest adds no registry entry',
     DR_MODEL.getRegisteredTables().length, beforeRediscovery);
@@ -3850,7 +3849,7 @@ function cnAdapterCellEls(tableEl) {
       if (sel === GRID_ARIA_SELECTOR_TEXT) return page.host.querySelectorAll(sel);
       return [];
     };
-    injectTablePillboxes();
+    scanAndRegisterTables();
   });
 
   try {
@@ -3973,7 +3972,7 @@ function cnAdapterCellEls(tableEl) {
 // A native cell carries no cell role, so the walk up from the grid passes
 // through it and the grid stays its own chain root. Both tables register.
 // The right-click route for this shape stays out: its first step returns the
-// nearest native table, and the mixed-kind case is not decided.
+// nearest native table, and the mixed-kind case is not decided (issue #600).
 
 (function cellNest_aGridInsideANativeCellRegistersBesideTheNativeTable() {
   const nativeTable = rwDrawTable('native', cnSections(undefined)).table;

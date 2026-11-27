@@ -52,6 +52,23 @@
 
 const CAPTURE_FORMAT = 11;
 
+// The page half of a capture state with every field empty: what the capture
+// holds when the state pull has no answer. Its key order is the key order of
+// the capture state's JSON.
+function emptyPageHalf() {
+  return {
+    captureFormat: CAPTURE_FORMAT,
+    page: null,
+    detectionSettings: null,
+    activeTableIndex: null,
+    tables: [],
+    lensPreview: null,
+    fixtureSeed: null,
+    errorState: null,
+    log: null,
+  };
+}
+
 function collectCaptureState(deps) {
   const model = (deps && deps.model) || DR_MODEL;
   const adapterFor = (deps && deps.adapterFor) || makeAdapter;

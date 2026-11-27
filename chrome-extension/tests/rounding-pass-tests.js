@@ -615,7 +615,7 @@ const SEAT_ROWS = [
 })();
 
 (function lensPreview_extractPreviewSamples_onePerOrderOfMagnitude() {
-  // The bottom band shows one example per distinct lower order of magnitude,
+  // The other band shows one example per distinct lower order of magnitude,
   // with no cap. Negatives bucket by absolute value. For 1234 / 123 / -12 the
   // preview is three lines: top-band 1k+ (1234) plus bottom-band 100+ (123)
   // and 10+ (|-12|).
@@ -634,12 +634,12 @@ const SEAT_ROWS = [
   const result = extractPreviewSamples(table);
   eq('onePerOom: maxMag is 3 (1234)', result.maxMag, 3);
   eq('onePerOom: top band is the 1k+ value (1234)', result.samples.top[0].num, 1234);
-  eq('onePerOom: bottom band has one row per lower magnitude (2)',
+  eq('onePerOom: other band has one row per lower magnitude (2)',
     result.samples.bottom.length, 2);
   eq('onePerOom: bottom[0] is the 100+ value (123)', result.samples.bottom[0].num, 123);
   eq('onePerOom: bottom[1] is the 10+ value, abs of -12', result.samples.bottom[1].num, -12);
 
-  // No cap: five distinct lower magnitudes yield five bottom rows.
+  // No cap: five distinct lower magnitudes yield five other-band rows.
   const deep = {
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B'), thCell('C'), thCell('D'), thCell('E'), thCell('F')] },
@@ -651,9 +651,9 @@ const SEAT_ROWS = [
     ],
   };
   const deepResult = extractPreviewSamples(deep);
-  eq('onePerOom: uncapped bottom band has 5 rows (one per lower OoM)',
+  eq('onePerOom: uncapped other band has 5 rows (one per lower OoM)',
     deepResult.samples.bottom.length, 5);
-  eq('onePerOom: bottom rows are descending by magnitude',
+  eq('onePerOom: other-band rows are descending by magnitude',
     deepResult.samples.bottom.map(r => r.num), [500000, 40000, 3000, 200, 10]);
 })();
 
@@ -705,7 +705,7 @@ const SEAT_ROWS = [
 })();
 
 (function lensPreview_extractPreviewSamples_largeMagOnly() {
-  // All cells in the top magnitude bucket -> bottom band ends up empty.
+  // All cells in the top magnitude bucket -> other band ends up empty.
   function tdCell(text) {
     return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
   }
@@ -721,6 +721,26 @@ const SEAT_ROWS = [
   const result = extractPreviewSamples(table);
   eq('lens preview of 27M, 18M, and 45M: the top band holds 2 samples', result.samples.top.length, 2);
   eq('lens preview of 27M, 18M, and 45M: the other band is empty', result.samples.bottom.length, 0);
+})();
+
+(function lensPreview_extractPreviewSamples_zeroCell() {
+  function tdCell(text) {
+    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
+  }
+  function thCell(text) {
+    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
+  }
+  const table = {
+    rows: [
+      { cells: [thCell(''), thCell('A'), thCell('B'), thCell('C')] },
+      { cells: [thCell('Row'), tdCell('4,080'), tdCell('0'), tdCell('56')] },
+    ],
+  };
+  const result = extractPreviewSamples(table);
+  const allNums = result.samples.top.concat(result.samples.bottom).map(s => s.num);
+  eq('lens preview of 4,080, 0, and 56: no sample is 0', allNums.includes(0), false);
+  eq('lens preview of 4,080, 0, and 56: the other band holds only 56',
+    result.samples.bottom.map(s => s.num), [56]);
 })();
 
 (function lensPreview_extractPreviewSamples_emptyTable() {
@@ -2464,7 +2484,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 
 (function gr5_extractPreviewSamples_gridStructure() {
   // Build a grid with numeric cells of two distinct magnitudes so both
-  // top and bottom bands are populated in the returned structure.
+  // top and other bands are populated in the returned structure.
   //
   // A leading header row and label column keep the numeric data off row 0 /
   // column 0: DR_DEFAULTS.simplifyFirstRow/simplifyFirstColumn are both
@@ -3099,7 +3119,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     // the same cells.
     DR_MODEL.setTableSettings(grid.wrapperEl,
       { simplifyFirstRow: true, simplifyFirstColumn: true, enabled: true }, 'page');
-    applySidebarRounding(grid.wrapperEl);
+    applyTableSettings(grid.wrapperEl);
     eq('GV5b: the grid shows simplified values after the press turns simplification back on',
       showsSimplified(grid.wrapperEl), true);
     eq('GV5b: cell[0] re-simplified after the press turns simplification back on',
@@ -3191,9 +3211,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     eq('GV7 (pre): reapplyObservers has entry for grid',
       reapplyObservers.has(grid.wrapperEl), true);
 
-    // The removed-node observer path in content.js (the _tableObserver that watches
+    // The removed-node observer path in content.js (the tableObserver that watches
     // document.body) runs teardownTableEntry when it detects a tracked table was
-    // removed from the DOM. In the test harness the _tableObserver is a no-op
+    // removed from the DOM. In the test harness the tableObserver is a no-op
     // stub, so the teardown runs directly.
     teardownTableEntry(grid.wrapperEl);
 

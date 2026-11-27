@@ -304,7 +304,7 @@ function makeTablePillboxTestTable(rowsOrCells, extra) {
     },
     // offsetWidth access in flashActiveTable triggers reflow; just ignore it
     get offsetWidth() { return 0; },
-    // querySelector('.dr-ext-rounded') — used by applySidebarRounding's menu-label check
+    // querySelector('.dr-ext-rounded') — used by applyTableSettings's menu-label check
     querySelector(sel) {
       if (sel === '.dr-ext-rounded') {
         return this._cells.find(c => c.classList.contains('dr-ext-rounded')) || null;
@@ -725,8 +725,8 @@ function makeGridRow(cellSpecs, className, height) {
   return {
     className: cls,
     children: cells,
-    // children.length is accessed directly; Array.from is NOT called on row.children
-    // so a plain array works fine.
+    // A plain array works: detection reads children.length and passes
+    // row.children to Array.from.
     nodeType: 1,
     offsetHeight: (height === undefined ? 20 : height),
   };
@@ -766,7 +766,8 @@ function makeGridContainer(rows, display, role, className) {
     parentNode: null,
   };
   // Install a per-element getComputedStyle stub so we can control display per element.
-  // looksLikeGrid calls getComputedStyle(el) where el is the container.
+  // looksLikeGrid reads getComputedStyle(el) for the container through the
+  // default style probe.
   // We install it on the global window stub contextually within the test via a
   // wrapper — see withGridComputedStyle helper below.
   container._display = disp;
@@ -777,8 +778,9 @@ function makeGridContainer(rows, display, role, className) {
  * Temporarily override the global getComputedStyle (bare, not window.getComputedStyle)
  * to return a given display value for a specific element, then restore it after fn().
  *
- * looksLikeGrid calls bare `getComputedStyle(el)` — in the Node eval environment
- * this resolves to `globalThis.getComputedStyle`, so we must patch that, not
+ * With no opts.styleProbe, looksLikeGrid reads the default style probe, which
+ * calls bare `getComputedStyle(el)` — in the Node eval environment this
+ * resolves to `globalThis.getComputedStyle`, so we must patch that, not
  * `window.getComputedStyle`.
  *
  * If the queried element is `targetEl`, returns {display: displayVal}.
@@ -844,9 +846,10 @@ function withFindTargetEnv(elements, fn) {
   const origGetCSGlobal = global.getComputedStyle;
   const origDocument = global.document;
 
-  // Patch the bare getComputedStyle global (used by looksLikeGrid) to use each
-  // element's _display property. Also patch window.getComputedStyle (used by
-  // positionTablePillbox) as a courtesy, though it is not exercised in walk-up tests.
+  // Patch the bare getComputedStyle global (called by the default style probe,
+  // which looksLikeGrid reads) to use each element's _display property. Also
+  // patch window.getComputedStyle (used by positionTablePillbox) as a courtesy,
+  // though it is not exercised in walk-up tests.
   global.getComputedStyle = function(el) {
     if (el && el._display !== undefined) return { display: el._display };
     return { display: 'block', visibility: 'visible' };
@@ -876,7 +879,8 @@ function withFindTargetEnv(elements, fn) {
     body: {
       appendChild: () => {},
       observe: () => {},
-      // Allow comparison: findTargetTable checks `current !== document.body`
+      // findTargetTable compares each node with the body of opts.doc or of the
+      // global document.
     },
     addEventListener: () => {},
     querySelectorAll: () => [],
@@ -1491,7 +1495,7 @@ function makePositionedAncestor(styleOverrides) {
 // The load-time scan skips accessibility artifacts
 // =============================================================================
 //
-// injectTablePillboxes() runs scanTables, which runs the nomination step over
+// scanAndRegisterTables() runs scanTables, which runs the nomination step over
 // each table document.querySelectorAll('table') returns. The step reports an
 // accessibility artifact as 'artifact', and consumeNomination registers only
 // the table of a 'selected' outcome.
@@ -1560,7 +1564,7 @@ function makePass1DataTable(opts) {
   return table;
 }
 
-// Run injectTablePillboxes() with a controlled list of tables returned by
+// Run scanAndRegisterTables() with a controlled list of tables returned by
 // document.querySelectorAll('table'). Stubs away document.createElement and
 // document.body.appendChild so createTablePillbox does not throw in Node.
 // Restores all globals afterwards. Returns { tables } (same array for inspection).
@@ -1624,7 +1628,7 @@ function runPass1WithTables(tables) {
   tablePillboxStyleInjected = true; // skip style injection (would need document.head)
 
   try {
-    injectTablePillboxes();
+    scanAndRegisterTables();
   } finally {
     global.document.querySelectorAll  = origQSA;
     global.document.createElement     = origCreateEl;
@@ -3557,7 +3561,7 @@ function afScan(page) {
     const saved = global.getComputedStyle;
     global.document.querySelectorAll = (selector) => page.querySelectorAll(selector);
     global.getComputedStyle = inlineStyleProbe.getComputedStyle;
-    try { injectTablePillboxes(); } finally { global.getComputedStyle = saved; }
+    try { scanAndRegisterTables(); } finally { global.getComputedStyle = saved; }
   });
 }
 
@@ -3566,7 +3570,7 @@ function afAddNode(node) {
   withTablePillboxDocumentMock(function () {
     const saved = global.getComputedStyle;
     global.getComputedStyle = inlineStyleProbe.getComputedStyle;
-    try { injectTablePillboxes(node); } finally { global.getComputedStyle = saved; }
+    try { scanAndRegisterTables(node); } finally { global.getComputedStyle = saved; }
   });
 }
 

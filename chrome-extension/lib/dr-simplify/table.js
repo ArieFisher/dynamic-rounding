@@ -12,8 +12,7 @@
  *   3. Each cell's numbers, dates, and times round and become patches.
  *
  * Core layer: reads no page and calls no Chrome. It depends only on
- * lib/dr-number's bare names and the ladder's pickDateFormatHint, loaded
- * ahead of this file.
+ * lib/dr-number's bare names, loaded ahead of this file.
  *
  * The step reads one classified cell per cell. A classified cell is any
  * object carrying:
@@ -28,6 +27,23 @@
 // it too, to hold such a cell until the post-pass settles its column.
 function isAmbiguousDateClassification(classification) {
   return classification.stretches.some((stretch) => stretch.kind === 'date' && isAmbiguousDate(stretch));
+}
+
+// The format hint for a column's ambiguous dates (e.g. "03/04/2020"), from
+// each date's n1 and n2. A number above 12 cannot be a month, so the hint is
+// day-first when only n1 is above 12 somewhere in the column, month-first when
+// only n2 is, mixed when both are, and ambiguous when neither is.
+function pickDateFormatHint(ambiguousList) {
+  let hasN1gt12 = false;
+  let hasN2gt12 = false;
+  for (const { n1, n2 } of ambiguousList) {
+    if (n1 > 12) hasN1gt12 = true;
+    if (n2 > 12) hasN2gt12 = true;
+  }
+  if (hasN1gt12 && !hasN2gt12) return 'day-first';
+  if (hasN2gt12 && !hasN1gt12) return 'month-first';
+  if (hasN1gt12 && hasN2gt12) return 'mixed';
+  return 'ambiguous';
 }
 
 // The column post-pass. It groups cells by grid column, so a merged cell
