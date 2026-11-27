@@ -510,6 +510,52 @@
     spanReads > 0 && spanReads <= budget, true);
 })();
 
+// Five rows of 2,500 word cells: the first row alone holds more cells than
+// the budget.
+(function geometryProbe_aRowWiderThanTheBudgetHasSpansReadWithinIt() {
+  const budget = DR_DETECTION_SETTINGS.dataTestCellBudget;
+  const gridProbe = { getComputedStyle: () => ({ display: 'grid' }), getOffsetWidth: () => 100 };
+  let spanReads = 0;
+  const grid = {
+    className: '',
+    getAttribute: () => null,
+    children: Array.from({ length: 5 }, () => ({
+      className: 'row',
+      children: Array.from({ length: budget * 2.5 }, () => withTextPiece({
+        textContent: 'text',
+        getAttribute: (name) => { if (name === 'aria-colspan') spanReads++; return null; },
+      })),
+    })),
+  };
+  eq('geometry probe: five rows of 2,500 word cells fail the numeric step',
+    looksLikeGrid(grid, { styleProbe: gridProbe }), false);
+  eq('geometry probe: five rows of 2,500 word cells have spans read for no more than the data test budget of cells',
+    spanReads > 0 && spanReads <= budget, true);
+})();
+
+// Each column records the furthest item position the probe reads from it.
+(function geometryProbe_columnFirstItemsAreReadWithinTheBudget() {
+  const budget = DR_DETECTION_SETTINGS.dataTestCellBudget;
+  const columnCount = 5;
+  const plan = makeColumnFirstGrid(Array.from({ length: columnCount }, (_, c) =>
+    Array.from({ length: 1000 }, () => `Item ${String.fromCharCode(65 + c)}`)));
+  let furthestItem = -1;
+  plan.columnEls.forEach((column) => {
+    column.children = new Proxy(column.children, {
+      get(items, key) {
+        if (typeof key === 'string' && /^\d+$/.test(key)) furthestItem = Math.max(furthestItem, Number(key));
+        return items[key];
+      },
+    });
+  });
+  withElementDisplays(() => {
+    eq('geometry probe: five columns of 1,000 word items fail the numeric step',
+      looksLikeGrid(plan.gridEl), false);
+  });
+  eq('geometry probe: five columns of 1,000 word items are read no further than the data test budget of cells allows',
+    furthestItem >= 0 && furthestItem < Math.ceil(budget / columnCount), true);
+})();
+
 // The removed repetition step passed when the largest first-class-token share
 // or the largest child-count share (zero-child entries included) reached the
 // floor. The consistent-cell-count step reads the largest non-zero child-count

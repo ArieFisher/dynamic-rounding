@@ -178,18 +178,20 @@ function assignGridColumns(rowSpans) {
 
 /**
  * Each row's cell elements, row by row, until the count of cells read reaches
- * `cellBudget`; the rows after that stay unread. With no budget every row is
- * read. Every row of the own-children read holds at least one cell, so the
- * rows read are no more than the budget. assignGridColumns places a row from
- * the rows above it alone, so the rows read get the same grid columns as in
- * a read of every row.
+ * `cellBudget`; the rows after that stay unread, and the last row read keeps
+ * only the cells within the budget, so one very wide row ends there too.
+ * `readCellEls` returns a row's cells as a list or a live collection, which
+ * this function copies only up to the budget. Every row of the own-children
+ * read holds at least one cell, so the rows read are no more than the budget.
+ * assignGridColumns places a cell from the cells before it alone, so the
+ * cells read get the same grid columns as in a read of every row.
  * @returns {Element[][]}
  */
 function readRowCellEls(rows, readCellEls, cellBudget = Infinity) {
   const rowCellEls = [];
   let cellsRead = 0;
   for (let r = 0; r < rows.length && cellsRead < cellBudget; r++) {
-    const cellEls = readCellEls(rows[r]);
+    const cellEls = Array.prototype.slice.call(readCellEls(rows[r]), 0, cellBudget - cellsRead);
     rowCellEls.push(cellEls);
     cellsRead += cellEls.length;
   }
@@ -356,18 +358,21 @@ class GridAdapter {
    * column-first grid each child is a column; only columns with the most
    * common item count count, so every row holds one cell per column. On a
    * row-first grid `isRepeatedOnly` keeps the children with the most common
-   * child count, the rows the geometry probe measures.
+   * child count, the rows the geometry probe measures. With a `cellBudget`,
+   * a column-first grid turns only the rows whose cells fit in it, so a
+   * column of many items is read no further than the budget.
    *
    * @returns {{el: Element|null, isOutside: boolean, isGrouped: boolean, cellEls?: Element[]}[]}
    */
-  _childRowEntries(children, isRepeatedOnly) {
+  _childRowEntries(children, isRepeatedOnly, cellBudget = Infinity) {
     if (!isColumnFirst(children, this.styleProbe)) {
       const rowEls = isRepeatedOnly ? childCountCandidates(children).candidates : children;
       return rowEls.map((el) => ({ el, isOutside: false, isGrouped: false }));
     }
     const { modalChildCount, candidates: columns } = childCountCandidates(children);
+    const rowCount = Math.min(modalChildCount, Math.ceil(cellBudget / columns.length));
     const rows = [];
-    for (let r = 0; r < modalChildCount; r++) {
+    for (let r = 0; r < rowCount; r++) {
       rows.push({ el: null, isOutside: false, isGrouped: false, cellEls: columns.map((column) => column.children[r]) });
     }
     return rows;
@@ -418,8 +423,8 @@ class GridAdapter {
   _readScope(scope, cellBudget) {
     if (scope === 'ownChildren') {
       const children = Array.prototype.slice.call(this.el.children || [], 0, cellBudget);
-      const entries = this._childRowEntries(children, true);
-      const readCellEls = ({ el: rowEl, cellEls }) => cellEls || Array.from(rowEl.children);
+      const entries = this._childRowEntries(children, true, cellBudget);
+      const readCellEls = ({ el: rowEl, cellEls }) => cellEls || rowEl.children;
       return { entries, rowCellEls: readRowCellEls(entries, readCellEls, cellBudget) };
     }
     if (scope !== 'full') throw new Error(`GridAdapter: unknown row scope "${scope}"`);
