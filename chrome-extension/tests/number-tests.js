@@ -1156,7 +1156,7 @@ eq('parseRangeExpr: "A5:A2" -> rows 1-4 of column A',
 })();
 
 // ---------------------------------------------------------------------------
-// Sign-aware half-step, value-OoM floor, and a fractional offset above 1 in
+// Sign-aware half-step, order of magnitude floor, and a fractional offset above 1 in
 // size never returning less than the integer offset nearer zero
 // ---------------------------------------------------------------------------
 (function halfStepFloorCases() {
@@ -1197,9 +1197,9 @@ eq('parseRangeExpr: "A5:A2" -> rows 1-4 of column A',
     [47054321, -0.25,  47500000],
     [17054321,  0.25,  25000000],
     [17054321, -0.25,  17500000],
-    // |trunc(offset)| >= X_FLOOR_THRESHOLD triggers the x-floor too.
-    [87054321,  1.25, 100000000],  // x-floor at rd(87M, 1) = 100M
-    [87054321, -1.25,  87000000],  // very fine step, x-floor at rd(87M, -1) = 87M
+    // An offset of 1 or more in size also gets the integer offset floor.
+    [87054321,  1.25, 100000000],  // integer offset floor: 87M at 1 is 100M
+    [87054321, -1.25,  87000000],  // integer offset floor: 87M at -1 is 87M
   ];
   for (const [v, off, expected] of cases) {
     eq(`quarter-step cases: roundWithOffset(${v}, ${off}) returns ${expected}`,
@@ -1218,32 +1218,6 @@ eq('parseRangeExpr: "A5:A2" -> rows 1-4 of column A',
     eq(`monotonicity: non-decreasing at offset=${off} (got ${JSON.stringify(out)})`,
       monotonic, true);
   }
-})();
-
-(function xFloorThresholdFlip() {
-  // Eval rounding.js with X_FLOOR_THRESHOLD = 0 to confirm the x-floor gates
-  // on the constant. The patched source runs in a sandbox so its
-  // declarations do not replace the live extension globals.
-  const roundingSrc = sourceByName('lib/dr-number/rounding.js');
-  if (roundingSrc === null) {
-    eq('x-floor flip: source files present in manifest', false, true);
-    return;
-  }
-  const patchedRounding = roundingSrc.replace(
-    /const X_FLOOR_THRESHOLD = 1;/,
-    'const X_FLOOR_THRESHOLD = 0;'
-  );
-  eq('x-floor flip: source contains X_FLOOR_THRESHOLD declaration',
-    patchedRounding.includes('const X_FLOOR_THRESHOLD = 0;'), true);
-
-  const sandbox = {};
-  const vm = require('vm');
-  const ctx = vm.createContext(sandbox);
-  vm.runInContext(patchedRounding + '\nthis.__roundWithOffset = roundWithOffset;', ctx);
-  const patchedRound = sandbox.__roundWithOffset;
-
-  eq('x-floor flip: rd(17054321, 0.5) === 20000000 with X_FLOOR_THRESHOLD=0',
-    patchedRound(17054321, 0.5), 20000000);
 })();
 
 // ---------------------------------------------------------------------------

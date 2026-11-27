@@ -349,7 +349,7 @@ testThrows('offset=-100 throws', () => ROUND_DYNAMIC(1000, -100), 'offset must b
 // Large offsets floor at the value's own OoM instead of collapsing to 0.
 // 9999 has cm=3 → floor_oom=1000; raw rounds to 0; result = max(0, 1000) = 1000.
 test('9999, offset=2, returns 1000', ROUND_DYNAMIC(9999, 2), 1000);
-// 9999, offset=2.5: half-step, target=cm+ceil(2.5)=6, step=5e5. raw=0. floor_oom=1000. x-floor: |trunc(2.5)|=2>=1, x_int=2, floor_x=rd(9999,2)=1000. result=1000.
+// 9999, offset=2.5: half-step, target=cm+ceil(2.5)=6, step=5e5. raw=0. floor_oom=1000. Integer offset floor: trunc(2.5)=2, rd(9999,2)=1000. result=1000.
 test('9999, offset=2.5, returns 1000', ROUND_DYNAMIC(9999, 2.5), 1000);
 test('1e10, offset=5, returns 1e10', ROUND_DYNAMIC(1e10, 5), 1e10);
 test('1e20, offset=20, returns 1e20', ROUND_DYNAMIC(1e20, 20), 1e20);
@@ -523,37 +523,6 @@ test('negative grid -87054321, offset=0.5, returns -100000000', ROUND_DYNAMIC(-8
 test('negative grid -47054321, offset=-1.5, returns -47000000', ROUND_DYNAMIC(-47054321, -1.5), -47000000);
 
 // =============================================================================
-// THRESHOLD-FLIP (X_FLOOR_THRESHOLD = 0)
-// =============================================================================
-
-console.log('=== X_FLOOR_THRESHOLD flip ===\n');
-
-// Re-eval round_dynamic.js with X_FLOOR_THRESHOLD set to 0 in a fresh sandbox so
-// the x-floor triggers for |trunc(offset)| >= 0 (i.e. always, including +/-0.5).
-(function () {
-    const patched = code.replace(
-        /const X_FLOOR_THRESHOLD\s*=\s*\d+;/,
-        'const X_FLOOR_THRESHOLD = 0;'
-    );
-    // Sanity: patch actually applied.
-    if (!/X_FLOOR_THRESHOLD\s*=\s*0/.test(patched)) {
-        failed++;
-        failures.push({ name: 'threshold patch applied', actual: 'no replacement', expected: 'patched source' });
-        return;
-    }
-    // Isolate via a Function so the new const does not collide with the outer scope.
-    const sandbox = new Function(patched + '; return { ROUND_DYNAMIC: ROUND_DYNAMIC, roundWithOffset: roundWithOffset };')();
-    const RD = sandbox.ROUND_DYNAMIC;
-
-    // With threshold=0, rd(17054321, 0.5) should pick up the x-floor at rd(v, 0) = 20M.
-    test('threshold=0: rd(17054321, 0.5) → 20M', RD(17054321, 0.5), 20000000);
-    // And rd(47054321, 0.5) should still be 50M (x-floor at rd(v,0)=50M matches raw).
-    test('threshold=0: rd(47054321, 0.5) → 50M', RD(47054321, 0.5), 50000000);
-    // -0.5 with threshold=0 floors at rd(v, 0): rd(87054321, -0.5) raw=85M, x-floor=90M.
-    test('threshold=0: rd(87054321, -0.5) → 90M', RD(87054321, -0.5), 90000000);
-})();
-
-// =============================================================================
 // QUARTER-STEP SEMANTICS
 // =============================================================================
 
@@ -563,8 +532,8 @@ console.log('=== Quarter-step semantics (Feature 1 generalized) ===\n');
 //   target_mag = current_mag + ceil(offset)
 //   f          = |offset - trunc(offset)|
 //   step       = f * 10^target_mag
-// Then floor at floor_oom = 10^current_mag and at
-// rd(value, trunc(offset)) when |trunc(offset)| >= X_FLOOR_THRESHOLD.
+// Then the order of magnitude floor, floor_oom = 10^current_mag, and the
+// integer offset floor, rd(value, trunc(offset)) when trunc(offset) is not 0.
 const quarterCases = [
     // [value, offset, expected]
     [87054321,  0.25,  75000000],   // step 2.5e7, round(87M/25M)=3 → 75M, floor_oom=1e7
@@ -575,7 +544,7 @@ const quarterCases = [
     [47054321, -0.25,  47500000],   // step 2.5e6, round(47M/2.5M)=19 → 47.5M
     [17054321,  0.25,  25000000],   // step 2.5e7, round(17M/25M)=1 → 25M
     [17054321, -0.25,  17500000],   // step 2.5e6, round(17M/2.5M)=7 → 17.5M
-    [87054321,  1.25, 100000000],   // step 2.5e8, raw=0, x-floor=rd(87M,1)=100M
+    [87054321,  1.25, 100000000],   // step 2.5e8, raw=0, integer offset floor=rd(87M,1)=100M
     [87054321, -1.25,  87000000],   // step 2.5e5, round(87M/250K)=348 → 87M
 ];
 
