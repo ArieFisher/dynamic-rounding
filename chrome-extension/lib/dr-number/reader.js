@@ -5,9 +5,9 @@
  *
  * docs/design.md "How the code is shared" lists where this file loads, and
  * its rules "The core and the write-back read no source" and "The plugin
- * library is a built copy" state what it may hold. All symbols land on the top level of whichever script holds this file, so
- * the extension, the Sheets library, and the plugin share one currency list
- * and one toNumber.
+ * library is a built copy" state what it may hold. All symbols land on the
+ * top level of whichever script holds this file, so the extension, the
+ * Sheets library, and the plugin share one currency list and one toNumber.
  */
 
 // The one currency list. Each row gives a currency's written signs and its

@@ -19,9 +19,9 @@
  * global scope of whichever script holds this file.
  */
 
-// Through floating-point error, absnum / step can be just below a
-// value ending in .5 (1.15 / 0.1 is 11.499999999999998). Without this addition, 1.15 at offset
-// -1 returns 1.1, not 1.2.
+// Through floating-point error, absnum / step can be just below a value
+// ending in .5 (1.15 / 0.1 is 11.499999999999998). Without this addition,
+// 1.15 at offset -1 returns 1.1, not 1.2.
 const EPSILON = 1e-9;
 // The smallest abs(trunc(offset)) at which the x-floor applies to a
 // fractional offset.
@@ -120,9 +120,9 @@ function findMaxMagnitude(dataset) {
  *
  * docs/design.md "How the code is shared" lists where this file loads, and
  * its rules "The core and the write-back read no source" and "The plugin
- * library is a built copy" state what it may hold. All symbols land on the top level of whichever script holds this file, so
- * the extension, the Sheets library, and the plugin share one currency list
- * and one toNumber.
+ * library is a built copy" state what it may hold. All symbols land on the
+ * top level of whichever script holds this file, so the extension, the
+ * Sheets library, and the plugin share one currency list and one toNumber.
  */
 
 // The one currency list. Each row gives a currency's written signs and its
