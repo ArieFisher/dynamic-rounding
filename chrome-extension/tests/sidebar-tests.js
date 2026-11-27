@@ -41,7 +41,7 @@
 // --- sidebar.js: formatSample ---
 //
 // Strategy: extract the real implementation from sidebar.js source via regex
-// and eval it in this scope (where numberFormat is already available from the
+// and eval it in this scope (where numberFormat and groupedNumberText are already available from the
 // evaled reader.js / content.js block above).
 // This exercises the REAL implementation, not a reimplementation.
 // ---------------------------------------------------------------------------
@@ -49,7 +49,7 @@
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
   // Extract the two constants and the function we need from sidebar.js.
-  // numberFormat is already on globalThis from the content-script eval above.
+  // numberFormat and groupedNumberText are already on globalThis from the content-script eval above.
   const constBlock = sidebarSrc.match(
     /const PREVIEW_DECIMAL_THRESHOLD\s*=.*?;\s*const PREVIEW_MAX_DECIMALS\s*=.*?;/
   );
@@ -66,7 +66,7 @@
 
   // Eval into a local object using an IIFE so the const declarations bind in
   // function scope (not global) and the compiled function body can hold them.
-  // numberFormat is passed in from the content scripts the setup runs.
+  // numberFormat and groupedNumberText are passed in from the content scripts the setup runs.
   // Note: string concatenation is used (not a template literal) to avoid any
   // back-tick/interpolation issues with the extracted source text.
   const helperSrc = '(function() {\n' +
@@ -75,9 +75,9 @@
     'return { formatSample: formatSample };\n' +
     '})()';
   const helpers = (isolatedFunction(
-    'numberFormat',
+    'numberFormat', 'groupedNumberText',
     'return ' + helperSrc + ';'
-  ))(numberFormat);
+  ))(numberFormat, groupedNumberText);
 
   const fmtSample = helpers.formatSample;
 
@@ -92,6 +92,10 @@
      fmtSample(1000000), '1,000,000');
   eq('formatSample(-1234567) -> "-1,234,567"',
      fmtSample(-1234567), '-1,234,567');
+  eq('formatSample(1e21) -> "1,000,000,000,000,000,000,000"',
+     fmtSample(1e21), '1,000,000,000,000,000,000,000');
+  eq('formatSample(-1e22) -> "-10,000,000,000,000,000,000,000"',
+     fmtSample(-1e22), '-10,000,000,000,000,000,000,000');
 
   // -----------------------------------------------------------------
   // rounded numbers magnitude >= 100 → NO decimals.
@@ -844,7 +848,7 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
 // ---------------------------------------------------------------------------
 const SINGLE_READ_SAMPLES = {
   top: [{ original: '4,236,000', num: 4236000 }],
-  bottom: [{ original: '8,120', num: 8120 }],
+  other: [{ original: '8,120', num: 8120 }],
 };
 
 (function singleRead_aRedrawSendsOneRequestAndDrawsFromItsAnswer() {
@@ -872,7 +876,7 @@ const SINGLE_READ_SAMPLES = {
     eq('single read: the bound state comes from the answer\'s samples',
       h.bodyClasses.has('unbound'), false);
     eq('single read: the lens preview draws the answer\'s samples',
-      otherRows.length, SINGLE_READ_SAMPLES.bottom.length);
+      otherRows.length, SINGLE_READ_SAMPLES.other.length);
 
     answerActiveTableRead(h, { settings: DR_DEFAULTS, samples: null, maxMag: null });
     h.tabMessages.length = 0;
@@ -914,7 +918,7 @@ const SINGLE_READ_SAMPLES = {
     eq('echo keeps control: the sidebar\'s own notice still reads the active table',
       h.tabMessages.map((m) => m.topic), ['request:activeTable']);
     eq('echo keeps control: the lens preview redraws from the read',
-      otherRows.length, SINGLE_READ_SAMPLES.bottom.length);
+      otherRows.length, SINGLE_READ_SAMPLES.other.length);
   } finally {
     h.restore();
   }
@@ -1526,6 +1530,16 @@ const SINGLE_READ_SAMPLES = {
       snapshotKeysRead.filter((key) => !(key in sidebarSnapshot)), []);
     eq('sidebar snapshot keys: the sidebar snapshot\'s lens preview holds every key the renderer reads',
       lensKeysRead.filter((key) => !(key in (sidebarSnapshot.lensPreview || {}))), []);
+    eq('sidebar snapshot: a finish on a sidebar bound to a table records bound as true',
+      sidebarSnapshot.bound, true);
+
+    answerActiveTableRead(h, { settings: DR_DEFAULTS, samples: null, maxMag: null });
+    h.dispatch({ topic: 'state:tableSwitched' });
+    sidebarSnapshot = null;
+    // The stub renderer's throw leaves the form open with its mark set.
+    h.el('captureSave').fire('click');
+    eq('sidebar snapshot: a finish on an unbound sidebar records bound as false',
+      sidebarSnapshot && sidebarSnapshot.bound, false);
   } finally {
     DR_CAPTURE.buildCaptureDocument = savedBuild;
     DR_LOG.warn = savedWarn;
@@ -1608,6 +1622,45 @@ const SIDEBAR_UNBOUND_PROMPT = 'Right-click a table to connect it here.';
     h.fireBody('click', { target: sidebarEventTarget('SPAN') });
     eq('unbound body click: a click on the body leaves the unbound prompt on the status line',
       h.statusEl.textContent, SIDEBAR_UNBOUND_PROMPT);
+  } finally {
+    h.restore();
+  }
+})();
+
+(function lensControlKeyboardRecoupling() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('lens keyboard: source files (defaults/rounding/reader/bus) present in manifest', false, true);
+    return;
+  }
+  try {
+    eq('lens keyboard: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    const topThumb = h.el('topThumb');
+    const otherThumb = h.el('otherThumb');
+    const press = (thumb, key) => thumb.fire('keydown', { key, preventDefault() {} });
+    const writeCount = () => h.tabMessages.filter((m) => m.topic === 'request:applySettings').length;
+
+    for (let i = 0; i < 12; i++) press(topThumb, 'ArrowLeft');
+    eq('lens keyboard: both thumbs rest at the low end after the top thumb is pressed left',
+      otherThumb.style.left, topThumb.style.left);
+    eq('lens keyboard: the thumbs rest on the first stop after the top thumb is pressed left',
+      topThumb.style.left, (0.5 / 9 * 100) + '%');
+
+    press(otherThumb, 'ArrowLeft');
+    press(topThumb, 'ArrowRight');
+    eq('lens keyboard: after the other thumb is pressed left at the low end, the top thumb moves it too',
+      otherThumb.style.left, topThumb.style.left);
+
+    const before = writeCount();
+    press(otherThumb, 'ArrowLeft');
+    const beforeRematch = writeCount();
+    press(otherThumb, 'ArrowRight');
+    eq('lens keyboard: one press of the other thumb sends one settings write',
+      beforeRematch - before, 1);
+    eq('lens keyboard: a press that brings the other thumb level with the top thumb sends one settings write',
+      writeCount() - beforeRematch, 1);
   } finally {
     h.restore();
   }

@@ -1650,19 +1650,19 @@ eq('pure cell write: whole negative in parens -> "(3)"',
   let renderHelpers;
   let realFormatSample;
   try {
-    // formatSample in sidebar.js depends on numberFormat (from content.js,
+    // formatSample in sidebar.js depends on numberFormat and groupedNumberText (from content.js,
     // already on globalThis). Extract it from sidebar.js source.
     const sidebarConstBlock2 = sidebarSrc.match(
       /const PREVIEW_DECIMAL_THRESHOLD\s*=.*?;\s*const PREVIEW_MAX_DECIMALS\s*=.*?;/
     );
     const formatSampleFn2 = sidebarSrc.match(/function formatSample\([\s\S]*?\n\}/);
 
-    const fmtSampleSrc = '(function(numberFormat) {\n' +
+    const fmtSampleSrc = '(function(numberFormat, groupedNumberText) {\n' +
       sidebarConstBlock2[0] + '\n' +
       formatSampleFn2[0] + '\n' +
       'return formatSample;\n' +
-      '})(numberFormat)';
-    realFormatSample = (isolatedFunction('numberFormat', 'return ' + fmtSampleSrc + ';'))(numberFormat);
+      '})(numberFormat, groupedNumberText)';
+    realFormatSample = (isolatedFunction('numberFormat', 'groupedNumberText', 'return ' + fmtSampleSrc + ';'))(numberFormat, groupedNumberText);
 
     renderHelpers = (isolatedFunction(
       'document', 'formatSample', 'roundWithOffset', 'stepForOffset', 'formatStep', 'magnitudeOf',
@@ -2062,17 +2062,17 @@ const LADDER_OPTS = {
   eq('preview/table agreement: top band has the large cell',
     preview.samples.top.length, 1);
   eq('preview/table agreement: other band has the small cell',
-    preview.samples.bottom.length, 1);
+    preview.samples.other.length, 1);
 
   const expectedTop = roundWithOffset(1000000, customSettings.offsetTop);
-  const expectedBottom = roundWithOffset(50, customSettings.offsetOther);
+  const expectedOther = roundWithOffset(50, customSettings.offsetOther);
 
   // What the lens preview would render for these two cells,
   // built from the same sample the model supplied.
   eq('preview/table agreement: preview top sample rounds via the live offsetTop',
     roundWithOffset(preview.samples.top[0].num, customSettings.offsetTop), expectedTop);
   eq('preview/table agreement: preview other-band sample rounds via the live offsetOther',
-    roundWithOffset(preview.samples.bottom[0].num, customSettings.offsetOther), expectedBottom);
+    roundWithOffset(preview.samples.other[0].num, customSettings.offsetOther), expectedOther);
 
   // What the table actually renders for the identical cells, applied the
   // way the apply does — straight from the table's settings in the model.
@@ -2085,12 +2085,12 @@ const LADDER_OPTS = {
     roundTable(liveTable, DR_MODEL.getTableSettings(liveTable));
   });
   const renderedTop = toNumber(liveTable.rows[0].cells[0].innerText);
-  const renderedBottom = toNumber(liveTable.rows[0].cells[1].innerText);
+  const renderedOther = toNumber(liveTable.rows[0].cells[1].innerText);
 
   eq('preview/table agreement: the table cell value matches the preview-predicted top value',
     renderedTop, expectedTop);
-  eq('preview/table agreement: the table cell value matches the preview-predicted bottom value',
-    renderedBottom, expectedBottom);
+  eq('preview/table agreement: the table cell value matches the preview-predicted other-band value',
+    renderedOther, expectedOther);
   DR_MODEL.unregisterTable(previewTable);
   DR_MODEL.unregisterTable(liveTable);
 })();
@@ -2218,7 +2218,7 @@ const LADDER_OPTS = {
       query(q, cb) { cb([{ id: SIDEBAR_HARNESS_TAB }]); },
       sendMessage(tabId, msg, cb) {
         if (msg.topic === 'request:activeTable') {
-          cb({ settings: pulledSettings, samples: { top: [], bottom: [] }, maxMag: 0 });
+          cb({ settings: pulledSettings, samples: { top: [], other: [] }, maxMag: 0 });
         } else {
           // The settings apply. Chrome hands back the responder's value on
           // success and nothing when nobody answered, which is the fact the
@@ -2401,11 +2401,11 @@ const LADDER_OPTS = {
   // The responder applied the message straight to the bound table — no
   // separate "apply" call from the test.
   const renderedTop = toNumber(boundTable.rows[0].cells[0].innerText);
-  const renderedBottom = toNumber(boundTable.rows[0].cells[1].innerText);
+  const renderedOther = toNumber(boundTable.rows[0].cells[1].innerText);
   eq('wire E2E: the fixture top value actually changed under rounding (test validity check)',
     renderedTop !== 1234567, true);
-  eq('wire E2E: the fixture bottom value actually changed under rounding (test validity check)',
-    renderedBottom !== 37, true);
+  eq('wire E2E: the fixture other-band value actually changed under rounding (test validity check)',
+    renderedOther !== 37, true);
   eq('wire E2E: the bound table was actually rounded by the real responder path',
     boundTable.rows[0].cells[0].classList.contains('dr-ext-rounded'), true);
 
@@ -2416,15 +2416,15 @@ const LADDER_OPTS = {
   eq('wire E2E: preview top band has the large cell',
     preview.samples.top.length, 1);
   eq('wire E2E: preview other band has the small cell',
-    preview.samples.bottom.length, 1);
+    preview.samples.other.length, 1);
 
   const previewTop = roundWithOffset(preview.samples.top[0].num, CUSTOM_OFFSET_TOP);
-  const previewBottom = roundWithOffset(preview.samples.bottom[0].num, CUSTOM_OFFSET_OTHER);
+  const previewOther = roundWithOffset(preview.samples.other[0].num, CUSTOM_OFFSET_OTHER);
 
   eq('wire E2E: the table cell the real message pipeline rendered matches the preview-predicted top value',
     renderedTop, previewTop);
-  eq('wire E2E: the table cell the real message pipeline rendered matches the preview-predicted bottom value',
-    renderedBottom, previewBottom);
+  eq('wire E2E: the table cell the real message pipeline rendered matches the preview-predicted other-band value',
+    renderedOther, previewOther);
 })();
 
 // =============================================================================

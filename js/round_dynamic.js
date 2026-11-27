@@ -1056,9 +1056,18 @@ const GROUPED_NUMBER_FORMAT = new Intl.NumberFormat('en-US', {
  * would double that sign ("(-1,200)").
  */
 function formatNumber(rounded, originalNumStr) {
-  const marks = numberFormat();
   const signed = originalNumStr.startsWith('-') ? rounded : Math.abs(rounded);
-  return GROUPED_NUMBER_FORMAT.format(signed)
+  return groupedNumberText(signed);
+}
+
+/**
+ * The one place a number gets its group marks, for the write-back and the
+ * sidebar's lens preview. Intl writes every digit of a large value, where
+ * String() switches to exponent form from 1e21 up.
+ */
+function groupedNumberText(value) {
+  const marks = numberFormat();
+  return GROUPED_NUMBER_FORMAT.format(value)
     .replace(/[,.]/g, (mark) => (mark === ',' ? marks.group : marks.decimal));
 }
 
@@ -1758,7 +1767,7 @@ const SHEETS_LADDER_OPTIONS = Object.freeze({
  * [MODE 1] single value: =ROUND_DYNAMIC(value, [offset])
  * [MODE 2] dataset: =ROUND_DYNAMIC(range, [offset_top], [offset_other], [num_top])
  * [INSTRUCTIONS] HTTPS://github.com/ArieFisher/dynamic-rounding
- * [VERSION] 0.6.2
+ * [VERSION] 0.6.4
  *
  * @param {number|Array} values The value or range of values to round.
  * @param {number} offset_top The OoM offset for the single value, or, the numbers in the largest order of magnitude of a dataset (default -0.5).

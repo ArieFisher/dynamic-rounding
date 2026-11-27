@@ -456,7 +456,7 @@ function renderSidebarLikeness(state) {
   const thumbs =
     '<span class="cap-thumb" style="left: ' + pct(sidebarSnapshot.topVal) + '%"></span>' +
     '<span class="cap-thumb cap-thumb-bot' + (sidebarSnapshot.coupled ? ' cap-coupled' : '') +
-      '" style="left: ' + pct(sidebarSnapshot.coupled ? sidebarSnapshot.topVal : sidebarSnapshot.botVal) + '%"></span>';
+      '" style="left: ' + pct(sidebarSnapshot.coupled ? sidebarSnapshot.topVal : sidebarSnapshot.otherVal) + '%"></span>';
   const lens = sidebarSnapshot.lensPreview || {};
   const bandRows = function (rows) {
     return (rows || []).map(function (row) {
@@ -473,12 +473,12 @@ function renderSidebarLikeness(state) {
       (sidebarSnapshot.coupled
         ? 'coupled, both at ' + escapeHtml(displayValue(sidebarSnapshot.topVal))
         : 'top ' + escapeHtml(displayValue(sidebarSnapshot.topVal)) +
-          ', other ' + escapeHtml(displayValue(sidebarSnapshot.botVal))) +
+          ', other ' + escapeHtml(displayValue(sidebarSnapshot.otherVal))) +
     ')</h3>' +
     '<div class="cap-rail">' + thumbs + '</div>' +
     '<h3>Lens preview</h3>' +
     bandRows(lens.top) +
-    bandRows(lens.bottom) +
+    bandRows(lens.other) +
     '<p class="cap-status">' + escapeHtml(displayValue(sidebarSnapshot.status)) + '</p>' +
     '</div>';
 }

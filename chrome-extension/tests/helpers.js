@@ -2487,7 +2487,7 @@ function makeIssue251SidebarHarness(opts) {
         tabMessages.push(msg);
         if (opts && opts.pageAnswers === false) return;
         if (msg.topic === 'request:activeTable') {
-          cb({ settings: modelSettings, samples: { top: [], bottom: [] }, maxMag: 0 });
+          cb({ settings: modelSettings, samples: { top: [], other: [] }, maxMag: 0 });
         } else {
           // The settings apply. Chrome hands back the responder's value on
           // success and nothing when nobody answered, which is the fact the
