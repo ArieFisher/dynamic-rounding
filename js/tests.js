@@ -326,9 +326,9 @@ test('1000000001, offset=0, returns 1000000000', ROUND_DYNAMIC(1000000001, 0), 1
 test('-999, offset=0, returns -1000', ROUND_DYNAMIC(-999, 0), -1000);
 test('-1001, offset=0, returns -1000', ROUND_DYNAMIC(-1001, 0), -1000);
 
-// Floating point edge case (EPSILON) - tests offset=0 specifically
-test('0.45 rounds to 0.5', ROUND_DYNAMIC(0.45, 0), 0.5);
-test('0.25 rounds to 0.3', ROUND_DYNAMIC(0.25, 0), 0.3);
+// A half still rounds up when floating-point division returns just below it
+test('1.15, offset=-1, returns 1.2', ROUND_DYNAMIC(1.15, -1), 1.2);
+test('1.005, offset=-2, returns 1.01', ROUND_DYNAMIC(1.005, -2), 1.01);
 
 // =============================================================================
 // AN OFFSET OUTSIDE -20 TO 20 THROWS; A LARGE OFFSET FLOORS AT THE VALUE'S

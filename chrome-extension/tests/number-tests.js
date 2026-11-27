@@ -671,13 +671,9 @@ eq('resolveNumTop: "2.7" -> 2',
 })();
 
 (function stepForOffset_stepOfEachOffset() {
-  // offset = 0 on a 5-digit number -> step = 10^4 = 10000
   eq('stepForOffset(27136, 0) = 10000', stepForOffset(27136, 0), 10000);
-  // offset = -0.5 on a 5-digit number -> f=0.5, target_mag=4, step = 0.5*1e4
   eq('stepForOffset(27136, -0.5) = 5000', stepForOffset(27136, -0.5), 5000);
-  // offset = -1 -> step = 10^(4-1) = 1000
   eq('stepForOffset(27136, -1) = 1000', stepForOffset(27136, -1), 1000);
-  // num=0 -> 0
   eq('stepForOffset(0, -0.5) = 0', stepForOffset(0, -0.5), 0);
 })();
 
@@ -1212,7 +1208,6 @@ eq('parseRangeExpr: "A5:A2" -> rows 1-4 of column A',
 })();
 
 (function halfStepMonotonicity() {
-  // Monotonicity at offsets 1 and 0.5 across [73, 4591, 63538, 162583, 400000]
   const values = [73, 4591, 63538, 162583, 400000];
   for (const off of [1, 0.5]) {
     const out = values.map(v => roundWithOffset(v, off));
@@ -1227,8 +1222,8 @@ eq('parseRangeExpr: "A5:A2" -> rows 1-4 of column A',
 
 (function xFloorThresholdFlip() {
   // Eval rounding.js with X_FLOOR_THRESHOLD = 0 to confirm the x-floor gates
-  // on the constant. We sandbox the patched source so the eq() assertions
-  // below do not disturb the live extension globals.
+  // on the constant. The patched source runs in a sandbox so its
+  // declarations do not replace the live extension globals.
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
   if (roundingSrc === null) {
     eq('x-floor flip: source files present in manifest', false, true);
