@@ -276,6 +276,7 @@ const failures = [];
 
 function eq(name, actual, expected) {
   const ok = JSON.stringify(actual) === JSON.stringify(expected);
+  recordAssertion(name, ok);
   if (ok) {
     passed++;
   } else {
