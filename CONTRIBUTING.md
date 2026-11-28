@@ -40,7 +40,7 @@ The Block pattern column is the whole policy, so a damaged column would let ever
 - `sort --in <file>` prints, by test piece, the assertions that catch nothing, the ones that repeat others, the unique ones, and the flaky ones.
 - `prove --in <file> --branch <ref>` reruns every planted bug the result file holds as caught, at the branch's last commit, and exits 1 when one is no longer caught. It prints each lost planted bug with the assertions that caught it in the result file. The script reads the branch's committed state, not the checkout, so commit a cleanup before its proof. A proof takes 30 to 40 minutes (an estimate). It exits 1 with "measure again" when the branch changes product code, because the planted bugs then differ.
 
-`node scripts/planted-bugs-test.js` runs the three modes on a synthetic repository with a hand-worked answer for each, and checks that the extension suite counts the same assertions with and without a record path. Run it after any change to the script or to the runner's record; `Repo hygiene` runs it too.
+`node scripts/planted-bugs-test.js` runs the three modes on a synthetic repository with a hand-worked answer for each, and checks that the extension suite counts the same assertions with and without a record path. Run it after any change to the script, to its lexer and planted bug table in `scripts/planted-bugs-lexer.js`, or to the runner's record; `Repo hygiene` runs it too.
 
 ## Questions
 
