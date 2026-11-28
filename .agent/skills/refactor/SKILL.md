@@ -13,7 +13,7 @@ Run to the end without stopping to ask questions. File an issue only for a defec
    2. After the action subagent finishes, reply in chat with one line giving the file's Group A and Group B counts. Add any judgement calls the action subagent made, in plain language for a product manager.
 3. After the last file, reply with one line of totals.
 4. Run the review subagent on the whole branch, and act on its findings as section 3 says.
-5. Once it returns APPROVE, push the branch and open a pull request. Do not merge it.
+5. Once it returns APPROVE, push the branch and open a pull request.
 6. Delete the findings files.
 7. Report the elapsed time and three token counts summed over every subagent: read (new), read (cache), and written. Take them from the usage in each subagent's transcript, counting each reply once. Do not report a subagent's own token total, which counts conversation size, not tokens processed. Give no dollar cost.
 
@@ -65,9 +65,8 @@ Search for code that breaks these principles:
 A cleanup is Group A only if all of these hold. Otherwise it is Group B, a decision for the product manager.
 
 1. Nothing visible changes. This includes capture files, debug rows, behavior when an operation fails, and how code outside the repo calls a function, such as a Sheets formula or a Python script.
-2. No vocabulary question: no new term or name, and no renamed concept.
-3. No architecture question: no state or logic moves between the view, the controller, and the model, and no change to which part writes to which.
-4. No design question: nothing departs from a rule in `docs/design.md`. Fixing a sentence to match the code is allowed.
+2. No architecture question: no state or logic moves between the view, the controller, and the model, and no change to which part writes to which.
+3. No design question: nothing departs from a rule in `docs/design.md`. Fixing a sentence to match the code is allowed.
 
 ## 2. Action subagent
 
