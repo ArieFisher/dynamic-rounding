@@ -26,6 +26,5 @@ Models: developer and test-writer on Opus for `planted-bug-script`, `refactor-sk
 - **planted-bugs-in-patterns** (added in the run, after the first measurement, with the product manager's approval) — `chore/planted-bugs-in-patterns` → PR #839, stacked on #836.
   - Reviewer: APPROVE (after 0 retries). Second measurement recorded in the spike findings.
 
-### Waiting
-- **tests-that-catch-nothing** — waits on the spike's **Result:** line. The sprint assumed 10 to 30 assertions; the second measurement lists 902 outside the code-text checks, and the findings show the list does not mean those assertions pass whatever the code does.
-  - To continue: write the Result line, revise the plan if it says Amend, then re-run `/sprint-stack docs/sprint-plans/test-dedup.json`.
+### Dropped
+- **tests-that-catch-nothing** — dropped by the product manager after the spike. The sprint assumed 10 to 30 assertions; the second measurement lists 902 outside the code-text checks, and the findings show the list does not mean those assertions pass whatever the code does (Decisions Log, on #839).
