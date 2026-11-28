@@ -21,6 +21,7 @@ Models: developer and test-writer on Opus for `planted-bug-script`, `refactor-sk
 - **refactor-skill-test-gate** — `chore/refactor-skill-test-gate` → PR #837, stacked on #836.
   - Reviewer: APPROVE (after 2 retries): the measurement started on passes with no test piece, an exit of the proof had no stated outcome, and a pass over product files ran the proof.
   - No test-writer round: skill text only.
+  - Closed unmerged after the run: the product manager chose to keep the trimming out of the refactor skill (Decisions Log, on #839).
 - **first-measurement** (spike) — findings in docs/sprint-logs/test-dedup-first-measurement.md, on this branch. The **Result:** line waits on the product manager.
 - **planted-bugs-in-patterns** (added in the run, after the first measurement, with the product manager's approval) — `chore/planted-bugs-in-patterns` → PR #839, stacked on #836.
   - Reviewer: APPROVE (after 0 retries). Second measurement recorded in the spike findings.
