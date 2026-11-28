@@ -3,7 +3,7 @@
 Plan: [docs/sprint-plans/test-dedup.md](../sprint-plans/test-dedup.md), spike `first-measurement`.
 Question: is the planted bug data good enough to drive the trimming?
 
-**Result:**
+**Result:** Amend. A trimming pass drops a repeating assertion only when a kept assertion checks the same rule with an input of the same form, and the trimming runs as its own procedure, outside the refactor skill (Decisions Log, on #839).
 
 ## Run
 
