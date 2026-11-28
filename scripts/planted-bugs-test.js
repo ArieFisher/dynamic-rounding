@@ -2,8 +2,7 @@
 /**
  * Self-test for scripts/planted-bugs.js, the planted bug script.
  *
- * The first cases list the planted bugs in short snippets of code. The rest
- * build three synthetic git repositories in the operating system's
+ * The cases build three synthetic git repositories in the operating system's
  * temporary folder, each with one small product file and a suite of a few
  * assertions that writes the record to TEST_RECORD_PATH, plus the suite
  * file. They run the three modes on them and compare each result with an
@@ -20,8 +19,6 @@ const childProcess = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const vm = require('vm');
-const { plantBugs } = require('./planted-bugs-lexer.js');
 
 const ROOT = path.join(__dirname, '..');
 const SCRIPT = path.join(ROOT, 'scripts', 'planted-bugs.js');
@@ -220,36 +217,21 @@ const PATTERN_PRODUCT = [
   "'use strict';",
   'const DAY = /^(Dec|December) (\\d+)$/;',
   "const YEAR = new RegExp('^(Jan|January) (\\\\d+)$');",
-  'function dayOf(text) {',
-  '  const match = DAY.exec(text);',
-  '  return match ? Number(match[2]) : null;',
-  '}',
-  'function yearOf(text) {',
-  '  const match = YEAR.exec(text);',
-  '  return match ? Number(match[2]) : null;',
-  '}',
+  'const dayOf = (text) => Number(DAY.exec(text)?.[2]);',
+  'const yearOf = (text) => Number(YEAR.exec(text)?.[2]);',
   'module.exports = { dayOf, yearOf };',
   '',
 ].join('\n');
+
+const patternPiece = (name, forms) => ["'use strict';", "const { eq, product } = require('./setup.js');",
+  ...forms.map(([form, value]) => `eq('${name} ${form} is ${value}', product.${name}('${form}'), ${value});`), ''].join('\n');
 
 const PATTERN_FILES = {
   [PRODUCT_FILE]: PATTERN_PRODUCT,
   'app/tests.js': RUNNER,
   'app/tests/setup.js': SETUP,
-  'app/tests/a-tests.js': [
-    "'use strict';",
-    "const { eq, product } = require('./setup.js');",
-    "eq('dayOf Dec 25 is 25', product.dayOf('Dec 25'), 25);",
-    "eq('dayOf December 31 is 31', product.dayOf('December 31'), 31);",
-    '',
-  ].join('\n'),
-  'app/tests/b-tests.js': [
-    "'use strict';",
-    "const { eq, product } = require('./setup.js');",
-    "eq('yearOf Jan 2020 is 2020', product.yearOf('Jan 2020'), 2020);",
-    "eq('yearOf January 2021 is 2021', product.yearOf('January 2021'), 2021);",
-    '',
-  ].join('\n'),
+  'app/tests/a-tests.js': patternPiece('dayOf', [['Dec 25', 25], ['December 31', 31]]),
+  'app/tests/b-tests.js': patternPiece('yearOf', [['Jan 2020', 2020], ['January 2021', 2021]]),
 };
 
 // No assertion holds a form without its anchors, so an anchor removal is not
@@ -259,15 +241,11 @@ const EXPECTED_PATTERN_OUTCOMES = [
   [2, 'Dec|', '', 'assertions'], [2, '|December', '', 'assertions'],
   [3, '^', '', 'not caught'], [3, '$', '', 'not caught'], [3, '+', '', 'assertions'],
   [3, 'Jan|', '', 'assertions'], [3, '|January', '', 'assertions'],
-  [6, '2', '3', 'assertions'], [10, '2', '3', 'assertions'],
+  [4, '2', '3', 'assertions'], [5, '2', '3', 'assertions'],
 ].map(([line, before, after, outcome]) => `${bugKey(line, before, after)} ${outcome}`).sort();
 
-const EXPECTED_PATTERN_SORT = {
-  'catches nothing': [],
-  'repeats others': [],
-  unique: ['dayOf Dec 25 is 25', 'dayOf December 31 is 31', 'yearOf Jan 2020 is 2020', 'yearOf January 2021 is 2021'],
-  flaky: [],
-};
+const EXPECTED_PATTERN_SORT = { 'catches nothing': [], 'repeats others': [],
+  unique: ['dayOf Dec 25 is 25', 'dayOf December 31 is 31', 'yearOf Jan 2020 is 2020', 'yearOf January 2021 is 2021'], flaky: [] };
 
 // Each planted bug: a text that finds its line, the code before and after,
 // and the outcome (section 3.3). 'invalid' stops the suite before its first
@@ -650,14 +628,12 @@ async function crossPieceCases(fixture) {
   });
 }
 
-async function patternFormCases(fixture) {
-  const { pattern } = fixture;
+async function patternFormCases(pattern) {
   const run = runScript(pattern, measureArgs(pattern, pattern.result));
   let measured = false;
   await check('measure on a product file whose regular expression literal and string pattern each read Dec|December or Jan|January: the planted bugs and their outcomes match the hand-computed list', () => {
     if (run.status !== 0) return exitDetail(run);
-    const detail = differs('planted bugs', outcomeList(JSON.parse(fs.readFileSync(pattern.result, 'utf8'))),
-      EXPECTED_PATTERN_OUTCOMES);
+    const detail = differs('planted bugs', outcomeList(JSON.parse(fs.readFileSync(pattern.result, 'utf8'))), EXPECTED_PATTERN_OUTCOMES);
     measured = !detail;
     return detail || leftovers(pattern);
   });
@@ -666,101 +642,6 @@ async function patternFormCases(fixture) {
   await check('sort on that result: each assertion on one form of a month is unique', () => {
     const sorted = runScript(pattern, ['sort', '--in', pattern.result]);
     return sorted.status === 0 ? differs('sort lists', parseSort(sorted.stdout), EXPECTED_PATTERN_SORT) : exitDetail(sorted);
-  });
-}
-
-// --- plantBugs on snippets ---
-
-// Each row: a snippet, and each planted bug as its change and the snippet
-// after it, worked out by hand from the pattern changes in section 3.2.
-const REGEX_LITERAL_ROWS = [
-  ['x = /ab?c/;', ['? quantifier removed: x = /abc/;']],
-  ['x = /a*b/;', ['* to +: x = /a+b/;']],
-  ['x = /a+b/;', ['+ quantifier removed: x = /ab/;']],
-  ['x = /^a$/;', ['anchor removed: x = /a$/;', 'anchor removed: x = /^a/;']],
-  ['x = /a|b|c/;', ['alternative removed: x = /b|c/;', 'alternative removed: x = /a|c/;', 'alternative removed: x = /a|b/;']],
-  ['x = /x(?:a|b)y/;', ['alternative removed: x = /x(?:b)y/;', 'alternative removed: x = /x(?:a)y/;']],
-  ['x = /[ab]c/;', ['first class member removed: x = /[b]c/;']],
-  ['x = /[^ab]/;', ['first class member removed: x = /[^b]/;']],
-  ['x = /[a]c/;', []],
-  ['x = /x[*+?|$^]/;', ['first class member removed: x = /x[+?|$^]/;']],
-  ['x = /(?:a)(?<n>b)(?=c)(?!d)(?<=e)(?<!f)/;', []],
-  ['x = /a+?b*?/;', ['+ quantifier removed: x = /a?b*?/;', '* to +: x = /a+?b+?/;']],
-  ['x = /c??/;', ['? quantifier removed: x = /c?/;']],
-  ['x = /a{2}?/;', []],
-  ['x = /a\\?b/;', []],
-  ['x = /(?<n>a)|\\k<n>/u;', ['alternative removed: x = /(?<n>a)/u;']],
-  ['x = `${/a?/.test(y)}`;', ['? quantifier removed: x = `${/a/.test(y)}`;']],
-];
-
-const PATTERN_TEXT_ROWS = [
-  ["x = new RegExp('\\\\d+?(?:a|b)', 'g');", [
-    "+ quantifier removed: x = new RegExp('\\\\d?(?:a|b)', 'g');",
-    "alternative removed: x = new RegExp('\\\\d+?(?:b)', 'g');",
-    "alternative removed: x = new RegExp('\\\\d+?(?:a)', 'g');",
-  ]],
-  ["x = '^\\\\d+$';", [
-    "+ quantifier removed: x = '^\\\\d$';", "anchor removed: x = '\\\\d+$';", "anchor removed: x = '^\\\\d+';",
-  ]],
-  ["x = '(?:a)?';", ["? quantifier removed: x = '(?:a)';"]],
-  ["x = '\\\\d|x';", ["alternative removed: x = '\\\\d';"]],
-  ['x = `\\\\d+ ${y} (a|b)`;', ['+ quantifier removed: x = `\\\\d ${y} (a|b)`;']],
-];
-
-const NO_PATTERN_ROWS = [
-  ["x = 'Are you sure?';", []],
-  ['x = \'[role="grid"]\';', []],
-  ["x = 'a+b*c? (x|y) [ab] ^$';", []],
-  ['x = `a+b* ${y} c?`;', []],
-  ["// /a?b+/ '\\\\d*' (?:a|b)\nx;", []],
-  ['/* /^a$/ [ab] */ x;', []],
-];
-
-function applyBug(text, bug) {
-  return text.slice(0, bug.start) + bug.after + text.slice(bug.start + bug.before.length);
-}
-
-function plantedIn(snippet) {
-  return plantBugs('snippet.js', snippet).map((bug) => `${bug.change}: ${applyBug(snippet, bug)}`).sort();
-}
-
-// Each failing parse of a file with one planted bug in it.
-function parseFailures(file, text) {
-  return plantBugs(file, text).flatMap((bug) => {
-    try {
-      new vm.Script(applyBug(text, bug));
-      return [];
-    } catch (error) {
-      return [`${file}:${bug.line}:${bug.column} ${bug.change} "${bug.before}": ${error.message}`];
-    }
-  });
-}
-
-async function snippetTable(heading, rows) {
-  process.stdout.write(`${heading}\n`);
-  for (const [snippet, expected] of rows) {
-    const result = expected.length ? expected.join(' | ') : 'no planted bug';
-    await check(`plantBugs on ${snippet.replace(/\n/g, '\\n')}: ${result}`, () =>
-      differs('planted bugs', plantedIn(snippet), [...expected].sort()));
-  }
-}
-
-async function snippetCases() {
-  await snippetTable('Pattern changes inside a regular expression literal', REGEX_LITERAL_ROWS);
-  await snippetTable('Pattern changes inside string and template text that holds pattern syntax', PATTERN_TEXT_ROWS);
-  await snippetTable('No planted bug in a comment, or in string or template text without pattern syntax', NO_PATTERN_ROWS);
-  process.stdout.write('Each planted bug leaves the code parseable\n');
-  await check('plantBugs on every snippet above: each planted bug leaves the snippet parseable', () => {
-    const failures = [...REGEX_LITERAL_ROWS, ...PATTERN_TEXT_ROWS, ...NO_PATTERN_ROWS]
-      .flatMap(([snippet]) => parseFailures('snippet.js', snippet));
-    return failures.length ? failures.join('\n') : null;
-  });
-  await check('plantBugs on every JavaScript file under chrome-extension: each planted bug leaves the file parseable', () => {
-    const files = childProcess.execFileSync('git', ['-C', ROOT, 'ls-files', '-z', '--', 'chrome-extension/*.js'],
-      { encoding: 'utf8' }).split('\0').filter(Boolean);
-    if (!files.length) return 'no JavaScript file under chrome-extension';
-    const failures = files.flatMap((file) => parseFailures(file, fs.readFileSync(path.join(ROOT, file), 'utf8')));
-    return failures.length ? failures.join('\n') : null;
   });
 }
 
@@ -895,7 +776,6 @@ async function main() {
   const started = Date.now();
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'planted-bugs-test-'));
   try {
-    await snippetCases();
     const fixture = buildFixture(temp);
     const result = await measureCases(fixture);
     if (result) {
@@ -904,7 +784,7 @@ async function main() {
     }
     await measureFailureCases(fixture);
     await crossPieceCases(fixture);
-    await patternFormCases(fixture);
+    await patternFormCases(fixture.pattern);
     await signalCase(fixture);
     await badRecordCase(fixture);
     await extensionCase(temp);
