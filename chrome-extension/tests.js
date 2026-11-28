@@ -75,14 +75,38 @@ function joinPieces() {
 
 // A stack frame carries line and column; a syntax error's location carries
 // the line alone.
+const JOINED_FRAME = new RegExp(
+  `${JOINED_FILENAME.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:(\\d+)(:\\d+)?`, 'g');
+
+function pieceAt(joinedLine, startLines) {
+  let index = startLines.length - 1;
+  while (index > 0 && startLines[index] > joinedLine) index--;
+  return { piece: PIECES[index], line: joinedLine - startLines[index] + 1 };
+}
+
 function mapToPieces(stack, startLines) {
-  const escaped = JOINED_FILENAME.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return String(stack).replace(new RegExp(`${escaped}:(\\d+)(:\\d+)?`, 'g'), (frame, line, column) => {
-    let index = startLines.length - 1;
-    while (index > 0 && startLines[index] > Number(line)) index--;
-    const pieceLine = Number(line) - startLines[index] + 1;
-    return `${path.join(PIECES_DIR, PIECES[index])}:${pieceLine}${column || ''}`;
+  return String(stack).replace(JOINED_FRAME, (frame, line, column) => {
+    const { piece, line: pieceLine } = pieceAt(Number(line), startLines);
+    return `${path.join(PIECES_DIR, piece)}:${pieceLine}${column || ''}`;
   });
+}
+
+// scripts/planted-bugs.js sets TEST_RECORD_PATH. With it set, the runner
+// writes one entry per assertion to that file at process exit, so an
+// assertion that runs after a timer is in the record. A piece is a path from
+// the repository root.
+function assertionRecorder(recordPath, startLines) {
+  if (!recordPath) return () => {};
+  const repositoryRoot = path.join(__dirname, '..');
+  const entries = [];
+  process.on('exit', () => fs.writeFileSync(recordPath, JSON.stringify(entries)));
+  return (name, passed) => {
+    // The first frame of the joined suite is eq itself; the second is its call site.
+    const callSite = [...new Error().stack.matchAll(JOINED_FRAME)][1];
+    const { piece, line } = pieceAt(Number(callSite[1]), startLines);
+    const piecePath = path.relative(repositoryRoot, path.join(PIECES_DIR, piece)).split(path.sep).join('/');
+    entries.push({ piece: piecePath, line, name, passed });
+  };
 }
 
 checkPieces();
@@ -91,6 +115,7 @@ process.on('uncaughtException', (error) => {
   console.error(mapToPieces(error && error.stack ? error.stack : error, startLines));
   process.exit(1);
 });
-const runSuite = vm.compileFunction(source, ['require', '__dirname', 'SUITE_SOURCE'],
+const runSuite = vm.compileFunction(source, ['require', '__dirname', 'SUITE_SOURCE', 'recordAssertion'],
   { filename: JOINED_FILENAME });
-runSuite.call(module.exports, require, __dirname, source);
+runSuite.call(module.exports, require, __dirname, source,
+  assertionRecorder(process.env.TEST_RECORD_PATH, startLines));
