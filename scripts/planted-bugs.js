@@ -48,7 +48,9 @@ const USAGE = `Usage, from any directory:
 measure  Runs the clean suite ${CLEAN_RUNS} times, then the suite once per planted
          bug, at the commit (default HEAD), and writes the result file.
          --files holds comma-separated product files to plant bugs in
-         (default: every product file).
+         (default: every product file). PLANTED_BUG_CHANGES in this script
+         lists the changes: to code, and to patterns in regular expressions
+         and in string and template text.
 sort     Prints, by piece, the assertions that catch nothing, the ones that
          repeat others, the unique ones, and the flaky ones.
 prove    Reruns every planted bug the result file holds as caught, at the
@@ -193,7 +195,7 @@ function skipTemplateText(text, index) {
 }
 
 // A regular expression never spans lines, so a slash whose expression would
-// run past the line end is division, and the lexer gets -1.
+// run past the line end is division, and the lexer gets null.
 function skipRegex(text, index) {
   let i = index + 1;
   let inClass = false;
@@ -201,10 +203,10 @@ function skipRegex(text, index) {
     if (text[i] === '\\') { i += 2; continue; }
     if (text[i] === '[') inClass = true;
     else if (text[i] === ']') inClass = false;
-    else if (text[i] === '/' && !inClass) return i + 1 + (matchAt(/[a-z]*/y, text, i + 1) || '').length;
+    else if (text[i] === '/' && !inClass) return { bodyEnd: i, flags: matchAt(/[a-z]*/y, text, i + 1) };
     i++;
   }
-  return -1;
+  return null;
 }
 
 function regexAllowedAfter(token) {
@@ -214,18 +216,21 @@ function regexAllowedAfter(token) {
   return false;
 }
 
-// Comments, string text, template text, and regular expressions yield no
-// code token, so no planted bug lands in them. Each string, template, and
-// regular expression yields one 'literal' token, so the lexer treats a slash
-// after it as division.
+// Comments yield no token, so no planted bug lands in them. Each regular
+// expression, string, and piece of template text yields one 'literal' token
+// holding the range of its text, which only the pattern changes edit, and the
+// lexer treats a slash after it as division.
 function lexCode(text) {
   const tokens = [];
   const templateBraces = [];
   let i = 0;
   const push = (type, tokenText, start) => tokens.push({ type, text: tokenText, start });
+  const pushLiteral = (kind, start, textStart, textEnd, flags = '') =>
+    tokens.push({ type: 'literal', text: '', start, kind, textStart, textEnd, flags });
   const resumeTemplate = (from) => {
     const { end, opensExpression } = skipTemplateText(text, from);
-    if (opensExpression) { templateBraces.push(0); push('punct', '${', end - 2); } else push('literal', '', from);
+    pushLiteral('template', from, from, end - (opensExpression ? 2 : 1));
+    if (opensExpression) { templateBraces.push(0); push('punct', '${', end - 2); }
     return end;
   };
   while (i < text.length) {
@@ -233,11 +238,16 @@ function lexCode(text) {
     if (/\s/.test(ch)) { i++; continue; }
     if (text.startsWith('//', i)) { const end = text.indexOf('\n', i); i = end < 0 ? text.length : end; continue; }
     if (text.startsWith('/*', i)) { const end = text.indexOf('*/', i + 2); i = end < 0 ? text.length : end + 2; continue; }
-    if (ch === '"' || ch === "'") { push('literal', '', i); i = skipQuoted(text, i); continue; }
+    if (ch === '"' || ch === "'") {
+      const end = skipQuoted(text, i);
+      pushLiteral('string', i, i + 1, end - 1);
+      i = end;
+      continue;
+    }
     if (ch === '`') { i = resumeTemplate(i + 1); continue; }
     if (ch === '/' && regexAllowedAfter(tokens[tokens.length - 1])) {
-      const end = skipRegex(text, i);
-      if (end > 0) { push('literal', '', i); i = end; continue; }
+      const regex = skipRegex(text, i);
+      if (regex) { pushLiteral('regex', i, i + 1, regex.bodyEnd, regex.flags); i = regex.bodyEnd + 1 + regex.flags.length; continue; }
     }
     const number = /\d/.test(ch) || (ch === '.' && /\d/.test(text[i + 1] || '')) ? matchAt(NUMBER, text, i) : null;
     if (number) { push('number', number, i); i += number.length; continue; }
@@ -289,6 +299,120 @@ function forceIfCondition(value) {
   };
 }
 
+// String and template text holds a pattern when it holds a doubled
+// backslash, which stands for a backslash escape in the pattern, or "(?",
+// which opens group syntax. A pattern change lands in no other string text.
+const PATTERN_SYNTAX = /\\\\|\(\?/;
+
+function holdsPattern(token, text) {
+  return token.type === 'literal' &&
+    (token.kind === 'regex' || PATTERN_SYNTAX.test(text.slice(token.textStart, token.textEnd)));
+}
+
+// One unit per pattern character or escape, with its range in the file; an
+// escape has no ch. In string and template text, a pattern escape is a
+// doubled backslash and the escaped character, itself written with a
+// backslash when it is a backslash or a quote, and a single backslash starts
+// a string escape, which stands for a plain character.
+function patternUnits(text, token) {
+  const escape = token.kind === 'regex' ? '\\' : '\\\\';
+  const units = [];
+  let inClass = false;
+  for (let i = token.textStart; i < token.textEnd;) {
+    let end = i + 1;
+    if (text.startsWith(escape, i)) end = i + escape.length + (escape.length === 2 && text[i + 2] === '\\' ? 2 : 1);
+    else if (text[i] === '\\') end = i + 2;
+    const ch = end === i + 1 ? text[i] : '';
+    const isClassEnd = inClass && ch === ']';
+    units.push({ start: i, end: Math.min(end, token.textEnd), ch, inClass: inClass && !isClassEnd });
+    if (isClassEnd) inClass = false;
+    else if (ch === '[') inClass = true;
+    i = end;
+  }
+  return units;
+}
+
+// A planted bug that leaves a regular expression literal invalid would stop
+// its file from loading. String text gets no such check, because its escapes
+// differ from the pattern's; there an invalid pattern counts as invalid.
+function leavesValidRegex(text, token, { start, end, after }) {
+  try {
+    new RegExp(text.slice(token.textStart, start) + after + text.slice(end, token.textEnd), token.flags);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function patternChange(change, findEdits) {
+  return {
+    change,
+    plant: (tokens, i, text) => {
+      const token = tokens[i];
+      if (!holdsPattern(token, text)) return [];
+      const edits = findEdits(patternUnits(text, token), token);
+      return token.kind === 'regex' ? edits.filter((one) => leavesValidRegex(text, token, one)) : edits;
+    },
+  };
+}
+
+function eachUnit(change, test, after) {
+  return patternChange(change, (units) => units
+    .filter((unit, k) => !unit.inClass && test(unit, units[k - 1] || {}))
+    .map((unit) => edit(unit.start, unit.end, after)));
+}
+
+// The text after "(" and any group syntax: "?:", "?=", "?!", "?<=", "?<!",
+// or "?<name>".
+function groupBodyStart(units, k) {
+  const at = (n) => (units[k + n] || {}).ch;
+  if (at(1) !== '?') return units[k].end;
+  if ([':', '=', '!'].includes(at(2))) return units[k + 2].end;
+  if (at(2) !== '<') return units[k].end;
+  if (['=', '!'].includes(at(3))) return units[k + 3].end;
+  const nameEnd = units.findIndex((unit, n) => n > k && unit.ch === '>');
+  return nameEnd < 0 ? units[k].end : units[nameEnd].end;
+}
+
+// Each alternative of a "|" list goes with the "|" before it, and the first
+// with the "|" after it. In string and template text, text before the first
+// "|" outside any group may continue a pattern begun in other text, so it
+// stays, and so does a last alternative that holds a group the text leaves
+// open, because removing it would leave the parentheses unbalanced.
+function alternativeEdits(units, token) {
+  const edits = [];
+  const close = (frame, end) => {
+    const ends = [...frame.bars.slice(1), end];
+    frame.bars.forEach((bar, n) => { if (ends[n] !== null) edits.push(edit(bar, ends[n], '')); });
+    if (frame.bars.length && frame.isOpenedHere) edits.push(edit(frame.from, frame.bars[0] + 1, ''));
+  };
+  const frames = [{ from: token.textStart, bars: [], isOpenedHere: token.kind === 'regex' }];
+  units.forEach((unit, k) => {
+    if (unit.inClass) return;
+    if (unit.ch === '(') frames.push({ from: groupBodyStart(units, k), bars: [], isOpenedHere: true });
+    if (unit.ch === '|') frames[frames.length - 1].bars.push(unit.start);
+    if (unit.ch !== ')') return;
+    close(frames.pop(), unit.start);
+    if (!frames.length) frames.push({ from: unit.end, bars: [], isOpenedHere: false });
+  });
+  frames.forEach((frame, n) => close(frame, n === frames.length - 1 ? token.textEnd : null));
+  return edits;
+}
+
+function classFirstEdits(units) {
+  return units.flatMap((unit, k) => {
+    if (unit.inClass || unit.ch !== '[') return [];
+    const first = (units[k + 1] || {}).ch === '^' ? k + 2 : k + 1;
+    const members = units.slice(first).findIndex((member) => !member.inClass);
+    const count = members < 0 ? units.length - first : members;
+    return count >= 2 ? [edit(units[first].start, units[first].end, '')] : [];
+  });
+}
+
+// A "?" after "(" opens group syntax, and one after a quantifier makes that
+// quantifier lazy.
+const NOT_BEFORE_OPTIONAL = ['(', '*', '+', '?', '}'];
+
 const PLANTED_BUG_CHANGES = [
   swap('<', '<='), swap('<=', '<'), swap('>', '>='), swap('>=', '>'),
   swap('===', '!=='), swap('!==', '==='),
@@ -309,6 +433,12 @@ const PLANTED_BUG_CHANGES = [
   },
   forceIfCondition('true'),
   forceIfCondition('false'),
+  eachUnit('? quantifier removed', (unit, before) => unit.ch === '?' && !NOT_BEFORE_OPTIONAL.includes(before.ch), ''),
+  eachUnit('* to +', (unit) => unit.ch === '*', '+'),
+  eachUnit('+ quantifier removed', (unit) => unit.ch === '+', ''),
+  eachUnit('anchor removed', (unit) => unit.ch === '^' || unit.ch === '$', ''),
+  patternChange('alternative removed', alternativeEdits),
+  patternChange('first class member removed', classFirstEdits),
 ];
 
 function lineAndColumn(text, index) {
@@ -321,7 +451,7 @@ function plantBugs(file, text) {
   const bugs = [];
   tokens.forEach((token, i) => {
     for (const { change, plant } of PLANTED_BUG_CHANGES) {
-      for (const { start, end, after } of plant(tokens, i)) {
+      for (const { start, end, after } of plant(tokens, i, text)) {
         const before = text.slice(start, end);
         if (before !== after) bugs.push({ file, ...lineAndColumn(text, start), start, before, after, change });
       }
