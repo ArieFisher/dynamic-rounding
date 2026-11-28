@@ -2,7 +2,8 @@
 /**
  * Self-test for scripts/planted-bugs.js, the planted bug script.
  *
- * The cases build two synthetic git repositories in the operating system's
+ * The first cases list the planted bugs in short snippets of code. The rest
+ * build three synthetic git repositories in the operating system's
  * temporary folder, each with one small product file and a suite of a few
  * assertions that writes the record to TEST_RECORD_PATH, plus the suite
  * file. They run the three modes on them and compare each result with an
@@ -19,6 +20,8 @@ const childProcess = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const vm = require('vm');
+const { plantBugs } = require('./planted-bugs-lexer.js');
 
 const ROOT = path.join(__dirname, '..');
 const SCRIPT = path.join(ROOT, 'scripts', 'planted-bugs.js');
@@ -30,7 +33,7 @@ const PRODUCT_FILE = 'app/product.js';
 // list of changes in section 3.2.
 const PRODUCT = [
   "'use strict';",
-  '// A comment holds a < b && true, which is no planted bug site.',
+  '// A comment holds a < b && true and the pattern /^a?b+$/; neither gets a planted bug.',
   "const NOTE = 'x < y && true';",
   'const SHAPE = `${NOTE} < z || false`;',
   "const MODE = 'ready';",
@@ -210,6 +213,62 @@ const EXPECTED_CROSS_CATCHES = {
   'double 3 is 6': [bugKey(6, '2', '3')],
 };
 
+// A third repository with the same runner and setup. A regular expression
+// literal and a pattern in string text each read two forms of a month; each
+// piece checks one function with one assertion per form.
+const PATTERN_PRODUCT = [
+  "'use strict';",
+  'const DAY = /^(Dec|December) (\\d+)$/;',
+  "const YEAR = new RegExp('^(Jan|January) (\\\\d+)$');",
+  'function dayOf(text) {',
+  '  const match = DAY.exec(text);',
+  '  return match ? Number(match[2]) : null;',
+  '}',
+  'function yearOf(text) {',
+  '  const match = YEAR.exec(text);',
+  '  return match ? Number(match[2]) : null;',
+  '}',
+  'module.exports = { dayOf, yearOf };',
+  '',
+].join('\n');
+
+const PATTERN_FILES = {
+  [PRODUCT_FILE]: PATTERN_PRODUCT,
+  'app/tests.js': RUNNER,
+  'app/tests/setup.js': SETUP,
+  'app/tests/a-tests.js': [
+    "'use strict';",
+    "const { eq, product } = require('./setup.js');",
+    "eq('dayOf Dec 25 is 25', product.dayOf('Dec 25'), 25);",
+    "eq('dayOf December 31 is 31', product.dayOf('December 31'), 31);",
+    '',
+  ].join('\n'),
+  'app/tests/b-tests.js': [
+    "'use strict';",
+    "const { eq, product } = require('./setup.js');",
+    "eq('yearOf Jan 2020 is 2020', product.yearOf('Jan 2020'), 2020);",
+    "eq('yearOf January 2021 is 2021', product.yearOf('January 2021'), 2021);",
+    '',
+  ].join('\n'),
+};
+
+// No assertion holds a form without its anchors, so an anchor removal is not
+// caught. Removing one alternative fails only the assertion on that form.
+const EXPECTED_PATTERN_OUTCOMES = [
+  [2, '^', '', 'not caught'], [2, '$', '', 'not caught'], [2, '+', '', 'assertions'],
+  [2, 'Dec|', '', 'assertions'], [2, '|December', '', 'assertions'],
+  [3, '^', '', 'not caught'], [3, '$', '', 'not caught'], [3, '+', '', 'assertions'],
+  [3, 'Jan|', '', 'assertions'], [3, '|January', '', 'assertions'],
+  [6, '2', '3', 'assertions'], [10, '2', '3', 'assertions'],
+].map(([line, before, after, outcome]) => `${bugKey(line, before, after)} ${outcome}`).sort();
+
+const EXPECTED_PATTERN_SORT = {
+  'catches nothing': [],
+  'repeats others': [],
+  unique: ['dayOf Dec 25 is 25', 'dayOf December 31 is 31', 'yearOf Jan 2020 is 2020', 'yearOf January 2021 is 2021'],
+  flaky: [],
+};
+
 // Each planted bug: a text that finds its line, the code before and after,
 // and the outcome (section 3.3). 'invalid' stops the suite before its first
 // assertion.
@@ -363,6 +422,8 @@ function buildFixture(temp) {
   initRepo(crossRepo, CROSS_FILES);
   commitBranch(crossRepo, 'shrink-list', { 'app/tests/a-tests.js': CROSS_PIECE_A.replace('[9, 10]', '[9]') });
   commitBranch(crossRepo, 'trim-data', { 'data/doubles.json': '[]\n' });
+  const patternRepo = path.join(temp, 'pattern-repo');
+  initRepo(patternRepo, PATTERN_FILES);
   const suite = path.join(temp, 'suite.json');
   fs.writeFileSync(suite, JSON.stringify({
     command: [process.execPath, 'app/tests.js'],
@@ -376,6 +437,7 @@ function buildFixture(temp) {
   return {
     temp, repo, suite, scriptTemp, flaky, result: path.join(temp, 'result.json'),
     cross: { repo: crossRepo, suite, scriptTemp, result: path.join(temp, 'cross-result.json') },
+    pattern: { repo: patternRepo, suite, scriptTemp, result: path.join(temp, 'pattern-result.json') },
   };
 }
 
@@ -463,7 +525,7 @@ async function measureCases(fixture) {
   if (!result) return null;
   process.stdout.write(`        measure took ${run.elapsedMs} ms\n`);
 
-  await check('measure on a product file with < && true || false in a comment, a string, and template text: no planted bug on those lines', () => {
+  await check('measure on a product file with < && true and a pattern in a comment, and < && true || false in string and template text without pattern syntax: no planted bug on those lines', () => {
     const textLines = [2, 3, 4];
     const inText = result.plantedBugs.filter((bug) => bug.file === PRODUCT_FILE && textLines.includes(bug.line));
     return inText.length ? `planted bugs in text: ${JSON.stringify(inText)}` : null;
@@ -585,6 +647,120 @@ async function crossPieceCases(fixture) {
     const lost = prove(cross, 'trim-data');
     return lost.status === 1 && lost.stderr.includes('1 of 3 rerun') && lost.stderr.includes(`${PRODUCT_FILE}:6:`) &&
       lost.stderr.includes(CROSS_DOUBLE_3) ? leftovers(cross) : exitDetail(lost);
+  });
+}
+
+async function patternFormCases(fixture) {
+  const { pattern } = fixture;
+  const run = runScript(pattern, measureArgs(pattern, pattern.result));
+  let measured = false;
+  await check('measure on a product file whose regular expression literal and string pattern each read Dec|December or Jan|January: the planted bugs and their outcomes match the hand-computed list', () => {
+    if (run.status !== 0) return exitDetail(run);
+    const detail = differs('planted bugs', outcomeList(JSON.parse(fs.readFileSync(pattern.result, 'utf8'))),
+      EXPECTED_PATTERN_OUTCOMES);
+    measured = !detail;
+    return detail || leftovers(pattern);
+  });
+  if (!measured) return;
+
+  await check('sort on that result: each assertion on one form of a month is unique', () => {
+    const sorted = runScript(pattern, ['sort', '--in', pattern.result]);
+    return sorted.status === 0 ? differs('sort lists', parseSort(sorted.stdout), EXPECTED_PATTERN_SORT) : exitDetail(sorted);
+  });
+}
+
+// --- plantBugs on snippets ---
+
+// Each row: a snippet, and each planted bug as its change and the snippet
+// after it, worked out by hand from the pattern changes in section 3.2.
+const REGEX_LITERAL_ROWS = [
+  ['x = /ab?c/;', ['? quantifier removed: x = /abc/;']],
+  ['x = /a*b/;', ['* to +: x = /a+b/;']],
+  ['x = /a+b/;', ['+ quantifier removed: x = /ab/;']],
+  ['x = /^a$/;', ['anchor removed: x = /a$/;', 'anchor removed: x = /^a/;']],
+  ['x = /a|b|c/;', ['alternative removed: x = /b|c/;', 'alternative removed: x = /a|c/;', 'alternative removed: x = /a|b/;']],
+  ['x = /x(?:a|b)y/;', ['alternative removed: x = /x(?:b)y/;', 'alternative removed: x = /x(?:a)y/;']],
+  ['x = /[ab]c/;', ['first class member removed: x = /[b]c/;']],
+  ['x = /[^ab]/;', ['first class member removed: x = /[^b]/;']],
+  ['x = /[a]c/;', []],
+  ['x = /x[*+?|$^]/;', ['first class member removed: x = /x[+?|$^]/;']],
+  ['x = /(?:a)(?<n>b)(?=c)(?!d)(?<=e)(?<!f)/;', []],
+  ['x = /a+?b*?/;', ['+ quantifier removed: x = /a?b*?/;', '* to +: x = /a+?b+?/;']],
+  ['x = /c??/;', ['? quantifier removed: x = /c?/;']],
+  ['x = /a{2}?/;', []],
+  ['x = /a\\?b/;', []],
+  ['x = /(?<n>a)|\\k<n>/u;', ['alternative removed: x = /(?<n>a)/u;']],
+  ['x = `${/a?/.test(y)}`;', ['? quantifier removed: x = `${/a/.test(y)}`;']],
+];
+
+const PATTERN_TEXT_ROWS = [
+  ["x = new RegExp('\\\\d+?(?:a|b)', 'g');", [
+    "+ quantifier removed: x = new RegExp('\\\\d?(?:a|b)', 'g');",
+    "alternative removed: x = new RegExp('\\\\d+?(?:b)', 'g');",
+    "alternative removed: x = new RegExp('\\\\d+?(?:a)', 'g');",
+  ]],
+  ["x = '^\\\\d+$';", [
+    "+ quantifier removed: x = '^\\\\d$';", "anchor removed: x = '\\\\d+$';", "anchor removed: x = '^\\\\d+';",
+  ]],
+  ["x = '(?:a)?';", ["? quantifier removed: x = '(?:a)';"]],
+  ["x = '\\\\d|x';", ["alternative removed: x = '\\\\d';"]],
+  ['x = `\\\\d+ ${y} (a|b)`;', ['+ quantifier removed: x = `\\\\d ${y} (a|b)`;']],
+];
+
+const NO_PATTERN_ROWS = [
+  ["x = 'Are you sure?';", []],
+  ['x = \'[role="grid"]\';', []],
+  ["x = 'a+b*c? (x|y) [ab] ^$';", []],
+  ['x = `a+b* ${y} c?`;', []],
+  ["// /a?b+/ '\\\\d*' (?:a|b)\nx;", []],
+  ['/* /^a$/ [ab] */ x;', []],
+];
+
+function applyBug(text, bug) {
+  return text.slice(0, bug.start) + bug.after + text.slice(bug.start + bug.before.length);
+}
+
+function plantedIn(snippet) {
+  return plantBugs('snippet.js', snippet).map((bug) => `${bug.change}: ${applyBug(snippet, bug)}`).sort();
+}
+
+// Each failing parse of a file with one planted bug in it.
+function parseFailures(file, text) {
+  return plantBugs(file, text).flatMap((bug) => {
+    try {
+      new vm.Script(applyBug(text, bug));
+      return [];
+    } catch (error) {
+      return [`${file}:${bug.line}:${bug.column} ${bug.change} "${bug.before}": ${error.message}`];
+    }
+  });
+}
+
+async function snippetTable(heading, rows) {
+  process.stdout.write(`${heading}\n`);
+  for (const [snippet, expected] of rows) {
+    const result = expected.length ? expected.join(' | ') : 'no planted bug';
+    await check(`plantBugs on ${snippet.replace(/\n/g, '\\n')}: ${result}`, () =>
+      differs('planted bugs', plantedIn(snippet), [...expected].sort()));
+  }
+}
+
+async function snippetCases() {
+  await snippetTable('Pattern changes inside a regular expression literal', REGEX_LITERAL_ROWS);
+  await snippetTable('Pattern changes inside string and template text that holds pattern syntax', PATTERN_TEXT_ROWS);
+  await snippetTable('No planted bug in a comment, or in string or template text without pattern syntax', NO_PATTERN_ROWS);
+  process.stdout.write('Each planted bug leaves the code parseable\n');
+  await check('plantBugs on every snippet above: each planted bug leaves the snippet parseable', () => {
+    const failures = [...REGEX_LITERAL_ROWS, ...PATTERN_TEXT_ROWS, ...NO_PATTERN_ROWS]
+      .flatMap(([snippet]) => parseFailures('snippet.js', snippet));
+    return failures.length ? failures.join('\n') : null;
+  });
+  await check('plantBugs on every JavaScript file under chrome-extension: each planted bug leaves the file parseable', () => {
+    const files = childProcess.execFileSync('git', ['-C', ROOT, 'ls-files', '-z', '--', 'chrome-extension/*.js'],
+      { encoding: 'utf8' }).split('\0').filter(Boolean);
+    if (!files.length) return 'no JavaScript file under chrome-extension';
+    const failures = files.flatMap((file) => parseFailures(file, fs.readFileSync(path.join(ROOT, file), 'utf8')));
+    return failures.length ? failures.join('\n') : null;
   });
 }
 
@@ -719,6 +895,7 @@ async function main() {
   const started = Date.now();
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'planted-bugs-test-'));
   try {
+    await snippetCases();
     const fixture = buildFixture(temp);
     const result = await measureCases(fixture);
     if (result) {
@@ -727,6 +904,7 @@ async function main() {
     }
     await measureFailureCases(fixture);
     await crossPieceCases(fixture);
+    await patternFormCases(fixture);
     await signalCase(fixture);
     await badRecordCase(fixture);
     await extensionCase(temp);
