@@ -4,11 +4,11 @@ Plan: docs/sprint-plans/test-dedup.md
 JSON: docs/sprint-plans/test-dedup.json
 Base branch: main
 
-## Run 1 — 2026-11-27 16:37 to 18:20 (EST)
+## Run 1 — 2026-11-27 16:37 to 20:00 (EST)
 
 The product manager asked mid-run to stack the dependent sprints on unmerged branches in place of the plan's `after-merge` policy, so the run did not stop at a merge. Each pull request opens against `main` and states its merge order.
 
-Models: developer and test-writer on Opus for `planted-bug-script` and `refactor-skill-test-gate`, Sonnet for `case-table-rule`; every review on Fable.
+Models: developer and test-writer on Opus for `planted-bug-script`, `refactor-skill-test-gate`, and `planted-bugs-in-patterns`, Sonnet for `case-table-rule`; every review on Fable.
 
 ### Completed
 - **case-table-rule** — `docs/case-table-rule` → PR #835, merged.
@@ -22,7 +22,9 @@ Models: developer and test-writer on Opus for `planted-bug-script` and `refactor
   - Reviewer: APPROVE (after 2 retries): the measurement started on passes with no test piece, an exit of the proof had no stated outcome, and a pass over product files ran the proof.
   - No test-writer round: skill text only.
 - **first-measurement** (spike) — findings in docs/sprint-logs/test-dedup-first-measurement.md, on this branch. The **Result:** line waits on the product manager.
+- **planted-bugs-in-patterns** (added in the run, after the first measurement, with the product manager's approval) — `chore/planted-bugs-in-patterns` → PR #839, stacked on #836.
+  - Reviewer: APPROVE (after 0 retries). Second measurement recorded in the spike findings.
 
 ### Waiting
-- **tests-that-catch-nothing** — waits on the spike's **Result:** line. The sprint assumed 10 to 30 assertions; the measurement lists 930 outside the code-text checks.
+- **tests-that-catch-nothing** — waits on the spike's **Result:** line. The sprint assumed 10 to 30 assertions; the second measurement lists 902 outside the code-text checks, and the findings show the list does not mean those assertions pass whatever the code does.
   - To continue: write the Result line, revise the plan if it says Amend, then re-run `/sprint-stack docs/sprint-plans/test-dedup.json`.

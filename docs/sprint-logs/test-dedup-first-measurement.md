@@ -56,7 +56,7 @@ Uncaught planted bugs are most frequent in the sidebar (95), the table adapters 
 
 ## Second measurement: planted bugs in patterns
 
-The script from the pattern planted bug pull request also removes a quantifier, an alternative, a character class member, or an anchor inside a pattern. Measured on 2026-11-27 at that branch's commit `5c1c2c0`, whose product code matches `main`. Elapsed time: 1,449 seconds, with other test runs sharing the computer.
+The script from #839 also removes a quantifier, an alternative, a character class member, or an anchor inside a pattern. Measured on 2026-11-27 at that branch's commit `5c1c2c0`, whose product code matches `main`. Elapsed time: 1,449 seconds, with other test runs sharing the computer.
 
 | Outcome | Count | Share of caught |
 | --- | ---: | ---: |
