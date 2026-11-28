@@ -5,10 +5,22 @@
   "source_markdown": "docs/sprint-plans/test-dedup.md",
   "repo_conventions": {
     "version_files": [
-      { "path": "chrome-extension/manifest.json", "format": "semver in `version` key" },
-      { "path": "claude-code-plugin/.claude-plugin/plugin.json", "format": "semver in `version` key" },
-      { "path": "js/src/entry.js", "format": "` * [VERSION] x.y.z` comment line, carried into js/round_dynamic.js by the build" },
-      { "path": "python/pyproject.toml", "format": "`version = \"x.y.z\"`" }
+      {
+        "path": "chrome-extension/manifest.json",
+        "format": "semver in `version` key"
+      },
+      {
+        "path": "claude-code-plugin/.claude-plugin/plugin.json",
+        "format": "semver in `version` key"
+      },
+      {
+        "path": "js/src/entry.js",
+        "format": "` * [VERSION] x.y.z` comment line, carried into js/round_dynamic.js by the build"
+      },
+      {
+        "path": "python/pyproject.toml",
+        "format": "`version = \"x.y.z\"`"
+      }
     ],
     "version_bump_policy": "merge-workflow",
     "test_command": "node chrome-extension/tests.js && node js/tests.js && node js/doc-tests.js && node claude-code-plugin/tests.js && node scripts/build-sheets.js --check",
@@ -64,41 +76,12 @@
         "Each number recorded.",
         "A verdict on the data: if crashes and timeouts credit no assertion for most caught planted bugs, the \"repeats others\" list is too thin to act on, and the plan needs a revision."
       ],
-      "depends_on": ["planted-bug-script"],
+      "depends_on": [
+        "planted-bug-script"
+      ],
       "version_bump": "none",
       "complexity": "S",
       "dev_notes": "The run takes hours (an estimate); start it in the background. A negative verdict leads to a new plan revision, not an edit to this one."
-    },
-    {
-      "label": "refactor-skill-test-gate",
-      "branch": "chore/refactor-skill-test-gate",
-      "goal": "A refactor pass over a test piece keeps every planted bug caught.",
-      "scope": ".agent/skills/refactor/SKILL.md. Main agent: when the input holds a test piece, it runs `measure` on the run's start commit in the background at step 1, and `sort` before the first find subagent for a test piece. Find subagent: for a test piece, it reads that piece's three lists; an assertion that repeats others is a Group A finding to drop; exception (decision 3): when its name, comment, or test group heading points to a past bug or issue, it stays, unless a kept assertion checks the exact same input, then it is a Group A drop too; merging tests into a case table is Group A only when AGENTS.md holds the case table rule; an assertion that catches nothing is a defect on main. Action subagent: after each cleanup to a test piece, it runs `prove` and reverts the cleanup on a failure. Review subagent: it runs `prove` on the branch and reports a failure as a defect in the branch's own changes.",
-      "out_of_scope": "Running a pass; any test piece.",
-      "acceptance_criteria": [
-        "Every step names the mode it runs and what a failure leads to.",
-        "No rule from AGENTS.md is restated; the skill points at it."
-      ],
-      "depends_on": ["planted-bug-script"],
-      "version_bump": "patch",
-      "complexity": "M",
-      "dev_notes": "The measurement takes hours (an estimate), so the main agent starts it before the first file and waits on it only when the first test piece comes up."
-    },
-    {
-      "label": "tests-that-catch-nothing",
-      "branch": "fix/tests-that-catch-nothing",
-      "goal": "Each assertion on the spike's \"catches nothing\" list fails when its rule breaks, or goes to the product manager.",
-      "scope": "The test pieces on the list. For each assertion: when it checks a rule of the product code, change its input so the rule matters, and confirm by breaking the rule by hand that it now fails, as #824 did; when it checks code text, docs, or the manifest, leave it; otherwise list it in the pull request for the product manager, with what it checks.",
-      "out_of_scope": "Assertions that repeat others; any product code.",
-      "acceptance_criteria": [
-        "Each repaired assertion fails with its rule broken and passes on the branch; the pull request states how each was broken.",
-        "`prove` against the spike's result file passes.",
-        "The extension suite passes."
-      ],
-      "depends_on": ["first-measurement"],
-      "version_bump": "patch",
-      "complexity": "M",
-      "dev_notes": "Assumes 10 to 30 assertions (an estimate); above 60, split by test piece into several pull requests. A repaired assertion changes the catch lists; that is the intent, and `prove` still passes because it checks for losses only."
     }
   ]
 }

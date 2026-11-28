@@ -2,7 +2,7 @@
 /**
  * Self-test for scripts/planted-bugs.js, the planted bug script.
  *
- * The cases build two synthetic git repositories in the operating system's
+ * The cases build three synthetic git repositories in the operating system's
  * temporary folder, each with one small product file and a suite of a few
  * assertions that writes the record to TEST_RECORD_PATH, plus the suite
  * file. They run the three modes on them and compare each result with an
@@ -30,7 +30,7 @@ const PRODUCT_FILE = 'app/product.js';
 // list of changes in section 3.2.
 const PRODUCT = [
   "'use strict';",
-  '// A comment holds a < b && true, which is no planted bug site.',
+  '// A comment holds a < b && true and the pattern /^a?b+$/; neither gets a planted bug.',
   "const NOTE = 'x < y && true';",
   'const SHAPE = `${NOTE} < z || false`;',
   "const MODE = 'ready';",
@@ -210,6 +210,43 @@ const EXPECTED_CROSS_CATCHES = {
   'double 3 is 6': [bugKey(6, '2', '3')],
 };
 
+// A third repository with the same runner and setup. A regular expression
+// literal and a pattern in string text each read two forms of a month; each
+// piece checks one function with one assertion per form.
+const PATTERN_PRODUCT = [
+  "'use strict';",
+  'const DAY = /^(Dec|December) (\\d+)$/;',
+  "const YEAR = new RegExp('^(Jan|January) (\\\\d+)$');",
+  'const dayOf = (text) => Number(DAY.exec(text)?.[2]);',
+  'const yearOf = (text) => Number(YEAR.exec(text)?.[2]);',
+  'module.exports = { dayOf, yearOf };',
+  '',
+].join('\n');
+
+const patternPiece = (name, forms) => ["'use strict';", "const { eq, product } = require('./setup.js');",
+  ...forms.map(([form, value]) => `eq('${name} ${form} is ${value}', product.${name}('${form}'), ${value});`), ''].join('\n');
+
+const PATTERN_FILES = {
+  [PRODUCT_FILE]: PATTERN_PRODUCT,
+  'app/tests.js': RUNNER,
+  'app/tests/setup.js': SETUP,
+  'app/tests/a-tests.js': patternPiece('dayOf', [['Dec 25', 25], ['December 31', 31]]),
+  'app/tests/b-tests.js': patternPiece('yearOf', [['Jan 2020', 2020], ['January 2021', 2021]]),
+};
+
+// No assertion holds a form without its anchors, so an anchor removal is not
+// caught. Removing one alternative fails only the assertion on that form.
+const EXPECTED_PATTERN_OUTCOMES = [
+  [2, '^', '', 'not caught'], [2, '$', '', 'not caught'], [2, '+', '', 'assertions'],
+  [2, 'Dec|', '', 'assertions'], [2, '|December', '', 'assertions'],
+  [3, '^', '', 'not caught'], [3, '$', '', 'not caught'], [3, '+', '', 'assertions'],
+  [3, 'Jan|', '', 'assertions'], [3, '|January', '', 'assertions'],
+  [4, '2', '3', 'assertions'], [5, '2', '3', 'assertions'],
+].map(([line, before, after, outcome]) => `${bugKey(line, before, after)} ${outcome}`).sort();
+
+const EXPECTED_PATTERN_SORT = { 'catches nothing': [], 'repeats others': [],
+  unique: ['dayOf Dec 25 is 25', 'dayOf December 31 is 31', 'yearOf Jan 2020 is 2020', 'yearOf January 2021 is 2021'], flaky: [] };
+
 // Each planted bug: a text that finds its line, the code before and after,
 // and the outcome (section 3.3). 'invalid' stops the suite before its first
 // assertion.
@@ -363,6 +400,8 @@ function buildFixture(temp) {
   initRepo(crossRepo, CROSS_FILES);
   commitBranch(crossRepo, 'shrink-list', { 'app/tests/a-tests.js': CROSS_PIECE_A.replace('[9, 10]', '[9]') });
   commitBranch(crossRepo, 'trim-data', { 'data/doubles.json': '[]\n' });
+  const patternRepo = path.join(temp, 'pattern-repo');
+  initRepo(patternRepo, PATTERN_FILES);
   const suite = path.join(temp, 'suite.json');
   fs.writeFileSync(suite, JSON.stringify({
     command: [process.execPath, 'app/tests.js'],
@@ -376,6 +415,7 @@ function buildFixture(temp) {
   return {
     temp, repo, suite, scriptTemp, flaky, result: path.join(temp, 'result.json'),
     cross: { repo: crossRepo, suite, scriptTemp, result: path.join(temp, 'cross-result.json') },
+    pattern: { repo: patternRepo, suite, scriptTemp, result: path.join(temp, 'pattern-result.json') },
   };
 }
 
@@ -463,7 +503,7 @@ async function measureCases(fixture) {
   if (!result) return null;
   process.stdout.write(`        measure took ${run.elapsedMs} ms\n`);
 
-  await check('measure on a product file with < && true || false in a comment, a string, and template text: no planted bug on those lines', () => {
+  await check('measure on a product file with < && true and a pattern in a comment, and < && true || false in string and template text without pattern syntax: no planted bug on those lines', () => {
     const textLines = [2, 3, 4];
     const inText = result.plantedBugs.filter((bug) => bug.file === PRODUCT_FILE && textLines.includes(bug.line));
     return inText.length ? `planted bugs in text: ${JSON.stringify(inText)}` : null;
@@ -585,6 +625,23 @@ async function crossPieceCases(fixture) {
     const lost = prove(cross, 'trim-data');
     return lost.status === 1 && lost.stderr.includes('1 of 3 rerun') && lost.stderr.includes(`${PRODUCT_FILE}:6:`) &&
       lost.stderr.includes(CROSS_DOUBLE_3) ? leftovers(cross) : exitDetail(lost);
+  });
+}
+
+async function patternFormCases(pattern) {
+  const run = runScript(pattern, measureArgs(pattern, pattern.result));
+  let measured = false;
+  await check('measure on a product file whose regular expression literal and string pattern each read Dec|December or Jan|January: the planted bugs and their outcomes match the hand-computed list', () => {
+    if (run.status !== 0) return exitDetail(run);
+    const detail = differs('planted bugs', outcomeList(JSON.parse(fs.readFileSync(pattern.result, 'utf8'))), EXPECTED_PATTERN_OUTCOMES);
+    measured = !detail;
+    return detail || leftovers(pattern);
+  });
+  if (!measured) return;
+
+  await check('sort on that result: each assertion on one form of a month is unique', () => {
+    const sorted = runScript(pattern, ['sort', '--in', pattern.result]);
+    return sorted.status === 0 ? differs('sort lists', parseSort(sorted.stdout), EXPECTED_PATTERN_SORT) : exitDetail(sorted);
   });
 }
 
@@ -727,6 +784,7 @@ async function main() {
     }
     await measureFailureCases(fixture);
     await crossPieceCases(fixture);
+    await patternFormCases(fixture.pattern);
     await signalCase(fixture);
     await badRecordCase(fixture);
     await extensionCase(temp);

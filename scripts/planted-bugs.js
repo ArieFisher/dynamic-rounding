@@ -13,6 +13,7 @@ const { spawn, execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { plantBugs } = require('./planted-bugs-lexer.js');
 
 const CLEAN_RUNS = 3;
 const TIME_CAP_MULTIPLE = 3;
@@ -48,7 +49,9 @@ const USAGE = `Usage, from any directory:
 measure  Runs the clean suite ${CLEAN_RUNS} times, then the suite once per planted
          bug, at the commit (default HEAD), and writes the result file.
          --files holds comma-separated product files to plant bugs in
-         (default: every product file).
+         (default: every product file). PLANTED_BUG_CHANGES in
+         scripts/planted-bugs-lexer.js lists the changes: to code, and to
+         patterns in regular expressions and in string and template text.
 sort     Prints, by piece, the assertions that catch nothing, the ones that
          repeat others, the unique ones, and the flaky ones.
 prove    Reruns every planted bug the result file holds as caught, at the
@@ -155,180 +158,7 @@ function readJson(file, what) {
   }
 }
 
-// --- The lexer ---
-
-// Longest first, so the lexer takes "!==" before "!=" and "!".
-const PUNCTUATORS = ['>>>=', '...', '===', '!==', '**=', '<<=', '>>=', '>>>', '&&=', '||=', '??=',
-  '=>', '==', '!=', '<=', '>=', '&&', '||', '??', '?.', '++', '--', '+=', '-=', '*=', '/=', '%=',
-  '&=', '|=', '^=', '**', '<<', '>>'];
-const KEYWORDS_BEFORE_REGEX = new Set(['return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete',
-  'void', 'throw', 'case', 'do', 'else', 'yield', 'await']);
-const NAME = /[A-Za-z_$\u0080-\uFFFF][\w$\u0080-\uFFFF]*/y;
-const NUMBER = /(?:0[xXoObB][\da-fA-F_]+|(?:\d[\d_]*\.?[\d_]*|\.\d[\d_]*)(?:[eE][+-]?\d[\d_]*)?)n?/y;
-
-function matchAt(pattern, text, index) {
-  pattern.lastIndex = index;
-  const match = pattern.exec(text);
-  return match ? match[0] : null;
-}
-
-function skipQuoted(text, index) {
-  const quote = text[index];
-  let i = index + 1;
-  while (i < text.length && text[i] !== quote && text[i] !== '\n') i += text[i] === '\\' ? 2 : 1;
-  return i + 1;
-}
-
-// Returns the index after the closing backtick, or after a "${" with
-// `opensExpression` set.
-function skipTemplateText(text, index) {
-  let i = index;
-  while (i < text.length) {
-    if (text[i] === '\\') { i += 2; continue; }
-    if (text[i] === '`') return { end: i + 1, opensExpression: false };
-    if (text.startsWith('${', i)) return { end: i + 2, opensExpression: true };
-    i++;
-  }
-  return { end: i, opensExpression: false };
-}
-
-// A regular expression never spans lines, so a slash whose expression would
-// run past the line end is division, and the lexer gets -1.
-function skipRegex(text, index) {
-  let i = index + 1;
-  let inClass = false;
-  while (i < text.length && text[i] !== '\n') {
-    if (text[i] === '\\') { i += 2; continue; }
-    if (text[i] === '[') inClass = true;
-    else if (text[i] === ']') inClass = false;
-    else if (text[i] === '/' && !inClass) return i + 1 + (matchAt(/[a-z]*/y, text, i + 1) || '').length;
-    i++;
-  }
-  return -1;
-}
-
-function regexAllowedAfter(token) {
-  if (!token) return true;
-  if (token.type === 'name') return KEYWORDS_BEFORE_REGEX.has(token.text);
-  if (token.type === 'punct') return ![')', ']', '}'].includes(token.text);
-  return false;
-}
-
-// Comments, string text, template text, and regular expressions yield no
-// code token, so no planted bug lands in them. Each string, template, and
-// regular expression yields one 'literal' token, so the lexer treats a slash
-// after it as division.
-function lexCode(text) {
-  const tokens = [];
-  const templateBraces = [];
-  let i = 0;
-  const push = (type, tokenText, start) => tokens.push({ type, text: tokenText, start });
-  const resumeTemplate = (from) => {
-    const { end, opensExpression } = skipTemplateText(text, from);
-    if (opensExpression) { templateBraces.push(0); push('punct', '${', end - 2); } else push('literal', '', from);
-    return end;
-  };
-  while (i < text.length) {
-    const ch = text[i];
-    if (/\s/.test(ch)) { i++; continue; }
-    if (text.startsWith('//', i)) { const end = text.indexOf('\n', i); i = end < 0 ? text.length : end; continue; }
-    if (text.startsWith('/*', i)) { const end = text.indexOf('*/', i + 2); i = end < 0 ? text.length : end + 2; continue; }
-    if (ch === '"' || ch === "'") { push('literal', '', i); i = skipQuoted(text, i); continue; }
-    if (ch === '`') { i = resumeTemplate(i + 1); continue; }
-    if (ch === '/' && regexAllowedAfter(tokens[tokens.length - 1])) {
-      const end = skipRegex(text, i);
-      if (end > 0) { push('literal', '', i); i = end; continue; }
-    }
-    const number = /\d/.test(ch) || (ch === '.' && /\d/.test(text[i + 1] || '')) ? matchAt(NUMBER, text, i) : null;
-    if (number) { push('number', number, i); i += number.length; continue; }
-    const name = matchAt(NAME, text, i);
-    if (name) { push('name', name, i); i += name.length; continue; }
-    if (templateBraces.length && (ch === '{' || ch === '}')) {
-      const depth = templateBraces.length - 1;
-      if (ch === '}' && templateBraces[depth] === 0) { templateBraces.pop(); i = resumeTemplate(i + 1); continue; }
-      templateBraces[depth] += ch === '{' ? 1 : -1;
-    }
-    const punct = PUNCTUATORS.find((p) => text.startsWith(p, i) && !(p === '?.' && /\d/.test(text[i + 2] || ''))) || ch;
-    push('punct', punct, i);
-    i += punct.length;
-  }
-  return tokens;
-}
-
-// --- The planted bug table ---
-
-function edit(start, end, after) {
-  return { start, end, after };
-}
-
-function swap(from, to) {
-  return {
-    change: `${from} to ${to}`,
-    plant: (tokens, i) => {
-      const token = tokens[i];
-      const isProperty = token.type === 'name' && i > 0 && ['.', '?.'].includes(tokens[i - 1].text);
-      return token.text === from && token.type !== 'literal' && !isProperty
-        ? [edit(token.start, token.start + from.length, to)] : [];
-    },
-  };
-}
-
-function forceIfCondition(value) {
-  return {
-    change: `if condition to ${value}`,
-    plant: (tokens, i) => {
-      if (tokens[i].type !== 'name' || tokens[i].text !== 'if' || (tokens[i + 1] || {}).text !== '(') return [];
-      let depth = 0;
-      for (let j = i + 1; j < tokens.length; j++) {
-        if (tokens[j].type !== 'punct') continue;
-        if (tokens[j].text === '(') depth++;
-        if (tokens[j].text === ')' && --depth === 0) return [edit(tokens[i + 1].start + 1, tokens[j].start, value)];
-      }
-      return [];
-    },
-  };
-}
-
-const PLANTED_BUG_CHANGES = [
-  swap('<', '<='), swap('<=', '<'), swap('>', '>='), swap('>=', '>'),
-  swap('===', '!=='), swap('!==', '==='),
-  swap('&&', '||'), swap('||', '&&'),
-  swap('true', 'false'), swap('false', 'true'),
-  {
-    change: 'leading ! removed',
-    plant: (tokens, i) => (tokens[i].type === 'punct' && tokens[i].text === '!'
-      ? [edit(tokens[i].start, tokens[i].start + 1, '')] : []),
-  },
-  {
-    change: 'n to n + 1',
-    plant: (tokens, i) => {
-      const token = tokens[i];
-      const value = token.type === 'number' && !token.text.endsWith('n') ? Number(token.text.replace(/_/g, '')) : NaN;
-      return Number.isFinite(value) ? [edit(token.start, token.start + token.text.length, String(value + 1))] : [];
-    },
-  },
-  forceIfCondition('true'),
-  forceIfCondition('false'),
-];
-
-function lineAndColumn(text, index) {
-  const before = text.slice(0, index).split('\n');
-  return { line: before.length, column: before[before.length - 1].length + 1 };
-}
-
-function plantBugs(file, text) {
-  const tokens = lexCode(text);
-  const bugs = [];
-  tokens.forEach((token, i) => {
-    for (const { change, plant } of PLANTED_BUG_CHANGES) {
-      for (const { start, end, after } of plant(tokens, i)) {
-        const before = text.slice(start, end);
-        if (before !== after) bugs.push({ file, ...lineAndColumn(text, start), start, before, after, change });
-      }
-    }
-  });
-  return bugs;
-}
+// --- The planted bugs ---
 
 function listPlantedBugs(root, commit, suite, filesOption) {
   const productFiles = git(root, 'ls-tree', '-r', '-z', '--name-only', commit, '--', suite.productDir)
