@@ -4,8 +4,8 @@
  * table of the planted bug script.
  *
  * The cases list the planted bugs in short snippets of code and compare
- * them with an answer worked out by hand from the pattern changes in
- * docs/sprint-plans/test-dedup.md, section 3.2. The last cases check that
+ * them with an answer worked out by hand from the changes that
+ * PLANTED_BUG_CHANGES in scripts/planted-bugs-lexer.js lists. The last cases check that
  * each planted bug leaves the code parseable, in the snippets and in the
  * extension's product files. No case runs a suite.
  *
@@ -57,6 +57,8 @@ const PATTERN_TEXT_ROWS = [
   ["x = '(?:a)?';", ["? quantifier removed: x = '(?:a)';"]],
   ["x = '\\\\d|x';", ["alternative removed: x = '\\\\d';"]],
   ['x = `\\\\d+ ${y} (a|b)`;', ['+ quantifier removed: x = `\\\\d ${y} (a|b)`;']],
+  ["x = '\\\\d|(?:a' + y + ')';", []],
+  ["x = 'a\\\\+b\\\\?\\\\|c\\\\*(?:\\\\(d)';", []],
 ];
 
 const NO_PATTERN_ROWS = [

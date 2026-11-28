@@ -1,7 +1,8 @@
 /**
  * The lexer and the planted bug table of scripts/planted-bugs.js: reads a
  * product file and lists the planted bugs the table makes in it.
- * docs/sprint-plans/test-dedup.md, section 3.2, holds the design.
+ * docs/sprint-plans/test-dedup.md, section 3.2 and the Decisions Log entry on
+ * patterns, holds the design.
  * Node standard library only.
  */
 
