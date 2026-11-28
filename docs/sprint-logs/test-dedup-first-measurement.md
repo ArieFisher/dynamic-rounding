@@ -52,4 +52,35 @@ Uncaught planted bugs are most frequent in the sidebar (95), the table adapters 
 
 - **Repeats others: 3,038 assertions, 66%.** The plan's trim was to go ahead if 20% or more repeat. 348 assertions catch every planted bug that assertions catch.
 - **Catches nothing: 1,235 assertions.** The source checks piece and the helpers it calls hold 305 of them; those check code text, so they catch nothing by design. The other 930 check product rules. The `tests-that-catch-nothing` sprint assumed 10 to 30.
-- **One cause behind both sizes, checked in the script and the lists.** The lexer skips string text and regular expressions, so no planted bug ever changes one. Three reader files for numbers and dates hold about 50 lines that call a regular expression (counted by a search), and much of their logic sits in those expressions. When two tests send different inputs through different expressions, the planted bugs change only the code the two share, so every planted bug one test catches the other catches too, and the sort lists one of them under "repeats others". For example, the month case table rows for "December 13, 2096" and "Dec 13, 2096" both sit on that list, although each checks a different date form. In the same way, a test that checks that the reader finds no number in a malformed input catches nothing, because no planted bug makes the reader accept that input.
+- **First explanation tested: the lexer skips patterns.** The first planted bug table never changed string text or a regular expression, and the number and date readers do much of their work in patterns. The month case table rows for "December 13, 2096" and "Dec 13, 2096" both sit on the "repeats others" list, although each checks a different date form. The second measurement below tests this explanation.
+
+## Second measurement: planted bugs in patterns
+
+The script from the pattern planted bug pull request also removes a quantifier, an alternative, a character class member, or an anchor inside a pattern. Measured on 2026-11-27 at that branch's commit `5c1c2c0`, whose product code matches `main`. Elapsed time: 1,449 seconds, with other test runs sharing the computer.
+
+| Outcome | Count | Share of caught |
+| --- | ---: | ---: |
+| Caught by assertions | 1,787 | 86.7% |
+| Caught by a crash | 270 | 13.1% |
+| Caught by a timeout | 4 | 0.2% |
+| Not caught | 593 | |
+| Invalid | 11 | |
+| Total | 2,665 | |
+
+The 303 pattern planted bugs: 160 caught by assertions, 2 by a crash, 3 by a timeout, 138 not caught.
+
+| List | First measurement | Second measurement |
+| --- | ---: | ---: |
+| Catches nothing | 1,235 | 1,206 |
+| Repeats others | 3,038 | 3,030 |
+| Unique | 348 | 385 |
+| Flaky | 0 | 0 |
+
+The lists barely moved, so the skipped patterns explain little of their size. The two month rows still sit on "repeats others": other assertions with the same month names catch the same pattern planted bugs.
+
+## What the lists measure
+
+- **"Repeats others" holds an assertion when no planted bug separates it from the assertions kept before it.** It does not show that two tests check the same thing. 1,787 planted bugs are caught by assertions, against 4,621 assertions, so most assertions cannot hold a planted bug that only they catch. In the second measurement, 3,415 assertions catch at least one planted bug, with a median of 8 each. 2,067 of them share an identical catch list with another assertion; the rest of the "repeats others" list is covered by a mix of several kept assertions.
+- **"Catches nothing" holds an assertion when no planted bug makes it fail.** 304 of the 1,206 check code text, so they catch nothing by design. Some of the other 902 check that an input is refused, such as a test that the reader finds no number in "N/A"; a planted bug rarely makes code accept more input. A search of their names for refusal wording ("no number", "yields no", "fallback", "unchanged", "null") finds 69; the rest were not classified. An assertion on this list is not shown to pass whatever the code does.
+- **The proof holds.** `prove` fails when a branch loses a caught planted bug, whatever the lists say. A trim that relies on the proof alone keeps every caught planted bug, but it can delete a test that checks an input form no planted bug reaches.
+- **Not caught: 593 planted bugs.** Each is a change to product code that no test detects. The most sit in the sidebar (96), the date reader (87), the table adapters (58), the identifier reader (50), and the capture renderer (45).
